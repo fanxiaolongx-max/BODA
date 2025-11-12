@@ -1,0 +1,183 @@
+{
+  "settings": {
+    "orderingOpen": false,
+    "orderingEndTime": null,
+    "discountRules": [
+      {
+        "minAmount": 200,
+        "discount": 0.15
+      },
+      {
+        "minAmount": 100,
+        "maxAmount": 200,
+        "discount": 0.1
+      },
+      {
+        "minAmount": 50,
+        "maxAmount": 100,
+        "discount": 0.05
+      },
+      {
+        "minAmount": 0,
+        "maxAmount": 50,
+        "discount": 0
+      }
+    ]
+  },
+  "products": [
+    {
+      "id": 1,
+      "name": "珍珠奶茶",
+      "price": 15,
+      "category": "经典奶茶"
+    },
+    {
+      "id": 2,
+      "name": "红豆奶茶",
+      "price": 16,
+      "category": "经典奶茶"
+    },
+    {
+      "id": 3,
+      "name": "布丁奶茶",
+      "price": 17,
+      "category": "经典奶茶"
+    },
+    {
+      "id": 4,
+      "name": "椰果奶茶",
+      "price": 16,
+      "category": "经典奶茶"
+    },
+    {
+      "id": 5,
+      "name": "乌龙奶茶",
+      "price": 15,
+      "category": "经典奶茶"
+    },
+    {
+      "id": 6,
+      "name": "抹茶拿铁",
+      "price": 20,
+      "category": "拿铁系列"
+    },
+    {
+      "id": 7,
+      "name": "焦糖拿铁",
+      "price": 20,
+      "category": "拿铁系列"
+    },
+    {
+      "id": 8,
+      "name": "香草拿铁",
+      "price": 20,
+      "category": "拿铁系列"
+    },
+    {
+      "id": 9,
+      "name": "柠檬蜂蜜",
+      "price": 18,
+      "category": "果茶系列"
+    },
+    {
+      "id": 10,
+      "name": "百香果茶",
+      "price": 18,
+      "category": "果茶系列"
+    },
+    {
+      "id": 11,
+      "name": "芒果冰沙",
+      "price": 22,
+      "category": "冰沙系列"
+    },
+    {
+      "id": 12,
+      "name": "草莓冰沙",
+      "price": 22,
+      "category": "冰沙系列"
+    }
+  ],
+  "orders": [
+    {
+      "id": "cc2980df-bcc8-43d4-a63b-904cb8005881",
+      "orderNumber": "BO64146978",
+      "customerName": "匿名",
+      "customerPhone": "",
+      "items": [
+        {
+          "productId": 1,
+          "quantity": 1
+        }
+      ],
+      "totalAmount": 15,
+      "discount": 1.5,
+      "finalAmount": 13.5,
+      "status": "pending",
+      "paymentImage": null,
+      "createdAt": "2025-11-12T16:15:46.978Z",
+      "paidAt": null
+    },
+    {
+      "id": "c55d5a53-eb5d-437f-8971-24ddeafc19c2",
+      "orderNumber": "BO64348809",
+      "customerName": "匿名",
+      "customerPhone": "",
+      "items": [
+        {
+          "productId": 2,
+          "quantity": 1
+        },
+        {
+          "productId": 3,
+          "quantity": 2
+        }
+      ],
+      "totalAmount": 50,
+      "discount": 5,
+      "finalAmount": 45,
+      "status": "pending",
+      "paymentImage": null,
+      "createdAt": "2025-11-12T16:19:08.809Z",
+      "paidAt": null
+    },
+    {
+      "id": "1a2637aa-56f5-4f47-8e66-5e1ba66be441",
+      "orderNumber": "BO64364272",
+      "customerName": "FAN",
+      "customerPhone": "01017739088",
+      "items": [
+        {
+          "productId": 12,
+          "quantity": 1
+        }
+      ],
+      "totalAmount": 22,
+      "discount": 2.2,
+      "finalAmount": 19.8,
+      "status": "pending",
+      "paymentImage": null,
+      "createdAt": "2025-11-12T16:19:24.272Z",
+      "paidAt": null
+    },
+    {
+      "id": "46e980e7-3616-4f37-b974-c0c4a52a11e8",
+      "orderNumber": "BO68849485",
+      "customerName": "GGHJG",
+      "customerPhone": "0909090909",
+      "items": [
+        {
+          "productId": 1,
+          "quantity": 1
+        }
+      ],
+      "totalAmount": 15,
+      "discount": 1.5,
+      "finalAmount": 13.5,
+      "status": "pending",
+      "paymentImage": null,
+      "createdAt": "2025-11-12T17:34:09.485Z",
+      "paidAt": null
+    }
+  ]
+}
