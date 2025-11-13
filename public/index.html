@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BOBA TEA Ordering System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/i18n.js"></script>
+  <style>
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .product-card:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+    .product-card { transition: all 0.3s ease; }
+    .modal { 
+      display: none; 
+      position: fixed; 
+      z-index: 50; 
+      left: 0; 
+      top: 0; 
+      width: 100%; 
+      height: 100%; 
+      overflow: auto; 
+      background-color: rgba(0,0,0,0.5); 
+      align-items: center;
+      justify-content: center;
+    }
+    .modal.active { 
+      display: flex; 
+    }
+    .cart-badge { position: absolute; top: -8px; right: -8px; }
+    .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; font-weight: 600; }
+    @keyframes scroll {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+    .animate-scroll {
+      animation: scroll 40s linear infinite;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
+  <!-- 登录模态框 -->
+  <div id="loginModal" class="modal">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8 fade-in">
+      <div class="text-center mb-6">
+        <h2 class="text-2xl font-bold text-gray-900 mb-2">Login to Continue</h2>
+        <p class="text-gray-600">Please enter your phone number to place an order</p>
+      </div>
+      
+      <form id="loginForm" class="space-y-6">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
+          <input type="tel" id="phone" required
+                 class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                 placeholder="Enter phone number">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Name (Optional)</label>
+          <input type="text" id="name"
+                 class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                 placeholder="Leave empty or enter name">
+        </div>
+        <div class="flex space-x-3">
+          <button type="submit"
+                  class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 rounded-lg transition duration-300">
+            Login
+          </button>
+          <button type="button" onclick="closeLoginModal()"
+                  class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg transition">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="mainPage">
+    <!-- 顶部导航 -->
+    <nav class="bg-white shadow-lg sticky top-0 z-40">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16">
+          <div class="flex items-center space-x-3">
+            <span class="text-3xl">🧋</span>
+            <div>
+              <h1 class="text-xl font-bold text-gray-900" data-i18n="app_name">BOBA TEA</h1>
+              <p class="text-xs text-gray-500"><span data-i18n="welcome">Welcome</span>, <span id="userName"></span></p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button id="loginBtn" onclick="showLoginModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm" data-i18n="login">Login</button>
+            <button id="logoutBtn" onclick="logout()" class="hidden px-3 py-2 text-gray-700 hover:text-red-600 transition text-sm" data-i18n="logout">Logout</button>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- 菜单页面 -->
+    <div id="menuTab" class="flex flex-col h-[calc(100vh-64px-60px)]">
+      <!-- 系统公告滚动展示（包含折扣信息） -->
+      <div id="systemNoticeBanner" class="hidden bg-yellow-100 border-b border-yellow-300 px-4 py-2 overflow-hidden">
+        <div class="flex items-center">
+          <span class="text-yellow-800 font-semibold mr-3 flex-shrink-0">📢 Notice:</span>
+          <div class="flex-1 overflow-hidden">
+            <div id="noticeText" class="text-yellow-800 whitespace-nowrap animate-scroll"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 点单状态提示 -->
+      <div id="orderingStatus" class="px-4 py-2"></div>
+
+      <!-- 主内容区：左右分栏 -->
+      <div class="flex flex-1 overflow-hidden">
+        <!-- 左侧分类导航 -->
+        <div class="w-24 bg-gray-50 overflow-y-auto border-r border-gray-200">
+          <div id="categoryNav" class="py-2">
+          </div>
+        </div>
+
+        <!-- 右侧商品列表 -->
+        <div class="flex-1 overflow-y-auto bg-white px-3 py-4" id="productsScroll">
+          <div id="productsList" class="space-y-4">
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部固定栏：购物车总价和结算 -->
+      <div id="cartBar" class="hidden border-t border-gray-200 bg-white p-3 shadow-lg">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <button onclick="showCart()" class="relative">
+              <span class="text-3xl">🛒</span>
+              <span id="cartBarBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">0</span>
+            </button>
+            <div>
+              <p class="text-xs text-gray-500">Selected Items</p>
+              <p id="cartBarTotal" class="text-lg font-bold text-red-500">¥0</p>
+            </div>
+          </div>
+          <button onclick="goToCheckout()" class="px-8 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-full text-base">
+            Checkout
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 订单页面 -->
+    <div id="ordersTab" class="hidden overflow-y-auto px-4 py-4" style="height: calc(100vh - 64px - 60px);">
+      <h2 class="text-2xl font-bold text-gray-900 mb-4">My Orders</h2>
+      <div id="ordersList" class="space-y-4 pb-4">
+      </div>
+    </div>
+
+    <!-- 我的页面 -->
+    <div id="profileTab" class="hidden overflow-y-auto px-4 py-4" style="height: calc(100vh - 64px - 60px);">
+      <div class="bg-gradient-to-r from-green-400 to-green-500 rounded-2xl p-6 text-white mb-4">
+        <div class="flex items-center space-x-4">
+          <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center text-3xl">
+            👤
+          </div>
+          <div>
+            <p class="font-bold text-lg" id="profileName">Guest</p>
+            <p class="text-sm opacity-90" id="profilePhone"></p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl p-4 space-y-3">
+        <button onclick="showTab('orders')" class="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+          <div class="flex items-center space-x-3">
+            <span class="text-2xl">📝</span>
+            <span class="font-medium">My Orders</span>
+          </div>
+          <span class="text-gray-400">›</span>
+        </button>
+        
+        <button onclick="logout()" class="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg text-red-600">
+          <div class="flex items-center space-x-3">
+            <span class="text-2xl">🚪</span>
+            <span class="font-medium">Logout</span>
+          </div>
+          <span class="text-gray-400">›</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部导航栏 -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
+    <div class="flex justify-around items-center h-[60px]">
+      <button onclick="showBottomTab('home')" id="homeNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-gray-600">
+        <span class="text-xl">🏠</span>
+        <span class="text-xs">Home</span>
+      </button>
+      <button onclick="showBottomTab('menu')" id="menuNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-green-600 font-semibold">
+        <span class="text-xl">🧋</span>
+        <span class="text-xs">Order</span>
+      </button>
+      <button onclick="showBottomTab('orders')" id="ordersNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-gray-600">
+        <span class="text-xl">📋</span>
+        <span class="text-xs">Orders</span>
+      </button>
+      <button onclick="showBottomTab('profile')" id="profileNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-gray-600">
+        <span class="text-xl">👤</span>
+        <span class="text-xs">Profile</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- 商品详情/规格选择模态框 -->
+  <div id="productDetailModal" class="modal">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
+      <div class="p-4 border-b border-gray-200">
+        <div class="flex justify-between items-start">
+          <div class="flex-1">
+            <h3 id="detailProductName" class="text-lg font-bold text-gray-900"></h3>
+            <p id="detailProductDesc" class="text-xs text-gray-500 mt-1"></p>
+          </div>
+          <button onclick="closeProductDetail()" class="text-gray-400 hover:text-gray-600 text-2xl ml-3 leading-none">×</button>
+        </div>
+      </div>
+      
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- 杯型选择 -->
+        <div id="sizeSection">
+          <h4 class="text-sm font-semibold text-gray-900 mb-2">Size</h4>
+          <div id="sizeOptions" class="flex flex-wrap gap-2"></div>
+        </div>
+        
+        <!-- 甜度选择 -->
+        <div id="sugarSection">
+          <h4 class="text-sm font-semibold text-gray-900 mb-2">Sweetness</h4>
+          <div id="sugarOptions" class="flex flex-wrap gap-2"></div>
+        </div>
+        
+        <!-- 加料选择 -->
+        <div id="toppingSection">
+          <h4 class="text-sm font-semibold text-gray-900 mb-2">Toppings (Multiple)</h4>
+          <div id="toppingOptions" class="space-y-2"></div>
+        </div>
+      </div>
+      
+      <div class="p-4 border-t border-gray-200 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center space-x-3">
+            <button onclick="updateDetailQuantity(-1)" class="w-9 h-9 bg-gray-200 hover:bg-gray-300 rounded-full font-bold text-base">-</button>
+            <span id="detailQuantity" class="font-semibold text-lg w-6 text-center">1</span>
+            <button onclick="updateDetailQuantity(1)" class="w-9 h-9 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-bold text-base">+</button>
+          </div>
+          <div class="text-right">
+            <p class="text-xs text-gray-500">Total</p>
+            <p id="detailTotalPrice" class="text-xl font-bold text-blue-600">¥0</p>
+          </div>
+        </div>
+        <button onclick="addToCartFromDetail()" class="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-gray-900 font-bold py-3 rounded-xl transition duration-300 text-base">
+          Add to Cart
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 购物车模态框 -->
+  <div id="cartModal" class="modal">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+      <div class="p-6 border-b border-gray-200">
+        <div class="flex justify-between items-center">
+          <h3 class="text-2xl font-bold text-gray-900">Cart</h3>
+          <button onclick="closeCart()" class="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+        </div>
+      </div>
+      
+      <div class="flex-1 overflow-y-auto p-6">
+        <div id="cartItems" class="space-y-4"></div>
+      </div>
+      
+      <div class="p-6 border-t border-gray-200 bg-gray-50">
+        <div class="flex justify-between items-center mb-4">
+          <span class="text-lg font-semibold text-gray-700">Total:</span>
+          <span id="cartTotal" class="text-2xl font-bold text-blue-600">¥0.00</span>
+        </div>
+        <button onclick="submitOrder()" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 rounded-lg transition duration-300 transform hover:scale-105">
+          Submit Order
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 付款模态框 -->
+  <div id="paymentModal" class="modal">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
+      <h3 class="text-2xl font-bold text-gray-900 mb-4">Upload Payment Screenshot</h3>
+      <div id="paymentOrderInfo" class="mb-4 p-4 bg-gray-50 rounded-lg"></div>
+      <form id="paymentForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Select Payment Screenshot</label>
+          <input type="file" id="paymentImage" accept="image/*" required
+                 class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg">
+        </div>
+        <div class="flex space-x-3">
+          <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+            Upload
+          </button>
+          <button type="button" onclick="closePayment()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg transition">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="currency.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+

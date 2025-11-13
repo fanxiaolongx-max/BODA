@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - BOBA TEA Ordering System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/i18n.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/@icon-park/svg@1.4.2/icon-park.min.css" rel="stylesheet">
+  <style>
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .sidebar-item:hover { background: rgba(59, 130, 246, 0.1); }
+    .sidebar-item.active { background: rgba(59, 130, 246, 0.2); border-left: 3px solid #3b82f6; }
+    .card { box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .modal { 
+      display: none; 
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.5);
+      align-items: center;
+      justify-content: center;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .modal.active { 
+      display: flex; 
+    }
+    .modal > div {
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <!-- 登录页面 -->
+  <div id="loginPage" class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8 fade-in">
+      <div class="text-center">
+        <h2 class="text-4xl font-bold text-gray-900">🧋 <span data-i18n="app_name">BOBA TEA</span></h2>
+        <p class="mt-2 text-xl text-gray-600">Admin Panel</p>
+      </div>
+      <div class="mt-8 bg-white p-8 rounded-xl shadow-lg">
+        <form id="loginForm" class="space-y-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+            <input type="text" id="username" required
+                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                   placeholder="Enter username">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+            <input type="password" id="password" required
+                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                   placeholder="Enter password">
+          </div>
+          <button type="submit"
+                  class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-200">
+            Login
+          </button>
+        </form>
+        <div class="mt-4 text-center text-sm text-gray-500">
+          Default: admin / admin123
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="mainPage" class="hidden">
+    <!-- 顶部导航栏 -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+      <div class="mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+          <div class="flex items-center">
+            <h1 class="text-2xl font-bold text-gray-900">🧋 <span data-i18n="app_name">BOBA TEA</span> <span data-i18n="admin_panel">Admin Panel</span></h1>
+          </div>
+          <div class="flex items-center space-x-4">
+            <span class="text-sm text-gray-600">Welcome, <span id="adminName" class="font-semibold"></span></span>
+            <button onclick="logout()" class="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition">
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <div class="flex h-[calc(100vh-64px)]">
+      <!-- 侧边栏 -->
+      <aside class="w-64 bg-white shadow-sm border-r border-gray-200 overflow-y-auto">
+        <nav class="p-4 space-y-1">
+          <a href="#" onclick="switchTab('dashboard')" class="sidebar-item active block px-4 py-3 rounded-lg text-gray-700 transition">
+            📊 Dashboard
+          </a>
+          <a href="#" onclick="switchTab('orders')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            📝 Orders
+          </a>
+          <a href="#" onclick="switchTab('products')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            🍹 Products
+          </a>
+          <a href="#" onclick="switchTab('categories')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            📂 Categories
+          </a>
+          <a href="#" onclick="switchTab('discounts')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            💰 Discounts
+          </a>
+          <a href="#" onclick="switchTab('settings')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            ⚙️ Settings
+          </a>
+          <a href="#" onclick="switchTab('users')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            👥 Users
+          </a>
+          <a href="#" onclick="switchTab('admins')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            🔐 Admins
+          </a>
+          <a href="#" onclick="switchTab('logs')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            📋 Logs
+          </a>
+        </nav>
+      </aside>
+
+      <!-- 主内容区 -->
+      <main class="flex-1 overflow-y-auto p-6 bg-gray-50">
+        <!-- 仪表盘 -->
+        <div id="dashboardTab" class="tab-content fade-in">
+          <h2 class="text-2xl font-bold text-gray-900 mb-6">Overview</h2>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl card">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Total Orders</p>
+                  <p id="totalOrders" class="text-3xl font-bold text-gray-900 mt-2">0</p>
+                </div>
+                <div class="text-4xl">📝</div>
+              </div>
+            </div>
+            <div class="bg-white p-6 rounded-xl card">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Total Amount</p>
+                  <p id="totalAmount" class="text-3xl font-bold text-blue-600 mt-2">¥0</p>
+                </div>
+                <div class="text-4xl">💵</div>
+              </div>
+            </div>
+            <div class="bg-white p-6 rounded-xl card">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Discount Amount</p>
+                  <p id="totalDiscount" class="text-3xl font-bold text-green-600 mt-2">¥0</p>
+                </div>
+                <div class="text-4xl">🎁</div>
+              </div>
+            </div>
+            <div class="bg-white p-6 rounded-xl card">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Final Amount</p>
+                  <p id="finalAmount" class="text-3xl font-bold text-purple-600 mt-2">¥0</p>
+                </div>
+                <div class="text-4xl">💰</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white p-6 rounded-xl card">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button onclick="toggleOrdering()" id="toggleOrderBtn"
+                      class="px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition">
+                Open Ordering
+              </button>
+              <button onclick="switchTab('orders')"
+                      class="px-6 py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition">
+                View Orders
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 订单管理 -->
+        <div id="ordersTab" class="tab-content hidden fade-in">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-900">Orders</h2>
+            <div class="flex space-x-2">
+              <select id="orderCycleFilter" onchange="loadOrders()" class="px-4 py-2 border border-gray-300 rounded-lg">
+                <option value="">All Cycles</option>
+              </select>
+              <select id="orderStatusFilter" onchange="loadOrders()" class="px-4 py-2 border border-gray-300 rounded-lg">
+                <option value="">All Status</option>
+                <option value="pending">Pending Payment</option>
+                <option value="paid">Paid</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <button onclick="exportOrders()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+                Export Orders
+              </button>
+              <button onclick="loadOrders()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order Number</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer Info</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="min-width: 300px;">Product Details</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="ordersTableBody" class="bg-white divide-y divide-gray-200">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 其他标签页内容会在后面创建 -->
+        <div id="productsTab" class="tab-content hidden"></div>
+        <div id="categoriesTab" class="tab-content hidden"></div>
+        <div id="discountsTab" class="tab-content hidden"></div>
+        <div id="settingsTab" class="tab-content hidden"></div>
+        <div id="usersTab" class="tab-content hidden"></div>
+        <div id="adminsTab" class="tab-content hidden"></div>
+        <div id="logsTab" class="tab-content hidden"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
+

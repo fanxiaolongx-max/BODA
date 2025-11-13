@@ -1,333 +1,206 @@
 const express = require('express');
 const cors = require('cors');
-const multer = require('multer');
+const helmet = require('helmet');
+const session = require('express-session');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
+
+const { initData } = require('./db/init');
+const { logger } = require('./utils/logger');
+const { closeDatabase } = require('./db/database');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-// 中间件
-app.use(cors());
-app.use(express.json());
+// 信任代理（重要：用于 ngrok、Nginx 等反向代理）
+// 设置为 1 表示信任第一个代理，不影响直接访问
+app.set('trust proxy', 1);
+
+// 安全中间件
+app.use(helmet({
+  contentSecurityPolicy: false, // 开发时关闭，生产环境需配置
+}));
+
+// CORS配置
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true
+}));
+
+// 请求解析
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Session配置
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'boda-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: 'auto', // 自动检测协议（HTTP 不使用 secure，HTTPS 使用 secure），支持 ngrok
+    httpOnly: true,
+    sameSite: 'lax', // 允许跨站请求（ngrok 需要），同时保持安全性
+    maxAge: 24 * 60 * 60 * 1000 // 24小时
+  },
+  proxy: true // 信任反向代理（ngrok、Nginx 等）
+}));
+
+// 限流配置（放宽限制）
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15分钟
+  max: 500, // 限制500个请求（从100增加到500）
+  message: { success: false, message: '请求过于频繁，请稍后再试' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50, // 登录限制50次（从10增加到50）
+  skipSuccessfulRequests: true, // 成功的请求不计数
+  message: { success: false, message: '登录尝试次数过多，请15分钟后再试' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 静态文件服务
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads'));
 
-// 确保上传目录存在
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// 数据存储文件
-const DATA_FILE = path.join(__dirname, 'data.json');
-
-// 初始化数据
-let data = {
-  settings: {
-    orderingOpen: false,
-    orderingEndTime: null,
-    discountRules: [
-      { minAmount: 0, maxAmount: 50, discount: 0 },
-      { minAmount: 50, maxAmount: 100, discount: 0.05 },
-      { minAmount: 100, maxAmount: 200, discount: 0.1 },
-      { minAmount: 200, discount: 0.15 }
-    ]
-  },
-  products: [
-    { id: 1, name: '珍珠奶茶', price: 15, category: '经典奶茶' },
-    { id: 2, name: '红豆奶茶', price: 16, category: '经典奶茶' },
-    { id: 3, name: '布丁奶茶', price: 17, category: '经典奶茶' },
-    { id: 4, name: '椰果奶茶', price: 16, category: '经典奶茶' },
-    { id: 5, name: '乌龙奶茶', price: 15, category: '经典奶茶' },
-    { id: 6, name: '抹茶拿铁', price: 20, category: '拿铁系列' },
-    { id: 7, name: '焦糖拿铁', price: 20, category: '拿铁系列' },
-    { id: 8, name: '香草拿铁', price: 20, category: '拿铁系列' },
-    { id: 9, name: '柠檬蜂蜜', price: 18, category: '果茶系列' },
-    { id: 10, name: '百香果茶', price: 18, category: '果茶系列' },
-    { id: 11, name: '芒果冰沙', price: 22, category: '冰沙系列' },
-    { id: 12, name: '草莓冰沙', price: 22, category: '冰沙系列' }
-  ],
-  orders: []
-};
-
-// 加载数据
-function loadData() {
-  if (fs.existsSync(DATA_FILE)) {
-    try {
-      const fileData = fs.readFileSync(DATA_FILE, 'utf8');
-      data = JSON.parse(fileData);
-    } catch (error) {
-      console.error('加载数据失败:', error);
-    }
+// 确保必要目录存在
+['uploads', 'uploads/products', 'uploads/payments', 'logs'].forEach(dir => {
+  const dirPath = path.join(__dirname, dir);
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
   }
-}
+});
 
-// 保存数据
-function saveData() {
+// 请求日志（详细记录）
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  
+  // 记录请求开始
+  logger.info('HTTP Request', {
+    method: req.method,
+    url: req.url,
+    path: req.path,
+    query: req.query,
+    ip: req.ip || req.connection.remoteAddress,
+    userAgent: req.get('user-agent'),
+    referer: req.get('referer'),
+    contentType: req.get('content-type'),
+    timestamp: new Date().toISOString()
+  });
+  
+  // 记录响应
+  const originalSend = res.send;
+  res.send = function(data) {
+    const duration = Date.now() - startTime;
+    logger.info('HTTP Response', {
+      method: req.method,
+      url: req.url,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip || req.connection.remoteAddress,
+      timestamp: new Date().toISOString()
+    });
+    originalSend.call(this, data);
+  };
+  
+  next();
+});
+
+// 导入路由
+const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
+const userRoutes = require('./routes/user');
+const publicRoutes = require('./routes/public');
+
+// 注册路由
+app.use('/api/auth', loginLimiter, authRoutes);
+app.use('/api/admin', apiLimiter, adminRoutes);
+app.use('/api/user', apiLimiter, userRoutes);
+app.use('/api/public', publicRoutes);
+
+// 健康检查
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// 404处理
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: '接口不存在' });
+});
+
+// 错误处理
+app.use((err, req, res, next) => {
+  logger.error('Server Error', {
+    error: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method
+  });
+
+  res.status(err.status || 500).json({
+    success: false,
+    message: process.env.NODE_ENV === 'production' ? '服务器错误' : err.message
+  });
+});
+
+// 初始化数据库并启动服务器
+let server;
+
+async function startServer() {
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+    await initData();
+    
+    server = app.listen(PORT, () => {
+      logger.info(`服务器运行在 http://localhost:${PORT}`);
+      console.log(`\n=================================`);
+      console.log(`📱 BOBA TEA Ordering System`);
+      console.log(`🚀 服务器: http://localhost:${PORT}`);
+      console.log(`👤 管理后台: http://localhost:${PORT}/admin.html`);
+      console.log(`🛒 用户端: http://localhost:${PORT}/index.html`);
+      console.log(`📝 默认管理员: admin / admin123`);
+      console.log(`=================================\n`);
+    });
   } catch (error) {
-    console.error('保存数据失败:', error);
+    logger.error('启动服务器失败', { error: error.message });
+    process.exit(1);
   }
 }
 
-// 初始化加载数据
-loadData();
+startServer();
 
-// 文件上传配置
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'payment-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (extname && mimetype) {
-      cb(null, true);
-    } else {
-      cb(new Error('只支持图片格式'));
-    }
-  }
-});
-
-// API 路由
-
-// 获取设置
-app.get('/api/settings', (req, res) => {
-  res.json(data.settings);
-});
-
-// 更新设置（管理员功能）
-app.post('/api/settings', (req, res) => {
-  const { orderingOpen, orderingEndTime, discountRules } = req.body;
-  if (orderingOpen !== undefined) data.settings.orderingOpen = orderingOpen;
-  if (orderingEndTime !== undefined) data.settings.orderingEndTime = orderingEndTime;
-  if (discountRules) data.settings.discountRules = discountRules;
-  saveData();
-  res.json({ success: true, settings: data.settings });
-});
-
-// 获取商品列表
-app.get('/api/products', (req, res) => {
-  res.json(data.products);
-});
-
-// 获取订单列表
-app.get('/api/orders', (req, res) => {
-  // 如果点单时间已关闭，重新计算折扣
-  if (!data.settings.orderingOpen) {
-    calculateDiscounts();
-  }
-  res.json(data.orders);
-});
-
-// 创建订单
-app.post('/api/orders', (req, res) => {
-  if (!data.settings.orderingOpen) {
-    return res.status(400).json({ error: '点单时间未开放' });
-  }
-
-  const { items, customerName, customerPhone } = req.body;
+// 优雅关闭
+async function gracefulShutdown(signal) {
+  logger.info(`收到${signal}信号，正在优雅关闭服务器...`);
   
-  if (!items || items.length === 0) {
-    return res.status(400).json({ error: '订单不能为空' });
-  }
-
-  // 计算原始总价
-  let totalAmount = 0;
-  items.forEach(item => {
-    const product = data.products.find(p => p.id === item.productId);
-    if (product) {
-      totalAmount += product.price * item.quantity;
-    }
-  });
-
-  const order = {
-    id: uuidv4(),
-    orderNumber: 'BO' + Date.now().toString().slice(-8),
-    customerName: customerName || '匿名',
-    customerPhone: customerPhone || '',
-    items: items,
-    totalAmount: totalAmount,
-    discount: 0,
-    finalAmount: totalAmount,
-    status: 'pending', // pending, paid, completed
-    paymentImage: null,
-    createdAt: new Date().toISOString(),
-    paidAt: null
-  };
-
-  data.orders.push(order);
-  saveData();
-  res.json({ success: true, order });
-});
-
-// 计算折扣（在点单时间关闭后）
-function calculateDiscounts() {
-  if (data.settings.orderingOpen) {
-    return; // 点单时间未关闭，不计算折扣
-  }
-
-  // 计算总金额和总数量
-  let totalAmount = 0;
-  let totalQuantity = 0;
-  
-  data.orders.forEach(order => {
-    if (order.status === 'pending') {
-      totalAmount += order.totalAmount;
-      order.items.forEach(item => {
-        totalQuantity += item.quantity;
+  // 停止接受新请求
+  if (server) {
+    server.close(() => {
+      logger.info('HTTP服务器已关闭');
+      
+      // 关闭数据库连接
+      closeDatabase().then(() => {
+        logger.info('数据库连接已关闭');
+        process.exit(0);
+      }).catch((err) => {
+        logger.error('关闭数据库连接失败', { error: err.message });
+        process.exit(1);
       });
-    }
-  });
-
-  // 根据总金额确定折扣率
-  let discountRate = 0;
-  const rules = data.settings.discountRules.sort((a, b) => b.minAmount - a.minAmount);
-  for (const rule of rules) {
-    if (totalAmount >= rule.minAmount) {
-      discountRate = rule.discount;
-      break;
-    }
-  }
-
-  // 应用折扣到所有待付款订单
-  data.orders.forEach(order => {
-    if (order.status === 'pending') {
-      order.discount = order.totalAmount * discountRate;
-      order.finalAmount = order.totalAmount - order.discount;
-    }
-  });
-
-  saveData();
-}
-
-// 获取订单详情
-app.get('/api/orders/:id', (req, res) => {
-  const order = data.orders.find(o => o.id === req.params.id);
-  if (!order) {
-    return res.status(404).json({ error: '订单不存在' });
-  }
-  res.json(order);
-});
-
-// 上传付款截图
-app.post('/api/orders/:id/payment', upload.single('paymentImage'), (req, res) => {
-  if (data.settings.orderingOpen) {
-    return res.status(400).json({ error: '点单时间未关闭，无法付款' });
-  }
-
-  const order = data.orders.find(o => o.id === req.params.id);
-  if (!order) {
-    return res.status(404).json({ error: '订单不存在' });
-  }
-
-  if (order.status === 'paid') {
-    return res.status(400).json({ error: '订单已付款' });
-  }
-
-  // 重新计算折扣
-  calculateDiscounts();
-  const updatedOrder = data.orders.find(o => o.id === req.params.id);
-
-  if (req.file) {
-    updatedOrder.paymentImage = `/uploads/${req.file.filename}`;
-    updatedOrder.status = 'paid';
-    updatedOrder.paidAt = new Date().toISOString();
-    saveData();
-    res.json({ success: true, order: updatedOrder });
+    });
+    
+    // 如果10秒后还没有关闭，强制退出
+    setTimeout(() => {
+      logger.error('强制关闭服务器（超时）');
+      process.exit(1);
+    }, 10000);
   } else {
-    res.status(400).json({ error: '未上传图片' });
+    process.exit(0);
   }
-});
+}
 
-// 获取订单汇总（包含折扣信息）
-app.get('/api/orders-summary', (req, res) => {
-  // 如果点单时间已关闭，重新计算折扣
-  if (!data.settings.orderingOpen) {
-    calculateDiscounts();
-  }
-
-  const summary = {
-    totalOrders: data.orders.length,
-    totalAmount: 0,
-    totalDiscount: 0,
-    totalFinalAmount: 0,
-    orders: data.orders.map(order => {
-      const productDetails = order.items.map(item => {
-        const product = data.products.find(p => p.id === item.productId);
-        return {
-          ...item,
-          productName: product ? product.name : '未知商品',
-          productPrice: product ? product.price : 0
-        };
-      });
-
-      return {
-        ...order,
-        items: productDetails
-      };
-    })
-  };
-
-  data.orders.forEach(order => {
-    summary.totalAmount += order.totalAmount;
-    summary.totalDiscount += order.discount || 0;
-    summary.totalFinalAmount += order.finalAmount || order.totalAmount;
-  });
-
-  res.json(summary);
-});
-
-// 获取订单条形码信息
-app.get('/api/orders/:id/barcode', (req, res) => {
-  const order = data.orders.find(o => o.id === req.params.id);
-  if (!order) {
-    return res.status(404).json({ error: '订单不存在' });
-  }
-  res.json({ 
-    orderNumber: order.orderNumber,
-    barcode: order.orderNumber 
-  });
-});
-
-// 通过订单号查询订单（用于扫码）
-app.get('/api/orders-by-number/:orderNumber', (req, res) => {
-  const order = data.orders.find(o => o.orderNumber === req.params.orderNumber);
-  if (!order) {
-    return res.status(404).json({ error: '订单不存在' });
-  }
-  
-  // 添加商品详情
-  const productDetails = order.items.map(item => {
-    const product = data.products.find(p => p.id === item.productId);
-    return {
-      ...item,
-      productName: product ? product.name : '未知商品',
-      productPrice: product ? product.price : 0
-    };
-  });
-  
-  res.json({
-    ...order,
-    items: productDetails
-  });
-});
-
-// 启动服务器
-app.listen(PORT, () => {
-  console.log(`服务器运行在 http://localhost:${PORT}`);
-});
-
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

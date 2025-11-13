@@ -1,6 +1,35 @@
+# Dependencies
 node_modules/
-uploads/
-data.json
-*.log
-.DS_Store
 
+# Database
+db/boda.db
+db/boda.db-shm
+db/boda.db-wal
+
+# Logs
+logs/
+*.log
+
+# Uploads
+uploads/products/*
+uploads/payments/*
+!uploads/products/.gitkeep
+!uploads/payments/.gitkeep
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
