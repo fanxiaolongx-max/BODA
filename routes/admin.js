@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { runAsync, getAsync, allAsync, beginTransaction, commit, rollback } = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
@@ -686,31 +687,56 @@ router.post('/ordering/close', async (req, res) => {
 
 // ==================== 订单管理 ====================
 
-// 获取所有订单
+// 获取所有订单（只显示最近N个周期的订单，N由设置决定）
 router.get('/orders', async (req, res) => {
   try {
+    // 先执行归档检查
+    await archiveOldCycles();
+    
     const { status, phone, date, cycle_id } = req.query;
-    let sql = 'SELECT * FROM orders WHERE 1=1';
+    
+    // 获取最大可见周期数设置
+    const maxVisibleSetting = await getAsync("SELECT value FROM settings WHERE key = 'max_visible_cycles'");
+    const maxVisibleCycles = parseInt(maxVisibleSetting?.value || '10', 10);
+    
+    // 获取最近N个周期
+    const recentCycles = await allAsync(
+      'SELECT * FROM ordering_cycles ORDER BY start_time DESC LIMIT ?',
+      [maxVisibleCycles]
+    );
+    
+    if (recentCycles.length === 0) {
+      return res.json({ success: true, orders: [] });
+    }
+    
+    // 构建周期时间范围
+    const cycleTimeRanges = [];
+    for (const cycle of recentCycles) {
+      let endTime = cycle.end_time;
+      if (!endTime) {
+        // 对于活跃周期，使用当前本地时间作为结束时间
+        const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
+        endTime = nowResult.now;
+      }
+      cycleTimeRanges.push({ start: cycle.start_time, end: endTime });
+    }
+    
+    let sql = 'SELECT * FROM orders WHERE (';
     const params = [];
-
-    if (status) {
-      sql += ' AND status = ?';
-      params.push(status);
+    
+    // 构建时间范围条件
+    const timeConditions = [];
+    for (const range of cycleTimeRanges) {
+      timeConditions.push('(created_at >= ? AND created_at <= ?)');
+      params.push(range.start);
+      params.push(range.end);
     }
+    
+    sql += timeConditions.join(' OR ') + ')';
 
-    if (phone) {
-      sql += ' AND customer_phone LIKE ?';
-      params.push(`%${phone}%`);
-    }
-
-    if (date) {
-      sql += ' AND DATE(created_at) = ?';
-      params.push(date);
-    }
-
-    // 按周期筛选
+    // 按周期筛选（只允许筛选最近N个周期内的）
     if (cycle_id) {
-      const cycle = await getAsync('SELECT * FROM ordering_cycles WHERE id = ?', [cycle_id]);
+      const cycle = recentCycles.find(c => c.id == cycle_id);
       if (cycle) {
         // 如果周期没有结束时间，使用当前本地时间
         let endTime = cycle.end_time;
@@ -728,10 +754,31 @@ router.get('/orders', async (req, res) => {
           cycleStatus: cycle.status
         });
         
-        sql += ' AND created_at >= ? AND created_at <= ?';
+        // 替换之前的时间范围条件，使用指定的周期
+        sql = 'SELECT * FROM orders WHERE (created_at >= ? AND created_at <= ?)';
+        params.length = 0;
         params.push(cycle.start_time);
         params.push(endTime);
+      } else {
+        // 如果指定的周期不在最近N个周期内，返回空结果
+        return res.json({ success: true, orders: [] });
       }
+    }
+
+    // 添加状态过滤（在周期筛选之后，确保状态条件被保留）
+    if (status) {
+      sql += ' AND status = ?';
+      params.push(status);
+    }
+
+    if (phone) {
+      sql += ' AND customer_phone LIKE ?';
+      params.push(`%${phone}%`);
+    }
+
+    if (date) {
+      sql += ' AND DATE(created_at) = ?';
+      params.push(date);
     }
 
     sql += ' ORDER BY created_at DESC';
@@ -809,11 +856,190 @@ router.get('/orders', async (req, res) => {
   }
 });
 
-// 获取所有周期
+// 归档超过最大可见周期数的订单
+async function archiveOldCycles() {
+  try {
+    // 获取最大可见周期数设置
+    const maxVisibleSetting = await getAsync("SELECT value FROM settings WHERE key = 'max_visible_cycles'");
+    const maxVisibleCycles = parseInt(maxVisibleSetting?.value || '10', 10);
+    
+    // 获取所有周期，按开始时间降序排列
+    const allCycles = await allAsync(
+      'SELECT * FROM ordering_cycles WHERE status IN ("ended", "confirmed") ORDER BY start_time DESC'
+    );
+    
+    // 如果周期数超过最大可见数，归档超过的部分
+    if (allCycles.length > maxVisibleCycles) {
+      const cyclesToArchive = allCycles.slice(maxVisibleCycles); // 获取超过最大可见数的周期
+      
+      // 确保导出目录存在
+      const exportDir = path.join(__dirname, '../logs/export');
+      if (!fs.existsSync(exportDir)) {
+        fs.mkdirSync(exportDir, { recursive: true });
+      }
+      
+      // 为每个需要归档的周期导出订单
+      for (const cycle of cyclesToArchive) {
+        // 检查是否已经归档过（通过检查文件是否存在）
+        // 清理文件名中的特殊字符
+        const safeCycleNumber = (cycle.cycle_number || '').replace(/[^a-zA-Z0-9]/g, '_');
+        const safeStartTime = cycle.start_time.replace(/[: ]/g, '-').replace(/[^0-9-]/g, '');
+        const archiveFileName = `orders_cycle_${cycle.id}_${safeCycleNumber}_${safeStartTime}.csv`;
+        const archiveFilePath = path.join(exportDir, archiveFileName);
+        
+        if (fs.existsSync(archiveFilePath)) {
+          logger.info('Cycle already archived', { cycleId: cycle.id, cycleNumber: cycle.cycle_number });
+          continue; // 已经归档过，跳过
+        }
+        
+        // 获取该周期的所有订单
+        let endTime = cycle.end_time;
+        if (!endTime) {
+          const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
+          endTime = nowResult.now;
+        }
+        
+        const orders = await allAsync(
+          'SELECT * FROM orders WHERE created_at >= ? AND created_at <= ? ORDER BY created_at DESC',
+          [cycle.start_time, endTime]
+        );
+        
+        if (orders.length === 0) {
+          logger.info('No orders to archive for cycle', { cycleId: cycle.id, cycleNumber: cycle.cycle_number });
+          continue;
+        }
+        
+        // 获取订单详情
+        for (const order of orders) {
+          order.items = await allAsync(
+            'SELECT * FROM order_items WHERE order_id = ?',
+            [order.id]
+          );
+        }
+        
+        // 生成CSV内容
+        const csvRows = [];
+        
+        // CSV头部
+        csvRows.push([
+          'Order Number',
+          'Customer Name',
+          'Customer Phone',
+          'Order Status',
+          'Product Name',
+          'Quantity',
+          'Size',
+          'Sugar Level',
+          'Ice Level',
+          'Toppings',
+          'Unit Price',
+          'Subtotal',
+          'Total Amount',
+          'Discount Amount',
+          'Final Amount',
+          'Order Notes',
+          'Created At',
+          'Updated At',
+          'Cycle ID',
+          'Cycle Number'
+        ].join(','));
+        
+        // 订单数据
+        for (const order of orders) {
+          if (order.items && order.items.length > 0) {
+            for (const item of order.items) {
+              const iceLabels = {
+                'normal': 'Normal Ice',
+                'less': 'Less Ice',
+                'no': 'No Ice',
+                'room': 'Room Temperature',
+                'hot': 'Hot'
+              };
+              
+              const row = [
+                `"${order.order_number || ''}"`,
+                `"${order.customer_name || ''}"`,
+                `"${order.customer_phone || ''}"`,
+                `"${order.status === 'pending' ? 'Pending Payment' : order.status === 'paid' ? 'Paid' : order.status === 'completed' ? 'Completed' : 'Cancelled'}"`,
+                `"${item.product_name || ''}"`,
+                item.quantity || 0,
+                `"${item.size || ''}"`,
+                `"${item.sugar_level || ''}"`,
+                `"${item.ice_level ? (iceLabels[item.ice_level] || item.ice_level) : ''}"`,
+                `"${item.toppings ? (typeof item.toppings === 'string' ? item.toppings : JSON.stringify(item.toppings)).replace(/"/g, '""') : ''}"`,
+                (item.product_price || 0).toFixed(2),
+                (item.subtotal || 0).toFixed(2),
+                (order.total_amount || 0).toFixed(2),
+                (order.discount_amount || 0).toFixed(2),
+                (order.final_amount || 0).toFixed(2),
+                `"${(order.notes || '').replace(/"/g, '""')}"`,
+                `"${order.created_at || ''}"`,
+                `"${order.updated_at || ''}"`,
+                `"${cycle.id}"`,
+                `"${cycle.cycle_number || ''}"`
+              ];
+              csvRows.push(row.join(','));
+            }
+          } else {
+            // 如果没有商品详情，至少输出订单基本信息
+            const row = [
+              `"${order.order_number || ''}"`,
+              `"${order.customer_name || ''}"`,
+              `"${order.customer_phone || ''}"`,
+              `"${order.status === 'pending' ? 'Pending Payment' : order.status === 'paid' ? 'Paid' : order.status === 'completed' ? 'Completed' : 'Cancelled'}"`,
+              '""',
+              '0',
+              '""',
+              '""',
+              '""',
+              '""',
+              '0.00',
+              '0.00',
+              (order.total_amount || 0).toFixed(2),
+              (order.discount_amount || 0).toFixed(2),
+              (order.final_amount || 0).toFixed(2),
+              `"${(order.notes || '').replace(/"/g, '""')}"`,
+              `"${order.created_at || ''}"`,
+              `"${order.updated_at || ''}"`,
+              `"${cycle.id}"`,
+              `"${cycle.cycle_number || ''}"`
+            ];
+            csvRows.push(row.join(','));
+          }
+        }
+        
+        const csvContent = csvRows.join('\n');
+        
+        // 写入文件
+        fs.writeFileSync(archiveFilePath, '\ufeff' + csvContent, 'utf8');
+        
+        logger.info('Cycle archived successfully', {
+          cycleId: cycle.id,
+          cycleNumber: cycle.cycle_number,
+          orderCount: orders.length,
+          filePath: archiveFilePath
+        });
+      }
+    }
+  } catch (error) {
+    logger.error('归档旧周期失败', { error: error.message });
+  }
+}
+
+// 获取所有周期（只返回最近N个，包括活跃周期，N由设置决定）
 router.get('/cycles', async (req, res) => {
   try {
+    // 先执行归档检查
+    await archiveOldCycles();
+    
+    // 获取最大可见周期数设置
+    const maxVisibleSetting = await getAsync("SELECT value FROM settings WHERE key = 'max_visible_cycles'");
+    const maxVisibleCycles = parseInt(maxVisibleSetting?.value || '10', 10);
+    
+    // 只返回最近N个周期（包括活跃周期）
     const cycles = await allAsync(
-      'SELECT * FROM ordering_cycles ORDER BY start_time DESC'
+      'SELECT * FROM ordering_cycles ORDER BY start_time DESC LIMIT ?',
+      [maxVisibleCycles]
     );
     res.json({ success: true, cycles });
   } catch (error) {
@@ -822,13 +1048,75 @@ router.get('/cycles', async (req, res) => {
   }
 });
 
-// 导出订单（CSV格式）
+// 导出订单（CSV格式，只导出最近N个周期的订单，N由设置决定）
 router.get('/orders/export', async (req, res) => {
   try {
+    // 先执行归档检查
+    await archiveOldCycles();
+    
     const { status, phone, date, cycle_id } = req.query;
-    let sql = 'SELECT * FROM orders WHERE 1=1';
+    
+    // 获取最大可见周期数设置
+    const maxVisibleSetting = await getAsync("SELECT value FROM settings WHERE key = 'max_visible_cycles'");
+    const maxVisibleCycles = parseInt(maxVisibleSetting?.value || '10', 10);
+    
+    // 获取最近N个周期
+    const recentCycles = await allAsync(
+      'SELECT * FROM ordering_cycles ORDER BY start_time DESC LIMIT ?',
+      [maxVisibleCycles]
+    );
+    
+    if (recentCycles.length === 0) {
+      return res.status(404).json({ success: false, message: 'No cycles found' });
+    }
+    
+    // 构建周期时间范围
+    const cycleTimeRanges = [];
+    for (const cycle of recentCycles) {
+      let endTime = cycle.end_time;
+      if (!endTime) {
+        const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
+        endTime = nowResult.now;
+      }
+      cycleTimeRanges.push({ start: cycle.start_time, end: endTime });
+    }
+    
+    let sql = 'SELECT * FROM orders WHERE (';
     const params = [];
+    
+    // 构建时间范围条件
+    const timeConditions = [];
+    for (const range of cycleTimeRanges) {
+      timeConditions.push('(created_at >= ? AND created_at <= ?)');
+      params.push(range.start);
+      params.push(range.end);
+    }
+    
+    sql += timeConditions.join(' OR ') + ')';
 
+    // 按周期筛选（只允许筛选最近N个周期内的）
+    if (cycle_id) {
+      const cycle = recentCycles.find(c => c.id == cycle_id);
+      if (cycle) {
+        // 如果周期没有结束时间，使用当前本地时间
+        let endTime = cycle.end_time;
+        if (!endTime) {
+          const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
+          endTime = nowResult.now;
+        }
+        
+        // 替换之前的时间范围条件，使用指定的周期
+        sql = 'SELECT * FROM orders WHERE (created_at >= ? AND created_at <= ?)';
+        params.length = 0;
+        params.push(cycle.start_time);
+        params.push(endTime);
+      } else {
+        // 如果指定的周期不在最近N个周期内，返回空结果
+        return res.status(404).json({ success: false, message: `Cycle not found in recent ${maxVisibleCycles} cycles` });
+      }
+    }
+
+    // 添加状态过滤（在周期筛选之后，确保状态条件被保留）
     if (status) {
       sql += ' AND status = ?';
       params.push(status);
@@ -842,24 +1130,6 @@ router.get('/orders/export', async (req, res) => {
     if (date) {
       sql += ' AND DATE(created_at) = ?';
       params.push(date);
-    }
-
-    // 按周期筛选
-    if (cycle_id) {
-      const cycle = await getAsync('SELECT * FROM ordering_cycles WHERE id = ?', [cycle_id]);
-      if (cycle) {
-        // 如果周期没有结束时间，使用当前本地时间
-        let endTime = cycle.end_time;
-        if (!endTime) {
-          // 使用SQLite的datetime函数获取当前本地时间
-          const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
-          endTime = nowResult.now;
-        }
-        
-        sql += ' AND created_at >= ? AND created_at <= ?';
-        params.push(cycle.start_time);
-        params.push(endTime);
-      }
     }
 
     sql += ' ORDER BY created_at DESC';
@@ -1230,9 +1500,29 @@ router.get('/users', async (req, res) => {
 });
 
 // ==================== 管理员管理 ====================
+// 注意：只有super_admin可以管理其他admin
+
+// 检查是否为super_admin的中间件
+function requireSuperAdmin(req, res, next) {
+  if (!req.session || !req.session.adminId) {
+    return res.status(401).json({ 
+      success: false, 
+      message: 'Please login first' 
+    });
+  }
+  
+  if (req.session.adminRole !== 'super_admin') {
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Access denied. Super admin privileges required.' 
+    });
+  }
+  
+  next();
+}
 
 // 获取所有管理员
-router.get('/admins', async (req, res) => {
+router.get('/admins', requireAuth, async (req, res) => {
   try {
     const admins = await allAsync(
       'SELECT id, username, name, email, role, status, created_at FROM admins ORDER BY created_at DESC'
@@ -1244,8 +1534,8 @@ router.get('/admins', async (req, res) => {
   }
 });
 
-// 创建管理员
-router.post('/admins', [
+// 创建管理员（只有super_admin可以）
+router.post('/admins', requireSuperAdmin, [
   body('username').trim().isLength({ min: 3, max: 50 }),
   body('password').isLength({ min: 6 }),
   body('name').optional().trim(),
@@ -1275,8 +1565,8 @@ router.post('/admins', [
   }
 });
 
-// 更新管理员
-router.put('/admins/:id', async (req, res) => {
+// 更新管理员（只有super_admin可以）
+router.put('/admins/:id', requireSuperAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, role, status, password } = req.body;
@@ -1323,6 +1613,39 @@ router.put('/admins/:id', async (req, res) => {
   } catch (error) {
     logger.error('更新管理员失败', { error: error.message });
     res.status(500).json({ success: false, message: '更新管理员失败' });
+  }
+});
+
+// 删除管理员（只有super_admin可以）
+router.delete('/admins/:id', requireSuperAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // 不能删除自己
+    if (req.session.adminId == id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'You cannot delete yourself' 
+      });
+    }
+    
+    // 检查管理员是否存在
+    const admin = await getAsync('SELECT id FROM admins WHERE id = ?', [id]);
+    if (!admin) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Admin not found' 
+      });
+    }
+    
+    await runAsync('DELETE FROM admins WHERE id = ?', [id]);
+    
+    await logAction(req.session.adminId, 'DELETE', 'admin', id, null, req);
+    
+    res.json({ success: true, message: '管理员删除成功' });
+  } catch (error) {
+    logger.error('删除管理员失败', { error: error.message });
+    res.status(500).json({ success: false, message: '删除管理员失败' });
   }
 });
 
@@ -1383,6 +1706,221 @@ router.get('/logs', async (req, res) => {
   } catch (error) {
     logger.error('获取日志失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取日志失败' });
+  }
+});
+
+// ==================== 开发者工具 ====================
+// 注意：这些接口只有super_admin可以访问
+
+// 获取所有数据库表
+router.get('/developer/tables', requireSuperAdmin, async (req, res) => {
+  try {
+    // 获取所有表名
+    const tables = await allAsync(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+    );
+    
+    // 获取每个表的行数
+    const tablesWithCount = await Promise.all(
+      tables.map(async (table) => {
+        try {
+          const countResult = await getAsync(`SELECT COUNT(*) as count FROM ${table.name}`);
+          return {
+            name: table.name,
+            rowCount: countResult.count || 0
+          };
+        } catch (error) {
+          return {
+            name: table.name,
+            rowCount: 0
+          };
+        }
+      })
+    );
+    
+    res.json({ success: true, tables: tablesWithCount });
+  } catch (error) {
+    logger.error('获取表列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取表列表失败' });
+  }
+});
+
+// 获取表结构
+router.get('/developer/table-schema/:tableName', requireSuperAdmin, async (req, res) => {
+  try {
+    const { tableName } = req.params;
+    
+    // 验证表名（防止SQL注入）
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tableName)) {
+      return res.status(400).json({ success: false, message: 'Invalid table name' });
+    }
+    
+    const schema = await allAsync(`PRAGMA table_info(${tableName})`);
+    
+    res.json({ success: true, schema });
+  } catch (error) {
+    logger.error('获取表结构失败', { error: error.message, tableName: req.params.tableName });
+    res.status(500).json({ success: false, message: '获取表结构失败' });
+  }
+});
+
+// 获取表数据
+router.get('/developer/table-data/:tableName', requireSuperAdmin, async (req, res) => {
+  try {
+    const { tableName } = req.params;
+    const { limit = 1000, offset = 0 } = req.query;
+    
+    // 验证表名（防止SQL注入）
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tableName)) {
+      return res.status(400).json({ success: false, message: 'Invalid table name' });
+    }
+    
+    const data = await allAsync(
+      `SELECT * FROM ${tableName} LIMIT ? OFFSET ?`,
+      [parseInt(limit), parseInt(offset)]
+    );
+    
+    res.json({ success: true, data });
+  } catch (error) {
+    logger.error('获取表数据失败', { error: error.message, tableName: req.params.tableName });
+    res.status(500).json({ success: false, message: '获取表数据失败' });
+  }
+});
+
+// 更新表数据
+router.put('/developer/table-data/:tableName', requireSuperAdmin, async (req, res) => {
+  try {
+    const { tableName } = req.params;
+    const { updates, deletes, inserts } = req.body;
+    
+    // 验证表名（防止SQL注入）
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tableName)) {
+      return res.status(400).json({ success: false, message: 'Invalid table name' });
+    }
+    
+    // 获取表结构
+    const schema = await allAsync(`PRAGMA table_info(${tableName})`);
+    const primaryKey = schema.find(col => col.pk === 1);
+    
+    if (!primaryKey) {
+      return res.status(400).json({ success: false, message: 'Table must have a primary key' });
+    }
+    
+    await beginTransaction();
+    
+    try {
+      // 执行删除
+      if (deletes && deletes.length > 0) {
+        for (const pkValue of deletes) {
+          await runAsync(`DELETE FROM ${tableName} WHERE ${primaryKey.name} = ?`, [pkValue]);
+        }
+      }
+      
+      // 执行更新
+      if (updates && updates.length > 0) {
+        for (const row of updates) {
+          const pkValue = row[primaryKey.name];
+          if (!pkValue) continue;
+          
+          const columns = Object.keys(row).filter(key => key !== primaryKey.name);
+          const values = columns.map(col => row[col]);
+          const setClause = columns.map(col => `${col} = ?`).join(', ');
+          
+          await runAsync(
+            `UPDATE ${tableName} SET ${setClause} WHERE ${primaryKey.name} = ?`,
+            [...values, pkValue]
+          );
+        }
+      }
+      
+      // 执行插入
+      if (inserts && inserts.length > 0) {
+        for (const row of inserts) {
+          const columns = Object.keys(row).filter(key => {
+            const col = schema.find(c => c.name === key);
+            return col && col.pk !== 1; // 排除主键
+          });
+          const values = columns.map(col => row[col] || null);
+          const columnsStr = columns.join(', ');
+          const placeholders = columns.map(() => '?').join(', ');
+          
+          await runAsync(
+            `INSERT INTO ${tableName} (${columnsStr}) VALUES (${placeholders})`,
+            values
+          );
+        }
+      }
+      
+      await commit();
+      
+      await logAction(req.session.adminId, 'UPDATE', 'developer_table', tableName, {
+        updates: updates?.length || 0,
+        deletes: deletes?.length || 0,
+        inserts: inserts?.length || 0
+      }, req);
+      
+      res.json({ success: true, message: 'Changes saved successfully' });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('更新表数据失败', { error: error.message, tableName: req.params.tableName });
+    res.status(500).json({ success: false, message: '更新表数据失败: ' + error.message });
+  }
+});
+
+// 执行SQL查询
+router.post('/developer/execute-sql', requireSuperAdmin, async (req, res) => {
+  try {
+    const { sql } = req.body;
+    
+    if (!sql || typeof sql !== 'string') {
+      return res.status(400).json({ success: false, message: 'SQL query is required' });
+    }
+    
+    // 安全检查：只允许SELECT, INSERT, UPDATE, DELETE语句
+    const trimmedSql = sql.trim().toUpperCase();
+    const allowedKeywords = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'PRAGMA'];
+    const firstWord = trimmedSql.split(/\s+/)[0];
+    
+    if (!allowedKeywords.includes(firstWord)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Only SELECT, INSERT, UPDATE, DELETE, and PRAGMA statements are allowed' 
+      });
+    }
+    
+    // 禁止危险操作
+    const dangerousKeywords = ['DROP', 'ALTER', 'CREATE', 'TRUNCATE', 'EXEC', 'EXECUTE'];
+    for (const keyword of dangerousKeywords) {
+      if (trimmedSql.includes(keyword)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Dangerous keyword '${keyword}' is not allowed` 
+        });
+      }
+    }
+    
+    try {
+      // 判断是查询还是修改
+      if (firstWord === 'SELECT' || firstWord === 'PRAGMA') {
+        const result = await allAsync(sql);
+        await logAction(req.session.adminId, 'QUERY', 'developer_sql', null, { sql: sql.substring(0, 200) }, req);
+        res.json({ success: true, result });
+      } else {
+        // INSERT, UPDATE, DELETE
+        const result = await runAsync(sql);
+        await logAction(req.session.adminId, 'EXECUTE', 'developer_sql', null, { sql: sql.substring(0, 200) }, req);
+        res.json({ success: true, result: { affectedRows: result.changes || 0 } });
+      }
+    } catch (sqlError) {
+      logger.error('SQL执行失败', { error: sqlError.message, sql: sql.substring(0, 200) });
+      res.status(400).json({ success: false, message: 'SQL execution failed: ' + sqlError.message });
+    }
+  } catch (error) {
+    logger.error('执行SQL失败', { error: error.message });
+    res.status(500).json({ success: false, message: '执行SQL失败' });
   }
 });
 

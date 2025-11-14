@@ -94,7 +94,8 @@ async function initData() {
       { key: 'store_name', value: 'BOBA TEA', description: '商店名称' },
       { key: 'contact_phone', value: '', description: '联系电话' },
       { key: 'currency', value: 'EGP', description: '货币单位' },
-      { key: 'currency_symbol', value: 'LE', description: '货币符号' }
+      { key: 'currency_symbol', value: 'LE', description: '货币符号' },
+      { key: 'max_visible_cycles', value: '10', description: '最大可见周期数' }
     ];
 
     for (const setting of settings) {

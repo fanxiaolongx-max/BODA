@@ -23,17 +23,26 @@ function formatPriceDecimal(price) {
 }
 
 // 初始化
-document.addEventListener('DOMContentLoaded', () => {
-  // Apply translations
+document.addEventListener('DOMContentLoaded', async () => {
+  // 先隐藏所有tab，避免闪烁
+  document.getElementById('homeTab')?.classList.add('hidden');
+  document.getElementById('menuTab')?.classList.add('hidden');
+  document.getElementById('ordersTab')?.classList.add('hidden');
+  document.getElementById('profileTab')?.classList.add('hidden');
+  
+  // 先加载设置，更新商店名称，避免闪烁
+  await loadSettings();
+  
+  // Apply translations (在设置加载之后，确保商店名称已更新)
   if (typeof applyTranslations === 'function') {
     applyTranslations();
   }
   
   // 直接显示主页面，无需登录
-  showMainPage();
+  await showMainPage();
   checkAuth();
   
-  // 默认显示Home页面
+  // 默认显示Home页面（在设置加载完成后）
   showBottomTab('home');
   
   // 登录表单提交
@@ -54,6 +63,10 @@ function applyTranslations() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     if (key && typeof t === 'function') {
+      // 如果是 app_name，跳过（由 updateStoreName 处理）
+      if (key === 'app_name') {
+        return;
+      }
       el.textContent = t(key);
     }
   });
@@ -187,7 +200,7 @@ function updateStoreName() {
   });
   
   // 更新Home页面的欢迎文字
-  const welcomeTitle = document.querySelector('#homeTab h2');
+  const welcomeTitle = document.getElementById('homeWelcomeTitle');
   if (welcomeTitle) {
     welcomeTitle.textContent = `Welcome to ${storeName}`;
   }
@@ -229,9 +242,8 @@ function updateLoginStatus() {
 
 // 显示主页面
 async function showMainPage() {
-  // 加载数据
+  // 加载数据（loadSettings已经在DOMContentLoaded时调用过了）
   await loadCurrencyConfig();
-  await loadSettings();
   await loadCategories();
   await loadProducts();
   updateOrderingStatus();
@@ -1802,10 +1814,20 @@ function renderOrders(orders) {
               Delete Order
             </button>
           ` : ''}
-          <button onclick="showPaymentModal('${order.id}')" 
-                  class="${canEdit ? 'flex-1' : 'w-full'} bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition">
-            Upload Payment Screenshot
-          </button>
+          ${currentSettings.ordering_open === 'true' ? `
+            <button disabled
+                    class="${canEdit ? 'flex-1' : 'w-full'} bg-gray-400 text-white font-semibold py-3 rounded-lg transition cursor-not-allowed relative">
+              <div class="flex flex-col items-center">
+                <span>Upload Payment Screenshot</span>
+                <span class="text-xs font-normal mt-1 opacity-90">Please wait for Close Ordering and final price calculation</span>
+              </div>
+            </button>
+          ` : `
+            <button onclick="showPaymentModal('${order.id}')" 
+                    class="${canEdit ? 'flex-1' : 'w-full'} bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition">
+              Upload Payment Screenshot
+            </button>
+          `}
         </div>
       ` : ''}
       

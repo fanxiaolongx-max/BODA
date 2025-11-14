@@ -57,6 +57,8 @@ async function checkAuth() {
       const data = await response.json();
       currentAdmin = data.admin;
       showMainPage();
+      // 根据admin状态显示/隐藏Developer菜单
+      updateDeveloperMenuVisibility();
     } else {
       showLoginPage();
     }
@@ -64,6 +66,23 @@ async function checkAuth() {
     console.error('认证检查失败:', error);
     showLoginPage();
   }
+}
+
+// 更新Developer菜单的可见性（只有super_admin可见）
+function updateDeveloperMenuVisibility() {
+  const developerMenuItem = document.getElementById('developerMenuItem');
+  if (developerMenuItem) {
+    if (currentAdmin && currentAdmin.role === 'super_admin') {
+      developerMenuItem.style.display = 'block';
+    } else {
+      developerMenuItem.style.display = 'none';
+    }
+  }
+}
+
+// 检查是否为super_admin
+function isSuperAdmin() {
+  return currentAdmin && currentAdmin.role === 'super_admin';
 }
 
 // 登录
@@ -119,6 +138,9 @@ function showMainPage() {
   document.getElementById('mainPage').classList.remove('hidden');
   document.getElementById('adminName').textContent = currentAdmin.name || currentAdmin.username;
   
+  // 根据admin状态显示/隐藏Developer菜单
+  updateDeveloperMenuVisibility();
+  
   // 加载默认数据
   loadDashboard();
   loadSettings();
@@ -151,8 +173,10 @@ function switchTab(tabName) {
       loadDashboard();
       break;
     case 'orders':
-      loadCycles();
-      loadOrders();
+      // 先加载周期列表，加载完成后再加载订单（会自动选择活跃周期）
+      loadCycles().then(() => {
+        // loadCycles完成后会自动调用loadOrders，这里不需要再调用
+      });
       break;
     case 'products':
       loadProducts();
@@ -174,6 +198,17 @@ function switchTab(tabName) {
       break;
     case 'logs':
       loadLogs();
+      break;
+    case 'about':
+      loadAboutPage();
+      break;
+    case 'developer':
+      // 只有super_admin可以访问Developer功能
+      if (!isSuperAdmin()) {
+        alert('Access denied. Super admin privileges required.');
+        return;
+      }
+      loadDeveloperPage();
       break;
   }
 }
@@ -577,6 +612,15 @@ async function loadCycles() {
           }
         });
         
+        // 如果没有活跃周期，选择最近一个已结束的周期
+        if (!activeCycleId && data.cycles.length > 0) {
+          // 找到最近一个已结束或已确认的周期
+          const endedCycles = data.cycles.filter(c => c.status === 'ended' || c.status === 'confirmed');
+          if (endedCycles.length > 0) {
+            activeCycleId = endedCycles[0].id; // 第一个就是最近的（已按时间降序排列）
+          }
+        }
+        
         // 添加周期选项
         data.cycles.forEach(cycle => {
           const startTime = new Date(cycle.start_time).toLocaleString('en-US', { 
@@ -598,19 +642,16 @@ async function loadCycles() {
           const option = document.createElement('option');
           option.value = cycle.id;
           option.textContent = `${cycle.cycle_number} (${startTime} - ${endTime}) [${statusText}]`;
-          // 如果是活跃周期，默认选中
-          if (cycle.status === 'active') {
-            option.selected = true;
-          }
           cycleFilter.appendChild(option);
         });
         
-        // 如果有活跃周期，默认选中它并加载该周期的订单
+        // 如果有默认周期（活跃周期或最近结束的周期），默认选中它
         if (activeCycleId) {
           cycleFilter.value = activeCycleId;
-          // 自动加载该周期的订单
-          loadOrders();
         }
+        
+        // 自动加载订单（使用默认选中的周期）
+        loadOrders();
       }
     }
   } catch (error) {
@@ -1758,6 +1799,17 @@ async function loadSettingsPage() {
               </div>
               
               <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Max Visible Cycles</label>
+                <input type="number" id="maxVisibleCycles" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                       placeholder="Enter maximum number of visible cycles"
+                       value="${settings.max_visible_cycles || '10'}"
+                       min="1"
+                       max="100">
+                <p class="text-xs text-gray-500 mt-1">Maximum number of cycles to display in Orders page. Older cycles will be automatically archived to logs/export folder.</p>
+              </div>
+              
+              <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">System Notice</label>
                 <textarea id="systemNotice" rows="4" 
                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
@@ -1791,11 +1843,18 @@ async function loadSettingsPage() {
 async function saveSettings(e) {
   e.preventDefault();
   
+  const maxVisibleCycles = parseInt(document.getElementById('maxVisibleCycles').value) || 10;
+  if (maxVisibleCycles < 1 || maxVisibleCycles > 100) {
+    alert('Max Visible Cycles must be between 1 and 100');
+    return;
+  }
+  
   const settings = {
     ordering_open: document.getElementById('orderingOpen').value,
     system_notice: document.getElementById('systemNotice').value,
     store_name: document.getElementById('storeName').value.trim() || 'BOBA TEA',
-    currency_symbol: document.getElementById('currencySymbol').value.trim() || 'LE'
+    currency_symbol: document.getElementById('currencySymbol').value.trim() || 'LE',
+    max_visible_cycles: maxVisibleCycles.toString()
   };
   
   try {
@@ -1821,6 +1880,11 @@ async function saveSettings(e) {
         currencySymbol = settings.currency_symbol;
         // 重新加载仪表盘和订单以更新价格显示
         loadDashboard();
+        loadOrders();
+      }
+      // 如果修改了最大可见周期数，重新加载周期和订单列表
+      if (settings.max_visible_cycles) {
+        loadCycles();
         loadOrders();
       }
       loadSettingsPage();
@@ -1902,6 +1966,7 @@ async function loadAdmins() {
     
     if (data.success) {
       const admins = data.admins || [];
+      const isSuper = isSuperAdmin();
       
       container.innerHTML = `
         <div class="fade-in">
@@ -1944,8 +2009,14 @@ async function loadAdmins() {
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${admin.created_at ? new Date(admin.created_at).toLocaleString('en-US') : '-'}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
+                          ${isSuper ? `
                           <button onclick='editAdmin(${JSON.stringify(admin).replace(/'/g, "&apos;")})' 
                                   class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                          <button onclick='deleteAdmin(${admin.id})' 
+                                  class="text-red-600 hover:text-red-800">Delete</button>
+                          ` : `
+                          <span class="text-gray-400 text-xs">No permission</span>
+                          `}
                         </td>
                       </tr>
                     `).join('')
@@ -1984,6 +2055,16 @@ async function loadAdmins() {
                 <input type="email" id="adminEmail" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
+              ${isSuper ? `
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                <select id="adminRole" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  <option value="admin">Admin</option>
+                  <option value="super_admin">Super Admin</option>
+                </select>
+              </div>
+              ` : ''}
+              
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
                 <select id="adminStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
@@ -2017,6 +2098,12 @@ async function loadAdmins() {
 }
 
 function showAdminModal(admin = null) {
+  // 只有super_admin可以管理其他admin
+  if (!isSuperAdmin()) {
+    alert('Access denied. Only super admin can manage other admins.');
+    return;
+  }
+  
   const modal = document.getElementById('adminModal');
   const title = document.getElementById('adminModalTitle');
   
@@ -2029,12 +2116,20 @@ function showAdminModal(admin = null) {
     document.getElementById('passwordLabel').textContent = '(Leave empty to keep unchanged)';
     document.getElementById('adminName').value = admin.name || '';
     document.getElementById('adminEmail').value = admin.email || '';
+    const roleSelect = document.getElementById('adminRole');
+    if (roleSelect) {
+      roleSelect.value = admin.role || 'admin';
+    }
     document.getElementById('adminStatus').value = admin.status || 'active';
   } else {
     title.textContent = 'Add Admin';
     document.getElementById('adminForm').reset();
     document.getElementById('adminPassword').required = true;
     document.getElementById('passwordLabel').textContent = '*';
+    const roleSelect = document.getElementById('adminRole');
+    if (roleSelect) {
+      roleSelect.value = 'admin';
+    }
   }
   
   modal.classList.add('active');
@@ -2048,6 +2143,12 @@ function closeAdminModal() {
 async function saveAdmin(e) {
   e.preventDefault();
   
+  // 只有super_admin可以管理其他admin
+  if (!isSuperAdmin()) {
+    alert('Access denied. Only super admin can manage other admins.');
+    return;
+  }
+  
   const id = document.getElementById('adminId').value;
   const data = {
     username: document.getElementById('adminUsername').value,
@@ -2055,6 +2156,12 @@ async function saveAdmin(e) {
     email: document.getElementById('adminEmail').value,
     status: document.getElementById('adminStatus').value
   };
+  
+  // 只有super_admin可以设置role
+  const roleSelect = document.getElementById('adminRole');
+  if (roleSelect) {
+    data.role = roleSelect.value;
+  }
   
   const password = document.getElementById('adminPassword').value;
   if (password) {
@@ -2200,6 +2307,736 @@ async function loadLogs() {
   } catch (error) {
     console.error('加载日志失败:', error);
     container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
+  }
+}
+
+// 加载关于页面
+function loadAboutPage() {
+  const container = document.getElementById('aboutTab');
+  const version = '1.0.0';
+  const currentStoreName = storeName || 'BOBA TEA'; // 使用当前商店名称，如果没有则使用默认值
+  
+  container.innerHTML = `
+    <div class="space-y-6">
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">🧋 ${currentStoreName} Ordering System</h2>
+        <div class="space-y-4">
+          <div>
+            <p class="text-sm text-gray-600 mb-2">Version</p>
+            <p class="text-lg font-semibold text-gray-900">${version}</p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-600 mb-2">Description</p>
+            <p class="text-gray-700">A comprehensive online ordering system for ${currentStoreName.toLowerCase()} shops with cycle-based order management, discount rules, and payment tracking.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">📋 User Order Logic</h3>
+        <div class="space-y-4 text-gray-700">
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">1. User Registration & Login</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>Users can browse the menu without logging in</li>
+              <li>When placing an order, users must provide a phone number (required, 8-15 digits)</li>
+              <li>Name field is optional</li>
+              <li>Phone number is used as the unique identifier for users</li>
+              <li>If a phone number already exists, the system will use the existing user account</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">2. Order Placement</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>Users can add products to cart and customize:
+                <ul class="list-circle list-inside ml-6 mt-1 space-y-1">
+                  <li>Cup size (Small, Medium, Large) - affects base price</li>
+                  <li>Sugar level (0%, 30%, 50%, 70%, 100%)</li>
+                  <li>Ice level (Normal Ice, Less Ice, No Ice, Room Temperature, Hot) - if allowed by product</li>
+                  <li>Extra toppings - each topping adds to the price</li>
+                  <li>Order notes (optional text field)</li>
+                </ul>
+              </li>
+              <li>Real-time price calculation based on selections</li>
+              <li>Orders can only be placed when ordering is open (admin-controlled)</li>
+              <li>Each order gets a unique order number (e.g., BO12345678)</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">3. Order Status Flow</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li><strong>Pending Payment</strong>: Initial status when order is placed
+                <ul class="list-circle list-inside ml-6 mt-1">
+                  <li>Users can modify or delete orders during the ordering open period</li>
+                  <li>Users can upload payment screenshots (only after ordering is closed)</li>
+                </ul>
+              </li>
+              <li><strong>Paid</strong>: Admin marks order as paid after verifying payment screenshot</li>
+              <li><strong>Completed</strong>: Admin marks order as completed after fulfillment</li>
+              <li><strong>Cancelled</strong>: Order is cancelled (by user or admin)</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">4. Order Modification & Deletion</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>Users can only modify/delete orders with "Pending Payment" status</li>
+              <li>Modification is only allowed during the ordering open period</li>
+              <li>Once ordering is closed, users can only upload payment screenshots</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">5. Payment Screenshot Upload</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>Upload button is disabled and grayed out while ordering is open</li>
+              <li>Users can upload payment screenshots only after admin closes ordering</li>
+              <li>Payment screenshots can be viewed by both users and admins</li>
+              <li>Admin verifies payment and updates order status to "Paid"</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">🔄 Order Cycle Logic</h3>
+        <div class="space-y-4 text-gray-700">
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">1. Cycle Creation</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>When admin opens ordering (Settings → Ordering Open = ON), a new cycle is automatically created</li>
+              <li>Each cycle has a unique ID and cycle number (e.g., CYCLE1763034929647)</li>
+              <li>Cycle status is set to "active"</li>
+              <li>Cycle start time is recorded as the current local time</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">2. Active Cycle Period</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>All orders placed during this period belong to the active cycle</li>
+              <li>Orders are automatically associated with the cycle based on their creation time</li>
+              <li>Users can place, modify, and delete orders freely</li>
+              <li>Total order amount for the cycle is calculated in real-time</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">3. Cycle Closure</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>When admin closes ordering (Settings → Ordering Open = OFF), the cycle is automatically ended</li>
+              <li>Cycle end time is recorded as the current local time</li>
+              <li>Cycle status changes from "active" to "ended"</li>
+              <li>System automatically calculates the total amount for all "Pending Payment" orders in this cycle</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">4. Automatic Discount Calculation</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>When a cycle ends, the system automatically calculates discounts based on:
+                <ul class="list-circle list-inside ml-6 mt-1">
+                  <li>Total amount of all orders in the cycle (sum of final_amount)</li>
+                  <li>Discount rules configured in the Discounts section</li>
+                </ul>
+              </li>
+              <li>Discount rules are evaluated in descending order of min_amount</li>
+              <li>The first matching rule (where total_amount >= min_amount) is applied</li>
+              <li>Discount is applied to all "Pending Payment" orders in the cycle:
+                <ul class="list-circle list-inside ml-6 mt-1">
+                  <li>discount_amount = total_amount × discount_rate</li>
+                  <li>final_amount = total_amount - discount_amount</li>
+                </ul>
+              </li>
+              <li>Cycle discount_rate is updated to reflect the applied discount</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">5. Payment Verification Period</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>After cycle closure, users can upload payment screenshots</li>
+              <li>Admin reviews payment screenshots and marks orders as "Paid"</li>
+              <li>Once all orders are verified, admin can confirm the cycle (Dashboard → Confirm Cycle)</li>
+              <li>Cycle status changes from "ended" to "confirmed"</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">6. Order Cycle Association</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>Orders are associated with cycles based on their created_at timestamp</li>
+              <li>An order belongs to a cycle if: cycle.start_time <= order.created_at <= cycle.end_time (or current time if cycle is active)</li>
+              <li>If no active cycle exists, all orders are considered part of the "current cycle" (not grayed out)</li>
+              <li>Orders from previous cycles are displayed in gray when a new cycle starts</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">7. Cycle Archiving</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+              <li>Only the most recent N cycles are displayed (configurable in Settings → Max Visible Cycles, default: 10)</li>
+              <li>Older cycles are automatically archived to CSV files in logs/export/ directory</li>
+              <li>Archived cycles are no longer visible in the Orders page</li>
+              <li>Archived CSV files contain all order details including cycle information</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">⚙️ System Features</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">Product Management</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>Product categories with custom sorting</li>
+              <li>Multiple cup sizes with individual pricing</li>
+              <li>Customizable sugar levels per product</li>
+              <li>Ice level options (configurable per product)</li>
+              <li>Extra toppings management</li>
+              <li>Product images support</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">Discount System</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>Flexible discount rules based on total amount</li>
+              <li>Automatic discount calculation per cycle</li>
+              <li>Discount applied to all orders in a cycle</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">User Management</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>Phone-based user identification</li>
+              <li>User order history</li>
+              <li>Order status tracking</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">Admin Features</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>Order management and status updates</li>
+              <li>Payment screenshot verification</li>
+              <li>Cycle management and confirmation</li>
+              <li>Comprehensive operation logs</li>
+              <li>Order export to CSV</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">🔒 Security & Data</h3>
+        <div class="space-y-2 text-sm text-gray-700">
+          <p><strong>Database:</strong> SQLite with WAL mode for better concurrency</p>
+          <p><strong>Authentication:</strong> Session-based with bcrypt password hashing</p>
+          <p><strong>Rate Limiting:</strong> API rate limiting to prevent abuse</p>
+          <p><strong>Logging:</strong> Comprehensive logging with daily rotation</p>
+          <p><strong>Time Zone:</strong> Uses server local time (datetime('now', 'localtime'))</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ==================== 开发者工具 ====================
+
+let currentTableName = null;
+let tableData = [];
+let tableSchema = [];
+let editedRows = new Set();
+let deletedRows = new Set();
+let newRows = [];
+
+// 数据库表说明映射
+const tableDescriptions = {
+  'admins': 'Administrator accounts and login credentials',
+  'users': 'Customer user accounts (phone-based identification)',
+  'categories': 'Product categories for menu organization',
+  'products': 'Menu items/products with prices, sizes, and customization options',
+  'discount_rules': 'Discount rules based on total order amount thresholds',
+  'settings': 'System configuration settings (store name, currency, ordering status, etc.)',
+  'orders': 'Customer orders with payment status and cycle information',
+  'order_items': 'Individual items within each order (products, quantities, customizations like size, sugar level, ice level, toppings)',
+  'logs': 'System operation logs for admin actions and user activities',
+  'ordering_cycles': 'Ordering cycle management (start/end times, total amounts, discount rates)'
+};
+
+// 加载开发者页面
+async function loadDeveloperPage() {
+  await loadTablesList();
+}
+
+// 加载数据库表列表
+async function loadTablesList() {
+  try {
+    const response = await fetch(`${API_BASE}/admin/developer/tables`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      const container = document.getElementById('tablesList');
+      container.innerHTML = data.tables.map(table => {
+        const description = tableDescriptions[table.name] || 'Database table';
+        return `
+        <div class="mb-0.5">
+          <div 
+            class="table-item px-2 py-1 rounded cursor-pointer hover:bg-gray-100 transition"
+            ondblclick="loadTableData('${table.name}')"
+            onclick="toggleTableItem(this)"
+          >
+            <div class="flex items-center justify-between mb-0.5">
+              <span class="text-xs font-medium text-gray-700">${table.name}</span>
+              <span class="text-xs text-gray-500">${table.rowCount}</span>
+            </div>
+            <div class="text-xs text-gray-400 leading-tight">${description}</div>
+          </div>
+        </div>
+      `;
+      }).join('');
+    }
+  } catch (error) {
+    console.error('加载表列表失败:', error);
+  }
+}
+
+// 切换表项（用于展开/收缩，当前简单实现）
+function toggleTableItem(element) {
+  // 可以在这里添加展开/收缩逻辑
+}
+
+// 加载表数据
+async function loadTableData(tableName) {
+  try {
+    currentTableName = tableName;
+    editedRows.clear();
+    deletedRows.clear();
+    newRows = [];
+    
+    // 加载表结构和数据
+    const [schemaResponse, dataResponse] = await Promise.all([
+      fetch(`${API_BASE}/admin/developer/table-schema/${tableName}`, { credentials: 'include' }),
+      fetch(`${API_BASE}/admin/developer/table-data/${tableName}`, { credentials: 'include' })
+    ]);
+    
+    const schemaData = await schemaResponse.json();
+    const dataData = await dataResponse.json();
+    
+    if (schemaData.success && dataData.success) {
+      tableSchema = schemaData.schema;
+      tableData = dataData.data;
+      
+      // 更新UI
+      document.getElementById('currentTableName').textContent = tableName;
+      document.getElementById('tableInfo').textContent = `${tableData.length} rows × ${tableSchema.length} cols`;
+      document.getElementById('saveTableBtn').classList.remove('hidden');
+      
+      renderTableData();
+    }
+  } catch (error) {
+    console.error('加载表数据失败:', error);
+    alert('Failed to load table data');
+  }
+}
+
+// 渲染表数据
+function renderTableData() {
+  const container = document.getElementById('tableDataContainer');
+  
+  if (tableData.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white rounded shadow p-3 text-center">
+        <p class="text-xs text-gray-500">No data in this table</p>
+        <button onclick="addNewRow()" class="mt-2 px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition">
+          Add New Row
+        </button>
+      </div>
+    `;
+    return;
+  }
+  
+  // 生成表头
+  const headers = tableSchema.map(col => `
+    <th class="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+      ${col.name}
+      <div class="text-xs text-gray-400 font-normal">${col.type || ''}</div>
+    </th>
+  `).join('');
+  
+  // 生成表行
+  const rows = tableData.map((row, rowIndex) => {
+    const isDeleted = deletedRows.has(rowIndex);
+    const isEdited = editedRows.has(rowIndex);
+    const rowClass = isDeleted ? 'bg-red-50 opacity-50' : isEdited ? 'bg-yellow-50' : '';
+    
+    const cells = tableSchema.map(col => {
+      let value = row[col.name];
+      // 处理 null 和 undefined
+      if (value === null || value === undefined) {
+        value = '';
+      } else if (typeof value === 'object') {
+        // 如果是对象，转换为JSON字符串
+        value = JSON.stringify(value);
+      } else {
+        // 转换为字符串
+        value = String(value);
+      }
+      
+      const isPrimaryKey = col.pk === 1;
+      // 更宽松的TEXT类型判断：检查类型字符串或字段名
+      const colType = (col.type || '').toUpperCase();
+      const colName = (col.name || '').toLowerCase();
+      const isTextType = colType.includes('TEXT') || 
+                        colType.includes('VARCHAR') || 
+                        colType.includes('CHAR') ||
+                        colType === '' || // SQLite中某些TEXT字段可能type为空
+                        colName.includes('description') ||
+                        colName.includes('details') ||
+                        colName.includes('notes') ||
+                        colName.includes('toppings') ||
+                        colName.includes('sizes') ||
+                        colName.includes('size') ||
+                        colName.includes('ice_level') ||
+                        colName.includes('sugar_level');
+      const isLongText = value.length > 50; // 降低阈值，更早使用textarea
+      
+      if (isDeleted) {
+        return `<td class="px-2 py-1 border-b border-gray-200 text-xs text-gray-500 line-through whitespace-nowrap">${escapeHtml(value)}</td>`;
+      }
+      
+      if (isPrimaryKey) {
+        return `<td class="px-2 py-1 border-b border-gray-200 text-xs text-gray-900 font-medium whitespace-nowrap">${escapeHtml(value)}</td>`;
+      }
+      
+      // 对于长文本或TEXT类型，使用textarea
+      if (isTextType || isLongText) {
+        // 计算合适的行数，确保能显示完整内容
+        const estimatedRows = value.length > 0 ? Math.min(Math.max(1, Math.ceil(value.length / 50)), 6) : 1;
+        return `<td class="px-2 py-1 border-b border-gray-200">
+          <textarea 
+            class="w-full px-1 py-0.5 border border-gray-300 rounded text-xs resize-y"
+            rows="${estimatedRows}"
+            style="min-height: 40px; max-height: 150px;"
+            onchange="markRowEdited(${rowIndex})"
+            data-row="${rowIndex}"
+            data-column="${col.name}"
+          >${escapeHtml(value)}</textarea>
+        </td>`;
+      }
+      
+      return `<td class="px-2 py-1 border-b border-gray-200">
+        <input 
+          type="text" 
+          value="${escapeHtml(value)}" 
+          class="w-full px-1 py-0.5 border border-gray-300 rounded text-xs"
+          onchange="markRowEdited(${rowIndex})"
+          data-row="${rowIndex}"
+          data-column="${col.name}"
+        />
+      </td>`;
+    }).join('');
+    
+    return `
+      <tr class="${rowClass}">
+        ${cells}
+        <td class="px-2 py-1 border-b border-gray-200">
+          <button 
+            onclick="deleteRow(${rowIndex})" 
+            class="px-1.5 py-0.5 bg-red-500 text-white rounded text-xs hover:bg-red-600 transition"
+          >
+            Del
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  
+  // 新行
+  const newRowsHtml = newRows.map((newRow, newRowIndex) => {
+    const cells = tableSchema.map(col => {
+      const isPrimaryKey = col.pk === 1;
+      let value = newRow[col.name] || '';
+      if (typeof value === 'object') {
+        value = JSON.stringify(value);
+      } else {
+        value = String(value);
+      }
+      
+      // 更宽松的TEXT类型判断：检查类型字符串或字段名
+      const colType = (col.type || '').toUpperCase();
+      const colName = (col.name || '').toLowerCase();
+      const isTextType = colType.includes('TEXT') || 
+                        colType.includes('VARCHAR') || 
+                        colType.includes('CHAR') ||
+                        colType === '' || // SQLite中某些TEXT字段可能type为空
+                        colName.includes('description') ||
+                        colName.includes('details') ||
+                        colName.includes('notes') ||
+                        colName.includes('toppings') ||
+                        colName.includes('sizes') ||
+                        colName.includes('size') ||
+                        colName.includes('ice_level') ||
+                        colName.includes('sugar_level');
+      
+      if (isPrimaryKey) {
+        return `<td class="px-2 py-1 border-b border-gray-200 text-xs text-gray-500 italic whitespace-nowrap">Auto</td>`;
+      }
+      
+      // 对于TEXT类型，使用textarea
+      if (isTextType) {
+        const estimatedRows = value.length > 0 ? Math.min(Math.max(1, Math.ceil(value.length / 50)), 6) : 1;
+        return `<td class="px-2 py-1 border-b border-gray-200">
+          <textarea 
+            class="w-full px-1 py-0.5 border border-green-300 rounded text-xs bg-green-50 resize-y"
+            rows="${estimatedRows}"
+            style="min-height: 40px; max-height: 150px;"
+            onchange="updateNewRow(${newRowIndex}, '${col.name}', this.value)"
+            data-new-row="${newRowIndex}"
+            data-column="${col.name}"
+          >${escapeHtml(value)}</textarea>
+        </td>`;
+      }
+      
+      return `<td class="px-2 py-1 border-b border-gray-200">
+        <input 
+          type="text" 
+          value="${escapeHtml(value)}" 
+          class="w-full px-1 py-0.5 border border-green-300 rounded text-xs bg-green-50"
+          onchange="updateNewRow(${newRowIndex}, '${col.name}', this.value)"
+          data-new-row="${newRowIndex}"
+          data-column="${col.name}"
+        />
+      </td>`;
+    }).join('');
+    
+    return `
+      <tr class="bg-green-50">
+        ${cells}
+        <td class="px-2 py-1 border-b border-gray-200">
+          <button 
+            onclick="removeNewRow(${newRowIndex})" 
+            class="px-1.5 py-0.5 bg-red-500 text-white rounded text-xs hover:bg-red-600 transition"
+          >
+            Cancel
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  
+  container.innerHTML = `
+    <div class="bg-white rounded shadow overflow-hidden">
+      <div class="p-2 border-b border-gray-200 flex justify-between items-center">
+        <div>
+          <h3 class="text-xs font-semibold text-gray-900">Table Data</h3>
+          <p class="text-xs text-gray-500 mt-0.5">
+            ${editedRows.size} edited, ${deletedRows.size} deleted, ${newRows.length} new
+          </p>
+        </div>
+        <button onclick="addNewRow()" class="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition">
+          + Add Row
+        </button>
+      </div>
+      <div style="overflow-x: scroll; overflow-y: scroll; max-height: calc(100vh - 200px);">
+        <table class="min-w-full divide-y divide-gray-200" style="min-width: max-content;">
+          <thead class="bg-gray-50 sticky top-0 z-10">
+            <tr>
+              ${headers}
+              <th class="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50 border-b border-gray-200 sticky right-0 bg-gray-50">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            ${rows}
+            ${newRowsHtml}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// 转义HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// 标记行已编辑
+function markRowEdited(rowIndex) {
+  editedRows.add(rowIndex);
+  updateRowStyle(rowIndex);
+}
+
+// 更新行样式
+function updateRowStyle(rowIndex) {
+  const inputs = document.querySelectorAll(`input[data-row="${rowIndex}"], textarea[data-row="${rowIndex}"]`);
+  inputs.forEach(input => {
+    const row = input.closest('tr');
+    if (deletedRows.has(rowIndex)) {
+      row.className = 'bg-red-50 opacity-50';
+    } else if (editedRows.has(rowIndex)) {
+      row.className = 'bg-yellow-50';
+    }
+  });
+}
+
+// 删除行
+function deleteRow(rowIndex) {
+  if (confirm('Are you sure you want to delete this row?')) {
+    deletedRows.add(rowIndex);
+    editedRows.delete(rowIndex);
+    renderTableData();
+  }
+}
+
+// 添加新行
+function addNewRow() {
+  const newRow = {};
+  tableSchema.forEach(col => {
+    if (col.pk !== 1) {
+      newRow[col.name] = '';
+    }
+  });
+  newRows.push(newRow);
+  renderTableData();
+}
+
+// 更新新行数据
+function updateNewRow(newRowIndex, column, value) {
+  if (newRows[newRowIndex]) {
+    newRows[newRowIndex][column] = value;
+  }
+  // 标记为已编辑（虽然这是新行，但可以用于跟踪）
+}
+
+// 移除新行
+function removeNewRow(newRowIndex) {
+  newRows.splice(newRowIndex, 1);
+  renderTableData();
+}
+
+// 保存表更改
+async function saveTableChanges() {
+  if (editedRows.size === 0 && deletedRows.size === 0 && newRows.length === 0) {
+    alert('No changes to save');
+    return;
+  }
+  
+  if (!confirm(`Save changes? ${editedRows.size} edited, ${deletedRows.size} deleted, ${newRows.length} new rows`)) {
+    return;
+  }
+  
+  try {
+    // 收集更改
+    const changes = {
+      updates: [],
+      deletes: [],
+      inserts: []
+    };
+    
+    // 收集更新的行
+    editedRows.forEach(rowIndex => {
+      if (!deletedRows.has(rowIndex)) {
+        const row = tableData[rowIndex];
+        const updatedRow = {};
+        tableSchema.forEach(col => {
+          const input = document.querySelector(`input[data-row="${rowIndex}"][data-column="${col.name}"], textarea[data-row="${rowIndex}"][data-column="${col.name}"]`);
+          if (input) {
+            updatedRow[col.name] = input.value;
+          } else {
+            updatedRow[col.name] = row[col.name];
+          }
+        });
+        changes.updates.push(updatedRow);
+      }
+    });
+    
+    // 收集删除的行
+    deletedRows.forEach(rowIndex => {
+      const row = tableData[rowIndex];
+      const primaryKey = tableSchema.find(col => col.pk === 1);
+      if (primaryKey) {
+        changes.deletes.push(row[primaryKey.name]);
+      }
+    });
+    
+    // 收集新插入的行
+    changes.inserts = newRows;
+    
+    const response = await fetch(`${API_BASE}/admin/developer/table-data/${currentTableName}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(changes)
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      alert('Changes saved successfully');
+      // 重新加载数据
+      await loadTableData(currentTableName);
+    } else {
+      alert('Failed to save changes: ' + (data.message || 'Unknown error'));
+    }
+  } catch (error) {
+    console.error('保存失败:', error);
+    alert('Failed to save changes');
+  }
+}
+
+// 显示SQL模态框
+function showSqlModal() {
+  document.getElementById('sqlModal').classList.add('active');
+  document.getElementById('sqlQuery').value = '';
+  document.getElementById('sqlResult').classList.add('hidden');
+}
+
+// 关闭SQL模态框
+function closeSqlModal(event) {
+  if (!event || event.target.id === 'sqlModal') {
+    document.getElementById('sqlModal').classList.remove('active');
+  }
+}
+
+// 执行SQL查询
+async function executeSqlQuery() {
+  const sql = document.getElementById('sqlQuery').value.trim();
+  
+  if (!sql) {
+    alert('Please enter a SQL query');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/developer/execute-sql`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ sql })
+    });
+    
+    const data = await response.json();
+    
+    const resultDiv = document.getElementById('sqlResult');
+    const resultContent = document.getElementById('sqlResultContent');
+    
+    if (data.success) {
+      resultContent.textContent = JSON.stringify(data.result, null, 2);
+      resultDiv.classList.remove('hidden');
+    } else {
+      resultContent.textContent = 'Error: ' + (data.message || 'Unknown error');
+      resultDiv.classList.remove('hidden');
+    }
+  } catch (error) {
+    console.error('执行SQL失败:', error);
+    alert('Failed to execute SQL query');
   }
 }
 
