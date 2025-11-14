@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Panel - BOBA TEA Ordering System</title>
+  <title id="adminPageTitle">Admin Panel - BOBA TEA Ordering System</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="/i18n.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/@icon-park/svg@1.4.2/icon-park.min.css" rel="stylesheet">
@@ -37,6 +37,42 @@
       max-height: 90vh;
       overflow-y: auto;
     }
+    #paymentImageModal .modal > div {
+      max-width: 90vw;
+    }
+    #paymentImageDisplay {
+      max-height: 70vh;
+      object-fit: contain;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+    #paymentImageDisplay:active {
+      cursor: grabbing;
+    }
+    #imageZoomSlider {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    #imageZoomSlider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+    }
+    #imageZoomSlider::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+      border: none;
+    }
   </style>
 </head>
 <body class="bg-gray-50">
@@ -44,7 +80,7 @@
   <div id="loginPage" class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8 fade-in">
       <div class="text-center">
-        <h2 class="text-4xl font-bold text-gray-900">🧋 <span data-i18n="app_name">BOBA TEA</span></h2>
+        <h2 class="text-4xl font-bold text-gray-900">🧋 <span data-i18n="app_name" data-store-name>BOBA TEA</span></h2>
         <p class="mt-2 text-xl text-gray-600">Admin Panel</p>
       </div>
       <div class="mt-8 bg-white p-8 rounded-xl shadow-lg">
@@ -80,7 +116,7 @@
       <div class="mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
           <div class="flex items-center">
-            <h1 class="text-2xl font-bold text-gray-900">🧋 <span data-i18n="app_name">BOBA TEA</span> <span data-i18n="admin_panel">Admin Panel</span></h1>
+            <h1 class="text-2xl font-bold text-gray-900">🧋 <span data-i18n="app_name" data-store-name>BOBA TEA</span> <span data-i18n="admin_panel">Admin Panel</span></h1>
           </div>
           <div class="flex items-center space-x-4">
             <span class="text-sm text-gray-600">Welcome, <span id="adminName" class="font-semibold"></span></span>
@@ -146,7 +182,7 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-sm text-gray-600">Total Amount</p>
-                  <p id="totalAmount" class="text-3xl font-bold text-blue-600 mt-2">¥0</p>
+                  <p id="totalAmount" class="text-3xl font-bold text-blue-600 mt-2">0 LE</p>
                 </div>
                 <div class="text-4xl">💵</div>
               </div>
@@ -155,7 +191,7 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-sm text-gray-600">Discount Amount</p>
-                  <p id="totalDiscount" class="text-3xl font-bold text-green-600 mt-2">¥0</p>
+                  <p id="totalDiscount" class="text-3xl font-bold text-green-600 mt-2">0 LE</p>
                 </div>
                 <div class="text-4xl">🎁</div>
               </div>
@@ -164,7 +200,7 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-sm text-gray-600">Final Amount</p>
-                  <p id="finalAmount" class="text-3xl font-bold text-purple-600 mt-2">¥0</p>
+                  <p id="finalAmount" class="text-3xl font-bold text-purple-600 mt-2">0 LE</p>
                 </div>
                 <div class="text-4xl">💰</div>
               </div>
@@ -239,6 +275,26 @@
         <div id="adminsTab" class="tab-content hidden"></div>
         <div id="logsTab" class="tab-content hidden"></div>
       </main>
+    </div>
+  </div>
+
+  <!-- 支付截图查看对话框 -->
+  <div id="paymentImageModal" class="modal" onclick="closePaymentImageModal(event)">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 p-6" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-bold text-gray-900">Payment Screenshot</h3>
+        <button onclick="closePaymentImageModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+      <div class="mb-4 flex justify-center">
+        <img id="paymentImageDisplay" src="" alt="Payment Screenshot" class="max-w-full h-auto rounded-lg border border-gray-200 shadow-lg" style="max-height: 70vh;">
+      </div>
+      <div class="flex items-center space-x-4">
+        <label class="text-sm font-medium text-gray-700">Zoom:</label>
+        <input type="range" id="imageZoomSlider" min="50" max="200" value="100" 
+               class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+               oninput="updateImageZoom(this.value)">
+        <span id="zoomValue" class="text-sm text-gray-600 w-12 text-right">100%</span>
+      </div>
     </div>
   </div>
 

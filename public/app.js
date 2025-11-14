@@ -9,6 +9,18 @@ let products = [];
 let cart = [];
 let selectedCategory = null;
 let currentPaymentOrderId = null;
+let storeName = 'BOBA TEA'; // 商店名称，从设置中加载
+let currencySymbol = 'LE'; // 货币符号，从设置中加载
+
+// 格式化价格显示（使用当前货币符号）
+function formatPrice(price) {
+  return `${parseFloat(price).toFixed(0)} ${currencySymbol}`;
+}
+
+// 格式化价格显示（带小数）
+function formatPriceDecimal(price) {
+  return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
+}
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
@@ -20,6 +32,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // 直接显示主页面，无需登录
   showMainPage();
   checkAuth();
+  
+  // 默认显示Home页面
+  showBottomTab('home');
   
   // 登录表单提交
   document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
@@ -154,6 +169,47 @@ function closeLoginModal() {
   document.getElementById('loginForm').reset();
 }
 
+// 更新商店名称显示
+function updateStoreName() {
+  // 更新页面标题
+  document.title = `${storeName} Ordering System`;
+  
+  // 更新所有显示商店名称的元素
+  const storeNameElements = document.querySelectorAll('[data-store-name]');
+  storeNameElements.forEach(el => {
+    el.textContent = storeName;
+  });
+  
+  // 更新data-i18n="app_name"的元素
+  const appNameElements = document.querySelectorAll('[data-i18n="app_name"]');
+  appNameElements.forEach(el => {
+    el.textContent = storeName;
+  });
+  
+  // 更新Home页面的欢迎文字
+  const welcomeTitle = document.querySelector('#homeTab h2');
+  if (welcomeTitle) {
+    welcomeTitle.textContent = `Welcome to ${storeName}`;
+  }
+}
+
+// 更新货币符号显示（重新渲染所有价格）
+function updateCurrencyDisplay() {
+  // 重新加载产品列表和订单列表以更新价格显示
+  if (products.length > 0) {
+    renderProducts(products);
+  }
+  // 更新购物车显示（只在购物车已经打开的情况下）
+  const cartModal = document.getElementById('cartModal');
+  if (cartModal && cartModal.classList.contains('active') && cart.length > 0) {
+    showCart();
+  }
+  // 更新订单显示
+  if (document.getElementById('ordersList') && currentUser) {
+    loadOrders();
+  }
+}
+
 // 更新登录状态显示
 function updateLoginStatus() {
   const loginBtn = document.getElementById('loginBtn');
@@ -178,13 +234,11 @@ async function showMainPage() {
   await loadSettings();
   await loadCategories();
   await loadProducts();
-  await loadCycleDiscount();
   updateOrderingStatus();
   updateCartBadge();
   
-  // 定期刷新周期折扣信息
+  // 定期刷新订单状态
   setInterval(() => {
-    loadCycleDiscount();
     updateOrderingStatus();
   }, 10000); // 每10秒刷新一次
 }
@@ -196,6 +250,16 @@ async function loadSettings() {
     const data = await response.json();
     if (data.success) {
       currentSettings = data.settings;
+      // 更新商店名称
+      if (data.settings.store_name) {
+        storeName = data.settings.store_name;
+      }
+      // 更新货币符号
+      if (data.settings.currency_symbol) {
+        currencySymbol = data.settings.currency_symbol;
+      }
+      updateStoreName();
+      updateCurrencyDisplay();
       // 显示系统公告
       updateSystemNotice();
     }
@@ -204,24 +268,16 @@ async function loadSettings() {
   }
 }
 
-// 更新系统公告显示（包含折扣信息）
+// 更新系统公告显示（只显示系统公告，不显示折扣信息）
 function updateSystemNotice() {
   const banner = document.getElementById('systemNoticeBanner');
   const noticeText = document.getElementById('noticeText');
   
   let noticeContent = '';
   
-  // 添加系统公告
+  // 只添加系统公告
   if (currentSettings.system_notice && currentSettings.system_notice.trim()) {
-    noticeContent += currentSettings.system_notice;
-  }
-  
-  // 添加折扣信息（如果有）
-  if (window.currentCycleDiscountText) {
-    if (noticeContent) {
-      noticeContent += '  •  ';
-    }
-    noticeContent += window.currentCycleDiscountText;
+    noticeContent = currentSettings.system_notice;
   }
   
   if (noticeContent) {
@@ -232,65 +288,7 @@ function updateSystemNotice() {
   }
 }
 
-// 加载周期折扣信息
-async function loadCycleDiscount() {
-  try {
-    const response = await fetch(`${API_BASE}/public/cycle-discount`);
-    if (!response.ok) {
-      console.error('加载周期折扣失败: HTTP', response.status);
-      return;
-    }
-    const data = await response.json();
-    if (data.success) {
-      updateCycleDiscountBanner(data.cycle, data.nextDiscount, data.currentDiscount);
-    } else {
-      // 即使没有活跃周期，也要确保横幅被隐藏
-      updateCycleDiscountBanner(null, null, null);
-    }
-  } catch (error) {
-    console.error('加载周期折扣失败:', error);
-    // 出错时也尝试更新横幅（隐藏）
-    updateCycleDiscountBanner(null, null, null);
-  }
-}
-
-// 更新周期折扣信息（合并到公告中）
-function updateCycleDiscountBanner(cycle, nextDiscount, currentDiscount) {
-  const totalAmount = parseFloat(cycle?.total_amount) || 0;
-  
-  // 构建折扣文本
-  let discountText = '';
-  
-  if (cycle && cycle.status === 'active') {
-    discountText = `💰 Current Cycle Total: ¥${totalAmount.toFixed(0)}`;
-    
-    // Show current discount
-    if (currentDiscount) {
-      const currentRate = parseFloat(currentDiscount.discount_rate) || 0;
-      discountText += ` | Current Discount: ${currentRate}%`;
-    } else {
-      discountText += ` | No discount`;
-    }
-    
-    // Show next discount info
-    if (nextDiscount && nextDiscount.min_amount) {
-      const minAmount = parseFloat(nextDiscount.min_amount) || 0;
-      const remaining = Math.max(minAmount - totalAmount, 0);
-      const discountRate = parseFloat(nextDiscount.discount_rate) || 0;
-      discountText += ` | Remaining for ${discountRate}% discount: ¥${remaining.toFixed(0)}`;
-    } else if (!currentDiscount) {
-      discountText += ` | No discount activity`;
-    } else {
-      discountText += ` | Maximum discount reached`;
-    }
-  }
-  
-  // 保存到全局变量，供公告使用
-  window.currentCycleDiscountText = discountText;
-  
-  // 更新公告显示
-  updateSystemNotice();
-}
+// 折扣信息功能已移除，不再显示折扣信息
 
 // 加载分类
 async function loadCategories() {
@@ -440,7 +438,7 @@ function renderProducts() {
               ''}
             <div class="flex items-center justify-between mt-2">
               <div>
-                <span class="text-red-500 font-bold text-base">¥${minPrice}</span>
+                <span class="text-red-500 font-bold text-base">${formatPrice(minPrice)}</span>
                 ${hasMultipleSizes ? '<span class="text-xs text-gray-500 ml-1">起</span>' : ''}
               </div>
               <button onclick='showProductDetail(${JSON.stringify(product).replace(/'/g, "&apos;")})' 
@@ -541,6 +539,45 @@ function setupCategoryScrollHighlight() {
   // 添加滚动监听
   productsScroll.addEventListener('scroll', productsScroll._scrollHandler, { passive: true });
   
+  // 添加滚动开始/结束检测，防止误触购物车按钮
+  productsScroll.addEventListener('scroll', () => {
+    isScrolling = true;
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      isScrolling = false;
+    }, 150); // 滚动结束后150ms才允许点击
+  }, { passive: true });
+  
+  // 添加触摸事件检测
+  productsScroll.addEventListener('touchstart', (e) => {
+    touchStartY = e.touches[0].clientY;
+    touchStartTime = Date.now();
+  }, { passive: true });
+  
+  productsScroll.addEventListener('touchmove', () => {
+    isScrolling = true;
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      isScrolling = false;
+    }, 150);
+  }, { passive: true });
+  
+  productsScroll.addEventListener('touchend', (e) => {
+    const touchEndY = e.changedTouches[0].clientY;
+    const touchEndTime = Date.now();
+    const deltaY = Math.abs(touchEndY - touchStartY);
+    const deltaTime = touchEndTime - touchStartTime;
+    
+    // 如果移动距离大于10px或时间超过300ms，认为是滚动
+    if (deltaY > 10 || deltaTime > 300) {
+      isScrolling = true;
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        isScrolling = false;
+      }, 150);
+    }
+  }, { passive: true });
+  
   // 初始触发一次
   setTimeout(() => productsScroll._scrollHandler(), 100);
 }
@@ -598,6 +635,7 @@ let currentDetailProduct = null;
 let selectedSize = null;
 let selectedSugar = '100';
 let selectedToppings = [];
+let selectedIce = null; // 选中的冰度
 let detailQuantity = 1;
 let allToppings = []; // 所有加料商品
 
@@ -607,6 +645,7 @@ async function showProductDetail(product) {
   selectedSize = null;
   selectedSugar = '100';
   selectedToppings = [];
+  selectedIce = null; // 重置冰度选择
   detailQuantity = 1; // 确保每次打开都重置为1
   
   // 加载所有加料商品
@@ -638,6 +677,9 @@ async function showProductDetail(product) {
   
   // 渲染加料选择
   renderToppingOptions(product);
+  
+  // 渲染冰度选择
+  renderIceOptions(product);
   
   // 更新数量显示
   const quantityEl = document.getElementById('detailQuantity');
@@ -678,7 +720,7 @@ function renderSizeOptions(product) {
   container.innerHTML = Object.entries(sizes).map(([sizeName, price]) => `
     <button onclick="selectSize('${sizeName}')" 
             class="size-option px-6 py-3 border-2 rounded-lg transition ${selectedSize === sizeName ? 'border-yellow-500 bg-yellow-50 text-yellow-700 font-semibold' : 'border-gray-300 text-gray-700 hover:border-yellow-400'}">
-      ${sizeName} <span class="text-sm">¥${price}</span>
+      ${sizeName} <span class="text-sm">${formatPrice(price)}</span>
     </button>
   `).join('');
 }
@@ -741,7 +783,7 @@ function renderToppingOptions(product) {
                class="w-5 h-5 text-yellow-500 rounded">
         <span class="ml-3 font-medium text-gray-900">${topping.name}</span>
       </div>
-      <span class="text-sm text-gray-600">+¥${topping.price}</span>
+      <span class="text-sm text-gray-600">+${formatPrice(topping.price)}</span>
     </label>
   `).join('');
 }
@@ -757,6 +799,52 @@ function selectSize(sizeName) {
 function selectSugar(level) {
   selectedSugar = level;
   renderSugarOptions(currentDetailProduct);
+}
+
+// 渲染冰度选择
+function renderIceOptions(product) {
+  const container = document.getElementById('iceOptions');
+  let iceOptions = [];
+  
+  try {
+    iceOptions = JSON.parse(product.ice_options || '["normal","less","no","room","hot"]');
+  } catch (e) {
+    iceOptions = ['normal', 'less', 'no', 'room', 'hot'];
+  }
+  
+  // 如果产品不允许选择冰度，隐藏整个区域
+  if (iceOptions.length === 0) {
+    document.getElementById('iceSection').style.display = 'none';
+    return;
+  }
+  
+  document.getElementById('iceSection').style.display = 'block';
+  
+  const iceLabels = {
+    'normal': 'Normal Ice 正常冰',
+    'less': 'Less Ice 少冰',
+    'no': 'No Ice 去冰',
+    'room': 'Room Temperature 常温',
+    'hot': 'Hot 热'
+  };
+  
+  // 如果没有选中，默认选中第一个选项
+  if (!selectedIce && iceOptions.length > 0) {
+    selectedIce = iceOptions[0];
+  }
+  
+  container.innerHTML = iceOptions.map(option => `
+    <button onclick="selectIce('${option}')" 
+            class="ice-option px-5 py-2 border-2 rounded-lg transition text-sm ${selectedIce === option ? 'border-yellow-500 bg-yellow-50 text-yellow-700 font-semibold' : 'border-gray-300 text-gray-700 hover:border-yellow-400'}">
+      ${iceLabels[option] || option}
+    </button>
+  `).join('');
+}
+
+// 选择冰度
+function selectIce(iceLevel) {
+  selectedIce = iceLevel;
+  renderIceOptions(currentDetailProduct);
 }
 
 // 切换加料
@@ -807,7 +895,7 @@ function updateDetailPrice() {
   // 总价 = (基础价格 + 加料价格) × 数量
   const totalPrice = (basePrice + toppingPrice) * detailQuantity;
   
-  document.getElementById('detailTotalPrice').textContent = '¥' + totalPrice.toFixed(0);
+  document.getElementById('detailTotalPrice').textContent = formatPrice(totalPrice);
 }
 
 // 从详情页加入购物车
@@ -838,6 +926,7 @@ function addToCartFromDetail() {
     name: currentDetailProduct.name,
     size: selectedSize,
     sugar_level: selectedSugar,
+    ice_level: selectedIce || null, // 添加冰度选择
     toppings: selectedToppingItems,
     base_price: sizePrice,
     topping_price: selectedToppingItems.reduce((sum, t) => sum + t.price, 0),
@@ -850,6 +939,7 @@ function addToCartFromDetail() {
     item.product_id === cartItem.product_id &&
     item.size === cartItem.size &&
     item.sugar_level === cartItem.sugar_level &&
+    item.ice_level === cartItem.ice_level &&
     JSON.stringify(item.toppings.map(t => t.id).sort()) === JSON.stringify(cartItem.toppings.map(t => t.id).sort())
   );
   
@@ -894,14 +984,29 @@ function updateCartBadge() {
   if (totalItems > 0) {
     cartBar.classList.remove('hidden');
     cartBarBadge.textContent = totalItems;
-    cartBarTotal.textContent = '¥' + totalPrice.toFixed(0);
+    cartBarTotal.textContent = formatPrice(totalPrice);
   } else {
     cartBar.classList.add('hidden');
   }
 }
 
+// 防止误触的变量
+let isScrolling = false;
+let scrollTimer = null;
+let touchStartY = 0;
+let touchStartTime = 0;
+
 // 显示购物车
-function showCart() {
+function showCart(event) {
+  // 如果是滚动过程中，忽略点击
+  if (isScrolling) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    return;
+  }
+  
   if (cart.length === 0) {
     alert('Cart is empty');
     return;
@@ -916,16 +1021,25 @@ function showCart() {
     '100': 'Regular'
   };
   
+  const iceLabels = {
+    'normal': 'Normal Ice',
+    'less': 'Less Ice',
+    'no': 'No Ice',
+    'room': 'Room Temperature',
+    'hot': 'Hot'
+  };
+  
   container.innerHTML = cart.map((item, index) => `
     <div class="p-4 bg-gray-50 rounded-lg">
       <div class="flex items-start justify-between mb-2">
         <div class="flex-1">
           <h4 class="font-semibold text-gray-900">${item.name}</h4>
           <div class="text-xs text-gray-600 mt-1 space-y-0.5">
-            <p>规格: ${item.size || '默认'}</p>
-            <p>甜度: ${sugarLabels[item.sugar_level] || '标准'}</p>
+            <p>Size: ${item.size || 'Default'}</p>
+            <p>Sugar: ${sugarLabels[item.sugar_level] || 'Regular'}</p>
+            ${item.ice_level ? `<p>Ice: ${iceLabels[item.ice_level] || item.ice_level}</p>` : ''}
             ${item.toppings && item.toppings.length > 0 ? 
-              `<p>加料: ${item.toppings.map(t => t.name).join(', ')}</p>` : 
+              `<p>Toppings: ${item.toppings.map(t => t.name).join(', ')}</p>` : 
               ''}
           </div>
         </div>
@@ -934,9 +1048,9 @@ function showCart() {
       </div>
       <div class="flex items-center justify-between">
         <div class="text-sm text-gray-600">
-          <span>¥${item.base_price}</span>
-          ${item.topping_price > 0 ? `<span> + ¥${item.topping_price}</span>` : ''}
-          <span class="font-semibold text-gray-900 ml-2">= ¥${item.price}</span>
+          <span>${formatPrice(item.base_price)}</span>
+          ${item.topping_price > 0 ? `<span> + ${formatPrice(item.topping_price)}</span>` : ''}
+          <span class="font-semibold text-gray-900 ml-2">= ${formatPrice(item.price)}</span>
         </div>
         <div class="flex items-center space-x-3">
           <button onclick="updateCartItemQuantity(${index}, -1)" 
@@ -963,7 +1077,11 @@ function updateCartItemQuantity(index, delta) {
   if (cart.length === 0) {
     closeCart();
   } else {
-    showCart();
+    // 只有在购物车已经打开的情况下才更新显示
+    const cartModal = document.getElementById('cartModal');
+    if (cartModal && cartModal.classList.contains('active')) {
+      showCart();
+    }
   }
   
   updateCartBadge();
@@ -976,7 +1094,11 @@ function removeFromCart(index) {
   if (cart.length === 0) {
     closeCart();
   } else {
-    showCart();
+    // 只有在购物车已经打开的情况下才更新显示
+    const cartModal = document.getElementById('cartModal');
+    if (cartModal && cartModal.classList.contains('active')) {
+      showCart();
+    }
   }
   
   updateCartBadge();
@@ -985,11 +1107,19 @@ function removeFromCart(index) {
 // 更新购物车总计
 function updateCartTotal() {
   const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  document.getElementById('cartTotal').textContent = '¥' + total.toFixed(0);
+  document.getElementById('cartTotal').textContent = formatPrice(total);
 }
 
 // 去结算（直接提交订单）
-function goToCheckout() {
+function goToCheckout(event) {
+  // 如果是滚动过程中，忽略点击
+  if (isScrolling) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    return;
+  }
   submitOrder();
 }
 
@@ -1018,15 +1148,19 @@ async function submitOrder() {
   }
   
   try {
+    const orderNotes = document.getElementById('orderNotes')?.value || '';
+    
     const orderData = {
       items: cart.map(item => ({
         product_id: item.product_id,
         quantity: item.quantity,
         size: item.size,
         sugar_level: item.sugar_level,
-        toppings: item.toppings ? item.toppings.map(t => t.id) : []
+        toppings: item.toppings ? item.toppings.map(t => t.id) : [],
+        ice_level: item.ice_level || null
       })),
-      customer_name: currentUser.name || ''
+      customer_name: currentUser.name || '',
+      notes: orderNotes
     };
     
     const response = await fetch(`${API_BASE}/user/orders`, {
@@ -1045,9 +1179,6 @@ async function submitOrder() {
       closeCart();
       showTab('orders');
       
-      // 立即刷新折扣信息
-      loadCycleDiscount();
-      
       // 延迟一下再加载订单，确保数据库已更新
       setTimeout(() => {
         loadOrders();
@@ -1064,6 +1195,7 @@ async function submitOrder() {
 // 底部导航栏切换
 function showBottomTab(tabName) {
   // 隐藏所有页面
+  document.getElementById('homeTab').classList.add('hidden');
   document.getElementById('menuTab').classList.add('hidden');
   document.getElementById('ordersTab').classList.add('hidden');
   document.getElementById('profileTab').classList.add('hidden');
@@ -1077,6 +1209,10 @@ function showBottomTab(tabName) {
   // 根据选择显示对应页面
   switch(tabName) {
     case 'home':
+      document.getElementById('homeTab').classList.remove('hidden');
+      document.getElementById('homeNav').className = 'flex flex-col items-center space-y-1 px-4 py-2 text-green-600 font-semibold';
+      loadShowcaseImages();
+      break;
     case 'menu':
       document.getElementById('menuTab').classList.remove('hidden');
       document.getElementById('menuNav').className = 'flex flex-col items-center space-y-1 px-4 py-2 text-green-600 font-semibold';
@@ -1098,6 +1234,284 @@ function showBottomTab(tabName) {
       document.getElementById('profileNav').className = 'flex flex-col items-center space-y-1 px-4 py-2 text-green-600 font-semibold';
       updateProfilePage();
       break;
+  }
+}
+
+// 加载新品展示图片
+async function loadShowcaseImages() {
+  const container = document.getElementById('showcaseContainer');
+  if (!container) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/public/show-images`);
+    const data = await response.json();
+    
+    if (data.success && data.images && data.images.length > 0) {
+      // 创建图片元素
+      container.innerHTML = data.images.map((img, index) => `
+        <div class="showcase-item fade-in-up" style="animation-delay: ${index * 0.1}s;">
+          <div class="relative w-64 h-80 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
+            <img 
+              src="${img.url}" 
+              alt="New Product ${index + 1}" 
+              class="w-full h-full object-cover"
+              loading="lazy"
+              onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22320%22%3E%3Crect fill=%22%23f3f4f6%22 width=%22256%22 height=%22320%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%239ca3af%22 font-family=%22sans-serif%22 font-size=%2218%22%3EImage%3C/text%3E%3C/svg%3E'"
+            >
+            <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
+          </div>
+        </div>
+      `).join('');
+      
+      // 如果图片数量较少，复制一份以实现无缝循环效果
+      if (data.images.length < 4) {
+        const clonedImages = data.images.map((img, index) => `
+          <div class="showcase-item">
+            <div class="relative w-64 h-80 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
+              <img 
+                src="${img.url}" 
+                alt="New Product ${index + 1}" 
+                class="w-full h-full object-cover"
+                loading="lazy"
+                onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22320%22%3E%3Crect fill=%22%23f3f4f6%22 width=%22256%22 height=%22320%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%239ca3af%22 font-family=%22sans-serif%22 font-size=%2218%22%3EImage%3C/text%3E%3C/svg%3E'"
+              >
+              <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
+            </div>
+          </div>
+        `).join('');
+        container.innerHTML += clonedImages;
+      }
+      
+      // 添加自动滚动功能（可选）
+      setupAutoScroll(container);
+    } else {
+      container.innerHTML = '<div class="text-center text-gray-500 py-8 w-full">No images available</div>';
+    }
+  } catch (error) {
+    console.error('加载展示图片失败:', error);
+    container.innerHTML = '<div class="text-center text-gray-500 py-8 w-full">Failed to load images</div>';
+  }
+}
+
+// 设置自动滚动（平滑滚动）
+let autoScrollAnimationId = null;
+let isAutoScrollPaused = false;
+
+function setupAutoScroll(container) {
+  // 清除之前的动画
+  if (autoScrollAnimationId) {
+    cancelAnimationFrame(autoScrollAnimationId);
+  }
+  
+  let scrollPosition = 0;
+  let scrollDirection = 1;
+  const scrollSpeed = 0.3; // 滚动速度（像素/帧）
+  
+  function autoScroll() {
+    if (isAutoScrollPaused) {
+      autoScrollAnimationId = requestAnimationFrame(autoScroll);
+      return;
+    }
+    
+    const maxScroll = container.scrollWidth - container.clientWidth;
+    
+    if (maxScroll <= 0) {
+      // 如果不需要滚动，退出
+      return;
+    }
+    
+    scrollPosition += scrollSpeed * scrollDirection;
+    
+    // 到达边界时反向
+    if (scrollPosition >= maxScroll) {
+      scrollDirection = -1;
+      scrollPosition = maxScroll;
+    } else if (scrollPosition <= 0) {
+      scrollDirection = 1;
+      scrollPosition = 0;
+    }
+    
+    container.scrollLeft = scrollPosition;
+    autoScrollAnimationId = requestAnimationFrame(autoScroll);
+  }
+  
+  // 鼠标悬停时暂停滚动
+  container.addEventListener('mouseenter', () => {
+    isAutoScrollPaused = true;
+  });
+  
+  container.addEventListener('mouseleave', () => {
+    isAutoScrollPaused = false;
+  });
+  
+  // 用户手动滚动时暂停自动滚动
+  let userScrollTimeout;
+  container.addEventListener('scroll', () => {
+    if (!isAutoScrollPaused) {
+      isAutoScrollPaused = true;
+      clearTimeout(userScrollTimeout);
+      userScrollTimeout = setTimeout(() => {
+        scrollPosition = container.scrollLeft;
+        isAutoScrollPaused = false;
+      }, 2000); // 2秒后恢复自动滚动
+    }
+  });
+  
+  // 开始自动滚动
+  autoScrollAnimationId = requestAnimationFrame(autoScroll);
+}
+
+// 图片拖动相关变量
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let imageOffsetX = 0;
+let imageOffsetY = 0;
+let currentImageScale = 1;
+
+// 显示支付截图对话框（用户页面）
+function showPaymentImageModal(imageUrl) {
+  const modal = document.getElementById('paymentImageModal');
+  const img = document.getElementById('paymentImageDisplay');
+  const slider = document.getElementById('imageZoomSlider');
+  
+  if (modal && img) {
+    img.src = imageUrl;
+    // 重置图片位置和缩放
+    currentImageScale = 1;
+    imageOffsetX = 0;
+    imageOffsetY = 0;
+    img.style.transform = 'translate(0, 0) scale(1)';
+    img.style.transformOrigin = 'center center';
+    img.style.cursor = 'grab';
+    
+    if (slider) {
+      slider.value = 100;
+      document.getElementById('zoomValue').textContent = '100%';
+    }
+    modal.classList.add('active');
+    
+    // 添加拖动事件监听
+    setupImageDrag(img);
+  }
+}
+
+// 设置图片拖动功能
+function setupImageDrag(img) {
+  // 移除旧的事件监听器（如果存在）
+  if (img._dragHandlers) {
+    img.removeEventListener('mousedown', img._dragHandlers.mousedown);
+    document.removeEventListener('mousemove', img._dragHandlers.mousemove);
+    document.removeEventListener('mouseup', img._dragHandlers.mouseup);
+    img.removeEventListener('touchstart', img._dragHandlers.touchstart);
+    document.removeEventListener('touchmove', img._dragHandlers.touchmove);
+    document.removeEventListener('touchend', img._dragHandlers.touchend);
+  }
+  
+  // 鼠标事件
+  const handleMouseDown = (e) => {
+    if (currentImageScale <= 1) return; // 只有放大后才能拖动
+    isDragging = true;
+    dragStartX = e.clientX - imageOffsetX;
+    dragStartY = e.clientY - imageOffsetY;
+    img.style.cursor = 'grabbing';
+    e.preventDefault();
+  };
+  
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    imageOffsetX = e.clientX - dragStartX;
+    imageOffsetY = e.clientY - dragStartY;
+    updateImageTransform(img);
+    e.preventDefault();
+  };
+  
+  const handleMouseUp = () => {
+    if (isDragging) {
+      isDragging = false;
+      img.style.cursor = currentImageScale > 1 ? 'grab' : 'default';
+    }
+  };
+  
+  // 触摸事件
+  const handleTouchStart = (e) => {
+    if (currentImageScale <= 1) return;
+    if (e.touches.length === 1) {
+      isDragging = true;
+      dragStartX = e.touches[0].clientX - imageOffsetX;
+      dragStartY = e.touches[0].clientY - imageOffsetY;
+      e.preventDefault();
+    }
+  };
+  
+  const handleTouchMove = (e) => {
+    if (!isDragging || e.touches.length !== 1) return;
+    imageOffsetX = e.touches[0].clientX - dragStartX;
+    imageOffsetY = e.touches[0].clientY - dragStartY;
+    updateImageTransform(img);
+    e.preventDefault();
+  };
+  
+  const handleTouchEnd = () => {
+    isDragging = false;
+  };
+  
+  // 保存事件处理器引用
+  img._dragHandlers = {
+    mousedown: handleMouseDown,
+    mousemove: handleMouseMove,
+    mouseup: handleMouseUp,
+    touchstart: handleTouchStart,
+    touchmove: handleTouchMove,
+    touchend: handleTouchEnd
+  };
+  
+  // 添加事件监听
+  img.addEventListener('mousedown', handleMouseDown);
+  document.addEventListener('mousemove', handleMouseMove);
+  document.addEventListener('mouseup', handleMouseUp);
+  img.addEventListener('touchstart', handleTouchStart, { passive: false });
+  document.addEventListener('touchmove', handleTouchMove, { passive: false });
+  document.addEventListener('touchend', handleTouchEnd);
+}
+
+// 更新图片变换
+function updateImageTransform(img) {
+  img.style.transform = `translate(${imageOffsetX}px, ${imageOffsetY}px) scale(${currentImageScale})`;
+}
+
+// 更新图片缩放（用户页面）
+function updateImageZoom(value) {
+  const img = document.getElementById('paymentImageDisplay');
+  const zoomValue = document.getElementById('zoomValue');
+  
+  if (img && zoomValue) {
+    const scale = value / 100;
+    currentImageScale = scale;
+    
+    // 如果缩放回到1，重置位置
+    if (scale <= 1) {
+      imageOffsetX = 0;
+      imageOffsetY = 0;
+      img.style.cursor = 'default';
+    } else {
+      img.style.cursor = isDragging ? 'grabbing' : 'grab';
+    }
+    
+    updateImageTransform(img);
+    img.style.transformOrigin = 'center center';
+    zoomValue.textContent = value + '%';
+  }
+}
+
+// 关闭支付截图对话框（用户页面）
+function closePaymentImageModal(event) {
+  // 如果点击的是背景（不是对话框内容），则关闭
+  if (event && event.target.id === 'paymentImageModal') {
+    document.getElementById('paymentImageModal').classList.remove('active');
+  } else if (!event) {
+    // 直接调用关闭
+    document.getElementById('paymentImageModal').classList.remove('active');
   }
 }
 
@@ -1250,6 +1664,14 @@ function renderOrders(orders) {
     '100': 'Regular'
   };
   
+  const iceLabels = {
+    'normal': 'Normal Ice',
+    'less': 'Less Ice',
+    'no': 'No Ice',
+    'room': 'Room Temperature',
+    'hot': 'Hot'
+  };
+  
   container.innerHTML = orders.map(order => {
     const isExpired = order.isExpired || false;
     const isActiveCycle = order.isActiveCycle !== false; // 默认为true，如果没有活跃周期
@@ -1305,7 +1727,7 @@ function renderOrders(orders) {
                   <p class="font-semibold ${expiredClass || inactiveClass} text-base">${item.product_name}</p>
                   <p class="text-sm ${expiredClass || inactiveClass || 'text-gray-500'} mt-1">Quantity: ${item.quantity}</p>
                 </div>
-                <span class="${expiredClass || inactiveClass} font-bold text-lg">¥${item.subtotal.toFixed(0)}</span>
+                <span class="${expiredClass || inactiveClass} font-bold text-lg">${formatPrice(item.subtotal)}</span>
               </div>
               
               <div class="${!isActiveCycle || isExpired ? 'bg-gray-50' : 'bg-white'} rounded p-2 mt-2 space-y-1">
@@ -1327,13 +1749,19 @@ function renderOrders(orders) {
                     <span class="${expiredClass || inactiveClass} font-medium">${Array.isArray(toppings) ? toppings.join(', ') : toppings}</span>
                   </div>
                 ` : ''}
+                ${item.ice_level ? `
+                  <div class="flex justify-between text-xs">
+                    <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Ice Level:</span>
+                    <span class="${expiredClass || inactiveClass} font-medium">${iceLabels[item.ice_level] || item.ice_level}</span>
+                  </div>
+                ` : ''}
                 <div class="flex justify-between text-xs pt-1 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'} mt-1">
                   <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Unit Price:</span>
-                  <span class="${expiredClass || inactiveClass} font-medium">¥${unitPrice.toFixed(0)}</span>
+                  <span class="${expiredClass || inactiveClass} font-medium">${formatPrice(unitPrice)}</span>
                 </div>
                 <div class="flex justify-between text-xs">
                   <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Subtotal:</span>
-                  <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} font-bold">¥${item.subtotal.toFixed(0)}</span>
+                  <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} font-bold">${formatPrice(item.subtotal)}</span>
                 </div>
               </div>
             </div>
@@ -1345,18 +1773,24 @@ function renderOrders(orders) {
         <div class="space-y-2">
           <div class="flex justify-between items-center text-sm">
             <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Original Price:</span>
-            <span class="${expiredClass || inactiveClass} font-medium">¥${order.total_amount.toFixed(0)}</span>
+            <span class="${expiredClass || inactiveClass} font-medium">${formatPrice(order.total_amount)}</span>
           </div>
           ${order.discount_amount > 0 ? `
             <div class="flex justify-between items-center text-sm">
               <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Discount:</span>
-              <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'} font-medium">-¥${order.discount_amount.toFixed(0)}</span>
+              <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'} font-medium">-${formatPrice(order.discount_amount)}</span>
             </div>
           ` : ''}
           <div class="flex justify-between items-center text-lg font-bold pt-2 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-300'}">
             <span class="${expiredClass || inactiveClass}">Final Amount:</span>
-            <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} text-xl">¥${order.final_amount.toFixed(0)}</span>
+            <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} text-xl">${formatPrice(order.final_amount)}</span>
           </div>
+          ${order.notes ? `
+            <div class="mt-3 pt-3 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'}">
+              <div class="text-xs text-gray-500 mb-1">Order Notes:</div>
+              <div class="text-sm ${expiredClass || inactiveClass || 'text-gray-700'} bg-gray-50 p-2 rounded">${order.notes}</div>
+            </div>
+          ` : ''}
         </div>
       </div>
       
@@ -1378,7 +1812,7 @@ function renderOrders(orders) {
       ${order.payment_image ? `
         <div class="mt-4">
           <p class="text-sm text-gray-600 mb-2">Payment Screenshot:</p>
-          <img src="${order.payment_image}" alt="Payment Screenshot" class="rounded-lg max-w-xs">
+          <button onclick="showPaymentImageModal('${order.payment_image}')" class="text-blue-600 hover:text-blue-800 text-sm underline">View Payment Screenshot</button>
         </div>
       ` : ''}
     </div>
@@ -1424,7 +1858,7 @@ function showPaymentModal(orderId) {
         const order = data.order;
         document.getElementById('paymentOrderInfo').innerHTML = `
           <p class="font-semibold">订单号: ${order.order_number}</p>
-          <p class="text-2xl font-bold text-blue-600 mt-2">应付: ¥${order.final_amount.toFixed(2)}</p>
+          <p class="text-2xl font-bold text-blue-600 mt-2">应付: ${formatPriceDecimal(order.final_amount)}</p>
         `;
         document.getElementById('paymentModal').classList.add('active');
       }

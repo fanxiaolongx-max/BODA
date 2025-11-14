@@ -67,6 +67,7 @@ const loginLimiter = rateLimit({
 // 静态文件服务
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads'));
+app.use('/show', express.static('show'));
 
 // 确保必要目录存在
 ['uploads', 'uploads/products', 'uploads/payments', 'logs'].forEach(dir => {

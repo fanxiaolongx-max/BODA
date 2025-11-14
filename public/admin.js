@@ -4,6 +4,18 @@ const API_BASE = '/api';
 // 当前管理员信息
 let currentAdmin = null;
 let currentSettings = {};
+let storeName = 'BOBA TEA'; // 商店名称，从设置中加载
+let currencySymbol = 'LE'; // 货币符号，从设置中加载
+
+// 格式化价格显示（使用当前货币符号）
+function formatPrice(price) {
+  return `${parseFloat(price).toFixed(0)} ${currencySymbol}`;
+}
+
+// 格式化价格显示（带小数）
+function formatPriceDecimal(price) {
+  return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
+}
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
@@ -179,9 +191,9 @@ async function loadDashboard() {
       const cycle = data.cycle;
       
       document.getElementById('totalOrders').textContent = stats.total_orders || 0;
-      document.getElementById('totalAmount').textContent = '¥' + (stats.total_amount || 0).toFixed(2);
-      document.getElementById('totalDiscount').textContent = '¥' + (stats.total_discount || 0).toFixed(2);
-      document.getElementById('finalAmount').textContent = '¥' + (stats.total_final_amount || 0).toFixed(2);
+      document.getElementById('totalAmount').textContent = formatPriceDecimal(stats.total_amount || 0);
+      document.getElementById('totalDiscount').textContent = formatPriceDecimal(stats.total_discount || 0);
+      document.getElementById('finalAmount').textContent = formatPriceDecimal(stats.total_final_amount || 0);
       
       // 显示周期信息
       const dashboardTab = document.getElementById('dashboardTab');
@@ -215,7 +227,7 @@ async function loadDashboard() {
               </div>
               <div>
                 <p class="text-sm text-gray-600">Cycle Total Amount</p>
-                <p class="text-lg font-semibold text-blue-600">¥${(stats.total_amount || cycle.total_amount || 0).toFixed(2)}</p>
+                <p class="text-lg font-semibold text-blue-600">${formatPriceDecimal(stats.total_amount || cycle.total_amount || 0)}</p>
               </div>
               <div>
                 <p class="text-sm text-gray-600">Discount Rate</p>
@@ -294,10 +306,194 @@ async function loadSettings() {
     
     if (data.success) {
       currentSettings = data.settings;
+      // 更新商店名称
+      if (data.settings.store_name) {
+        storeName = data.settings.store_name;
+      }
+      // 更新货币符号
+      if (data.settings.currency_symbol) {
+        currencySymbol = data.settings.currency_symbol;
+      }
+      updateStoreName();
       updateOrderButton();
     }
   } catch (error) {
     console.error('加载设置失败:', error);
+  }
+}
+
+// 更新商店名称显示（管理员页面）
+function updateStoreName() {
+  // 更新页面标题
+  const adminPageTitle = document.getElementById('adminPageTitle');
+  if (adminPageTitle) {
+    adminPageTitle.textContent = `Admin Panel - ${storeName} Ordering System`;
+  }
+  
+  // 更新所有显示商店名称的元素
+  const storeNameElements = document.querySelectorAll('[data-store-name]');
+  storeNameElements.forEach(el => {
+    el.textContent = storeName;
+  });
+  
+  // 更新data-i18n="app_name"的元素
+  const appNameElements = document.querySelectorAll('[data-i18n="app_name"]');
+  appNameElements.forEach(el => {
+    el.textContent = storeName;
+  });
+}
+
+// 图片拖动相关变量（管理员页面）
+let adminIsDragging = false;
+let adminDragStartX = 0;
+let adminDragStartY = 0;
+let adminImageOffsetX = 0;
+let adminImageOffsetY = 0;
+let adminCurrentImageScale = 1;
+
+// 显示支付截图对话框
+function showPaymentImageModal(imageUrl) {
+  const modal = document.getElementById('paymentImageModal');
+  const img = document.getElementById('paymentImageDisplay');
+  const slider = document.getElementById('imageZoomSlider');
+  
+  if (modal && img) {
+    img.src = imageUrl;
+    // 重置图片位置和缩放
+    adminCurrentImageScale = 1;
+    adminImageOffsetX = 0;
+    adminImageOffsetY = 0;
+    img.style.transform = 'translate(0, 0) scale(1)';
+    img.style.transformOrigin = 'center center';
+    img.style.cursor = 'grab';
+    
+    if (slider) {
+      slider.value = 100;
+      document.getElementById('zoomValue').textContent = '100%';
+    }
+    modal.classList.add('active');
+    
+    // 添加拖动事件监听
+    setupAdminImageDrag(img);
+  }
+}
+
+// 设置图片拖动功能（管理员页面）
+function setupAdminImageDrag(img) {
+  // 移除旧的事件监听器（如果存在）
+  if (img._adminDragHandlers) {
+    img.removeEventListener('mousedown', img._adminDragHandlers.mousedown);
+    document.removeEventListener('mousemove', img._adminDragHandlers.mousemove);
+    document.removeEventListener('mouseup', img._adminDragHandlers.mouseup);
+    img.removeEventListener('touchstart', img._adminDragHandlers.touchstart);
+    document.removeEventListener('touchmove', img._adminDragHandlers.touchmove);
+    document.removeEventListener('touchend', img._adminDragHandlers.touchend);
+  }
+  
+  // 鼠标事件
+  const handleMouseDown = (e) => {
+    if (adminCurrentImageScale <= 1) return; // 只有放大后才能拖动
+    adminIsDragging = true;
+    adminDragStartX = e.clientX - adminImageOffsetX;
+    adminDragStartY = e.clientY - adminImageOffsetY;
+    img.style.cursor = 'grabbing';
+    e.preventDefault();
+  };
+  
+  const handleMouseMove = (e) => {
+    if (!adminIsDragging) return;
+    adminImageOffsetX = e.clientX - adminDragStartX;
+    adminImageOffsetY = e.clientY - adminDragStartY;
+    updateAdminImageTransform(img);
+    e.preventDefault();
+  };
+  
+  const handleMouseUp = () => {
+    if (adminIsDragging) {
+      adminIsDragging = false;
+      img.style.cursor = adminCurrentImageScale > 1 ? 'grab' : 'default';
+    }
+  };
+  
+  // 触摸事件
+  const handleTouchStart = (e) => {
+    if (adminCurrentImageScale <= 1) return;
+    if (e.touches.length === 1) {
+      adminIsDragging = true;
+      adminDragStartX = e.touches[0].clientX - adminImageOffsetX;
+      adminDragStartY = e.touches[0].clientY - adminImageOffsetY;
+      e.preventDefault();
+    }
+  };
+  
+  const handleTouchMove = (e) => {
+    if (!adminIsDragging || e.touches.length !== 1) return;
+    adminImageOffsetX = e.touches[0].clientX - adminDragStartX;
+    adminImageOffsetY = e.touches[0].clientY - adminDragStartY;
+    updateAdminImageTransform(img);
+    e.preventDefault();
+  };
+  
+  const handleTouchEnd = () => {
+    adminIsDragging = false;
+  };
+  
+  // 保存事件处理器引用
+  img._adminDragHandlers = {
+    mousedown: handleMouseDown,
+    mousemove: handleMouseMove,
+    mouseup: handleMouseUp,
+    touchstart: handleTouchStart,
+    touchmove: handleTouchMove,
+    touchend: handleTouchEnd
+  };
+  
+  // 添加事件监听
+  img.addEventListener('mousedown', handleMouseDown);
+  document.addEventListener('mousemove', handleMouseMove);
+  document.addEventListener('mouseup', handleMouseUp);
+  img.addEventListener('touchstart', handleTouchStart, { passive: false });
+  document.addEventListener('touchmove', handleTouchMove, { passive: false });
+  document.addEventListener('touchend', handleTouchEnd);
+}
+
+// 更新图片变换（管理员页面）
+function updateAdminImageTransform(img) {
+  img.style.transform = `translate(${adminImageOffsetX}px, ${adminImageOffsetY}px) scale(${adminCurrentImageScale})`;
+}
+
+// 更新图片缩放
+function updateImageZoom(value) {
+  const img = document.getElementById('paymentImageDisplay');
+  const zoomValue = document.getElementById('zoomValue');
+  
+  if (img && zoomValue) {
+    const scale = value / 100;
+    adminCurrentImageScale = scale;
+    
+    // 如果缩放回到1，重置位置
+    if (scale <= 1) {
+      adminImageOffsetX = 0;
+      adminImageOffsetY = 0;
+      img.style.cursor = 'default';
+    } else {
+      img.style.cursor = adminIsDragging ? 'grabbing' : 'grab';
+    }
+    
+    updateAdminImageTransform(img);
+    img.style.transformOrigin = 'center center';
+    zoomValue.textContent = value + '%';
+  }
+}
+
+// 关闭支付截图对话框
+function closePaymentImageModal(event) {
+  // 如果点击的是背景（不是对话框内容），则关闭
+  if (event && event.target.id === 'paymentImageModal') {
+    document.getElementById('paymentImageModal').classList.remove('active');
+  } else if (!event) {
+    // 直接调用关闭
+    document.getElementById('paymentImageModal').classList.remove('active');
   }
 }
 
@@ -508,6 +704,14 @@ function renderOrders(orders) {
       '100': 'Regular'
     };
     
+    const iceLabels = {
+      'normal': 'Normal Ice',
+      'less': 'Less Ice',
+      'no': 'No Ice',
+      'room': 'Room Temperature',
+      'hot': 'Hot'
+    };
+    
     // 构建商品详情HTML
     const itemsHtml = order.items.map(item => {
       let toppings = [];
@@ -525,8 +729,9 @@ function renderOrders(orders) {
           <div class="mt-1 space-y-0.5 text-gray-600">
             ${item.size ? `<div>Size: ${item.size}</div>` : ''}
             ${item.sugar_level ? `<div>Sweetness: ${sugarLabels[item.sugar_level] || item.sugar_level}%</div>` : ''}
+            ${item.ice_level ? `<div>Ice Level: ${iceLabels[item.ice_level] || item.ice_level}</div>` : ''}
             ${toppings.length > 0 ? `<div>Toppings: ${Array.isArray(toppings) ? toppings.join(', ') : toppings}</div>` : ''}
-            <div class="text-gray-900 font-medium">Unit Price: ¥${unitPrice.toFixed(0)} | Subtotal: ¥${item.subtotal.toFixed(0)}</div>
+            <div class="text-gray-900 font-medium">Unit Price: ${formatPrice(unitPrice)} | Subtotal: ${formatPrice(item.subtotal)}</div>
           </div>
         </div>
       `;
@@ -566,14 +771,20 @@ function renderOrders(orders) {
         </td>
         <td class="px-6 py-4 text-sm ${expiredClass} max-w-md">
           ${itemsHtml}
+          ${order.notes ? `
+            <div class="mt-2 p-2 bg-blue-50 rounded text-xs border border-blue-200">
+              <div class="text-blue-700 font-semibold mb-1">Order Notes:</div>
+              <div class="text-blue-900">${order.notes}</div>
+            </div>
+          ` : ''}
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm">
           <div class="space-y-1">
-            <div class="${expiredClass || inactiveClass || 'text-gray-600'}">Original: <span class="${expiredClass || inactiveClass}">¥${order.total_amount.toFixed(0)}</span></div>
+            <div class="${expiredClass || inactiveClass || 'text-gray-600'}">Original: <span class="${expiredClass || inactiveClass}">${formatPrice(order.total_amount)}</span></div>
             ${order.discount_amount > 0 ? `
-              <div class="${expiredClass || inactiveClass || 'text-gray-600'}">Discount: <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'}">-¥${order.discount_amount.toFixed(0)}</span></div>
+              <div class="${expiredClass || inactiveClass || 'text-gray-600'}">Discount: <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'}">-${formatPrice(order.discount_amount)}</span></div>
             ` : ''}
-            <div class="font-bold ${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'}">Final: ¥${order.final_amount.toFixed(0)}</div>
+            <div class="font-bold ${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'}">Final: ${formatPrice(order.final_amount)}</div>
           </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
@@ -593,7 +804,7 @@ function renderOrders(orders) {
             <option value="completed" ${order.status === 'completed' ? 'selected' : ''}>Completed</option>
             <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
           </select>
-          ${order.payment_image ? `<br><a href="${order.payment_image}" target="_blank" class="text-blue-600 hover:text-blue-800 text-xs">View Payment Screenshot</a>` : ''}
+          ${order.payment_image ? `<br><button onclick="showPaymentImageModal('${order.payment_image}')" class="text-blue-600 hover:text-blue-800 text-xs underline">View Payment Screenshot</button>` : ''}
         </td>
       </tr>
     `;
@@ -682,7 +893,7 @@ function renderProducts(products) {
                 ${product.category_name || '-'}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                ¥${product.price}
+                ${formatPrice(product.price)}
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <span class="px-2 py-1 text-xs rounded-full ${product.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
@@ -764,6 +975,36 @@ function renderProducts(products) {
             </div>
           </div>
           
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Available Ice Options</label>
+            <div id="iceOptionsContainer" class="border border-gray-300 rounded-lg p-4 bg-gray-50">
+              <div class="text-sm text-gray-600 mb-2">Select which ice level options are available for this product</div>
+              <div id="iceOptionsList" class="space-y-2">
+                <label class="flex items-center space-x-2 cursor-pointer">
+                  <input type="checkbox" class="ice-option-checkbox" value="normal" checked>
+                  <span class="text-sm text-gray-700">Normal Ice 正常冰</span>
+                </label>
+                <label class="flex items-center space-x-2 cursor-pointer">
+                  <input type="checkbox" class="ice-option-checkbox" value="less" checked>
+                  <span class="text-sm text-gray-700">Less Ice 少冰</span>
+                </label>
+                <label class="flex items-center space-x-2 cursor-pointer">
+                  <input type="checkbox" class="ice-option-checkbox" value="no" checked>
+                  <span class="text-sm text-gray-700">No Ice 去冰</span>
+                </label>
+                <label class="flex items-center space-x-2 cursor-pointer">
+                  <input type="checkbox" class="ice-option-checkbox" value="room" checked>
+                  <span class="text-sm text-gray-700">Room Temperature 常温</span>
+                </label>
+                <label class="flex items-center space-x-2 cursor-pointer">
+                  <input type="checkbox" class="ice-option-checkbox" value="hot" checked>
+                  <span class="text-sm text-gray-700">Hot 热</span>
+                </label>
+              </div>
+              <div class="text-xs text-gray-500 mt-2">If no options are selected, customers cannot choose ice level for this product</div>
+            </div>
+          </div>
+          
           <div class="flex space-x-3 mt-6">
             <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
               Save
@@ -817,6 +1058,9 @@ async function showProductModal(product = null) {
     // 加载可选加料
     loadAvailableToppings(product.available_toppings || '[]');
     
+    // 加载冰度选项
+    loadIceOptions(product.ice_options || '["normal","less","no","room","hot"]');
+    
     if (product.image_url) {
       document.getElementById('currentImage').innerHTML = 
         `<img src="${product.image_url}" class="w-32 h-32 object-cover rounded-lg">`;
@@ -827,6 +1071,9 @@ async function showProductModal(product = null) {
     document.getElementById('currentImage').innerHTML = '';
     document.getElementById('sizesList').innerHTML = '';
     document.getElementById('toppingsList').innerHTML = '';
+    // 重置冰度选项为全选
+    const iceCheckboxes = document.querySelectorAll('.ice-option-checkbox');
+    iceCheckboxes.forEach(cb => cb.checked = true);
   }
   
   modal.classList.add('active');
@@ -910,7 +1157,7 @@ function renderToppingsList() {
     <label class="flex items-center space-x-2 cursor-pointer">
       <input type="checkbox" class="topping-checkbox" value="${topping.id}" 
              data-topping-id="${topping.id}">
-      <span class="text-sm text-gray-700">${topping.name} (¥${topping.price})</span>
+      <span class="text-sm text-gray-700">${topping.name} (${formatPrice(topping.price)})</span>
     </label>
   `).join('');
 }
@@ -935,6 +1182,33 @@ function loadAvailableToppings(availableToppingsJson) {
     }
   } catch (e) {
     console.error('Failed to parse available_toppings:', e);
+  }
+}
+
+// 加载冰度选项
+function loadIceOptions(iceOptionsJson) {
+  const iceOptionsList = document.getElementById('iceOptionsList');
+  if (!iceOptionsList) return;
+  
+  try {
+    const iceOptions = typeof iceOptionsJson === 'string' 
+      ? JSON.parse(iceOptionsJson) 
+      : iceOptionsJson;
+    
+    // 先取消所有选中
+    const checkboxes = iceOptionsList.querySelectorAll('.ice-option-checkbox');
+    checkboxes.forEach(cb => cb.checked = false);
+    
+    if (Array.isArray(iceOptions) && iceOptions.length > 0) {
+      iceOptions.forEach(option => {
+        const checkbox = iceOptionsList.querySelector(`.ice-option-checkbox[value="${option}"]`);
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Failed to parse ice_options:', e);
   }
 }
 
@@ -972,6 +1246,15 @@ async function saveProduct(e) {
   });
   formData.append('available_toppings', JSON.stringify(availableToppings));
   console.log('Saving product with available_toppings:', availableToppings);
+  
+  // 收集冰度选项
+  const iceOptions = [];
+  const iceCheckboxes = document.querySelectorAll('.ice-option-checkbox:checked');
+  iceCheckboxes.forEach(checkbox => {
+    iceOptions.push(checkbox.value);
+  });
+  formData.append('ice_options', JSON.stringify(iceOptions));
+  console.log('Saving product with ice_options:', iceOptions);
   
   const imageFile = document.getElementById('productImage').files[0];
   if (imageFile) {
@@ -1240,7 +1523,7 @@ async function loadDiscounts() {
                     <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                       <div class="flex-1">
                         <div class="font-semibold text-gray-900">
-                          ¥${rule.min_amount}${rule.max_amount ? ` - ¥${rule.max_amount}` : ' and above'}
+                          ${formatPrice(rule.min_amount)}${rule.max_amount ? ` - ${formatPrice(rule.max_amount)}` : ' and above'}
                         </div>
                         <div class="text-sm text-gray-600 mt-1">
                           ${rule.description || 'No description'} | Discount Rate: ${rule.discount_rate}%
@@ -1272,12 +1555,12 @@ async function loadDiscounts() {
               <input type="hidden" id="discountId">
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Min Amount (¥) *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Min Amount (${currencySymbol}) *</label>
                 <input type="number" id="discountMinAmount" required step="0.01" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Max Amount (¥) <span class="text-gray-500 text-xs">(Leave empty for no limit)</span></label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Max Amount (${currencySymbol}) <span class="text-gray-500 text-xs">(Leave empty for no limit)</span></label>
                 <input type="number" id="discountMaxAmount" step="0.01" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
@@ -1455,6 +1738,26 @@ async function loadSettingsPage() {
               </div>
               
               <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Store Name</label>
+                <input type="text" id="storeName" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                       placeholder="Enter store name"
+                       value="${settings.store_name || 'BOBA TEA'}"
+                       maxlength="50">
+                <p class="text-xs text-gray-500 mt-1">Store name will be displayed throughout the application</p>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Currency Symbol</label>
+                <input type="text" id="currencySymbol" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                       placeholder="Enter currency symbol (e.g., LE, ¥, $)"
+                       value="${settings.currency_symbol || 'LE'}"
+                       maxlength="10">
+                <p class="text-xs text-gray-500 mt-1">Currency symbol will be displayed before all prices (e.g., LE, ¥, $)</p>
+              </div>
+              
+              <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">System Notice</label>
                 <textarea id="systemNotice" rows="4" 
                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
@@ -1490,7 +1793,9 @@ async function saveSettings(e) {
   
   const settings = {
     ordering_open: document.getElementById('orderingOpen').value,
-    system_notice: document.getElementById('systemNotice').value
+    system_notice: document.getElementById('systemNotice').value,
+    store_name: document.getElementById('storeName').value.trim() || 'BOBA TEA',
+    currency_symbol: document.getElementById('currencySymbol').value.trim() || 'LE'
   };
   
   try {
@@ -1506,6 +1811,18 @@ async function saveSettings(e) {
     if (result.success) {
       alert('Settings saved successfully');
       currentSettings = settings;
+      // 更新商店名称
+      if (settings.store_name) {
+        storeName = settings.store_name;
+        updateStoreName();
+      }
+      // 更新货币符号
+      if (settings.currency_symbol) {
+        currencySymbol = settings.currency_symbol;
+        // 重新加载仪表盘和订单以更新价格显示
+        loadDashboard();
+        loadOrders();
+      }
       loadSettingsPage();
     } else {
       alert(result.message || 'Save failed');
@@ -1554,7 +1871,7 @@ async function loadUsers() {
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.phone}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.name || 'Not set'}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.order_count || 0}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">¥${(user.total_spent || 0).toFixed(2)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatPriceDecimal(user.total_spent || 0)}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.created_at ? new Date(user.created_at).toLocaleString('en-US') : '-'}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.last_login ? new Date(user.last_login).toLocaleString('en-US') : '-'}</td>
                       </tr>

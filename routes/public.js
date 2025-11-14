@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const { getAsync, allAsync, runAsync } = require('../db/database');
 const { logger } = require('../utils/logger');
 
@@ -221,6 +223,26 @@ router.get('/cycle-discount', async (req, res) => {
   } catch (error) {
     logger.error('获取周期折扣失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取周期折扣失败' });
+  }
+});
+
+// 获取新品图片列表
+router.get('/show-images', async (req, res) => {
+  try {
+    const showDir = path.join(__dirname, '../show');
+    const files = fs.readdirSync(showDir);
+    const images = files
+      .filter(file => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
+      .map(file => ({
+        filename: file,
+        url: `/show/${file}`
+      }))
+      .sort(); // 按文件名排序
+    
+    res.json({ success: true, images });
+  } catch (error) {
+    logger.error('获取新品图片失败', { error: error.message });
+    res.json({ success: true, images: [] }); // 出错时返回空数组
   }
 });
 

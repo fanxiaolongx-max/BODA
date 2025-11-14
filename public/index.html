@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BOBA TEA Ordering System</title>
+  <title id="pageTitle">BOBA TEA Ordering System</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="/i18n.js"></script>
   <style>
@@ -37,8 +37,63 @@
       100% { transform: translateX(-100%); }
     }
     .animate-scroll {
-      animation: scroll 40s linear infinite;
+      animation: scroll 80s linear infinite;
       display: inline-block;
+    }
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .fade-in-up {
+      animation: fadeInUp 0.6s ease-out;
+    }
+    .showcase-item {
+      scroll-snap-align: start;
+      flex-shrink: 0;
+    }
+    #imageZoomSlider {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    #imageZoomSlider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+    }
+    #imageZoomSlider::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+      border: none;
+    }
+    #paymentImageDisplay {
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+    #paymentImageDisplay:active {
+      cursor: grabbing;
     }
   </style>
 </head>
@@ -87,7 +142,7 @@
           <div class="flex items-center space-x-3">
             <span class="text-3xl">🧋</span>
             <div>
-              <h1 class="text-xl font-bold text-gray-900" data-i18n="app_name">BOBA TEA</h1>
+              <h1 class="text-xl font-bold text-gray-900" data-i18n="app_name" data-store-name>BOBA TEA</h1>
               <p class="text-xs text-gray-500"><span data-i18n="welcome">Welcome</span>, <span id="userName"></span></p>
             </div>
           </div>
@@ -98,6 +153,41 @@
         </div>
       </div>
     </nav>
+
+    <!-- Home页面 -->
+    <div id="homeTab" class="hidden overflow-y-auto" style="height: calc(100vh - 64px - 60px);">
+      <div class="max-w-7xl mx-auto px-4 py-6">
+        <!-- 欢迎区域 -->
+        <div class="text-center mb-6">
+          <h2 class="text-3xl font-bold text-gray-900 mb-2" id="homeWelcomeTitle">Welcome to BOBA TEA</h2>
+          <p class="text-gray-600">Discover our latest creations</p>
+        </div>
+        
+        <!-- 新品图片滚动展示 -->
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold text-gray-800 mb-4 px-2">✨ New Products</h3>
+          <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-50 to-purple-50 p-4 shadow-lg">
+            <div id="showcaseContainer" class="flex gap-4 overflow-x-auto scrollbar-hide pb-2" style="scroll-snap-type: x mandatory; scroll-behavior: smooth;">
+              <!-- 图片将通过JavaScript动态加载 -->
+            </div>
+          </div>
+        </div>
+        
+        <!-- 快速入口 -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+          <button onclick="showBottomTab('menu')" class="bg-gradient-to-r from-green-400 to-green-500 text-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
+            <div class="text-4xl mb-2">🧋</div>
+            <div class="font-bold text-lg">Order Now</div>
+            <div class="text-sm opacity-90 mt-1">Browse Menu</div>
+          </button>
+          <button onclick="showBottomTab('orders')" class="bg-gradient-to-r from-blue-400 to-blue-500 text-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
+            <div class="text-4xl mb-2">📋</div>
+            <div class="font-bold text-lg">My Orders</div>
+            <div class="text-sm opacity-90 mt-1">View History</div>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- 菜单页面 -->
     <div id="menuTab" class="flex flex-col h-[calc(100vh-64px-60px)]">
@@ -130,19 +220,19 @@
       </div>
 
       <!-- 底部固定栏：购物车总价和结算 -->
-      <div id="cartBar" class="hidden border-t border-gray-200 bg-white p-3 shadow-lg">
+      <div id="cartBar" class="hidden border-t border-gray-200 bg-white p-3 shadow-lg" style="position: fixed; bottom: 60px; left: 0; right: 0; z-index: 40;">
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-3">
-            <button onclick="showCart()" class="relative">
+            <button onclick="showCart(event)" class="relative touch-none" style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;">
               <span class="text-3xl">🛒</span>
               <span id="cartBarBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">0</span>
             </button>
             <div>
               <p class="text-xs text-gray-500">Selected Items</p>
-              <p id="cartBarTotal" class="text-lg font-bold text-red-500">¥0</p>
+              <p id="cartBarTotal" class="text-lg font-bold text-red-500">0 LE</p>
             </div>
           </div>
-          <button onclick="goToCheckout()" class="px-8 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-full text-base">
+          <button onclick="goToCheckout(event)" class="px-8 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-full text-base touch-none" style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;">
             Checkout
           </button>
         </div>
@@ -152,7 +242,7 @@
     <!-- 订单页面 -->
     <div id="ordersTab" class="hidden overflow-y-auto px-4 py-4" style="height: calc(100vh - 64px - 60px);">
       <h2 class="text-2xl font-bold text-gray-900 mb-4">My Orders</h2>
-      <div id="ordersList" class="space-y-4 pb-4">
+      <div id="ordersList" class="space-y-4 pb-20">
       </div>
     </div>
 
@@ -243,6 +333,12 @@
           <h4 class="text-sm font-semibold text-gray-900 mb-2">Toppings (Multiple)</h4>
           <div id="toppingOptions" class="space-y-2"></div>
         </div>
+        
+        <!-- 冰度选择 -->
+        <div id="iceSection">
+          <h4 class="text-sm font-semibold text-gray-900 mb-2">Ice Level</h4>
+          <div id="iceOptions" class="flex flex-wrap gap-2"></div>
+        </div>
       </div>
       
       <div class="p-4 border-t border-gray-200 bg-gray-50">
@@ -254,7 +350,7 @@
           </div>
           <div class="text-right">
             <p class="text-xs text-gray-500">Total</p>
-            <p id="detailTotalPrice" class="text-xl font-bold text-blue-600">¥0</p>
+            <p id="detailTotalPrice" class="text-xl font-bold text-blue-600">0 LE</p>
           </div>
         </div>
         <button onclick="addToCartFromDetail()" class="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-gray-900 font-bold py-3 rounded-xl transition duration-300 text-base">
@@ -279,13 +375,37 @@
       </div>
       
       <div class="p-6 border-t border-gray-200 bg-gray-50">
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Order Notes (Optional)</label>
+          <textarea id="orderNotes" rows="2" placeholder="Any special requests or notes..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"></textarea>
+        </div>
         <div class="flex justify-between items-center mb-4">
           <span class="text-lg font-semibold text-gray-700">Total:</span>
-          <span id="cartTotal" class="text-2xl font-bold text-blue-600">¥0.00</span>
+          <span id="cartTotal" class="text-2xl font-bold text-blue-600">0.00 LE</span>
         </div>
         <button onclick="submitOrder()" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 rounded-lg transition duration-300 transform hover:scale-105">
           Submit Order
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 支付截图查看对话框 -->
+  <div id="paymentImageModal" class="modal" onclick="closePaymentImageModal(event)">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 p-6" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-bold text-gray-900">Payment Screenshot</h3>
+        <button onclick="closePaymentImageModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+      <div class="mb-4 flex justify-center">
+        <img id="paymentImageDisplay" src="" alt="Payment Screenshot" class="max-w-full h-auto rounded-lg border border-gray-200 shadow-lg" style="max-height: 70vh;">
+      </div>
+      <div class="flex items-center space-x-4">
+        <label class="text-sm font-medium text-gray-700">Zoom:</label>
+        <input type="range" id="imageZoomSlider" min="50" max="200" value="100" 
+               class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+               oninput="updateImageZoom(this.value)">
+        <span id="zoomValue" class="text-sm text-gray-600 w-12 text-right">100%</span>
       </div>
     </div>
   </div>

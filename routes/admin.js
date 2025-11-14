@@ -176,7 +176,7 @@ router.get('/products', async (req, res) => {
 // 创建菜品
 router.post('/products', upload.single('image'), async (req, res) => {
   try {
-    const { name, description, price, category_id, sort_order, status, sizes } = req.body;
+    const { name, description, price, category_id, sort_order, status, sizes, ice_options } = req.body;
     const image_url = req.file ? `/uploads/products/${req.file.filename}` : null;
     
     // 处理杯型价格
@@ -213,11 +213,30 @@ router.post('/products', upload.single('image'), async (req, res) => {
         }
       }
     }
+    
+    // 处理冰度选项
+    let iceOptionsJson = '["normal","less","no","room","hot"]'; // 默认所有选项
+    if (req.body.ice_options !== undefined) {
+      const iceOptionsValue = req.body.ice_options;
+      if (iceOptionsValue && iceOptionsValue !== '' && iceOptionsValue !== '[]') {
+        try {
+          const parsedIceOptions = typeof iceOptionsValue === 'string' ? JSON.parse(iceOptionsValue) : iceOptionsValue;
+          if (Array.isArray(parsedIceOptions)) {
+            iceOptionsJson = JSON.stringify(parsedIceOptions);
+          }
+        } catch (e) {
+          logger.error('Invalid ice_options format', { error: e.message, iceOptionsValue });
+          iceOptionsJson = '["normal","less","no","room","hot"]';
+        }
+      } else if (iceOptionsValue === '[]') {
+        iceOptionsJson = '[]'; // 不允许选择冰度
+      }
+    }
 
     const result = await runAsync(
-      `INSERT INTO products (name, description, price, category_id, image_url, sort_order, status, sizes, available_toppings) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, description || '', price, category_id || null, image_url, sort_order || 0, status || 'active', sizesJson, availableToppingsJson]
+      `INSERT INTO products (name, description, price, category_id, image_url, sort_order, status, sizes, available_toppings, ice_options) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, description || '', price, category_id || null, image_url, sort_order || 0, status || 'active', sizesJson, availableToppingsJson, iceOptionsJson]
     );
 
     await logAction(req.session.adminId, 'CREATE', 'product', result.id, { name, price, sizes: sizesJson }, req);
@@ -233,7 +252,7 @@ router.post('/products', upload.single('image'), async (req, res) => {
 router.put('/products/:id', upload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price, category_id, sort_order, status, sizes, available_toppings } = req.body;
+    const { name, description, price, category_id, sort_order, status, sizes, available_toppings, ice_options } = req.body;
 
     // 获取原有数据
     const oldProduct = await getAsync('SELECT * FROM products WHERE id = ?', [id]);
@@ -292,14 +311,33 @@ router.put('/products/:id', upload.single('image'), async (req, res) => {
       }
     }
     
-    logger.info('Updating product sizes and toppings', { id, sizesJson, availableToppingsJson, receivedSizes: sizes, receivedToppings: available_toppings });
+    // 处理冰度选项
+    let iceOptionsJson = oldProduct.ice_options || '["normal","less","no","room","hot"]';
+    if (req.body.ice_options !== undefined) {
+      const iceOptionsValue = req.body.ice_options;
+      if (iceOptionsValue && iceOptionsValue !== '' && iceOptionsValue !== '[]') {
+        try {
+          const parsedIceOptions = typeof iceOptionsValue === 'string' ? JSON.parse(iceOptionsValue) : iceOptionsValue;
+          if (Array.isArray(parsedIceOptions)) {
+            iceOptionsJson = JSON.stringify(parsedIceOptions);
+          }
+        } catch (e) {
+          logger.error('Invalid ice_options format', { error: e.message, iceOptionsValue });
+          iceOptionsJson = oldProduct.ice_options || '["normal","less","no","room","hot"]';
+        }
+      } else if (iceOptionsValue === '[]' || iceOptionsValue === '') {
+        iceOptionsJson = '[]'; // 不允许选择冰度
+      }
+    }
+    
+    logger.info('Updating product sizes, toppings and ice options', { id, sizesJson, availableToppingsJson, iceOptionsJson, receivedSizes: sizes, receivedToppings: available_toppings, receivedIceOptions: ice_options });
 
     await runAsync(
       `UPDATE products 
        SET name = ?, description = ?, price = ?, category_id = ?, image_url = ?, 
-           sort_order = ?, status = ?, sizes = ?, available_toppings = ?, updated_at = datetime('now', 'localtime') 
+           sort_order = ?, status = ?, sizes = ?, available_toppings = ?, ice_options = ?, updated_at = datetime('now', 'localtime') 
        WHERE id = ?`,
-      [name, description || '', price, category_id || null, image_url, sort_order || 0, status || 'active', sizesJson, availableToppingsJson, id]
+      [name, description || '', price, category_id || null, image_url, sort_order || 0, status || 'active', sizesJson, availableToppingsJson, iceOptionsJson, id]
     );
     
     // 验证更新是否成功
@@ -849,12 +887,14 @@ router.get('/orders/export', async (req, res) => {
       '商品数量',
       '杯型',
       '甜度',
+      '冰度',
       '加料',
       '单价',
       '小计',
       '订单总金额',
       '折扣金额',
       '实付金额',
+      '订单备注',
       '创建时间',
       '更新时间'
     ].join(','));
@@ -863,6 +903,14 @@ router.get('/orders/export', async (req, res) => {
     for (const order of orders) {
       if (order.items && order.items.length > 0) {
         for (const item of order.items) {
+          const iceLabels = {
+            'normal': 'Normal Ice',
+            'less': 'Less Ice',
+            'no': 'No Ice',
+            'room': 'Room Temperature',
+            'hot': 'Hot'
+          };
+          
           const row = [
             `"${order.order_number || ''}"`,
             `"${order.customer_name || ''}"`,
@@ -872,12 +920,14 @@ router.get('/orders/export', async (req, res) => {
             item.quantity || 0,
             `"${item.size || ''}"`,
             `"${item.sugar_level || ''}"`,
+            `"${item.ice_level ? (iceLabels[item.ice_level] || item.ice_level) : ''}"`,
             `"${item.toppings ? JSON.parse(item.toppings).join('; ') : ''}"`,
             (item.product_price || 0).toFixed(2),
             (item.subtotal || 0).toFixed(2),
             (order.total_amount || 0).toFixed(2),
             (order.discount_amount || 0).toFixed(2),
             (order.final_amount || 0).toFixed(2),
+            `"${order.notes || ''}"`,
             `"${order.created_at || ''}"`,
             `"${order.updated_at || ''}"`
           ];
@@ -895,11 +945,13 @@ router.get('/orders/export', async (req, res) => {
           '""',
           '""',
           '""',
+          '""',
           '0.00',
           '0.00',
           (order.total_amount || 0).toFixed(2),
           (order.discount_amount || 0).toFixed(2),
           (order.final_amount || 0).toFixed(2),
+          `"${order.notes || ''}"`,
           `"${order.created_at || ''}"`,
           `"${order.updated_at || ''}"`
         ];

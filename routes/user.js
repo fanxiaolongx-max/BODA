@@ -55,7 +55,7 @@ const upload = multer({
 // 创建订单
 router.post('/orders', async (req, res) => {
   try {
-    const { items, customer_name } = req.body;
+    const { items, customer_name, notes } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: '订单不能为空' });
@@ -128,7 +128,8 @@ router.post('/orders', async (req, res) => {
           subtotal: subtotal,
           size: item.size || null,
           sugar_level: item.sugar_level || '100',
-          toppings: toppingNames.length > 0 ? JSON.stringify(toppingNames) : null
+          toppings: toppingNames.length > 0 ? JSON.stringify(toppingNames) : null,
+          ice_level: item.ice_level || null
         });
       }
 
@@ -138,8 +139,8 @@ router.post('/orders', async (req, res) => {
 
       await runAsync(
         `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
-         total_amount, discount_amount, final_amount, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+         total_amount, discount_amount, final_amount, status, notes, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
         [
           orderId,
           orderNumber,
@@ -149,16 +150,17 @@ router.post('/orders', async (req, res) => {
           totalAmount,
           0,
           totalAmount,
-          'pending'
+          'pending',
+          notes || null
         ]
       );
 
       // 插入订单详情
       for (const item of orderItems) {
         await runAsync(
-          `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal, size, sugar_level, toppings)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [orderId, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal, item.size, item.sugar_level, item.toppings]
+          `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal, size, sugar_level, toppings, ice_level)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [orderId, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal, item.size, item.sugar_level, item.toppings, item.ice_level]
         );
       }
 
@@ -413,7 +415,7 @@ router.delete('/orders/:id', async (req, res) => {
 router.put('/orders/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { items } = req.body;
+    const { items, notes } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: '订单不能为空' });
@@ -501,7 +503,8 @@ router.put('/orders/:id', async (req, res) => {
           subtotal: subtotal,
           size: item.size || null,
           sugar_level: item.sugar_level || '100',
-          toppings: toppingNames.length > 0 ? JSON.stringify(toppingNames) : null
+          toppings: toppingNames.length > 0 ? JSON.stringify(toppingNames) : null,
+          ice_level: item.ice_level || null
         });
       }
 
@@ -511,16 +514,16 @@ router.put('/orders/:id', async (req, res) => {
       // 插入新的订单详情
       for (const item of orderItems) {
         await runAsync(
-          `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal, size, sugar_level, toppings)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal, item.size, item.sugar_level, item.toppings]
+          `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal, size, sugar_level, toppings, ice_level)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal, item.size, item.sugar_level, item.toppings, item.ice_level]
         );
       }
 
-      // 更新订单总额
+      // 更新订单总额和备注
       await runAsync(
-        "UPDATE orders SET total_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-        [totalAmount, totalAmount, id]
+        "UPDATE orders SET total_amount = ?, final_amount = ?, notes = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+        [totalAmount, totalAmount, notes || null, id]
       );
 
       await commit();

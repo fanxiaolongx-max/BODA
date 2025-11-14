@@ -91,9 +91,10 @@ async function initData() {
       { key: 'ordering_open', value: 'false', description: '点单开关' },
       { key: 'ordering_end_time', value: '', description: '点单结束时间' },
       { key: 'system_name', value: 'Neferdidi BOBA TEA', description: '系统名称' },
+      { key: 'store_name', value: 'BOBA TEA', description: '商店名称' },
       { key: 'contact_phone', value: '', description: '联系电话' },
       { key: 'currency', value: 'EGP', description: '货币单位' },
-      { key: 'currency_symbol', value: '¥', description: '货币符号' }
+      { key: 'currency_symbol', value: 'LE', description: '货币符号' }
     ];
 
     for (const setting of settings) {
