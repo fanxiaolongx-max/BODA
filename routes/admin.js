@@ -2177,5 +2177,111 @@ router.delete('/backup/delete', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/admin/backup/upload
+ * Upload a backup file
+ */
+const backupUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const { BACKUP_DIR } = require('../utils/backup');
+      if (!fs.existsSync(BACKUP_DIR)) {
+        fs.mkdirSync(BACKUP_DIR, { recursive: true });
+      }
+      cb(null, BACKUP_DIR);
+    },
+    filename: (req, file, cb) => {
+      // 保持原始文件名，但如果是备份文件格式，直接使用；否则添加前缀
+      const originalName = file.originalname;
+      if (originalName.startsWith('boda-backup-') && originalName.endsWith('.db')) {
+        cb(null, originalName);
+      } else {
+        // 如果不是标准格式，添加时间戳前缀
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const ext = path.extname(originalName);
+        const baseName = path.basename(originalName, ext);
+        cb(null, `boda-backup-${timestamp}-${baseName}${ext}`);
+      }
+    }
+  }),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  fileFilter: (req, file, cb) => {
+    // 只允许 .db 文件
+    if (file.originalname.endsWith('.db')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .db files are allowed'));
+    }
+  }
+});
+
+router.post('/backup/upload', backupUpload.single('backupFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const fileName = req.file.filename;
+    const filePath = req.file.path;
+    const fileSize = req.file.size;
+    const sizeMB = (fileSize / 1024 / 1024).toFixed(2);
+
+    // 验证文件是否是有效的 SQLite 数据库
+    // SQLite 数据库文件的前16字节是文件头，应该以 "SQLite format 3\000" 开头
+    try {
+      const fileBuffer = fs.readFileSync(filePath, { start: 0, end: 15 });
+      const header = fileBuffer.toString('utf8');
+      
+      if (!header.startsWith('SQLite format 3')) {
+        // 如果文件头不正确，删除文件并返回错误
+        fs.unlinkSync(filePath);
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid SQLite database file: file header does not match SQLite format'
+        });
+      }
+    } catch (error) {
+      // 如果文件不存在或无法读取，删除文件
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to validate database file: ' + error.message
+      });
+    }
+
+    await logAction(req.session.adminId, 'BACKUP_UPLOAD', 'system', null, JSON.stringify({
+      action: '上传数据库备份',
+      fileName: fileName,
+      sizeMB: parseFloat(sizeMB)
+    }), req);
+
+    logger.info('备份文件上传成功', { fileName, sizeMB, adminId: req.session.adminId });
+
+    res.json({
+      success: true,
+      fileName: fileName,
+      sizeMB: parseFloat(sizeMB),
+      message: `Backup file uploaded successfully: ${fileName} (${sizeMB}MB)`
+    });
+  } catch (error) {
+    logger.error('上传备份文件失败', { error: error.message });
+    
+    // 如果上传失败，删除文件
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload backup file: ' + error.message
+    });
+  }
+});
+
 module.exports = router;
 

@@ -2784,14 +2784,19 @@ function loadAboutPage() {
       <div class="bg-white rounded-xl shadow-sm p-6">
         <h3 class="text-xl font-bold text-gray-900 mb-4">💾 Database Backup & Restore</h3>
         <div class="space-y-4">
-          <div class="flex space-x-3">
+          <div class="flex flex-wrap gap-3">
             <button onclick="createBackup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               Create Backup
             </button>
             <button onclick="loadBackupList()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
               Refresh List
             </button>
+            <label class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg cursor-pointer">
+              <input type="file" id="backupFileInput" accept=".db" class="hidden" onchange="uploadBackupFile()">
+              Upload Backup
+            </label>
           </div>
+          <div id="backupUploadStatus" class="hidden"></div>
           <div id="backupList" class="space-y-2">
             <p class="text-gray-500 text-sm">Loading backup list...</p>
           </div>
@@ -3714,5 +3719,72 @@ async function deleteBackupFile(fileName) {
   } catch (error) {
     console.error('Delete backup failed:', error);
     showToast('Delete failed', 'error');
+  }
+}
+
+// 上传备份文件
+async function uploadBackupFile() {
+  const fileInput = document.getElementById('backupFileInput');
+  const statusDiv = document.getElementById('backupUploadStatus');
+  
+  if (!fileInput.files || fileInput.files.length === 0) {
+    return;
+  }
+  
+  const file = fileInput.files[0];
+  
+  // 验证文件类型
+  if (!file.name.endsWith('.db')) {
+    showToast('Only .db files are allowed', 'error');
+    fileInput.value = '';
+    return;
+  }
+  
+  // 验证文件大小（100MB限制）
+  if (file.size > 100 * 1024 * 1024) {
+    showToast('File size exceeds 100MB limit', 'error');
+    fileInput.value = '';
+    return;
+  }
+  
+  try {
+    showGlobalLoading(`Uploading backup file: ${file.name}...`);
+    statusDiv.classList.remove('hidden');
+    statusDiv.innerHTML = `<p class="text-blue-600 text-sm">Uploading ${file.name}...</p>`;
+    
+    const formData = new FormData();
+    formData.append('backupFile', file);
+    
+    const response = await fetch(`${API_BASE}/admin/backup/upload`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      statusDiv.innerHTML = `<p class="text-green-600 text-sm">✓ Upload successful: ${data.fileName} (${data.sizeMB}MB)</p>`;
+      showToast(`Backup uploaded successfully: ${data.fileName} (${data.sizeMB}MB)`, 'success');
+      fileInput.value = '';
+      loadBackupList();
+      
+      // 3秒后隐藏状态信息
+      setTimeout(() => {
+        statusDiv.classList.add('hidden');
+        statusDiv.innerHTML = '';
+      }, 3000);
+    } else {
+      statusDiv.innerHTML = `<p class="text-red-600 text-sm">✗ Upload failed: ${data.message}</p>`;
+      showToast(data.message || 'Upload failed', 'error');
+      fileInput.value = '';
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    statusDiv.innerHTML = `<p class="text-red-600 text-sm">✗ Upload failed: ${error.message}</p>`;
+    console.error('Upload backup failed:', error);
+    showToast('Upload failed', 'error');
+    fileInput.value = '';
   }
 }
