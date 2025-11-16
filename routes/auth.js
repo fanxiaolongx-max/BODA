@@ -62,8 +62,18 @@ router.post('/admin/login', loginValidation, async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('管理员登录错误', { error: error.message, stack: error.stack });
-    res.status(500).json({ success: false, message: '登录失败', error: process.env.NODE_ENV !== 'production' ? error.message : undefined });
+    logger.error('管理员登录错误', { 
+      error: error.message, 
+      stack: error.stack,
+      name: error.name,
+      code: error.code
+    });
+    res.status(500).json({ 
+      success: false, 
+      message: '登录失败', 
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined,
+      code: process.env.NODE_ENV !== 'production' ? error.code : undefined
+    });
   }
 });
 

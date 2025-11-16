@@ -14,26 +14,46 @@ if (!fs.existsSync(dbDir)) {
 
 // 创建数据库连接
 // 使用 WAL 模式需要保持连接打开，不要过早关闭
-const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
-  if (err) {
-    console.error('数据库连接失败:', err);
-    process.exit(1); // 如果数据库连接失败，退出进程
-  } else {
-    console.log('数据库连接成功');
-  }
-});
+// 注意：这个连接必须在整个服务器运行期间保持打开
+let db = null;
 
-// 处理数据库错误
-db.on('error', (err) => {
-  console.error('数据库错误:', err);
-  getLogger().error('数据库错误', { error: err.message });
-});
+try {
+  db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+    if (err) {
+      console.error('数据库连接失败:', err);
+      process.exit(1); // 如果数据库连接失败，退出进程
+    } else {
+      console.log('数据库连接成功:', DB_PATH);
+    }
+  });
 
-// 启用外键约束
-db.run('PRAGMA foreign_keys = ON');
+  // 处理数据库错误
+  db.on('error', (err) => {
+    console.error('数据库错误:', err);
+    getLogger().error('数据库错误', { error: err.message });
+  });
+} catch (error) {
+  console.error('创建数据库连接时出错:', error);
+  process.exit(1);
+}
 
-// 启用WAL模式提高并发性能
-db.run('PRAGMA journal_mode = WAL');
+// 启用外键约束（需要等待数据库连接建立）
+if (db) {
+  db.run('PRAGMA foreign_keys = ON', (err) => {
+    if (err) {
+      console.error('设置外键约束失败:', err);
+    }
+  });
+
+  // 启用WAL模式提高并发性能
+  db.run('PRAGMA journal_mode = WAL', (err) => {
+    if (err) {
+      console.error('设置WAL模式失败:', err);
+    } else {
+      console.log('数据库WAL模式已启用');
+    }
+  });
+}
 
 // 设置时区为本地时间（SQLite默认使用UTC）
 // 注意：SQLite的CURRENT_TIMESTAMP返回UTC时间，我们需要使用datetime('now', 'localtime')
@@ -228,28 +248,58 @@ function initDatabase() {
 // Promise化的数据库操作
 function runAsync(sql, params = []) {
   return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve({ id: this.lastID, changes: this.changes });
-    });
+    if (!db) {
+      return reject(new Error('Database connection is not initialized'));
+    }
+    try {
+      db.run(sql, params, function(err) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve({ id: this.lastID, changes: this.changes });
+        }
+      });
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
 function getAsync(sql, params = []) {
   return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
+    if (!db) {
+      return reject(new Error('Database connection is not initialized'));
+    }
+    try {
+      db.get(sql, params, (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row);
+        }
+      });
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
 function allAsync(sql, params = []) {
   return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
+    if (!db) {
+      return reject(new Error('Database connection is not initialized'));
+    }
+    try {
+      db.all(sql, params, (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows);
+        }
+      });
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
@@ -266,11 +316,20 @@ function rollback() {
   return runAsync('ROLLBACK');
 }
 
-// 关闭数据库连接
+// 关闭数据库连接（仅在服务器关闭时调用）
 function closeDatabase() {
   return new Promise((resolve, reject) => {
+    if (!db) {
+      console.log('数据库连接不存在，无需关闭');
+      return resolve();
+    }
     db.close((err) => {
       if (err) {
+        // 如果已经关闭，err 可能是 "SQLITE_MISUSE: Database is closed"
+        if (err.message && err.message.includes('closed')) {
+          console.log('数据库连接已经关闭');
+          return resolve();
+        }
         reject(err);
       } else {
         console.log('数据库连接已关闭');
