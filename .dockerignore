@@ -1,6 +1,73 @@
-/.git
-/node_modules
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Docker
 .dockerignore
-.env
 Dockerfile
+docker-compose.yml
+.docker
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 测试和覆盖率
+coverage
+.nyc_output
+test-results.txt
+*.test.js
+tests
+
+# 日志文件
+logs
+*.log
+
+# 数据库文件（使用卷挂载）
+db/*.db
+db/*.db-wal
+db/*.db-shm
+db/*.backup.*
+
+# 上传文件（使用卷挂载）
+uploads
+
+# 文档
+docs
+*.md
+!README.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 临时文件
+tmp
+temp
+*.tmp
+
+# Fly.io 特定
 fly.toml
+
+# 脚本
+*.sh
+start.sh
+
+# 其他
+show
+data.db
+data.json

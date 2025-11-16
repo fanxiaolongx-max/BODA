@@ -1,44 +1,42 @@
-# syntax = docker/dockerfile:1
+# 使用官方 Node.js 运行时作为基础镜像
+FROM node:20-slim
 
-# Adjust NODE_VERSION as desired
-ARG NODE_VERSION=20.18.0
-FROM node:${NODE_VERSION}-slim AS base
-
-LABEL fly_launch_runtime="Node.js"
-
-# Node.js app lives here
+# 设置工作目录
 WORKDIR /app
 
-# Set production environment
-ENV NODE_ENV="production"
+# 安装系统依赖（sqlite3 需要编译工具）
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
+# 复制 package 文件
+COPY package*.json ./
 
-# Throw-away build stage to reduce size of final image
-FROM base AS build
+# 安装依赖
+RUN npm ci --only=production && \
+    npm cache clean --force
 
-# Install packages needed to build node modules
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
-
-# Install node modules
-COPY package-lock.json package.json ./
-RUN npm ci
-
-# Copy application code
+# 复制应用代码
 COPY . .
 
+# 创建数据目录（数据库、日志、上传文件）
+# 注意：数据库会直接存储在 /data 目录，因为代码中检查 /data 目录
+RUN mkdir -p /data /data/uploads /data/logs /data/uploads/products /data/uploads/payments
 
-# Final stage for app image
-FROM base
+# 设置环境变量
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV DATA_DIR=/data
 
-# Copy built application
-COPY --from=build /app /app
-
-# Setup sqlite3 on a separate volume
-RUN mkdir -p /data
-VOLUME /data
-
-# Start the server by default, this can be overwritten at runtime
+# 暴露端口
 EXPOSE 3000
-ENV DATABASE_URL="file:///data/sqlite.db"
-CMD [ "npm", "run", "start" ]
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# 启动应用
+CMD ["node", "server.js"]
