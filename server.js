@@ -105,7 +105,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Session配置
 // 自动检测 HTTPS：如果设置了 trust proxy，会根据 X-Forwarded-Proto 自动判断
 // secure: 'auto' 会根据 req.secure 自动设置（在 trust proxy 模式下会检查 X-Forwarded-Proto）
-app.use(session({
+// 注意：默认使用内存存储，对于单进程应用是安全的。如果需要多进程，请使用 Redis 或其他存储。
+const sessionConfig = {
   secret: process.env.SESSION_SECRET || 'boda-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
@@ -117,7 +118,25 @@ app.use(session({
   },
   proxy: true, // 信任反向代理（fly.io、ngrok、Nginx 等），这样 secure: 'auto' 才能正确工作
   name: 'boda.sid' // 自定义 session cookie 名称
-}));
+};
+
+// 如果设置了 SESSION_STORE=sqlite，使用 SQLite 存储 session（可选）
+if (process.env.SESSION_STORE === 'sqlite') {
+  try {
+    const SQLiteStore = require('connect-sqlite3')(session);
+    const { DB_DIR } = require('./db/database');
+    sessionConfig.store = new SQLiteStore({
+      db: 'sessions.db',
+      dir: DB_DIR,
+      table: 'sessions'
+    });
+    logger.info('使用 SQLite 存储 Session');
+  } catch (error) {
+    logger.warn('无法使用 SQLite 存储 Session，使用默认内存存储', { error: error.message });
+  }
+}
+
+app.use(session(sessionConfig));
 
 // 性能监控中间件（放在session之后，路由之前）
 app.use(monitoringMiddleware);

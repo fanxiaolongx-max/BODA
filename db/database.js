@@ -13,12 +13,20 @@ if (!fs.existsSync(dbDir)) {
 }
 
 // 创建数据库连接
-const db = new sqlite3.Database(DB_PATH, (err) => {
+// 使用 WAL 模式需要保持连接打开，不要过早关闭
+const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
   if (err) {
     console.error('数据库连接失败:', err);
+    process.exit(1); // 如果数据库连接失败，退出进程
   } else {
     console.log('数据库连接成功');
   }
+});
+
+// 处理数据库错误
+db.on('error', (err) => {
+  console.error('数据库错误:', err);
+  getLogger().error('数据库错误', { error: err.message });
 });
 
 // 启用外键约束
@@ -287,6 +295,8 @@ module.exports = {
   commit,
   rollback,
   closeDatabase,
-  getCurrentLocalTime
+  getCurrentLocalTime,
+  DB_PATH, // 导出数据库路径
+  DB_DIR // 导出数据库目录
 };
 
