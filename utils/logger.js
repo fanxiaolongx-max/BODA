@@ -3,8 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const DailyRotateFile = require('winston-daily-rotate-file');
 
-// 确保日志目录存在
-const logsDir = path.join(__dirname, '../logs');
+// 支持 fly.io 持久化卷：如果 /data 目录存在，使用 /data，否则使用本地目录
+const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+const logsDir = path.join(DATA_DIR, 'logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }

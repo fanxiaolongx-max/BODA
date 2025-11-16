@@ -4,6 +4,9 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+
+// 支持 fly.io 持久化卷
+const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
 const { runAsync, getAsync, allAsync, beginTransaction, commit, rollback } = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
 const { 
@@ -17,6 +20,7 @@ const { body } = require('express-validator');
 const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = require('../utils/cycle-helper');
 const { batchGetOrderItems } = require('../utils/order-helper');
 const cache = require('../utils/cache');
+const { backupDatabase, getBackupList, restoreDatabase, deleteBackup } = require('../utils/backup');
 
 const router = express.Router();
 
@@ -34,7 +38,11 @@ router.use(requireAuth);
 // 配置文件上传（菜单图片）
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/products');
+    const uploadDir = path.join(DATA_DIR, 'uploads/products');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueName = `product-${Date.now()}-${uuidv4()}${path.extname(file.originalname)}`;
@@ -884,7 +892,7 @@ async function archiveOldCycles() {
       const cyclesToArchive = allCycles.slice(maxVisibleCycles); // 获取超过最大可见数的周期
       
       // 确保导出目录存在
-      const exportDir = path.join(__dirname, '../logs/export');
+      const exportDir = path.join(DATA_DIR, 'logs', 'export');
       if (!fs.existsSync(exportDir)) {
         fs.mkdirSync(exportDir, { recursive: true });
       }
@@ -1989,6 +1997,183 @@ router.post('/developer/execute-sql', requireSuperAdmin, async (req, res) => {
   } catch (error) {
     logger.error('执行SQL失败', { error: error.message });
     res.status(500).json({ success: false, message: '执行SQL失败' });
+  }
+});
+
+/**
+ * POST /api/admin/backup/create
+ * Create a database backup
+ */
+router.post('/backup/create', async (req, res) => {
+  try {
+    const result = await backupDatabase();
+    
+    if (result.success) {
+      await logAction(req.session.adminId, 'BACKUP_CREATE', 'system', null, JSON.stringify({
+        action: '创建数据库备份',
+        fileName: result.fileName,
+        sizeMB: result.sizeMB
+      }), req);
+      
+      res.json({
+        success: true,
+        fileName: result.fileName,
+        sizeMB: result.sizeMB,
+        message: result.message
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: result.message
+      });
+    }
+  } catch (error) {
+    logger.error('创建备份失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create backup'
+    });
+  }
+});
+
+/**
+ * GET /api/admin/backup/list
+ * Get list of backup files
+ */
+router.get('/backup/list', async (req, res) => {
+  try {
+    const backups = getBackupList();
+    
+    res.json({
+      success: true,
+      backups: backups.map(backup => ({
+        fileName: backup.fileName,
+        size: backup.size,
+        sizeMB: backup.sizeMB,
+        created: backup.created.toISOString()
+      }))
+    });
+  } catch (error) {
+    logger.error('获取备份列表失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get backup list'
+    });
+  }
+});
+
+/**
+ * GET /api/admin/backup/download/:fileName
+ * Download a backup file
+ */
+router.get('/backup/download/:fileName', async (req, res) => {
+  try {
+    const { fileName } = req.params;
+    
+    if (!fileName.startsWith('boda-backup-') || !fileName.endsWith('.db')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid backup file name'
+      });
+    }
+    
+    const { BACKUP_DIR } = require('../utils/backup');
+    const backupPath = path.join(BACKUP_DIR, fileName);
+    
+    if (!fs.existsSync(backupPath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Backup file not found'
+      });
+    }
+    
+    res.download(backupPath, fileName);
+  } catch (error) {
+    logger.error('下载备份文件失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to download backup file'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/backup/restore
+ * Restore database from backup
+ */
+router.post('/backup/restore', async (req, res) => {
+  try {
+    const { fileName } = req.body;
+    
+    if (!fileName || !fileName.startsWith('boda-backup-') || !fileName.endsWith('.db')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid backup file name'
+      });
+    }
+    
+    await logAction(req.session.adminId, 'BACKUP_RESTORE', 'system', null, JSON.stringify({
+      action: '恢复数据库',
+      fileName: fileName
+    }), req);
+    
+    const result = await restoreDatabase(fileName);
+    
+    if (result.success) {
+      logger.info('数据库恢复成功', { fileName, adminId: req.session.adminId });
+      res.json({
+        success: true,
+        message: result.message
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: result.message
+      });
+    }
+  } catch (error) {
+    logger.error('恢复数据库失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to restore database'
+    });
+  }
+});
+
+/**
+ * DELETE /api/admin/backup/delete
+ * Delete a backup file
+ */
+router.delete('/backup/delete', async (req, res) => {
+  try {
+    const { fileName } = req.body;
+    
+    if (!fileName || !fileName.startsWith('boda-backup-') || !fileName.endsWith('.db')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid backup file name'
+      });
+    }
+    
+    const result = await deleteBackup(fileName);
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: result.message
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: result.message
+      });
+    }
+  } catch (error) {
+    logger.error('删除备份文件失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete backup file'
+    });
   }
 });
 

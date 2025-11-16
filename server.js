@@ -103,17 +103,19 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Session配置
+// fly.io 使用 HTTPS，需要 secure cookie
 app.use(session({
   secret: process.env.SESSION_SECRET || 'boda-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: 'auto', // 自动检测协议（HTTP 不使用 secure，HTTPS 使用 secure），支持 ngrok
+    secure: process.env.NODE_ENV === 'production' ? true : 'auto', // 生产环境强制 secure
     httpOnly: true,
-    sameSite: 'lax', // 允许跨站请求（ngrok 需要），同时保持安全性
+    sameSite: 'lax', // 允许跨站请求，同时保持安全性
     maxAge: 24 * 60 * 60 * 1000 // 24小时
   },
-  proxy: true // 信任反向代理（ngrok、Nginx 等）
+  proxy: true, // 信任反向代理（fly.io、ngrok、Nginx 等）
+  name: 'boda.sid' // 自定义 session cookie 名称
 }));
 
 // 性能监控中间件（放在session之后，路由之前）
@@ -137,14 +139,17 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// 支持 fly.io 持久化卷：如果 /data 目录存在，使用 /data，否则使用本地目录
+const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
+
 // 静态文件服务
 app.use(express.static('public'));
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
 app.use('/show', express.static('show'));
 
 // 确保必要目录存在
 ['uploads', 'uploads/products', 'uploads/payments', 'logs'].forEach(dir => {
-  const dirPath = path.join(__dirname, dir);
+  const dirPath = path.join(DATA_DIR, dir);
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
   }

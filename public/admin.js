@@ -2780,6 +2780,23 @@ function loadAboutPage() {
   
   container.innerHTML = `
     <div class="space-y-6">
+      <!-- 数据库备份和恢复 -->
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">💾 Database Backup & Restore</h3>
+        <div class="space-y-4">
+          <div class="flex space-x-3">
+            <button onclick="createBackup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+              Create Backup
+            </button>
+            <button onclick="loadBackupList()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+              Refresh List
+            </button>
+          </div>
+          <div id="backupList" class="space-y-2">
+            <p class="text-gray-500 text-sm">Loading backup list...</p>
+          </div>
+        </div>
+      </div>
       <div class="bg-white rounded-xl shadow-sm p-6">
         <h2 class="text-2xl font-bold text-gray-900 mb-4">🧋 ${currentStoreName} Ordering System</h2>
         <div class="space-y-4">
@@ -3514,3 +3531,188 @@ async function executeSqlQuery() {
   }
 }
 
+
+// 创建数据库备份
+async function createBackup() {
+  try {
+    showGlobalLoading('Creating backup...');
+    
+    const response = await fetch(`${API_BASE}/admin/backup/create`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      showToast(`Backup created successfully: ${data.fileName} (${data.sizeMB}MB)`, 'success');
+      loadBackupList();
+    } else {
+      showToast(data.message || 'Backup failed', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Create backup failed:', error);
+    showToast('Create backup failed', 'error');
+  }
+}
+
+// 加载备份列表
+async function loadBackupList() {
+  const container = document.getElementById('backupList');
+  if (!container) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/backup/list`, {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      const backups = data.backups || [];
+      
+      if (backups.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm">No backups found</p>';
+        return;
+      }
+      
+      container.innerHTML = `
+        <div class="space-y-2">
+          ${backups.map(backup => `
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div class="flex-1">
+                <p class="font-medium text-gray-900">${backup.fileName}</p>
+                <p class="text-sm text-gray-500">
+                  ${backup.sizeMB}MB • ${new Date(backup.created).toLocaleString()}
+                </p>
+              </div>
+              <div class="flex space-x-2">
+                <button onclick="downloadBackup('${backup.fileName}')" 
+                        class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">
+                  Download
+                </button>
+                <button onclick="restoreBackup('${backup.fileName}')" 
+                        class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">
+                  Restore
+                </button>
+                <button onclick="deleteBackupFile('${backup.fileName}')" 
+                        class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm">
+                  Delete
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else {
+      container.innerHTML = '<p class="text-red-500 text-sm">Failed to load backup list</p>';
+    }
+  } catch (error) {
+    console.error('Load backup list failed:', error);
+    container.innerHTML = '<p class="text-red-500 text-sm">Failed to load backup list</p>';
+  }
+}
+
+// 下载备份文件
+async function downloadBackup(fileName) {
+  try {
+    const response = await fetch(`${API_BASE}/admin/backup/download/${encodeURIComponent(fileName)}`, {
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      const data = await response.json();
+      showToast(data.message || 'Download failed', 'error');
+      return;
+    }
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    showToast('Backup downloaded successfully', 'success');
+  } catch (error) {
+    console.error('Download backup failed:', error);
+    showToast('Download failed', 'error');
+  }
+}
+
+// 恢复数据库
+async function restoreBackup(fileName) {
+  const confirmed = await showConfirmDialog(
+    'Restore Database',
+    `Are you sure you want to restore from "${fileName}"? This will replace the current database. A backup of the current database will be created automatically.`,
+    'Restore',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    showGlobalLoading('Restoring database... This may take a moment.');
+    
+    const response = await fetch(`${API_BASE}/admin/backup/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ fileName })
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      showToast('Database restored successfully. Please refresh the page.', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+    } else {
+      showToast(data.message || 'Restore failed', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Restore backup failed:', error);
+    showToast('Restore failed', 'error');
+  }
+}
+
+// 删除备份文件
+async function deleteBackupFile(fileName) {
+  const confirmed = await showConfirmDialog(
+    'Delete Backup',
+    `Are you sure you want to delete "${fileName}"?`,
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/backup/delete`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ fileName })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast('Backup deleted successfully', 'success');
+      loadBackupList();
+    } else {
+      showToast(data.message || 'Delete failed', 'error');
+    }
+  } catch (error) {
+    console.error('Delete backup failed:', error);
+    showToast('Delete failed', 'error');
+  }
+}

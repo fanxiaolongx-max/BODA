@@ -2,7 +2,9 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, 'boda.db');
+// 支持 fly.io 持久化卷：如果 /data 目录存在，使用 /data，否则使用本地 db 目录
+const DB_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname);
+const DB_PATH = path.join(DB_DIR, 'boda.db');
 
 // 确保数据库目录存在
 const dbDir = path.dirname(DB_PATH);
