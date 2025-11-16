@@ -62,8 +62,8 @@ router.post('/admin/login', loginValidation, async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('管理员登录错误', { error: error.message });
-    res.status(500).json({ success: false, message: '登录失败' });
+    logger.error('管理员登录错误', { error: error.message, stack: error.stack });
+    res.status(500).json({ success: false, message: '登录失败', error: process.env.NODE_ENV !== 'production' ? error.message : undefined });
   }
 });
 
@@ -182,8 +182,8 @@ router.post('/user/login', [
       }
     });
   } catch (error) {
-    logger.error('用户登录错误', { error: error.message });
-    res.status(500).json({ success: false, message: '登录失败' });
+    logger.error('用户登录错误', { error: error.message, stack: error.stack });
+    res.status(500).json({ success: false, message: '登录失败', error: process.env.NODE_ENV !== 'production' ? error.message : undefined });
   }
 });
 
@@ -325,8 +325,8 @@ router.post('/user/login-with-code', [
       }
     });
   } catch (error) {
-    logger.error('验证码登录错误', { error: error.message });
-    res.status(500).json({ success: false, message: '登录失败' });
+    logger.error('验证码登录错误', { error: error.message, stack: error.stack });
+    res.status(500).json({ success: false, message: '登录失败', error: process.env.NODE_ENV !== 'production' ? error.message : undefined });
   }
 });
 

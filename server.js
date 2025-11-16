@@ -103,18 +103,19 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Session配置
-// fly.io 使用 HTTPS，需要 secure cookie
+// 自动检测 HTTPS：如果设置了 trust proxy，会根据 X-Forwarded-Proto 自动判断
+// secure: 'auto' 会根据 req.secure 自动设置（在 trust proxy 模式下会检查 X-Forwarded-Proto）
 app.use(session({
   secret: process.env.SESSION_SECRET || 'boda-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production' ? true : 'auto', // 生产环境强制 secure
+    secure: 'auto', // 自动检测：在 trust proxy 模式下会根据 X-Forwarded-Proto 自动判断
     httpOnly: true,
     sameSite: 'lax', // 允许跨站请求，同时保持安全性
     maxAge: 24 * 60 * 60 * 1000 // 24小时
   },
-  proxy: true, // 信任反向代理（fly.io、ngrok、Nginx 等）
+  proxy: true, // 信任反向代理（fly.io、ngrok、Nginx 等），这样 secure: 'auto' 才能正确工作
   name: 'boda.sid' // 自定义 session cookie 名称
 }));
 
