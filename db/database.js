@@ -16,14 +16,37 @@ if (!fs.existsSync(dbDir)) {
 // 使用 WAL 模式需要保持连接打开，不要过早关闭
 // 注意：这个连接必须在整个服务器运行期间保持打开
 let db = null;
+let dbReady = false;
+let dbReadyPromise = null;
+let dbReadyResolve = null;
+let dbReadyReject = null;
+
+// 创建 Promise 来等待数据库连接建立
+dbReadyPromise = new Promise((resolve, reject) => {
+  dbReadyResolve = resolve;
+  dbReadyReject = reject;
+});
 
 try {
+  console.log('正在创建数据库连接...', { DB_PATH, DB_DIR, exists: fs.existsSync(DB_DIR) });
+  
   db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
     if (err) {
       console.error('数据库连接失败:', err);
+      console.error('数据库路径:', DB_PATH);
+      console.error('数据库目录存在:', fs.existsSync(DB_DIR));
+      console.error('数据库文件存在:', fs.existsSync(DB_PATH));
+      dbReady = false;
+      if (dbReadyReject) {
+        dbReadyReject(err);
+      }
       process.exit(1); // 如果数据库连接失败，退出进程
     } else {
       console.log('数据库连接成功:', DB_PATH);
+      dbReady = true;
+      if (dbReadyResolve) {
+        dbReadyResolve();
+      }
     }
   });
 
@@ -31,10 +54,23 @@ try {
   db.on('error', (err) => {
     console.error('数据库错误:', err);
     getLogger().error('数据库错误', { error: err.message });
+    dbReady = false;
   });
 } catch (error) {
   console.error('创建数据库连接时出错:', error);
+  console.error('错误堆栈:', error.stack);
+  if (dbReadyReject) {
+    dbReadyReject(error);
+  }
   process.exit(1);
+}
+
+// 等待数据库连接就绪的函数
+async function waitForDbReady() {
+  if (dbReady) {
+    return;
+  }
+  await dbReadyPromise;
 }
 
 // 启用外键约束（需要等待数据库连接建立）
@@ -59,7 +95,10 @@ if (db) {
 // 注意：SQLite的CURRENT_TIMESTAMP返回UTC时间，我们需要使用datetime('now', 'localtime')
 
 // 初始化数据库表
-function initDatabase() {
+async function initDatabase() {
+  // 等待数据库连接就绪
+  await waitForDbReady();
+  
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       // 管理员表
@@ -246,58 +285,79 @@ function initDatabase() {
 }
 
 // Promise化的数据库操作
-function runAsync(sql, params = []) {
+async function runAsync(sql, params = []) {
+  // 等待数据库连接就绪
+  await waitForDbReady();
+  
   return new Promise((resolve, reject) => {
     if (!db) {
-      return reject(new Error('Database connection is not initialized'));
+      const error = new Error('Database connection is not initialized');
+      console.error('数据库操作失败: 连接未初始化', { sql: sql.substring(0, 50) });
+      return reject(error);
     }
     try {
       db.run(sql, params, function(err) {
         if (err) {
+          console.error('数据库执行错误:', { sql: sql.substring(0, 50), error: err.message, code: err.code });
           reject(err);
         } else {
           resolve({ id: this.lastID, changes: this.changes });
         }
       });
     } catch (error) {
+      console.error('数据库操作异常:', { sql: sql.substring(0, 50), error: error.message });
       reject(error);
     }
   });
 }
 
-function getAsync(sql, params = []) {
+async function getAsync(sql, params = []) {
+  // 等待数据库连接就绪
+  await waitForDbReady();
+  
   return new Promise((resolve, reject) => {
     if (!db) {
-      return reject(new Error('Database connection is not initialized'));
+      const error = new Error('Database connection is not initialized');
+      console.error('数据库查询失败: 连接未初始化', { sql: sql.substring(0, 50) });
+      return reject(error);
     }
     try {
       db.get(sql, params, (err, row) => {
         if (err) {
+          console.error('数据库查询错误:', { sql: sql.substring(0, 50), error: err.message, code: err.code });
           reject(err);
         } else {
           resolve(row);
         }
       });
     } catch (error) {
+      console.error('数据库查询异常:', { sql: sql.substring(0, 50), error: error.message });
       reject(error);
     }
   });
 }
 
-function allAsync(sql, params = []) {
+async function allAsync(sql, params = []) {
+  // 等待数据库连接就绪
+  await waitForDbReady();
+  
   return new Promise((resolve, reject) => {
     if (!db) {
-      return reject(new Error('Database connection is not initialized'));
+      const error = new Error('Database connection is not initialized');
+      console.error('数据库查询失败: 连接未初始化', { sql: sql.substring(0, 50) });
+      return reject(error);
     }
     try {
       db.all(sql, params, (err, rows) => {
         if (err) {
+          console.error('数据库查询错误:', { sql: sql.substring(0, 50), error: err.message, code: err.code });
           reject(err);
         } else {
           resolve(rows);
         }
       });
     } catch (error) {
+      console.error('数据库查询异常:', { sql: sql.substring(0, 50), error: error.message });
       reject(error);
     }
   });
@@ -355,6 +415,7 @@ module.exports = {
   rollback,
   closeDatabase,
   getCurrentLocalTime,
+  waitForDbReady, // 导出等待函数
   DB_PATH, // 导出数据库路径
   DB_DIR // 导出数据库目录
 };

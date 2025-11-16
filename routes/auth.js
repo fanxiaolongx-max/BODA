@@ -84,11 +84,33 @@ router.post('/admin/login', loginValidation, async (req, res) => {
  */
 router.post('/admin/logout', (req, res) => {
   const adminId = req.session.adminId;
-  req.session.destroy((err) => {
+  const userId = req.session.userId; // 保存用户信息
+  const userPhone = req.session.userPhone;
+  const userName = req.session.userName;
+  
+  // 只清除管理员相关的 session 字段，保留用户 session（如果存在）
+  delete req.session.adminId;
+  delete req.session.adminUsername;
+  delete req.session.adminRole;
+  delete req.session.adminName;
+  
+  // 确保用户信息被保留
+  if (userId) {
+    req.session.userId = userId;
+  }
+  if (userPhone) {
+    req.session.userPhone = userPhone;
+  }
+  if (userName) {
+    req.session.userName = userName;
+  }
+  
+  req.session.save((err) => {
     if (err) {
       logger.error('管理员登出失败', { error: err.message, adminId });
       return res.status(500).json({ success: false, message: '登出失败' });
     }
+    logger.info('管理员登出成功', { adminId, userIdPreserved: !!req.session.userId });
     res.json({ success: true, message: '登出成功' });
   });
 });
@@ -110,7 +132,11 @@ router.get('/admin/me', async (req, res) => {
     );
 
     if (!admin) {
-      req.session.destroy();
+      // 只清除管理员相关的 session 字段，保留用户 session（如果存在）
+      delete req.session.adminId;
+      delete req.session.adminUsername;
+      delete req.session.adminRole;
+      delete req.session.adminName;
       return res.status(401).json({ success: false, message: '用户不存在' });
     }
 
@@ -192,8 +218,19 @@ router.post('/user/login', [
       }
     });
   } catch (error) {
-    logger.error('用户登录错误', { error: error.message, stack: error.stack });
-    res.status(500).json({ success: false, message: '登录失败', error: process.env.NODE_ENV !== 'production' ? error.message : undefined });
+    logger.error('用户登录错误', { 
+      error: error.message, 
+      stack: error.stack,
+      name: error.name,
+      code: error.code,
+      phone: req.body?.phone
+    });
+    res.status(500).json({ 
+      success: false, 
+      message: '登录失败', 
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined,
+      code: process.env.NODE_ENV !== 'production' ? error.code : undefined
+    });
   }
 });
 
@@ -203,11 +240,37 @@ router.post('/user/login', [
  * @returns {Object} Success message
  */
 router.post('/user/logout', (req, res) => {
-  req.session.destroy((err) => {
+  const userId = req.session.userId;
+  const adminId = req.session.adminId; // 保存管理员信息
+  const adminUsername = req.session.adminUsername;
+  const adminRole = req.session.adminRole;
+  const adminName = req.session.adminName;
+  
+  // 只清除用户相关的 session 字段，保留管理员 session（如果存在）
+  delete req.session.userId;
+  delete req.session.userPhone;
+  delete req.session.userName;
+  
+  // 确保管理员信息被保留
+  if (adminId) {
+    req.session.adminId = adminId;
+  }
+  if (adminUsername) {
+    req.session.adminUsername = adminUsername;
+  }
+  if (adminRole) {
+    req.session.adminRole = adminRole;
+  }
+  if (adminName) {
+    req.session.adminName = adminName;
+  }
+  
+  req.session.save((err) => {
     if (err) {
-      logger.error('用户登出失败', { error: err.message });
+      logger.error('用户登出失败', { error: err.message, userId });
       return res.status(500).json({ success: false, message: '登出失败' });
     }
+    logger.info('用户登出成功', { userId, adminIdPreserved: !!req.session.adminId });
     res.json({ success: true, message: '登出成功' });
   });
 });
@@ -357,7 +420,10 @@ router.get('/user/me', async (req, res) => {
     );
 
     if (!user) {
-      req.session.destroy();
+      // 只清除用户相关的 session 字段，保留管理员 session（如果存在）
+      delete req.session.userId;
+      delete req.session.userPhone;
+      delete req.session.userName;
       return res.status(401).json({ success: false, message: '用户不存在' });
     }
 
