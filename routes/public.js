@@ -1,21 +1,36 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { getAsync, allAsync, runAsync } = require('../db/database');
+const { getAsync, allAsync, runAsync, beginTransaction, commit, rollback } = require('../db/database');
 const { logger } = require('../utils/logger');
+const cache = require('../utils/cache');
 
 const router = express.Router();
+
+// 缓存过期时间（5分钟）
+const CACHE_TTL = 5 * 60 * 1000;
 
 // ==================== 公开接口（无需登录） ====================
 
 // 获取系统设置
 router.get('/settings', async (req, res) => {
   try {
+    // 尝试从缓存获取
+    const cacheKey = 'public:settings';
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json({ success: true, settings: cached });
+    }
+
     const settings = await allAsync('SELECT * FROM settings');
     const settingsObj = {};
     settings.forEach(s => {
       settingsObj[s.key] = s.value;
     });
+    
+    // 存入缓存
+    cache.set(cacheKey, settingsObj, CACHE_TTL);
+    
     res.json({ success: true, settings: settingsObj });
   } catch (error) {
     logger.error('获取系统设置失败', { error: error.message });
@@ -23,13 +38,28 @@ router.get('/settings', async (req, res) => {
   }
 });
 
-// 获取所有分类
+/**
+ * GET /api/public/categories
+ * Get all active categories
+ * @returns {Object} Categories array
+ */
 router.get('/categories', async (req, res) => {
   try {
+    // 尝试从缓存获取
+    const cacheKey = 'public:categories';
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json({ success: true, categories: cached });
+    }
+
     const categories = await allAsync(
       'SELECT * FROM categories WHERE status = ? ORDER BY sort_order, id',
       ['active']
     );
+    
+    // 存入缓存
+    cache.set(cacheKey, categories, CACHE_TTL);
+    
     res.json({ success: true, categories });
   } catch (error) {
     logger.error('获取分类失败', { error: error.message });
@@ -37,7 +67,12 @@ router.get('/categories', async (req, res) => {
   }
 });
 
-// 获取菜品列表（仅激活状态）
+/**
+ * GET /api/public/products
+ * Get all active products
+ * @query {string} [category_id] - Filter by category ID
+ * @returns {Object} Products array
+ */
 router.get('/products', async (req, res) => {
   try {
     const { category_id } = req.query;
@@ -64,7 +99,12 @@ router.get('/products', async (req, res) => {
   }
 });
 
-// 根据订单号获取订单详情（用于扫码查询）
+/**
+ * GET /api/public/orders/:orderNumber
+ * Get order details by order number (for QR code query)
+ * @param {string} orderNumber - Order number (e.g., BO12345678)
+ * @returns {Object} Order object with items
+ */
 router.get('/orders/:orderNumber', async (req, res) => {
   try {
     const { orderNumber } = req.params;
@@ -90,13 +130,28 @@ router.get('/orders/:orderNumber', async (req, res) => {
   }
 });
 
-// 获取折扣规则
+/**
+ * GET /api/public/discount-rules
+ * Get all active discount rules
+ * @returns {Object} Discount rules array
+ */
 router.get('/discount-rules', async (req, res) => {
   try {
+    // 尝试从缓存获取
+    const cacheKey = 'public:discount-rules';
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json({ success: true, rules: cached });
+    }
+
     const rules = await allAsync(
       'SELECT * FROM discount_rules WHERE status = ? ORDER BY min_amount',
       ['active']
     );
+    
+    // 存入缓存
+    cache.set(cacheKey, rules, CACHE_TTL);
+    
     res.json({ success: true, rules });
   } catch (error) {
     logger.error('获取折扣规则失败', { error: error.message });
@@ -104,7 +159,11 @@ router.get('/discount-rules', async (req, res) => {
   }
 });
 
-// 计算折扣（点单关闭后）
+/**
+ * POST /api/public/calculate-discount
+ * Calculate and apply discount to all pending orders (only when ordering is closed)
+ * @returns {Object} Discount calculation result with discount_rate and total_amount
+ */
 router.post('/calculate-discount', async (req, res) => {
   try {
     // 检查点单是否已关闭
@@ -135,25 +194,36 @@ router.post('/calculate-discount', async (req, res) => {
     for (const rule of rules) {
       if (totalAmount >= rule.min_amount) {
         if (!rule.max_amount || totalAmount < rule.max_amount) {
-          discountRate = rule.discount_rate;
+          discountRate = rule.discount_rate / 100; // 数据库存储的是百分比，需要转换为小数
           break;
         }
       }
     }
 
-    // 更新所有待付款订单的折扣
+    // 批量更新所有待付款订单的折扣
     const pendingOrders = await allAsync(
       "SELECT * FROM orders WHERE status = 'pending'"
     );
 
-    for (const order of pendingOrders) {
-      const discountAmount = order.total_amount * discountRate;
-      const finalAmount = order.total_amount - discountAmount;
+    if (pendingOrders.length > 0) {
+      // 使用事务确保数据一致性
+      try {
+        await beginTransaction();
+        for (const order of pendingOrders) {
+          const discountAmount = order.total_amount * discountRate;
+          const finalAmount = order.total_amount - discountAmount;
 
-      await runAsync(
-        "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-        [discountAmount, finalAmount, order.id]
-      );
+          await runAsync(
+            "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+            [discountAmount, finalAmount, order.id]
+          );
+        }
+        await commit();
+      } catch (error) {
+        await rollback();
+        logger.error('批量更新订单折扣失败', { error: error.message });
+        throw error;
+      }
     }
 
     logger.info('折扣计算完成', { 
@@ -175,7 +245,11 @@ router.post('/calculate-discount', async (req, res) => {
   }
 });
 
-// 获取当前周期的折扣信息
+/**
+ * GET /api/public/cycle-discount
+ * Get current cycle discount information
+ * @returns {Object} Cycle object with currentDiscount and nextDiscount information
+ */
 router.get('/cycle-discount', async (req, res) => {
   try {
     // 获取当前活跃周期
@@ -226,7 +300,11 @@ router.get('/cycle-discount', async (req, res) => {
   }
 });
 
-// 获取新品图片列表
+/**
+ * GET /api/public/show-images
+ * Get showcase images list
+ * @returns {Object} Images array with filename and URL
+ */
 router.get('/show-images', async (req, res) => {
   try {
     const showDir = path.join(__dirname, '../show');

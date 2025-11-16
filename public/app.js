@@ -1,5 +1,7 @@
-// API基础URL
-const API_BASE = '/api';
+// API基础URL（如果未定义则定义，避免重复声明）
+if (typeof API_BASE === 'undefined') {
+  var API_BASE = '/api';
+}
 
 // 当前用户信息
 let currentUser = null;
@@ -40,10 +42,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // 直接显示主页面，无需登录
   await showMainPage();
-  checkAuth();
   
   // 默认显示Home页面（在设置加载完成后）
   showBottomTab('home');
+  
+  // 后台检查认证状态（不阻塞页面显示，不弹出登录框）
+  // 延迟执行，确保所有脚本都已加载
+  setTimeout(() => {
+    checkAuth();
+  }, 100);
   
   // 登录表单提交
   document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
@@ -75,20 +82,37 @@ function applyTranslations() {
 // 检查认证状态
 async function checkAuth() {
   try {
-    const response = await fetch(`${API_BASE}/auth/user/me`, {
-      credentials: 'include'
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      currentUser = data.user;
-      updateLoginStatus();
+    // 确保apiGet函数已加载
+    if (typeof apiGet === 'undefined') {
+      // 如果apiGet未定义，使用fetch
+      const response = await fetch(`${API_BASE}/auth/user/me`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.user) {
+          currentUser = data.user;
+          updateLoginStatus();
+        } else {
+          currentUser = null;
+          updateLoginStatus();
+        }
+      } else {
+        currentUser = null;
+        updateLoginStatus();
+      }
     } else {
-      currentUser = null;
-      updateLoginStatus();
+      const data = await apiGet('/auth/user/me', { showError: false });
+      if (data && data.user) {
+        currentUser = data.user;
+        updateLoginStatus();
+      } else {
+        currentUser = null;
+        updateLoginStatus();
+      }
     }
   } catch (error) {
-    console.error('认证检查失败:', error);
+    // 认证失败是正常的（用户未登录），不显示错误，也不弹出登录框
     currentUser = null;
     updateLoginStatus();
   }
@@ -98,32 +122,64 @@ async function checkAuth() {
 async function login() {
   const phone = document.getElementById('phone').value.trim();
   const name = document.getElementById('name').value.trim();
+  const codeSection = document.getElementById('verificationCodeSection');
+  const isCodeVisible = codeSection && !codeSection.classList.contains('hidden');
+  const code = isCodeVisible ? document.getElementById('verificationCode').value.trim() : '';
 
   // 验证手机号（只验证长度，不限制格式）
   if (!phone) {
-    alert('Please enter phone number');
+    showToast('Please enter phone number', 'error');
     return;
   }
   
   if (phone.length < 8 || phone.length > 15) {
-    alert('Phone number length should be between 8-15 digits');
+    showToast('Phone number length should be between 8-15 digits', 'error');
     return;
   }
   
   // Only allow digits and + (international prefix)
   if (!/^[+\d]+$/.test(phone)) {
-    alert('Phone number can only contain digits and +');
+    showToast('Phone number can only contain digits and +', 'error');
     return;
   }
 
+  // 检查是否需要验证码
+  const smsEnabled = currentSettings.sms_enabled === 'true';
+  
+  if (smsEnabled) {
+    // 如果启用了短信验证码，必须提供验证码
+    if (!code) {
+      showToast('Please enter verification code', 'error');
+      return;
+    }
+    
+    if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+      showToast('Verification code must be 6 digits', 'error');
+      return;
+    }
+    
+    // 使用验证码登录
+    await loginWithCode(phone, code, name);
+  } else {
+    // 使用传统登录
+    await loginWithoutCode(phone, name);
+  }
+}
+
+// 验证码登录
+async function loginWithCode(phone, code, name) {
+  const loginBtn = document.getElementById('loginSubmitBtn');
+  setButtonLoading(loginBtn, true);
+
   try {
-    const response = await fetch(`${API_BASE}/auth/user/login`, {
+    const response = await fetch(`${API_BASE}/auth/user/login-with-code`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ 
         phone, 
-        name: name || undefined  // 空字符串转为undefined
+        code,
+        name: name || undefined
       })
     });
 
@@ -133,7 +189,7 @@ async function login() {
       currentUser = data.user;
       closeLoginModal();
       updateLoginStatus();
-      showToast('Login successful!');
+      showToast('Login successful!', 'success');
       
       // If cart has items, submit order directly
       if (cart.length > 0) {
@@ -145,11 +201,68 @@ async function login() {
         }
       }
     } else {
-      alert(data.message || 'Login failed');
+      showToast(data.message || 'Login failed', 'error');
     }
   } catch (error) {
     console.error('Login failed:', error);
-    alert('Login failed, please try again');
+    showToast('Login failed, please try again', 'error');
+  } finally {
+    setButtonLoading(loginBtn, false);
+  }
+}
+
+// 传统登录（无验证码）
+async function loginWithoutCode(phone, name) {
+  const loginBtn = document.getElementById('loginSubmitBtn');
+  setButtonLoading(loginBtn, true);
+
+  try {
+    const response = await fetch(`${API_BASE}/auth/user/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ 
+        phone, 
+        name: name || undefined
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      currentUser = data.user;
+      closeLoginModal();
+      updateLoginStatus();
+      showToast('Login successful!', 'success');
+      
+      // If cart has items, submit order directly
+      if (cart.length > 0) {
+        submitOrder();
+      } else {
+        // If currently on orders page, refresh order list
+        if (!document.getElementById('ordersTab').classList.contains('hidden')) {
+          loadOrders();
+        }
+      }
+    } else {
+      // 如果返回requiresCode，显示验证码输入框
+      if (data.requiresCode) {
+        showToast('SMS verification is required', 'info');
+        const codeSection = document.getElementById('verificationCodeSection');
+        if (codeSection) {
+          codeSection.classList.remove('hidden');
+        }
+        // 自动发送验证码
+        await sendVerificationCode();
+      } else {
+        showToast(data.message || 'Login failed', 'error');
+      }
+    }
+  } catch (error) {
+    console.error('Login failed:', error);
+    showToast('Login failed, please try again', 'error');
+  } finally {
+    setButtonLoading(loginBtn, false);
   }
 }
 
@@ -174,12 +287,140 @@ async function logout() {
 // 显示登录模态框
 function showLoginModal() {
   document.getElementById('loginModal').classList.add('active');
+  
+  // 根据设置显示/隐藏验证码输入框
+  const smsEnabled = currentSettings.sms_enabled === 'true';
+  const codeSection = document.getElementById('verificationCodeSection');
+  if (codeSection) {
+    if (smsEnabled) {
+      codeSection.classList.remove('hidden');
+    } else {
+      codeSection.classList.add('hidden');
+    }
+  }
 }
 
 // 关闭登录模态框
 function closeLoginModal() {
   document.getElementById('loginModal').classList.remove('active');
   document.getElementById('loginForm').reset();
+  // 重置验证码相关UI
+  const codeSection = document.getElementById('verificationCodeSection');
+  if (codeSection) {
+    codeSection.classList.add('hidden');
+  }
+  const countdown = document.getElementById('codeCountdown');
+  if (countdown) {
+    countdown.classList.add('hidden');
+  }
+  if (codeCountdownTimer) {
+    clearInterval(codeCountdownTimer);
+    codeCountdownTimer = null;
+  }
+}
+
+// 验证码倒计时
+let codeCountdownTimer = null;
+let countdownSeconds = 0;
+
+// 发送验证码
+async function sendVerificationCode() {
+  const phone = document.getElementById('phone').value.trim();
+  
+  if (!phone) {
+    showToast('Please enter phone number first', 'error');
+    return;
+  }
+  
+  if (phone.length < 8 || phone.length > 15) {
+    showToast('Phone number length should be between 8-15 digits', 'error');
+    return;
+  }
+  
+  if (!/^[+\d]+$/.test(phone)) {
+    showToast('Phone number can only contain digits and +', 'error');
+    return;
+  }
+
+  const sendBtn = document.getElementById('sendCodeBtn');
+  setButtonLoading(sendBtn, true);
+
+  try {
+    const response = await fetch(`${API_BASE}/auth/sms/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ phone, type: 'login' })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      showToast(data.message || 'Verification code sent successfully', 'success');
+      
+      // 显示验证码输入框
+      const codeSection = document.getElementById('verificationCodeSection');
+      if (codeSection) {
+        codeSection.classList.remove('hidden');
+      }
+      
+      // 开发环境显示验证码（如果返回了）
+      if (data.code) {
+        console.log('Verification code (dev only):', data.code);
+        showToast(`Verification code: ${data.code} (dev only)`, 'info');
+      }
+      
+      // 开始倒计时
+      startCountdown();
+    } else {
+      showToast(data.message || 'Failed to send verification code', 'error');
+    }
+  } catch (error) {
+    console.error('Send verification code failed:', error);
+    showToast('Failed to send verification code, please try again', 'error');
+  } finally {
+    setButtonLoading(sendBtn, false);
+  }
+}
+
+// 开始倒计时
+function startCountdown() {
+  countdownSeconds = 60;
+  const countdownEl = document.getElementById('codeCountdown');
+  const sendBtn = document.getElementById('sendCodeBtn');
+  
+  if (countdownEl) {
+    countdownEl.classList.remove('hidden');
+  }
+  
+  if (sendBtn) {
+    sendBtn.disabled = true;
+  }
+  
+  if (codeCountdownTimer) {
+    clearInterval(codeCountdownTimer);
+  }
+  
+  codeCountdownTimer = setInterval(() => {
+    countdownSeconds--;
+    
+    if (countdownEl) {
+      countdownEl.textContent = `Resend code in ${countdownSeconds} seconds`;
+    }
+    
+    if (countdownSeconds <= 0) {
+      clearInterval(codeCountdownTimer);
+      codeCountdownTimer = null;
+      
+      if (countdownEl) {
+        countdownEl.classList.add('hidden');
+      }
+      
+      if (sendBtn) {
+        sendBtn.disabled = false;
+      }
+    }
+  }, 1000);
 }
 
 // 更新商店名称显示
@@ -258,9 +499,8 @@ async function showMainPage() {
 // 加载系统设置
 async function loadSettings() {
   try {
-    const response = await fetch(`${API_BASE}/public/settings`);
-    const data = await response.json();
-    if (data.success) {
+    const data = await apiGet('/public/settings', { showError: false });
+    if (data && data.success) {
       currentSettings = data.settings;
       // 更新商店名称
       if (data.settings.store_name) {
@@ -276,7 +516,7 @@ async function loadSettings() {
       updateSystemNotice();
     }
   } catch (error) {
-    console.error('加载设置失败:', error);
+    // 设置加载失败不影响页面显示
   }
 }
 
@@ -913,7 +1153,7 @@ function updateDetailPrice() {
 // 从详情页加入购物车
 function addToCartFromDetail() {
   if (!currentDetailProduct || !selectedSize) {
-    alert('Please select specifications');
+    showToast('Please select specifications', 'warning');
     return;
   }
   
@@ -1020,7 +1260,7 @@ function showCart(event) {
   }
   
   if (cart.length === 0) {
-    alert('Cart is empty');
+    showToast('Cart is empty', 'warning');
     return;
   }
   
@@ -1143,12 +1383,12 @@ function closeCart() {
 // 提交订单
 async function submitOrder() {
   if (cart.length === 0) {
-    alert('Cart is empty');
+    showToast('Cart is empty', 'warning');
     return;
   }
   
   if (currentSettings.ordering_open !== 'true') {
-    alert('Ordering is closed');
+    showToast('Ordering is closed', 'warning');
     return;
   }
   
@@ -1158,6 +1398,9 @@ async function submitOrder() {
     showLoginModal();
     return;
   }
+  
+  const submitBtn = document.querySelector('#cartModal button[onclick="submitOrder()"]');
+  setButtonLoading(submitBtn, true);
   
   try {
     const orderNotes = document.getElementById('orderNotes')?.value || '';
@@ -1185,7 +1428,7 @@ async function submitOrder() {
     const data = await response.json();
     
     if (data.success) {
-      showToast('Order submitted successfully! Order number: ' + data.order.order_number);
+      showToast('Order submitted successfully! Order number: ' + data.order.order_number, 'success');
       cart = [];
       updateCartBadge();
       closeCart();
@@ -1196,11 +1439,14 @@ async function submitOrder() {
         loadOrders();
       }, 500);
     } else {
-      alert(data.message || 'Order submission failed');
+      showToast(data.message || 'Order submission failed', 'error');
     }
   } catch (error) {
     console.error('Order submission failed:', error);
-    alert('Order submission failed, please try again');
+    showToast('Order submission failed, please try again', 'error');
+  } finally {
+    const submitBtn = document.querySelector('#cartModal button[onclick="submitOrder()"]');
+    if (submitBtn) setButtonLoading(submitBtn, false);
   }
 }
 
@@ -1550,91 +1796,54 @@ async function loadOrders() {
   try {
     // 先检查是否登录
     if (!currentUser) {
-      container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">请先登录查看订单</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">登录</button></div>';
+      container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">Please login to view orders</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">Login</button></div>';
       return;
     }
     
-    // 尝试第一个接口
-    let response = await fetch(`${API_BASE}/user/orders/by-phone`, {
-      credentials: 'include'
-    });
-    
-    // 检查响应状态
-    if (response.status === 401) {
-      // 未授权，清除用户信息并提示登录
-      currentUser = null;
-      updateLoginStatus();
-      container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">登录已过期，请重新登录</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">重新登录</button></div>';
-      return;
-    }
-    
-    // 检查响应内容类型
-    const contentType = response.headers.get('content-type');
-    let data;
-    
-    if (!contentType || !contentType.includes('application/json')) {
-      // 如果不是JSON，尝试读取文本看看是什么
-      const text = await response.text();
-      console.error('API返回非JSON响应:', text.substring(0, 200));
+    // 使用统一的API封装
+    try {
+      // 先尝试按手机号查询
+      let data = await apiGet('/user/orders/by-phone', { showError: false });
       
-      // 尝试第二个接口
-      response = await fetch(`${API_BASE}/user/orders`, {
-        credentials: 'include'
-      });
-      
-      if (response.status === 401) {
+      if (data && data.success) {
+        if (data.orders && data.orders.length > 0) {
+          renderOrders(data.orders);
+        } else {
+          container.innerHTML = '<div class="text-center py-12 text-gray-500">You have no orders yet</div>';
+        }
+        return;
+      }
+    } catch (error) {
+      // 如果按手机号查询失败，尝试普通查询
+      if (error.status === 401) {
         currentUser = null;
         updateLoginStatus();
-        container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">登录已过期，请重新登录</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">重新登录</button></div>';
+        container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">Login expired, please login again</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">Login</button></div>';
         return;
       }
-      
-      const contentType2 = response.headers.get('content-type');
-      if (!contentType2 || !contentType2.includes('application/json')) {
-        const text2 = await response.text();
-        console.error('备用API也返回非JSON响应:', text2.substring(0, 200));
-        container.innerHTML = '<div class="text-center py-12 text-red-500">Server error, please try again later</div>';
-        return;
-      }
-      data = await response.json();
-    } else {
-      data = await response.json();
     }
     
-    if (data.success) {
-      if (data.orders && data.orders.length > 0) {
-        renderOrders(data.orders);
-      } else {
-        container.innerHTML = '<div class="text-center py-12 text-gray-500">您还没有订单</div>';
-      }
-    } else {
-      // 如果失败，尝试使用另一个接口
-      const response2 = await fetch(`${API_BASE}/user/orders`, {
-        credentials: 'include'
-      });
+    // 尝试普通订单查询接口
+    try {
+      const data = await apiGet('/user/orders', { showError: false });
       
-      if (response2.status === 401) {
-        currentUser = null;
-        updateLoginStatus();
-        container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">登录已过期，请重新登录</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">重新登录</button></div>';
-        return;
-      }
-      
-      const contentType2 = response2.headers.get('content-type');
-      if (!contentType2 || !contentType2.includes('application/json')) {
-        container.innerHTML = '<div class="text-center py-12 text-red-500">加载订单失败，请刷新重试</div>';
-        return;
-      }
-      
-      const data2 = await response2.json();
-      if (data2.success) {
-        if (data2.orders && data2.orders.length > 0) {
-          renderOrders(data2.orders);
+      if (data && data.success) {
+        if (data.orders && data.orders.length > 0) {
+          renderOrders(data.orders);
         } else {
           container.innerHTML = '<div class="text-center py-12 text-gray-500">You have no orders yet</div>';
         }
       } else {
-        container.innerHTML = '<div class="text-center py-12 text-red-500">' + (data2.message || 'Failed to load orders, please refresh and try again') + '</div>';
+        container.innerHTML = '<div class="text-center py-12 text-red-500">' + (data?.message || 'Failed to load orders, please refresh and try again') + '</div>';
+      }
+    } catch (error) {
+      if (error.status === 401) {
+        currentUser = null;
+        updateLoginStatus();
+        container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">Login expired, please login again</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">Login</button></div>';
+      } else {
+        console.error('加载订单失败:', error);
+        container.innerHTML = '<div class="text-center py-12 text-red-500">Failed to load orders: ' + (error.message || 'Network error') + '</div>';
       }
     }
   } catch (error) {
@@ -1844,9 +2053,14 @@ function renderOrders(orders) {
 
 // 删除订单
 async function deleteOrder(orderId) {
-  if (!confirm('Are you sure you want to delete this order?')) {
-    return;
-  }
+  const confirmed = await showConfirmDialog(
+    'Delete Order',
+    'Are you sure you want to delete this order? This action cannot be undone.',
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
   
   try {
     const response = await fetch(`${API_BASE}/user/orders/${orderId}`, {
@@ -1857,14 +2071,14 @@ async function deleteOrder(orderId) {
     const data = await response.json();
     
     if (data.success) {
-      showToast('Order deleted');
+      showToast('Order deleted', 'success');
       loadOrders();
     } else {
-      alert(data.message || 'Delete failed');
+      showToast(data.message || 'Delete failed', 'error');
     }
   } catch (error) {
     console.error('Failed to delete order:', error);
-    alert('Delete failed, please try again');
+    showToast('Delete failed, please try again', 'error');
   }
 }
 
@@ -1896,11 +2110,15 @@ function closePayment() {
 
 // 上传付款截图
 async function uploadPayment() {
+  const uploadBtn = document.querySelector('#paymentForm button[type="submit"]');
+  setButtonLoading(uploadBtn, true);
+  
   const fileInput = document.getElementById('paymentImage');
   const file = fileInput.files[0];
   
   if (!file) {
-    alert('Please select payment screenshot');
+    showToast('Please select payment screenshot', 'warning');
+    setButtonLoading(uploadBtn, false);
     return;
   }
   
@@ -1917,27 +2135,149 @@ async function uploadPayment() {
     const data = await response.json();
     
     if (data.success) {
-      alert('Payment screenshot uploaded successfully!');
+      showToast('Payment screenshot uploaded successfully!', 'success');
       closePayment();
       loadOrders();
     } else {
-      alert(data.message || 'Upload failed');
+      showToast(data.message || 'Upload failed', 'error');
     }
   } catch (error) {
     console.error('上传付款截图失败:', error);
-    alert('上传失败，请重试');
+    showToast('Upload failed, please try again', 'error');
+  } finally {
+    setButtonLoading(uploadBtn, false);
   }
 }
 
 // 显示提示
-function showToast(message) {
+// Toast 通知系统
+function showToast(message, type = 'success') {
+  // 确保 Toast 容器存在
+  let toastContainer = document.getElementById('toastContainer');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toastContainer';
+    toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2';
+    document.body.appendChild(toastContainer);
+  }
+
+  // 类型配置
+  const typeConfig = {
+    success: { bg: 'bg-green-500', icon: '✓' },
+    error: { bg: 'bg-red-500', icon: '✕' },
+    warning: { bg: 'bg-yellow-500', icon: '⚠' },
+    info: { bg: 'bg-blue-500', icon: 'ℹ' }
+  };
+
+  const config = typeConfig[type] || typeConfig.success;
+  const duration = type === 'error' ? 5000 : 3000;
+
+  // 创建 Toast 元素
   const toast = document.createElement('div');
-  toast.className = 'fixed top-20 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 fade-in';
-  toast.textContent = message;
-  document.body.appendChild(toast);
+  toast.className = `${config.bg} text-white px-6 py-3 rounded-lg shadow-lg fade-in flex items-center space-x-2 min-w-[300px] max-w-[500px]`;
+  toast.innerHTML = `
+    <span class="font-bold">${config.icon}</span>
+    <span class="flex-1">${message}</span>
+  `;
   
+  toastContainer.appendChild(toast);
+  
+  // 自动移除
   setTimeout(() => {
-    toast.remove();
-  }, 2000);
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(100%)';
+    toast.style.transition = 'all 0.3s ease-out';
+    setTimeout(() => {
+      toast.remove();
+    }, 300);
+  }, duration);
+}
+
+// 确认对话框
+function showConfirmDialog(title, message, confirmText = 'Confirm', cancelText = 'Cancel') {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('confirmDialog');
+    const titleEl = document.getElementById('confirmDialogTitle');
+    const messageEl = document.getElementById('confirmDialogMessage');
+    const confirmBtn = document.getElementById('confirmDialogConfirm');
+    const cancelBtn = document.getElementById('confirmDialogCancel');
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    confirmBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+
+    // 移除旧的事件监听器
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+    // 添加新的事件监听器
+    newConfirmBtn.addEventListener('click', () => {
+      dialog.classList.remove('active');
+      resolve(true);
+    });
+
+    newCancelBtn.addEventListener('click', () => {
+      dialog.classList.remove('active');
+      resolve(false);
+    });
+
+    // 点击背景关闭
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) {
+        dialog.classList.remove('active');
+        resolve(false);
+      }
+    });
+
+    dialog.classList.add('active');
+  });
+}
+
+// 按钮 Loading 状态
+function setButtonLoading(button, loading) {
+  if (typeof button === 'string') {
+    button = document.getElementById(button) || document.querySelector(button);
+  }
+  if (!button) return;
+
+  if (loading) {
+    button.disabled = true;
+    button.dataset.originalText = button.textContent;
+    button.innerHTML = `
+      <span class="inline-flex items-center">
+        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Loading...
+      </span>
+    `;
+  } else {
+    button.disabled = false;
+    if (button.dataset.originalText) {
+      button.textContent = button.dataset.originalText;
+      delete button.dataset.originalText;
+    }
+  }
+}
+
+// 全局 Loading 遮罩
+function showGlobalLoading(message = 'Loading...') {
+  const loading = document.getElementById('globalLoading');
+  const messageEl = document.getElementById('globalLoadingMessage');
+  if (loading && messageEl) {
+    messageEl.textContent = message;
+    loading.classList.remove('hidden');
+  }
+}
+
+function hideGlobalLoading() {
+  const loading = document.getElementById('globalLoading');
+  if (loading) {
+    loading.classList.add('hidden');
+  }
 }
 

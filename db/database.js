@@ -186,6 +186,19 @@ function initDatabase() {
         )
       `);
 
+      // 验证码表
+      db.run(`
+        CREATE TABLE IF NOT EXISTS verification_codes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          phone TEXT NOT NULL,
+          code TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'login',
+          expires_at DATETIME NOT NULL,
+          used INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT (datetime('now', 'localtime'))
+        )
+      `);
+
       // 创建索引
       db.run('CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(customer_phone)');
       db.run('CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)');
@@ -193,6 +206,8 @@ function initDatabase() {
       db.run('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id)');
       db.run('CREATE INDEX IF NOT EXISTS idx_logs_admin ON logs(admin_id)');
       db.run('CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_verification_phone_code ON verification_codes(phone, code, used)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_verification_expires ON verification_codes(expires_at)');
 
       console.log('数据库表初始化完成');
       resolve();

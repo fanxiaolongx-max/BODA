@@ -1,13 +1,20 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { getAsync, runAsync } = require('../db/database');
-const { loginValidation, phoneValidation, validate } = require('../middleware/validation');
+const { loginValidation, phoneValidation, codeValidation, validate } = require('../middleware/validation');
 const { logAction, logger } = require('../utils/logger');
 const { body } = require('express-validator');
+const { createVerificationCode, verifyCode } = require('../utils/verification');
 
 const router = express.Router();
 
-// 管理员登录
+/**
+ * POST /api/auth/admin/login
+ * Admin login
+ * @body {string} username - Admin username
+ * @body {string} password - Admin password
+ * @returns {Object} Admin object with id, username, name, and role
+ */
 router.post('/admin/login', loginValidation, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -60,7 +67,11 @@ router.post('/admin/login', loginValidation, async (req, res) => {
   }
 });
 
-// 管理员登出
+/**
+ * POST /api/auth/admin/logout
+ * Admin logout
+ * @returns {Object} Success message
+ */
 router.post('/admin/logout', (req, res) => {
   const adminId = req.session.adminId;
   req.session.destroy((err) => {
@@ -72,7 +83,11 @@ router.post('/admin/logout', (req, res) => {
   });
 });
 
-// 获取当前管理员信息
+/**
+ * GET /api/auth/admin/me
+ * Get current admin information
+ * @returns {Object} Admin object with id, username, name, email, role, and created_at
+ */
 router.get('/admin/me', async (req, res) => {
   if (!req.session.adminId) {
     return res.status(401).json({ success: false, message: '未登录' });
@@ -96,7 +111,13 @@ router.get('/admin/me', async (req, res) => {
   }
 });
 
-// 用户登录（手机号）
+/**
+ * POST /api/auth/user/login
+ * User login with phone number
+ * @body {string} phone - User phone number (8-15 digits, international format supported)
+ * @body {string} [name] - User name (optional)
+ * @returns {Object} User object with id, phone, and name
+ */
 router.post('/user/login', [
   phoneValidation,
   body('name').optional({ checkFalsy: true }).trim().isLength({ max: 50 }).withMessage('姓名长度不能超过50个字符'),
@@ -104,6 +125,17 @@ router.post('/user/login', [
 ], async (req, res) => {
   try {
     const { phone, name } = req.body;
+
+    // 检查短信验证码是否启用
+    const smsEnabled = await getAsync("SELECT value FROM settings WHERE key = 'sms_enabled'");
+    if (smsEnabled && smsEnabled.value === 'true') {
+      // 如果启用了短信验证码，要求使用验证码登录
+      return res.status(400).json({
+        success: false,
+        message: 'SMS verification is required. Please use login-with-code endpoint.',
+        requiresCode: true
+      });
+    }
 
     // 查找或创建用户
     let user = await getAsync('SELECT * FROM users WHERE phone = ?', [phone]);
@@ -155,7 +187,11 @@ router.post('/user/login', [
   }
 });
 
-// 用户登出
+/**
+ * POST /api/auth/user/logout
+ * User logout
+ * @returns {Object} Success message
+ */
 router.post('/user/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) {
@@ -166,7 +202,139 @@ router.post('/user/logout', (req, res) => {
   });
 });
 
-// 获取当前用户信息
+/**
+ * POST /api/auth/sms/send
+ * Send verification code via SMS
+ * @body {string} phone - User phone number
+ * @body {string} [type] - Verification code type (default: 'login')
+ * @returns {Object} Success message
+ */
+router.post('/sms/send', [
+  phoneValidation,
+  body('type').optional().trim().isIn(['login', 'register', 'reset']).withMessage('Invalid verification code type'),
+  validate
+], async (req, res) => {
+  try {
+    const { phone, type = 'login' } = req.body;
+
+    // 检查短信服务是否启用（允许管理员测试，即使未启用）
+    const smsEnabled = await getAsync("SELECT value FROM settings WHERE key = 'sms_enabled'");
+    const isAdmin = req.session && req.session.adminId;
+    
+    if (!smsEnabled || smsEnabled.value !== 'true') {
+      // 如果不是管理员，返回错误
+      if (!isAdmin) {
+        return res.status(400).json({
+          success: false,
+          message: 'SMS verification is not enabled'
+        });
+      }
+      // 管理员可以测试，即使未启用
+    }
+
+    const result = await createVerificationCode(phone, type);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: result.message,
+        // 开发环境返回验证码（仅用于测试）
+        code: result.code
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+  } catch (error) {
+    logger.error('发送验证码失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to send verification code' });
+  }
+});
+
+/**
+ * POST /api/auth/user/login-with-code
+ * User login with verification code
+ * @body {string} phone - User phone number
+ * @body {string} code - Verification code
+ * @body {string} [name] - User name (optional)
+ * @returns {Object} User object with id, phone, and name
+ */
+router.post('/user/login-with-code', [
+  phoneValidation,
+  codeValidation,
+  body('name').optional({ checkFalsy: true }).trim().isLength({ max: 50 }).withMessage('姓名长度不能超过50个字符'),
+  validate
+], async (req, res) => {
+  try {
+    const { phone, code, name } = req.body;
+
+    // 验证验证码
+    const verifyResult = await verifyCode(phone, code, 'login');
+    if (!verifyResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: verifyResult.message
+      });
+    }
+
+    // 查找或创建用户
+    let user = await getAsync('SELECT * FROM users WHERE phone = ?', [phone]);
+
+    if (!user) {
+      const result = await runAsync(
+        "INSERT INTO users (phone, name, last_login) VALUES (?, ?, datetime('now', 'localtime'))",
+        [phone, name || '']
+      );
+      user = await getAsync('SELECT * FROM users WHERE id = ?', [result.id]);
+      logger.info('新用户注册（验证码登录）', { phone, userId: user.id });
+    } else {
+      // 更新最后登录时间和姓名
+      await runAsync(
+        "UPDATE users SET last_login = datetime('now', 'localtime'), name = ? WHERE id = ?",
+        [name || user.name, user.id]
+      );
+      user.name = name || user.name;
+    }
+
+    // 设置session
+    req.session.userId = user.id;
+    req.session.userPhone = user.phone;
+    req.session.userName = user.name;
+
+    // 记录用户登录日志
+    const { logAction: logUserAction } = require('../utils/logger');
+    await logUserAction(0, 'USER_LOGIN', 'user', user.id, JSON.stringify({
+      action: '用户登录（验证码）',
+      phone: user.phone,
+      name: user.name || '未设置',
+      isNewUser: !user.last_login,
+      loginMethod: 'sms_code'
+    }), req);
+
+    logger.info('用户登录成功（验证码）', { phone, userId: user.id });
+
+    res.json({
+      success: true,
+      message: '登录成功',
+      user: {
+        id: user.id,
+        phone: user.phone,
+        name: user.name
+      }
+    });
+  } catch (error) {
+    logger.error('验证码登录错误', { error: error.message });
+    res.status(500).json({ success: false, message: '登录失败' });
+  }
+});
+
+/**
+ * GET /api/auth/user/me
+ * Get current user information
+ * @returns {Object} User object with id, phone, and name
+ */
 router.get('/user/me', async (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({ success: false, message: '未登录' });

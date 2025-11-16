@@ -9,6 +9,7 @@ const fs = require('fs');
 const { initData } = require('./db/init');
 const { logger } = require('./utils/logger');
 const { closeDatabase } = require('./db/database');
+const monitoringMiddleware = require('./middleware/monitoring');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,14 +20,83 @@ app.set('trust proxy', 1);
 
 // 安全中间件
 app.use(helmet({
-  contentSecurityPolicy: false, // 开发时关闭，生产环境需配置
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
+      scriptSrcAttr: ["'unsafe-inline'"], // 允许内联事件处理器（onclick等）
+      imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
+    },
+  },
+  hsts: {
+    maxAge: 31536000, // 1年（31536000秒 = 365天）
+    // 注意：这个值表示浏览器会记住"必须使用HTTPS"的时长
+    // 1年后浏览器会"忘记"这个规则，但不会影响程序运行
+    // 只要服务器继续发送HSTS头，浏览器会持续更新这个记忆
+    // 可以设置为更长时间（如2年：63072000），但1年是常用值
+    includeSubDomains: true,
+    preload: true
+  },
+  // 防止点击劫持
+  frameguard: {
+    action: 'deny'
+  },
+  // 禁用X-Powered-By头
+  hidePoweredBy: true,
+  // XSS保护
+  xssFilter: true,
+  // 防止MIME类型嗅探
+  noSniff: true,
+  // 防止IE执行下载的HTML
+  ieNoOpen: true,
+  // DNS预取控制
+  dnsPrefetchControl: {
+    allow: false
+  }
 }));
 
 // CORS配置
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true
-}));
+const corsOptions = {
+  origin: function (origin, callback) {
+    // 允许无origin的请求（如移动应用、Postman等）
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // 从环境变量读取允许的源
+    const allowedOrigins = process.env.CORS_ORIGIN 
+      ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+      : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+    
+    // 开发环境允许所有源（方便测试）
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    // 生产环境检查白名单
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['X-Total-Count'],
+  maxAge: 86400 // 24小时
+};
+
+app.use(cors(corsOptions));
 
 // 请求解析
 app.use(express.json({ limit: '10mb' }));
@@ -45,6 +115,9 @@ app.use(session({
   },
   proxy: true // 信任反向代理（ngrok、Nginx 等）
 }));
+
+// 性能监控中间件（放在session之后，路由之前）
+app.use(monitoringMiddleware);
 
 // 限流配置（放宽限制）
 const apiLimiter = rateLimit({
@@ -125,8 +198,19 @@ app.use('/api/user', apiLimiter, userRoutes);
 app.use('/api/public', publicRoutes);
 
 // 健康检查
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+const { performHealthCheck } = require('./utils/health-check');
+app.get('/health', async (req, res) => {
+  try {
+    const health = await performHealthCheck();
+    const statusCode = health.status === 'healthy' ? 200 : health.status === 'warning' ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'unhealthy', 
+      timestamp: new Date().toISOString(),
+      error: error.message 
+    });
+  }
 });
 
 // 404处理

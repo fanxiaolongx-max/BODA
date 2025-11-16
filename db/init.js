@@ -95,7 +95,13 @@ async function initData() {
       { key: 'contact_phone', value: '', description: '联系电话' },
       { key: 'currency', value: 'EGP', description: '货币单位' },
       { key: 'currency_symbol', value: 'LE', description: '货币符号' },
-      { key: 'max_visible_cycles', value: '10', description: '最大可见周期数' }
+      { key: 'max_visible_cycles', value: '10', description: '最大可见周期数' },
+      { key: 'sms_enabled', value: 'false', description: '是否启用短信验证码' },
+      { key: 'sms_provider', value: 'twilio', description: '短信服务商' },
+      { key: 'twilio_account_sid', value: '', description: 'Twilio Account SID' },
+      { key: 'twilio_auth_token', value: '', description: 'Twilio Auth Token' },
+      { key: 'twilio_phone_number', value: '', description: 'Twilio发送号码' },
+      { key: 'twilio_verify_service_sid', value: '', description: 'Twilio Verify Service SID (推荐使用)' }
     ];
 
     for (const setting of settings) {

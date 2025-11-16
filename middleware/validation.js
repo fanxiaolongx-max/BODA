@@ -88,6 +88,14 @@ const orderValidation = [
   validate
 ];
 
+// 验证码验证规则
+const codeValidation = body('code')
+  .trim()
+  .isLength({ min: 6, max: 6 })
+  .withMessage('验证码必须是6位数字')
+  .matches(/^\d{6}$/)
+  .withMessage('验证码只能包含数字');
+
 module.exports = {
   validate,
   loginValidation,
@@ -95,6 +103,7 @@ module.exports = {
   categoryValidation,
   discountValidation,
   orderValidation,
-  phoneValidation
+  phoneValidation,
+  codeValidation
 };
 

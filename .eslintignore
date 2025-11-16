@@ -1,0 +1,11 @@
+node_modules/
+coverage/
+logs/
+db/*.db
+db/*.db-*
+uploads/
+show/
+public/
+*.min.js
+test-results.txt
+

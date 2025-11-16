@@ -5,21 +5,10 @@ const { v4: uuidv4 } = require('uuid');
 const { runAsync, getAsync, allAsync, beginTransaction, commit, rollback } = require('../db/database');
 const { requireUserAuth } = require('../middleware/auth');
 const { logger } = require('../utils/logger');
+const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = require('../utils/cycle-helper');
+const { calculateItemPrice, batchGetToppingProducts, batchGetOrderItems } = require('../utils/order-helper');
 
 const router = express.Router();
-
-// 辅助函数：查找订单所属的周期
-async function findOrderCycle(orderCreatedAt) {
-  // 查找包含订单时间的周期
-  const cycle = await getAsync(
-    `SELECT * FROM ordering_cycles 
-     WHERE start_time <= ? 
-     AND (end_time IS NULL OR end_time >= ?)
-     ORDER BY start_time DESC LIMIT 1`,
-    [orderCreatedAt, orderCreatedAt]
-  );
-  return cycle;
-}
 
 // 用户需要登录
 router.use(requireUserAuth);
@@ -52,7 +41,14 @@ const upload = multer({
 
 // ==================== 订单管理 ====================
 
-// 创建订单
+/**
+ * POST /api/user/orders
+ * Create a new order
+ * @body {Array} items - Order items array
+ * @body {string} [customer_name] - Customer name (optional)
+ * @body {string} [notes] - Order notes (optional)
+ * @returns {Object} Order object with id, order_number, total_amount, and items
+ */
 router.post('/orders', async (req, res) => {
   try {
     const { items, customer_name, notes } = req.body;
@@ -70,15 +66,33 @@ router.post('/orders', async (req, res) => {
     await beginTransaction();
 
     try {
+      // 收集所有需要查询的产品ID和加料ID
+      const productIds = items.map(item => item.product_id);
+      const allToppingIds = [];
+      items.forEach(item => {
+        if (item.toppings && Array.isArray(item.toppings)) {
+          allToppingIds.push(...item.toppings);
+        }
+      });
+
+      // 批量查询所有产品
+      const uniqueProductIds = [...new Set(productIds)];
+      const placeholders = uniqueProductIds.map(() => '?').join(',');
+      const products = await allAsync(
+        `SELECT * FROM products WHERE id IN (${placeholders}) AND status = ?`,
+        [...uniqueProductIds, 'active']
+      );
+      const productsMap = new Map(products.map(p => [p.id, p]));
+
+      // 批量查询所有加料产品
+      const toppingProductsMap = await batchGetToppingProducts(allToppingIds);
+
       // 计算订单总额
       let totalAmount = 0;
       const orderItems = [];
 
       for (const item of items) {
-        const product = await getAsync(
-          'SELECT * FROM products WHERE id = ? AND status = ?',
-          [item.product_id, 'active']
-        );
+        const product = productsMap.get(item.product_id);
 
         if (!product) {
           throw new Error(`商品不存在或已下架: ${item.product_id}`);
@@ -89,34 +103,14 @@ router.post('/orders', async (req, res) => {
           throw new Error('商品数量必须大于0');
         }
 
-        // 计算基础价格（根据杯型）
-        let itemPrice = product.price;
-        if (item.size) {
-          try {
-            const sizes = JSON.parse(product.sizes || '{}');
-            if (sizes[item.size]) {
-              itemPrice = sizes[item.size];
-            }
-          } catch (e) {
-            // 如果解析失败，使用默认价格
-          }
-        }
+        // 使用helper函数计算价格
+        const { price: finalPrice, toppingNames } = await calculateItemPrice(
+          product,
+          item.size || null,
+          item.toppings || [],
+          toppingProductsMap
+        );
 
-        // 计算加料价格
-        let toppingPrice = 0;
-        let toppingNames = [];
-        if (item.toppings && Array.isArray(item.toppings) && item.toppings.length > 0) {
-          for (const toppingId of item.toppings) {
-            const topping = await getAsync('SELECT * FROM products WHERE id = ?', [toppingId]);
-            if (topping) {
-              toppingPrice += topping.price;
-              toppingNames.push(topping.name);
-            }
-          }
-        }
-
-        // 最终单价 = 基础价格 + 加料价格
-        const finalPrice = itemPrice + toppingPrice;
         const subtotal = finalPrice * quantity;
         totalAmount += subtotal;
 
@@ -205,7 +199,11 @@ router.post('/orders', async (req, res) => {
   }
 });
 
-// 获取我的订单列表
+/**
+ * GET /api/user/orders
+ * Get current user's order list
+ * @returns {Object} Orders array with items and cycle information
+ */
 router.get('/orders', async (req, res) => {
   try {
     // 检查session
@@ -218,51 +216,46 @@ router.get('/orders', async (req, res) => {
       [req.session.userId]
     );
 
+    if (orders.length === 0) {
+      return res.json({ success: true, orders: [] });
+    }
+
     // 获取当前活跃周期
     const activeCycle = await getAsync(
       "SELECT * FROM ordering_cycles WHERE status = 'active' ORDER BY id DESC LIMIT 1"
     );
 
-    // 获取订单详情并检查周期状态
+    // 批量获取订单项
+    const orderIds = orders.map(o => o.id);
+    const orderItemsMap = await batchGetOrderItems(orderIds);
+
+    // 批量查找订单所属的周期
+    const orderCreatedAts = orders.map(o => o.created_at);
+    const orderCyclesMap = await findOrderCyclesBatch(orderCreatedAts);
+
+    // 为每个订单添加详情和周期信息
     for (const order of orders) {
-      order.items = await allAsync(
-        'SELECT * FROM order_items WHERE order_id = ?',
-        [order.id]
-      );
+      // 从批量查询结果中获取订单项
+      order.items = orderItemsMap.get(order.id) || [];
       
-      // 查找订单所属的周期
-      const orderCycle = await findOrderCycle(order.created_at);
+      // 从批量查询结果中获取周期信息
+      const orderCycle = orderCyclesMap.get(order.created_at);
       if (orderCycle) {
         order.cycle_id = orderCycle.id;
         order.cycle_number = orderCycle.cycle_number;
         order.cycle_start_time = orderCycle.start_time;
         order.cycle_end_time = orderCycle.end_time;
-        // 判断是否属于当前活跃周期
-        // 如果没有活跃周期，所有订单都属于"当前周期"（不显示为灰色）
-        order.isActiveCycle = activeCycle ? (orderCycle.id === activeCycle.id) : true;
+        order.isActiveCycle = isActiveCycle(orderCycle, activeCycle);
       } else {
         order.cycle_id = null;
         order.cycle_number = null;
         order.cycle_start_time = null;
         order.cycle_end_time = null;
-        // 如果没有找到周期，且没有活跃周期，则认为是当前周期
-        order.isActiveCycle = !activeCycle;
+        order.isActiveCycle = isActiveCycle(null, activeCycle);
       }
       
-      // 检查订单是否属于历史周期
-      // 只有开始下一个周期时，上一个周期的订单才标记为过期
-      order.isExpired = false;
-      if (activeCycle) {
-        // 如果存在活跃周期，检查订单是否在当前活跃周期之前
-        const orderTime = new Date(order.created_at);
-        const cycleStart = new Date(activeCycle.start_time);
-        
-        // 只有订单在当前活跃周期开始时间之前，才标记为过期
-        if (orderTime < cycleStart) {
-          order.isExpired = true;
-        }
-      }
-      // 如果没有活跃周期，说明还没有开始下一个周期，不标记为过期
+      // 检查订单是否已过期
+      order.isExpired = isOrderExpired(order, activeCycle, null);
     }
 
     res.json({ success: true, orders });
@@ -272,7 +265,11 @@ router.get('/orders', async (req, res) => {
   }
 });
 
-// 根据手机号获取订单
+/**
+ * GET /api/user/orders/by-phone
+ * Get orders by phone number
+ * @returns {Object} Orders array with items and cycle information
+ */
 router.get('/orders/by-phone', async (req, res) => {
   try {
     // 检查session
@@ -285,51 +282,46 @@ router.get('/orders/by-phone', async (req, res) => {
       [req.session.userPhone]
     );
 
+    if (orders.length === 0) {
+      return res.json({ success: true, orders: [] });
+    }
+
     // 获取当前活跃周期
     const activeCycle = await getAsync(
       "SELECT * FROM ordering_cycles WHERE status = 'active' ORDER BY id DESC LIMIT 1"
     );
 
-    // 获取订单详情并检查周期状态
+    // 批量获取订单项
+    const orderIds = orders.map(o => o.id);
+    const orderItemsMap = await batchGetOrderItems(orderIds);
+
+    // 批量查找订单所属的周期
+    const orderCreatedAts = orders.map(o => o.created_at);
+    const orderCyclesMap = await findOrderCyclesBatch(orderCreatedAts);
+
+    // 为每个订单添加详情和周期信息
     for (const order of orders) {
-      order.items = await allAsync(
-        'SELECT * FROM order_items WHERE order_id = ?',
-        [order.id]
-      );
+      // 从批量查询结果中获取订单项
+      order.items = orderItemsMap.get(order.id) || [];
       
-      // 查找订单所属的周期
-      const orderCycle = await findOrderCycle(order.created_at);
+      // 从批量查询结果中获取周期信息
+      const orderCycle = orderCyclesMap.get(order.created_at);
       if (orderCycle) {
         order.cycle_id = orderCycle.id;
         order.cycle_number = orderCycle.cycle_number;
         order.cycle_start_time = orderCycle.start_time;
         order.cycle_end_time = orderCycle.end_time;
-        // 判断是否属于当前活跃周期
-        // 如果没有活跃周期，所有订单都属于"当前周期"（不显示为灰色）
-        order.isActiveCycle = activeCycle ? (orderCycle.id === activeCycle.id) : true;
+        order.isActiveCycle = isActiveCycle(orderCycle, activeCycle);
       } else {
         order.cycle_id = null;
         order.cycle_number = null;
         order.cycle_start_time = null;
         order.cycle_end_time = null;
-        // 如果没有找到周期，且没有活跃周期，则认为是当前周期
-        order.isActiveCycle = !activeCycle;
+        order.isActiveCycle = isActiveCycle(null, activeCycle);
       }
       
-      // 检查订单是否属于历史周期
-      // 只有开始下一个周期时，上一个周期的订单才标记为过期
-      order.isExpired = false;
-      if (activeCycle) {
-        // 如果存在活跃周期，检查订单是否在当前活跃周期之前
-        const orderTime = new Date(order.created_at);
-        const cycleStart = new Date(activeCycle.start_time);
-        
-        // 只有订单在当前活跃周期开始时间之前，才标记为过期
-        if (orderTime < cycleStart) {
-          order.isExpired = true;
-        }
-      }
-      // 如果没有活跃周期，说明还没有开始下一个周期，不标记为过期
+      // 检查订单是否已过期
+      order.isExpired = isOrderExpired(order, activeCycle, null);
     }
 
     res.json({ success: true, orders });
@@ -339,7 +331,12 @@ router.get('/orders/by-phone', async (req, res) => {
   }
 });
 
-// 获取订单详情
+/**
+ * GET /api/user/orders/:id
+ * Get order details by ID
+ * @param {string} id - Order ID
+ * @returns {Object} Order object with items
+ */
 router.get('/orders/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -365,7 +362,12 @@ router.get('/orders/:id', async (req, res) => {
   }
 });
 
-// 删除订单（仅限pending状态且点单开放期间）
+/**
+ * DELETE /api/user/orders/:id
+ * Delete an order (only pending status and when ordering is open)
+ * @param {string} id - Order ID
+ * @returns {Object} Success message
+ */
 router.delete('/orders/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -411,7 +413,14 @@ router.delete('/orders/:id', async (req, res) => {
   }
 });
 
-// 更新订单（仅限pending状态且点单开放期间）
+/**
+ * PUT /api/user/orders/:id
+ * Update an order (only pending status and when ordering is open)
+ * @param {string} id - Order ID
+ * @body {Array} items - Updated order items array
+ * @body {string} [notes] - Updated order notes (optional)
+ * @returns {Object} Updated order object
+ */
 router.put('/orders/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -444,15 +453,33 @@ router.put('/orders/:id', async (req, res) => {
 
     await beginTransaction();
     try {
+      // 收集所有需要查询的产品ID和加料ID
+      const productIds = items.map(item => item.product_id);
+      const allToppingIds = [];
+      items.forEach(item => {
+        if (item.toppings && Array.isArray(item.toppings)) {
+          allToppingIds.push(...item.toppings);
+        }
+      });
+
+      // 批量查询所有产品
+      const uniqueProductIds = [...new Set(productIds)];
+      const placeholders = uniqueProductIds.map(() => '?').join(',');
+      const products = await allAsync(
+        `SELECT * FROM products WHERE id IN (${placeholders}) AND status = ?`,
+        [...uniqueProductIds, 'active']
+      );
+      const productsMap = new Map(products.map(p => [p.id, p]));
+
+      // 批量查询所有加料产品
+      const toppingProductsMap = await batchGetToppingProducts(allToppingIds);
+
       // 计算新的订单总额
       let totalAmount = 0;
       const orderItems = [];
 
       for (const item of items) {
-        const product = await getAsync(
-          'SELECT * FROM products WHERE id = ? AND status = ?',
-          [item.product_id, 'active']
-        );
+        const product = productsMap.get(item.product_id);
 
         if (!product) {
           throw new Error(`商品不存在或已下架: ${item.product_id}`);
@@ -463,35 +490,14 @@ router.put('/orders/:id', async (req, res) => {
           throw new Error('商品数量必须大于0');
         }
 
-        // 计算价格（考虑杯型和加料）
-        let itemPrice = product.price;
-        
-        // 如果指定了杯型，使用杯型价格
-        if (item.size) {
-          try {
-            const sizes = JSON.parse(product.sizes || '{}');
-            if (sizes[item.size]) {
-              itemPrice = sizes[item.size];
-            }
-          } catch (e) {
-            // 使用默认价格
-          }
-        }
-        
-        // 计算加料价格
-        let toppingPrice = 0;
-        let toppingNames = [];
-        if (item.toppings && Array.isArray(item.toppings)) {
-          for (const toppingId of item.toppings) {
-            const topping = await getAsync('SELECT * FROM products WHERE id = ?', [toppingId]);
-            if (topping) {
-              toppingPrice += topping.price;
-              toppingNames.push(topping.name);
-            }
-          }
-        }
-        
-        const finalPrice = itemPrice + toppingPrice;
+        // 使用helper函数计算价格
+        const { price: finalPrice, toppingNames } = await calculateItemPrice(
+          product,
+          item.size || null,
+          item.toppings || [],
+          toppingProductsMap
+        );
+
         const subtotal = finalPrice * quantity;
         totalAmount += subtotal;
 
@@ -549,7 +555,13 @@ router.put('/orders/:id', async (req, res) => {
   }
 });
 
-// 上传付款截图
+/**
+ * POST /api/user/orders/:id/payment
+ * Upload payment screenshot (only when ordering is closed)
+ * @param {string} id - Order ID
+ * @body {File} payment_image - Payment screenshot image file
+ * @returns {Object} Success message with payment_image URL
+ */
 router.post('/orders/:id/payment', upload.single('payment_image'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -598,7 +610,11 @@ router.post('/orders/:id/payment', upload.single('payment_image'), async (req, r
   }
 });
 
-// ==================== 获取订单汇总（含折扣） ====================
+/**
+ * GET /api/user/orders-summary
+ * Get order summary with total amount, discount, and final amount
+ * @returns {Object} Summary object with total_orders, total_amount, total_discount, total_final_amount, and orders array
+ */
 router.get('/orders-summary', async (req, res) => {
   try {
     // 获取所有订单
@@ -607,12 +623,14 @@ router.get('/orders-summary', async (req, res) => {
       [req.session.userId, req.session.userPhone]
     );
 
-    // 获取订单详情
-    for (const order of orders) {
-      order.items = await allAsync(
-        'SELECT * FROM order_items WHERE order_id = ?',
-        [order.id]
-      );
+    // 批量获取订单详情
+    if (orders.length > 0) {
+      const orderIds = orders.map(o => o.id);
+      const orderItemsMap = await batchGetOrderItems(orderIds);
+      
+      for (const order of orders) {
+        order.items = orderItemsMap.get(order.id) || [];
+      }
     }
 
     // 计算汇总

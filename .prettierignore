@@ -1,0 +1,12 @@
+node_modules/
+coverage/
+logs/
+*.log
+db/*.db
+db/*.db-*
+uploads/
+show/
+test-results.txt
+*.md
+!README.md
+

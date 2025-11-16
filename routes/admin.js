@@ -9,24 +9,23 @@ const { requireAuth } = require('../middleware/auth');
 const { 
   productValidation, 
   categoryValidation, 
-  discountValidation 
+  discountValidation,
+  validate
 } = require('../middleware/validation');
 const { logAction, logger } = require('../utils/logger');
 const { body } = require('express-validator');
+const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = require('../utils/cycle-helper');
+const { batchGetOrderItems } = require('../utils/order-helper');
+const cache = require('../utils/cache');
 
 const router = express.Router();
 
-// 辅助函数：查找订单所属的周期
-async function findOrderCycle(orderCreatedAt) {
-  // 查找包含订单时间的周期
-  const cycle = await getAsync(
-    `SELECT * FROM ordering_cycles 
-     WHERE start_time <= ? 
-     AND (end_time IS NULL OR end_time >= ?)
-     ORDER BY start_time DESC LIMIT 1`,
-    [orderCreatedAt, orderCreatedAt]
-  );
-  return cycle;
+// 清除相关缓存的辅助函数
+function clearRelatedCache() {
+  cache.delete('public:settings');
+  cache.delete('public:categories');
+  cache.delete('public:discount-rules');
+  // 注意：products缓存需要根据category_id动态清除，这里只清除通用缓存
 }
 
 // 所有管理员路由都需要认证
@@ -84,6 +83,9 @@ router.post('/categories', categoryValidation, async (req, res) => {
     );
 
     await logAction(req.session.adminId, 'CREATE', 'category', result.id, { name }, req);
+    
+    // 清除相关缓存
+    clearRelatedCache();
 
     res.json({ success: true, message: '分类创建成功', id: result.id });
   } catch (error) {
@@ -104,6 +106,9 @@ router.put('/categories/:id', categoryValidation, async (req, res) => {
     );
 
     await logAction(req.session.adminId, 'UPDATE', 'category', id, { name }, req);
+    
+    // 清除相关缓存
+    clearRelatedCache();
 
     res.json({ success: true, message: '分类更新成功' });
   } catch (error) {
@@ -132,6 +137,9 @@ router.delete('/categories/:id', async (req, res) => {
 
     await runAsync('DELETE FROM categories WHERE id = ?', [id]);
     await logAction(req.session.adminId, 'DELETE', 'category', id, null, req);
+    
+    // 清除相关缓存
+    clearRelatedCache();
 
     res.json({ success: true, message: '分类删除成功' });
   } catch (error) {
@@ -241,6 +249,9 @@ router.post('/products', upload.single('image'), async (req, res) => {
     );
 
     await logAction(req.session.adminId, 'CREATE', 'product', result.id, { name, price, sizes: sizesJson }, req);
+    
+    // 清除相关缓存
+    clearRelatedCache();
 
     res.json({ success: true, message: '菜品创建成功', id: result.id });
   } catch (error) {
@@ -346,6 +357,9 @@ router.put('/products/:id', upload.single('image'), async (req, res) => {
     logger.info('Product updated', { id, savedSizes: updatedProduct.sizes });
 
     await logAction(req.session.adminId, 'UPDATE', 'product', id, { name, price, sizes: sizesJson }, req);
+    
+    // 清除相关缓存
+    clearRelatedCache();
 
     res.json({ success: true, message: '菜品更新成功' });
   } catch (error) {
@@ -361,6 +375,9 @@ router.delete('/products/:id', async (req, res) => {
 
     await runAsync('UPDATE products SET status = ? WHERE id = ?', ['deleted', id]);
     await logAction(req.session.adminId, 'DELETE', 'product', id, null, req);
+    
+    // 清除相关缓存
+    clearRelatedCache();
 
     res.json({ success: true, message: '菜品删除成功' });
   } catch (error) {
@@ -410,6 +427,9 @@ router.post('/discount-rules/batch', async (req, res) => {
 
       await commit();
       await logAction(req.session.adminId, 'UPDATE', 'discount_rules', null, { count: rules.length }, req);
+      
+      // 清除相关缓存
+      clearRelatedCache();
 
       res.json({ success: true, message: '折扣规则更新成功' });
     } catch (error) {
@@ -488,10 +508,12 @@ router.post('/settings', async (req, res) => {
           );
           
           // 自动计算并应用折扣
+          // 使用SQLite的datetime函数获取当前时间，确保格式一致
+          const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
           const orders = await allAsync(
             `SELECT * FROM orders 
              WHERE created_at >= ? AND created_at <= ? AND status = 'pending'`,
-            [activeCycle.start_time, new Date().toISOString()]
+            [activeCycle.start_time, nowResult.now]
           );
           
           // 获取折扣规则
@@ -509,7 +531,7 @@ router.post('/settings', async (req, res) => {
             }
           }
           
-          // 更新所有订单的折扣
+          // 批量更新所有订单的折扣（已经在事务中，不需要再开启新事务）
           for (const order of orders) {
             const discountAmount = order.total_amount * discountRate;
             const finalAmount = order.total_amount - discountAmount;
@@ -536,8 +558,9 @@ router.post('/settings', async (req, res) => {
 
       await commit();
       await logAction(req.session.adminId, 'UPDATE', 'settings', null, settings, req);
-
       
+      // 清除相关缓存
+      clearRelatedCache();
 
       res.json({ success: true, message: '设置更新成功' });
     } catch (error) {
@@ -628,10 +651,12 @@ router.post('/ordering/close', async (req, res) => {
           );
           
           // 自动计算并应用折扣
+          // 使用SQLite的datetime函数获取当前时间，确保格式一致
+          const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
           const orders = await allAsync(
             `SELECT * FROM orders 
              WHERE created_at >= ? AND created_at <= ? AND status = 'pending'`,
-            [activeCycle.start_time, new Date().toISOString()]
+            [activeCycle.start_time, nowResult.now]
           );
           
           const rules = await allAsync(
@@ -647,6 +672,7 @@ router.post('/ordering/close', async (req, res) => {
             }
           }
           
+          // 批量更新所有订单的折扣（已经在事务中，不需要再开启新事务）
           for (const order of orders) {
             const discountAmount = order.total_amount * discountRate;
             const finalAmount = order.total_amount - discountAmount;
@@ -798,54 +824,39 @@ router.get('/orders', async (req, res) => {
       );
     }
 
-    // 获取订单详情并检查周期状态
-    for (const order of orders) {
-      order.items = await allAsync(
-        'SELECT * FROM order_items WHERE order_id = ?',
-        [order.id]
-      );
-      
-      // 查找订单所属的周期
-      const orderCycle = await findOrderCycle(order.created_at);
-      if (orderCycle) {
-        order.cycle_id = orderCycle.id;
-        order.cycle_number = orderCycle.cycle_number;
-        order.cycle_start_time = orderCycle.start_time;
-        order.cycle_end_time = orderCycle.end_time;
-        // 判断是否属于当前活跃周期
-        order.isActiveCycle = activeCycle ? (orderCycle.id === activeCycle.id) : false;
-      } else {
-        order.cycle_id = null;
-        order.cycle_number = null;
-        order.cycle_start_time = null;
-        order.cycle_end_time = null;
-        // 如果没有找到周期，且没有活跃周期，则不属于活跃周期
-        order.isActiveCycle = false;
-      }
-      
-      // 检查订单是否属于历史周期
-      order.isExpired = false;
-      if (activeCycle) {
-        // 如果存在活跃周期，检查订单是否在当前活跃周期之前
-        const orderTime = new Date(order.created_at);
-        const cycleStart = new Date(activeCycle.start_time);
+    // 批量获取订单详情和周期信息
+    if (orders.length > 0) {
+      // 批量获取订单项
+      const orderIds = orders.map(o => o.id);
+      const orderItemsMap = await batchGetOrderItems(orderIds);
+
+      // 批量查找订单所属的周期
+      const orderCreatedAts = orders.map(o => o.created_at);
+      const orderCyclesMap = await findOrderCyclesBatch(orderCreatedAts);
+
+      // 为每个订单添加详情和周期信息
+      for (const order of orders) {
+        // 从批量查询结果中获取订单项
+        order.items = orderItemsMap.get(order.id) || [];
         
-        // 只有订单在当前活跃周期开始时间之前，才标记为过期
-        if (orderTime < cycleStart) {
-          order.isExpired = true;
+        // 从批量查询结果中获取周期信息
+        const orderCycle = orderCyclesMap.get(order.created_at);
+        if (orderCycle) {
+          order.cycle_id = orderCycle.id;
+          order.cycle_number = orderCycle.cycle_number;
+          order.cycle_start_time = orderCycle.start_time;
+          order.cycle_end_time = orderCycle.end_time;
+          order.isActiveCycle = isActiveCycle(orderCycle, activeCycle);
+        } else {
+          order.cycle_id = null;
+          order.cycle_number = null;
+          order.cycle_start_time = null;
+          order.cycle_end_time = null;
+          order.isActiveCycle = false;
         }
-      } else if (latestEndedCycle) {
-        // 如果没有活跃周期，但有最近一个已结束的周期
-        // 只有属于最近一个已结束周期的订单不标记为过期，其他都标记为过期
-        if (orderCycle && orderCycle.id !== latestEndedCycle.id) {
-          order.isExpired = true;
-        } else if (!orderCycle) {
-          // 如果订单不属于任何周期，标记为过期
-          order.isExpired = true;
-        }
-      } else {
-        // 如果没有活跃周期，也没有已结束的周期，所有订单都不标记为过期
-        order.isExpired = false;
+        
+        // 检查订单是否已过期
+        order.isExpired = isOrderExpired(order, activeCycle, latestEndedCycle);
       }
     }
 
@@ -1538,11 +1549,18 @@ router.get('/admins', requireAuth, async (req, res) => {
 router.post('/admins', requireSuperAdmin, [
   body('username').trim().isLength({ min: 3, max: 50 }),
   body('password').isLength({ min: 6 }),
-  body('name').optional().trim(),
-  body('email').optional().isEmail()
+  body('name').optional({ nullable: true, checkFalsy: false }).trim(),
+  body('email').optional({ nullable: true, checkFalsy: false }).normalizeEmail(),
+  validate
 ], async (req, res) => {
   try {
     const { username, password, name, email, role } = req.body;
+
+    // 记录接收到的数据（用于调试）
+    logger.info('创建管理员请求', { 
+      receivedData: { username, name, email, role, hasPassword: !!password },
+      body: req.body 
+    });
 
     // 检查用户名是否已存在
     const existing = await getAsync('SELECT id FROM admins WHERE username = ?', [username]);
@@ -1551,16 +1569,39 @@ router.post('/admins', requireSuperAdmin, [
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // 处理name和email字段（确保即使是空字符串也保存）
+    const nameValue = name !== undefined ? (name || '') : '';
+    const emailValue = email !== undefined ? (email || '') : '';
+    
+    logger.info('执行管理员创建', { 
+      username, 
+      name: nameValue, 
+      email: emailValue, 
+      role: role || 'admin' 
+    });
+    
     const result = await runAsync(
       'INSERT INTO admins (username, password, name, email, role) VALUES (?, ?, ?, ?, ?)',
-      [username, hashedPassword, name || '', email || '', role || 'admin']
+      [username, hashedPassword, nameValue, emailValue, role || 'admin']
     );
 
-    await logAction(req.session.adminId, 'CREATE', 'admin', result.id, { username }, req);
+    // 验证创建是否成功
+    const createdAdmin = await getAsync('SELECT * FROM admins WHERE id = ?', [result.id]);
+    logger.info('管理员创建后的数据', { id: result.id, name: createdAdmin?.name, email: createdAdmin?.email });
+
+    // 记录详细的操作日志
+    const logDetails = {
+      username: username,
+      name: nameValue,
+      email: emailValue,
+      role: role || 'admin'
+    };
+    await logAction(req.session.adminId, 'CREATE', 'admin', result.id, JSON.stringify(logDetails), req);
 
     res.json({ success: true, message: '管理员创建成功', id: result.id });
   } catch (error) {
-    logger.error('创建管理员失败', { error: error.message });
+    logger.error('创建管理员失败', { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: '创建管理员失败' });
   }
 });
@@ -1569,18 +1610,26 @@ router.post('/admins', requireSuperAdmin, [
 router.put('/admins/:id', requireSuperAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, role, status, password } = req.body;
+    const { name, email, role, status, password, username } = req.body;
+
+    // 记录接收到的数据（用于调试）
+    logger.info('更新管理员请求', { 
+      id, 
+      receivedData: { name, email, role, status, username, hasPassword: !!password },
+      body: req.body 
+    });
 
     const updates = [];
     const params = [];
 
+    // 处理name字段（允许空字符串，但要明确处理）
     if (name !== undefined) {
       updates.push('name = ?');
-      params.push(name);
+      params.push(name || ''); // 如果name是null或undefined，保存为空字符串
     }
     if (email !== undefined) {
       updates.push('email = ?');
-      params.push(email);
+      params.push(email || ''); // 如果email是null或undefined，保存为空字符串
     }
     if (role !== undefined) {
       updates.push('role = ?');
@@ -1602,16 +1651,35 @@ router.put('/admins/:id', requireSuperAdmin, async (req, res) => {
     updates.push("updated_at = datetime('now', 'localtime')");
     params.push(id);
 
+    // 记录要执行的SQL更新
+    logger.info('执行管理员更新', { 
+      id, 
+      updates, 
+      params: params.slice(0, -1) // 不记录id参数
+    });
+
     await runAsync(
       `UPDATE admins SET ${updates.join(', ')} WHERE id = ?`,
       params
     );
 
-    await logAction(req.session.adminId, 'UPDATE', 'admin', id, req.body, req);
+    // 验证更新是否成功
+    const updatedAdmin = await getAsync('SELECT * FROM admins WHERE id = ?', [id]);
+    logger.info('管理员更新后的数据', { id, name: updatedAdmin?.name, email: updatedAdmin?.email });
+
+    // 记录详细的操作日志（包含username以便在日志中显示）
+    const logDetails = {
+      username: username || updatedAdmin?.username || '',
+      name: name !== undefined ? (name || '') : (updatedAdmin?.name || ''),
+      email: email !== undefined ? (email || '') : (updatedAdmin?.email || ''),
+      status: status || updatedAdmin?.status || '',
+      role: role || updatedAdmin?.role || ''
+    };
+    await logAction(req.session.adminId, 'UPDATE', 'admin', id, JSON.stringify(logDetails), req);
 
     res.json({ success: true, message: '管理员更新成功' });
   } catch (error) {
-    logger.error('更新管理员失败', { error: error.message });
+    logger.error('更新管理员失败', { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: '更新管理员失败' });
   }
 });

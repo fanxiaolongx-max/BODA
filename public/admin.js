@@ -1,5 +1,138 @@
-// API基础URL
-const API_BASE = '/api';
+// API基础URL（如果未定义则定义，避免重复声明）
+if (typeof API_BASE === 'undefined') {
+  var API_BASE = '/api';
+}
+
+// Toast 通知系统
+function showToast(message, type = 'success') {
+  // 确保 Toast 容器存在
+  let toastContainer = document.getElementById('toastContainer');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toastContainer';
+    toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2';
+    document.body.appendChild(toastContainer);
+  }
+
+  // 类型配置
+  const typeConfig = {
+    success: { bg: 'bg-green-500', icon: '✓' },
+    error: { bg: 'bg-red-500', icon: '✕' },
+    warning: { bg: 'bg-yellow-500', icon: '⚠' },
+    info: { bg: 'bg-blue-500', icon: 'ℹ' }
+  };
+
+  const config = typeConfig[type] || typeConfig.success;
+  const duration = type === 'error' ? 5000 : 3000;
+
+  // 创建 Toast 元素
+  const toast = document.createElement('div');
+  toast.className = `${config.bg} text-white px-6 py-3 rounded-lg shadow-lg fade-in flex items-center space-x-2 min-w-[300px] max-w-[500px]`;
+  toast.innerHTML = `
+    <span class="font-bold">${config.icon}</span>
+    <span class="flex-1">${message}</span>
+  `;
+  
+  toastContainer.appendChild(toast);
+  
+  // 自动移除
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(100%)';
+    toast.style.transition = 'all 0.3s ease-out';
+    setTimeout(() => {
+      toast.remove();
+    }, 300);
+  }, duration);
+}
+
+// 确认对话框
+function showConfirmDialog(title, message, confirmText = 'Confirm', cancelText = 'Cancel') {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('confirmDialog');
+    const titleEl = document.getElementById('confirmDialogTitle');
+    const messageEl = document.getElementById('confirmDialogMessage');
+    const confirmBtn = document.getElementById('confirmDialogConfirm');
+    const cancelBtn = document.getElementById('confirmDialogCancel');
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    confirmBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+
+    // 移除旧的事件监听器
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+    // 添加新的事件监听器
+    newConfirmBtn.addEventListener('click', () => {
+      dialog.classList.remove('active');
+      resolve(true);
+    });
+
+    newCancelBtn.addEventListener('click', () => {
+      dialog.classList.remove('active');
+      resolve(false);
+    });
+
+    // 点击背景关闭
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) {
+        dialog.classList.remove('active');
+        resolve(false);
+      }
+    });
+
+    dialog.classList.add('active');
+  });
+}
+
+// 按钮 Loading 状态
+function setButtonLoading(button, loading) {
+  if (typeof button === 'string') {
+    button = document.getElementById(button) || document.querySelector(button);
+  }
+  if (!button) return;
+
+  if (loading) {
+    button.disabled = true;
+    button.dataset.originalText = button.textContent;
+    button.innerHTML = `
+      <span class="inline-flex items-center">
+        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Loading...
+      </span>
+    `;
+  } else {
+    button.disabled = false;
+    if (button.dataset.originalText) {
+      button.textContent = button.dataset.originalText;
+      delete button.dataset.originalText;
+    }
+  }
+}
+
+// 全局 Loading 遮罩
+function showGlobalLoading(message = 'Loading...') {
+  const loading = document.getElementById('globalLoading');
+  const messageEl = document.getElementById('globalLoadingMessage');
+  if (loading && messageEl) {
+    messageEl.textContent = message;
+    loading.classList.remove('hidden');
+  }
+}
+
+function hideGlobalLoading() {
+  const loading = document.getElementById('globalLoading');
+  if (loading) {
+    loading.classList.add('hidden');
+  }
+}
 
 // 当前管理员信息
 let currentAdmin = null;
@@ -104,11 +237,11 @@ async function login() {
       currentAdmin = data.admin;
       showMainPage();
     } else {
-      alert(data.message || '登录失败');
+      showToast(data.message || 'Login failed', 'error');
     }
   } catch (error) {
     console.error('登录失败:', error);
-    alert('登录失败，请重试');
+    showToast('Login failed, please try again', 'error');
   }
 }
 
@@ -205,7 +338,7 @@ function switchTab(tabName) {
     case 'developer':
       // 只有super_admin可以访问Developer功能
       if (!isSuperAdmin()) {
-        alert('Access denied. Super admin privileges required.');
+        showToast('Access denied. Super admin privileges required.', 'error');
         return;
       }
       loadDeveloperPage();
@@ -306,28 +439,28 @@ async function loadDashboard() {
 
 // 确认周期
 async function confirmCycle(cycleId) {
-  if (!confirm('Are you sure you want to end the current cycle and calculate discounts? This action cannot be undone.')) {
-    return;
-  }
+  const confirmed = await showConfirmDialog(
+    'End Cycle',
+    'Are you sure you want to end the current cycle and calculate discounts? This action cannot be undone.',
+    'Confirm',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/cycles/${cycleId}/confirm`, {
-      method: 'POST',
-      credentials: 'include'
-    });
-    
-    const data = await response.json();
+    const data = await apiPost(`/admin/cycles/${cycleId}/confirm`);
     
     if (data.success) {
-      alert(`Cycle confirmed successfully! Discount rate: ${data.discountRate.toFixed(1)}%, updated ${data.orderCount} orders`);
+      showToast(`Cycle confirmed successfully! Discount rate: ${data.discountRate.toFixed(1)}%, updated ${data.orderCount} orders`, 'success');
       loadDashboard();
       loadOrders();
     } else {
-      alert(data.message || 'Confirmation failed');
+        showToast(data.message || 'Confirmation failed', 'error');
     }
   } catch (error) {
     console.error('Failed to confirm cycle:', error);
-    alert('Confirmation failed');
+      showToast('Confirmation failed', 'error');
   }
 }
 
@@ -562,17 +695,24 @@ async function toggleOrdering() {
     if (data.success) {
       currentSettings.ordering_open = newStatus;
       updateOrderButton();
-      alert(newStatus === 'true' ? 'Ordering opened' : 'Ordering closed');
+      showToast(newStatus === 'true' ? 'Ordering opened' : 'Ordering closed', 'success');
     }
   } catch (error) {
     console.error('Failed to toggle ordering status:', error);
-    alert('Operation failed');
+      showToast('Operation failed', 'error');
   }
 }
 
 // 计算折扣
 async function calculateDiscount() {
-  if (!confirm('Are you sure you want to recalculate discounts for all orders?')) return;
+  const confirmed = await showConfirmDialog(
+    'Recalculate Discounts',
+    'Are you sure you want to recalculate discounts for all orders?',
+    'Confirm',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
   
   try {
     const response = await fetch(`${API_BASE}/public/calculate-discount`, {
@@ -582,13 +722,13 @@ async function calculateDiscount() {
     
     const data = await response.json();
     if (data.success) {
-      alert('Discount calculation completed! Discount rate: ' + (data.discount_rate * 100) + '%');
+      showToast('Discount calculation completed! Discount rate: ' + (data.discount_rate * 100) + '%', 'success');
       loadDashboard();
       loadOrders();
     }
   } catch (error) {
     console.error('Failed to calculate discount:', error);
-    alert('Calculation failed');
+      showToast('Calculation failed', 'error');
   }
 }
 
@@ -708,7 +848,7 @@ async function exportOrders() {
     window.location.href = url;
   } catch (error) {
     console.error('Failed to export orders:', error);
-    alert('Export failed');
+    showToast('Export failed', 'error');
   }
 }
 
@@ -866,15 +1006,15 @@ async function updateOrderStatus(orderId, newStatus) {
     
     const data = await response.json();
     if (data.success) {
-      alert('Status updated successfully');
+      showToast('Status updated successfully', 'success');
       loadOrders();
       loadDashboard();
     } else {
-      alert(data.message || 'Update failed');
+        showToast(data.message || 'Update failed', 'error');
     }
   } catch (error) {
     console.error('Failed to update order status:', error);
-    alert('Update failed');
+      showToast('Update failed', 'error');
   }
 }
 
@@ -1315,20 +1455,27 @@ async function saveProduct(e) {
     const data = await response.json();
     
     if (data.success) {
-      alert(id ? 'Product updated successfully' : 'Product added successfully');
+      showToast(id ? 'Product updated successfully' : 'Product added successfully', 'success');
       closeProductModal();
       loadProducts();
     } else {
-      alert(data.message || 'Operation failed');
+        showToast(data.message || 'Operation failed', 'error');
     }
   } catch (error) {
     console.error('Failed to save product:', error);
-    alert('Operation failed');
+      showToast('Operation failed', 'error');
   }
 }
 
 async function deleteProduct(id) {
-  if (!confirm('Are you sure you want to delete this product?')) return;
+  const confirmed = await showConfirmDialog(
+    'Delete Product',
+    'Are you sure you want to delete this product? This action cannot be undone.',
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
   
   try {
     const response = await fetch(`${API_BASE}/admin/products/${id}`, {
@@ -1339,14 +1486,14 @@ async function deleteProduct(id) {
     const data = await response.json();
     
     if (data.success) {
-      alert('Deleted successfully');
+      showToast('Deleted successfully', 'success');
       loadProducts();
     } else {
-      alert(data.message || 'Delete failed');
+        showToast(data.message || 'Delete failed', 'error');
     }
   } catch (error) {
     console.error('Failed to delete product:', error);
-    alert('Delete failed');
+    showToast('Delete failed', 'error');
   }
 }
 
@@ -1498,20 +1645,27 @@ async function saveCategory(e) {
     const result = await response.json();
     
     if (result.success) {
-      alert(id ? 'Category updated successfully' : 'Category added successfully');
+      showToast(id ? 'Category updated successfully' : 'Category added successfully', 'success');
       closeCategoryModal();
       loadCategories();
     } else {
-      alert(result.message || '操作失败');
+      showToast(result.message || 'Operation failed', 'error');
     }
   } catch (error) {
     console.error('Failed to save category:', error);
-    alert('Operation failed');
+      showToast('Operation failed', 'error');
   }
 }
 
 async function deleteCategory(id) {
-  if (!confirm('Are you sure you want to delete this category?')) return;
+  const confirmed = await showConfirmDialog(
+    'Delete Category',
+    'Are you sure you want to delete this category? This action cannot be undone.',
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
   
   try {
     const response = await fetch(`${API_BASE}/admin/categories/${id}`, {
@@ -1522,14 +1676,14 @@ async function deleteCategory(id) {
     const data = await response.json();
     
     if (data.success) {
-      alert('Deleted successfully');
+      showToast('Deleted successfully', 'success');
       loadCategories();
     } else {
-      alert(data.message || 'Delete failed');
+        showToast(data.message || 'Delete failed', 'error');
     }
   } catch (error) {
     console.error('Failed to delete category:', error);
-    alert('Delete failed');
+    showToast('Delete failed', 'error');
   }
 }
 
@@ -1706,15 +1860,15 @@ async function saveDiscountRule(e) {
     const result = await saveResponse.json();
     
     if (result.success) {
-      alert(id ? 'Discount rule updated successfully' : 'Discount rule added successfully');
+      showToast(id ? 'Discount rule updated successfully' : 'Discount rule added successfully', 'success');
       closeDiscountModal();
       loadDiscounts();
     } else {
-      alert(result.message || '操作失败');
+      showToast(result.message || 'Operation failed', 'error');
     }
   } catch (error) {
     console.error('Failed to save discount rule:', error);
-    alert('Operation failed');
+      showToast('Operation failed', 'error');
   }
 }
 
@@ -1723,7 +1877,14 @@ async function editDiscountRule(rule) {
 }
 
 async function deleteDiscountRule(id) {
-  if (!confirm('Are you sure you want to delete this discount rule?')) return;
+  const confirmed = await showConfirmDialog(
+    'Delete Discount Rule',
+    'Are you sure you want to delete this discount rule? This action cannot be undone.',
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
   
   // 获取当前所有规则，删除指定的
   const response = await fetch(`${API_BASE}/admin/discount-rules`, { credentials: 'include' });
@@ -1741,14 +1902,14 @@ async function deleteDiscountRule(id) {
     const result = await saveResponse.json();
     
     if (result.success) {
-      alert('Discount rule deleted successfully');
+      showToast('Discount rule deleted successfully', 'success');
       loadDiscounts();
     } else {
-      alert(result.message || 'Delete failed');
+      showToast(result.message || 'Delete failed', 'error');
     }
   } catch (error) {
     console.error('Failed to delete discount rule:', error);
-    alert('Delete failed');
+    showToast('Delete failed', 'error');
   }
 }
 
@@ -1816,6 +1977,66 @@ async function loadSettingsPage() {
                           placeholder="Enter system notice content, users can see it on the homepage">${settings.system_notice || ''}</textarea>
               </div>
               
+              <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">SMS Verification Settings</h3>
+                
+                <div class="mb-4">
+                  <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="smsEnabled" 
+                           class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                           ${settings.sms_enabled === 'true' ? 'checked' : ''}>
+                    <span class="text-sm font-medium text-gray-700">Enable SMS Verification</span>
+                  </label>
+                  <p class="text-xs text-gray-500 mt-1 ml-6">Require verification code for user login</p>
+                </div>
+                
+                <div id="smsConfigSection" class="space-y-4 ${settings.sms_enabled === 'true' ? '' : 'hidden'}">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Twilio Account SID</label>
+                    <input type="text" id="twilioAccountSid" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                           value="${settings.twilio_account_sid || ''}">
+                    <p class="text-xs text-gray-500 mt-1">Your Twilio Account SID</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Twilio Auth Token</label>
+                    <input type="password" id="twilioAuthToken" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="Your Twilio Auth Token"
+                           value="${settings.twilio_auth_token || ''}">
+                    <p class="text-xs text-gray-500 mt-1">Your Twilio Auth Token (hidden for security)</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Twilio Verify Service SID (Recommended)</label>
+                    <input type="text" id="twilioVerifyServiceSid" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                           value="${settings.twilio_verify_service_sid || ''}">
+                    <p class="text-xs text-gray-500 mt-1">Your Twilio Verify Service SID (starts with VA). If set, this will be used instead of phone number.</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Twilio Phone Number (Alternative)</label>
+                    <input type="text" id="twilioPhoneNumber" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="+1234567890"
+                           value="${settings.twilio_phone_number || ''}">
+                    <p class="text-xs text-gray-500 mt-1">Your Twilio phone number (E.164 format, e.g., +1234567890). Only used if Verify Service SID is not set.</p>
+                  </div>
+                  
+                  <div>
+                    <button type="button" onclick="testSMS()" 
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
+                      Test SMS
+                    </button>
+                    <p class="text-xs text-gray-500 mt-1">Send a test SMS to verify configuration</p>
+                  </div>
+                </div>
+              </div>
+              
               <div class="flex space-x-3 pt-4">
                 <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg">
                   Save Settings
@@ -1831,6 +2052,18 @@ async function loadSettingsPage() {
       
       // 设置表单提交事件
       document.getElementById('settingsForm')?.addEventListener('submit', saveSettings);
+      
+      // SMS启用/禁用切换
+      document.getElementById('smsEnabled')?.addEventListener('change', (e) => {
+        const smsSection = document.getElementById('smsConfigSection');
+        if (smsSection) {
+          if (e.target.checked) {
+            smsSection.classList.remove('hidden');
+          } else {
+            smsSection.classList.add('hidden');
+          }
+        }
+      });
     } else {
       container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
     }
@@ -1845,16 +2078,23 @@ async function saveSettings(e) {
   
   const maxVisibleCycles = parseInt(document.getElementById('maxVisibleCycles').value) || 10;
   if (maxVisibleCycles < 1 || maxVisibleCycles > 100) {
-    alert('Max Visible Cycles must be between 1 and 100');
+    showToast('Max Visible Cycles must be between 1 and 100', 'warning');
     return;
   }
+  
+  const smsEnabled = document.getElementById('smsEnabled')?.checked || false;
   
   const settings = {
     ordering_open: document.getElementById('orderingOpen').value,
     system_notice: document.getElementById('systemNotice').value,
     store_name: document.getElementById('storeName').value.trim() || 'BOBA TEA',
     currency_symbol: document.getElementById('currencySymbol').value.trim() || 'LE',
-    max_visible_cycles: maxVisibleCycles.toString()
+    max_visible_cycles: maxVisibleCycles.toString(),
+    sms_enabled: smsEnabled ? 'true' : 'false',
+    twilio_account_sid: document.getElementById('twilioAccountSid')?.value.trim() || '',
+    twilio_auth_token: document.getElementById('twilioAuthToken')?.value.trim() || '',
+    twilio_phone_number: document.getElementById('twilioPhoneNumber')?.value.trim() || '',
+    twilio_verify_service_sid: document.getElementById('twilioVerifyServiceSid')?.value.trim() || ''
   };
   
   try {
@@ -1868,7 +2108,7 @@ async function saveSettings(e) {
     const result = await response.json();
     
     if (result.success) {
-      alert('Settings saved successfully');
+      showToast('Settings saved successfully', 'success');
       currentSettings = settings;
       // 更新商店名称
       if (settings.store_name) {
@@ -1889,11 +2129,49 @@ async function saveSettings(e) {
       }
       loadSettingsPage();
     } else {
-      alert(result.message || 'Save failed');
+      showToast(result.message || 'Save failed', 'error');
     }
   } catch (error) {
     console.error('Failed to save settings:', error);
-    alert('Save failed');
+    showToast('Save failed', 'error');
+  }
+}
+
+// 测试SMS发送
+async function testSMS() {
+  const phone = prompt('Enter a phone number to test SMS (E.164 format, e.g., +201234567890):');
+  if (!phone) {
+    return;
+  }
+  
+  if (!/^\+?\d{10,15}$/.test(phone.replace(/\s/g, ''))) {
+    showToast('Invalid phone number format', 'error');
+    return;
+  }
+  
+  try {
+    showGlobalLoading('Sending test SMS...');
+    
+    const response = await fetch(`${API_BASE}/auth/sms/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ phone, type: 'login' })
+    });
+    
+    const data = await response.json();
+    
+    hideGlobalLoading();
+    
+    if (data.success) {
+      showToast(`Test SMS sent successfully! ${data.code ? `Code: ${data.code} (dev only)` : ''}`, 'success');
+    } else {
+      showToast(data.message || 'Failed to send test SMS', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Test SMS failed:', error);
+    showToast('Failed to send test SMS', 'error');
   }
 }
 
@@ -1957,6 +2235,8 @@ async function loadUsers() {
 }
 
 // 加载管理员管理
+let adminsList = []; // 保存管理员列表，供事件委托使用
+
 async function loadAdmins() {
   const container = document.getElementById('adminsTab');
   
@@ -1966,6 +2246,7 @@ async function loadAdmins() {
     
     if (data.success) {
       const admins = data.admins || [];
+      adminsList = admins; // 保存到全局变量
       const isSuper = isSuperAdmin();
       
       container.innerHTML = `
@@ -1992,11 +2273,11 @@ async function loadAdmins() {
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
+                <tbody class="bg-white divide-y divide-gray-200" id="adminsTableBody">
                   ${admins.length === 0 ? 
                     '<tr><td colspan="8" class="px-6 py-4 text-center text-gray-500">No admins</td></tr>' :
-                    admins.map(admin => `
-                      <tr class="hover:bg-gray-50">
+                    admins.map((admin, index) => `
+                      <tr class="hover:bg-gray-50" data-admin-index="${index}">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${admin.id}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${admin.username}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${admin.name || '-'}</td>
@@ -2010,9 +2291,9 @@ async function loadAdmins() {
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${admin.created_at ? new Date(admin.created_at).toLocaleString('en-US') : '-'}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                           ${isSuper ? `
-                          <button onclick='editAdmin(${JSON.stringify(admin).replace(/'/g, "&apos;")})' 
+                          <button data-action="edit" data-admin-id="${admin.id}" 
                                   class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
-                          <button onclick='deleteAdmin(${admin.id})' 
+                          <button data-action="delete" data-admin-id="${admin.id}" 
                                   class="text-red-600 hover:text-red-800">Delete</button>
                           ` : `
                           <span class="text-gray-400 text-xs">No permission</span>
@@ -2047,7 +2328,7 @@ async function loadAdmins() {
               
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
-                <input type="text" id="adminName" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                <input type="text" id="adminModalName" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
               <div>
@@ -2086,8 +2367,42 @@ async function loadAdmins() {
         </div>
       `;
       
-      // 设置表单提交事件
-      document.getElementById('adminForm')?.addEventListener('submit', saveAdmin);
+      // 设置表单提交事件（移除旧的监听器，避免重复添加）
+      const adminForm = document.getElementById('adminForm');
+      if (adminForm) {
+        // 克隆表单以移除所有旧的事件监听器
+        const newForm = adminForm.cloneNode(true);
+        adminForm.parentNode.replaceChild(newForm, adminForm);
+        // 添加新的事件监听器
+        newForm.addEventListener('submit', saveAdmin);
+      }
+      
+      // 设置编辑和删除按钮事件委托（使用事件委托避免JSON.stringify转义问题）
+      const adminsTableBody = document.getElementById('adminsTableBody');
+      if (adminsTableBody) {
+        // 移除旧的事件监听器（如果存在）
+        const newAdminsTableBody = adminsTableBody.cloneNode(true);
+        adminsTableBody.parentNode.replaceChild(newAdminsTableBody, adminsTableBody);
+        
+        // 添加新的事件监听器
+        newAdminsTableBody.addEventListener('click', (e) => {
+          if (e.target.dataset.action === 'edit') {
+            const adminId = parseInt(e.target.dataset.adminId);
+            const admin = adminsList.find(a => a.id === adminId);
+            console.log('Edit button clicked, admin data:', admin);
+            if (admin) {
+              editAdmin(admin);
+            } else {
+              console.error('Admin not found in adminsList:', adminId, adminsList);
+            }
+          } else if (e.target.dataset.action === 'delete') {
+            const adminId = parseInt(e.target.dataset.adminId);
+            if (adminId) {
+              deleteAdmin(adminId);
+            }
+          }
+        });
+      }
     } else {
       container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
     }
@@ -2100,39 +2415,131 @@ async function loadAdmins() {
 function showAdminModal(admin = null) {
   // 只有super_admin可以管理其他admin
   if (!isSuperAdmin()) {
-    alert('Access denied. Only super admin can manage other admins.');
+    showToast('Access denied. Only super admin can manage other admins.', 'error');
     return;
   }
   
   const modal = document.getElementById('adminModal');
+  if (!modal) {
+    console.error('adminModal element not found');
+    showToast('Modal element not found', 'error');
+    return;
+  }
+  
   const title = document.getElementById('adminModalTitle');
+  if (!title) {
+    console.error('adminModalTitle element not found');
+    return;
+  }
   
   if (admin) {
+    console.log('Showing edit modal for admin:', admin);
     title.textContent = 'Edit Admin';
-    document.getElementById('adminId').value = admin.id;
-    document.getElementById('adminUsername').value = admin.username;
-    document.getElementById('adminPassword').required = false;
-    document.getElementById('adminPassword').value = '';
-    document.getElementById('passwordLabel').textContent = '(Leave empty to keep unchanged)';
-    document.getElementById('adminName').value = admin.name || '';
-    document.getElementById('adminEmail').value = admin.email || '';
-    const roleSelect = document.getElementById('adminRole');
-    if (roleSelect) {
-      roleSelect.value = admin.role || 'admin';
-    }
-    document.getElementById('adminStatus').value = admin.status || 'active';
+    
+    // 先显示模态框，确保DOM元素存在
+    modal.classList.add('active');
+    
+    // 使用双重 requestAnimationFrame 确保DOM已完全渲染
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // 设置基本字段
+        const adminIdEl = document.getElementById('adminId');
+        const adminUsernameEl = document.getElementById('adminUsername');
+        const adminPasswordEl = document.getElementById('adminPassword');
+        const passwordLabelEl = document.getElementById('passwordLabel');
+        
+        if (adminIdEl) adminIdEl.value = admin.id || '';
+        if (adminUsernameEl) adminUsernameEl.value = admin.username || '';
+        if (adminPasswordEl) {
+          adminPasswordEl.required = false;
+          adminPasswordEl.value = '';
+        }
+        if (passwordLabelEl) passwordLabelEl.textContent = '(Leave empty to keep unchanged)';
+        
+        // 设置name字段 - 这是关键
+        const nameInput = document.getElementById('adminModalName');
+        if (nameInput) {
+          // 直接设置值
+          nameInput.value = admin.name || '';
+          console.log('Setting admin name - admin.name:', admin.name, 'nameInput.value:', nameInput.value, 'nameInput:', nameInput);
+          
+          // 使用多种方式确保值被设置
+          nameInput.setAttribute('value', admin.name || '');
+          
+          // 触发change和input事件确保值被正确设置
+          nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+          nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+          
+          // 强制浏览器重新渲染
+          nameInput.style.display = 'none';
+          nameInput.offsetHeight; // 触发重排
+          nameInput.style.display = '';
+        } else {
+          console.error('adminModalName input element not found after modal shown');
+        }
+        
+        // 设置email字段
+        const emailInput = document.getElementById('adminEmail');
+        if (emailInput) {
+          emailInput.value = admin.email || '';
+          emailInput.setAttribute('value', admin.email || '');
+          emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+          emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+          console.error('adminEmail input element not found after modal shown');
+        }
+        
+        // 设置role和status
+        const roleSelect = document.getElementById('adminRole');
+        if (roleSelect) {
+          roleSelect.value = admin.role || 'admin';
+        }
+        const statusSelect = document.getElementById('adminStatus');
+        if (statusSelect) {
+          statusSelect.value = admin.status || 'active';
+        }
+        
+        // 再次验证name字段的值（多次检查）
+        setTimeout(() => {
+          const nameInputCheck = document.getElementById('adminModalName');
+          if (nameInputCheck) {
+            console.log('Final check - nameInput.value:', nameInputCheck.value, 'admin.name:', admin.name);
+            if (nameInputCheck.value !== (admin.name || '')) {
+              console.warn('Name value mismatch! Setting again...');
+              nameInputCheck.value = admin.name || '';
+              nameInputCheck.setAttribute('value', admin.name || '');
+              nameInputCheck.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }
+        }, 50);
+        
+        setTimeout(() => {
+          const nameInputCheck2 = document.getElementById('adminModalName');
+          if (nameInputCheck2) {
+            console.log('Second check - nameInput.value:', nameInputCheck2.value);
+            if (nameInputCheck2.value !== (admin.name || '')) {
+              console.warn('Name value still mismatch! Forcing set...');
+              nameInputCheck2.value = admin.name || '';
+              nameInputCheck2.setAttribute('value', admin.name || '');
+            }
+          }
+        }, 200);
+      });
+    });
   } else {
     title.textContent = 'Add Admin';
     document.getElementById('adminForm').reset();
-    document.getElementById('adminPassword').required = true;
-    document.getElementById('passwordLabel').textContent = '*';
+    const adminPasswordEl = document.getElementById('adminPassword');
+    if (adminPasswordEl) adminPasswordEl.required = true;
+    const passwordLabelEl = document.getElementById('passwordLabel');
+    if (passwordLabelEl) passwordLabelEl.textContent = '*';
     const roleSelect = document.getElementById('adminRole');
     if (roleSelect) {
       roleSelect.value = 'admin';
     }
+    modal.classList.add('active');
   }
   
-  modal.classList.add('active');
   modal.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -2145,16 +2552,44 @@ async function saveAdmin(e) {
   
   // 只有super_admin可以管理其他admin
   if (!isSuperAdmin()) {
-    alert('Access denied. Only super admin can manage other admins.');
+    showToast('Access denied. Only super admin can manage other admins.', 'error');
     return;
   }
   
   const id = document.getElementById('adminId').value;
+  
+  // 获取表单值 - 直接从DOM元素获取最新值（不缓存引用）
+  const usernameInput = document.getElementById('adminUsername');
+  const nameInput = document.getElementById('adminModalName');
+  const emailInput = document.getElementById('adminEmail');
+  const statusInput = document.getElementById('adminStatus');
+  
+  if (!usernameInput || !nameInput || !emailInput || !statusInput) {
+    console.error('Form elements not found:', { usernameInput, nameInput, emailInput, statusInput });
+    showToast('Form elements not found', 'error');
+    return;
+  }
+  
+  // 确保获取到正确的值（直接从输入框获取，不缓存）
+  const username = usernameInput.value || '';
+  const nameValue = nameInput.value ? nameInput.value.trim() : '';
+  const emailValue = emailInput.value ? emailInput.value.trim() : '';
+  const status = statusInput.value || 'active';
+  
+  console.log('Saving admin data:', { 
+    id, 
+    username, 
+    name: nameValue, 
+    email: emailValue,
+    nameInputValue: nameInput.value, // 调试：显示原始值
+    nameInputElement: nameInput // 调试：显示元素
+  });
+  
   const data = {
-    username: document.getElementById('adminUsername').value,
-    name: document.getElementById('adminName').value,
-    email: document.getElementById('adminEmail').value,
-    status: document.getElementById('adminStatus').value
+    username: username,
+    name: nameValue, // 确保即使是空字符串也发送
+    email: emailValue, // 确保即使是空字符串也发送
+    status: status
   };
   
   // 只有super_admin可以设置role
@@ -2169,33 +2604,60 @@ async function saveAdmin(e) {
   }
   
   try {
-    const url = id ? `${API_BASE}/admin/admins/${id}` : `${API_BASE}/admin/admins`;
-    const method = id ? 'PUT' : 'POST';
-    
-    const response = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data)
-    });
-    
-    const result = await response.json();
+    const result = id
+      ? await apiPut(`/admin/admins/${id}`, data)
+      : await apiPost('/admin/admins', data);
     
     if (result.success) {
-      alert(id ? 'Admin updated successfully' : 'Admin added successfully');
+      showToast(id ? 'Admin updated successfully' : 'Admin added successfully', 'success');
       closeAdminModal();
       loadAdmins();
     } else {
-      alert(result.message || '操作失败');
+      showToast(result.message || 'Operation failed', 'error');
     }
   } catch (error) {
     console.error('Failed to save admin:', error);
-    alert('Operation failed');
+      showToast('Operation failed', 'error');
   }
 }
 
 function editAdmin(admin) {
   showAdminModal(admin);
+}
+
+// 删除管理员
+async function deleteAdmin(adminId) {
+  // 只有super_admin可以管理其他admin
+  if (!isSuperAdmin()) {
+    showToast('Access denied. Only super admin can manage other admins.', 'error');
+    return;
+  }
+  
+  // 确认删除
+  const confirmed = await showConfirmDialog(
+    'Delete Admin',
+    'Are you sure you want to delete this admin? This action cannot be undone.',
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) {
+    return;
+  }
+  
+  try {
+    const result = await apiDelete(`/admin/admins/${adminId}`);
+    
+    if (result.success) {
+      showToast('Admin deleted successfully', 'success');
+      loadAdmins();
+    } else {
+      showToast(result.message || 'Delete failed', 'error');
+    }
+  } catch (error) {
+    console.error('Failed to delete admin:', error);
+    showToast('Delete failed', 'error');
+  }
 }
 
 // 加载操作日志
@@ -2640,7 +3102,7 @@ async function loadTableData(tableName) {
     }
   } catch (error) {
     console.error('加载表数据失败:', error);
-    alert('Failed to load table data');
+    showToast('Failed to load table data', 'error');
   }
 }
 
@@ -2888,11 +3350,18 @@ function updateRowStyle(rowIndex) {
 
 // 删除行
 function deleteRow(rowIndex) {
-  if (confirm('Are you sure you want to delete this row?')) {
-    deletedRows.add(rowIndex);
-    editedRows.delete(rowIndex);
-    renderTableData();
-  }
+  showConfirmDialog(
+    'Delete Row',
+    'Are you sure you want to delete this row?',
+    'Delete',
+    'Cancel'
+  ).then(confirmed => {
+    if (confirmed) {
+      deletedRows.add(rowIndex);
+      editedRows.delete(rowIndex);
+      renderTableData();
+    }
+  });
 }
 
 // 添加新行
@@ -2924,13 +3393,18 @@ function removeNewRow(newRowIndex) {
 // 保存表更改
 async function saveTableChanges() {
   if (editedRows.size === 0 && deletedRows.size === 0 && newRows.length === 0) {
-    alert('No changes to save');
+    showToast('No changes to save', 'info');
     return;
   }
   
-  if (!confirm(`Save changes? ${editedRows.size} edited, ${deletedRows.size} deleted, ${newRows.length} new rows`)) {
-    return;
-  }
+  const confirmed = await showConfirmDialog(
+    'Save Changes',
+    `Save changes? ${editedRows.size} edited, ${deletedRows.size} deleted, ${newRows.length} new rows`,
+    'Save',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
   
   try {
     // 收集更改
@@ -2979,15 +3453,15 @@ async function saveTableChanges() {
     const data = await response.json();
     
     if (data.success) {
-      alert('Changes saved successfully');
+      showToast('Changes saved successfully', 'success');
       // 重新加载数据
       await loadTableData(currentTableName);
     } else {
-      alert('Failed to save changes: ' + (data.message || 'Unknown error'));
+      showToast('Failed to save changes: ' + (data.message || 'Unknown error'), 'error');
     }
   } catch (error) {
     console.error('保存失败:', error);
-    alert('Failed to save changes');
+    showToast('Failed to save changes', 'error');
   }
 }
 
@@ -3010,7 +3484,7 @@ async function executeSqlQuery() {
   const sql = document.getElementById('sqlQuery').value.trim();
   
   if (!sql) {
-    alert('Please enter a SQL query');
+    showToast('Please enter a SQL query', 'warning');
     return;
   }
   
@@ -3036,7 +3510,7 @@ async function executeSqlQuery() {
     }
   } catch (error) {
     console.error('执行SQL失败:', error);
-    alert('Failed to execute SQL query');
+    showToast('Failed to execute SQL query', 'error');
   }
 }
 

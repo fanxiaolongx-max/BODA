@@ -32,7 +32,8 @@ function requireRole(roles = []) {
 
 // 检查用户登录（手机号）
 function requireUserAuth(req, res, next) {
-  if (!req.session || !req.session.userId) {
+  // 检查userId或userPhone（兼容两种登录方式）
+  if (!req.session || (!req.session.userId && !req.session.userPhone)) {
     return res.status(401).json({ 
       success: false, 
       message: '请先输入手机号登录' 
