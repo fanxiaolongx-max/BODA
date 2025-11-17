@@ -13,6 +13,7 @@ const monitoringMiddleware = require('./middleware/monitoring');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // 信任代理（重要：用于 ngrok、Nginx 等反向代理）
 // 设置为 1 表示信任第一个代理，不影响直接访问
@@ -290,13 +291,13 @@ async function startServer() {
   try {
     await initData();
     
-    server = app.listen(PORT, () => {
-      logger.info(`服务器运行在 http://localhost:${PORT}`);
+    server = app.listen(PORT, HOST, () => {
+      logger.info(`服务器运行在 http://${HOST}:${PORT}`);
       console.log(`\n=================================`);
       console.log(`📱 BOBA TEA Ordering System`);
-      console.log(`🚀 服务器: http://localhost:${PORT}`);
-      console.log(`👤 管理后台: http://localhost:${PORT}/admin.html`);
-      console.log(`🛒 用户端: http://localhost:${PORT}/index.html`);
+      console.log(`🚀 服务器: http://${HOST}:${PORT}`);
+      console.log(`👤 管理后台: http://${HOST}:${PORT}/admin.html`);
+      console.log(`🛒 用户端: http://${HOST}:${PORT}/index.html`);
       console.log(`📝 默认管理员: admin / admin123`);
       console.log(`=================================\n`);
     });
