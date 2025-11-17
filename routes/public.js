@@ -308,6 +308,12 @@ router.get('/cycle-discount', async (req, res) => {
 router.get('/show-images', async (req, res) => {
   try {
     const showDir = path.join(__dirname, '../show');
+    
+    // 检查目录是否存在，如果不存在则返回空数组（避免错误日志）
+    if (!fs.existsSync(showDir)) {
+      return res.json({ success: true, images: [] });
+    }
+    
     const files = fs.readdirSync(showDir);
     const images = files
       .filter(file => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))

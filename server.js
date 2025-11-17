@@ -83,8 +83,11 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // 生产环境检查白名单
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    // 生产环境：允许 Fly.io 域名（*.fly.dev）和配置的源
+    const isFlyDev = origin.endsWith('.fly.dev');
+    const isAllowedOrigin = allowedOrigins.indexOf(origin) !== -1;
+    
+    if (isFlyDev || isAllowedOrigin) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
