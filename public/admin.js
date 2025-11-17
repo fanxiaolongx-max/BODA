@@ -363,6 +363,12 @@ async function loadDashboard() {
       document.getElementById('totalDiscount').textContent = formatPriceDecimal(stats.total_discount || 0);
       document.getElementById('finalAmount').textContent = formatPriceDecimal(stats.total_final_amount || 0);
       
+      // 显示已付款订单统计
+      document.getElementById('paidOrders').textContent = stats.paid_orders || 0;
+      document.getElementById('paidTotalAmount').textContent = formatPriceDecimal(stats.paid_total_amount || 0);
+      document.getElementById('paidTotalDiscount').textContent = formatPriceDecimal(stats.paid_total_discount || 0);
+      document.getElementById('paidFinalAmount').textContent = formatPriceDecimal(stats.paid_final_amount || 0);
+      
       // 显示周期信息
       const dashboardTab = document.getElementById('dashboardTab');
       let cycleInfoHtml = '';
@@ -2047,6 +2053,59 @@ async function loadSettingsPage() {
               </div>
             </form>
           </div>
+          
+          <!-- File Cleanup Section -->
+          <div class="bg-white rounded-xl shadow-sm p-6 mt-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">🧹 File Cleanup</h3>
+            <p class="text-sm text-gray-600 mb-4">Clean up old files to free up disk space. This will permanently delete files older than the specified number of days.</p>
+            
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Keep Files For (Days)</label>
+                <input type="number" id="cleanupDays" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                       placeholder="Enter number of days"
+                       value="30"
+                       min="1"
+                       max="365">
+                <p class="text-xs text-gray-500 mt-1">Files older than this number of days will be deleted</p>
+              </div>
+              
+              <div class="space-y-2">
+                <label class="flex items-center space-x-2">
+                  <input type="checkbox" id="cleanPaymentScreenshots" 
+                         class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                  <span class="text-sm font-medium text-gray-700">Clean Payment Screenshots</span>
+                </label>
+                <p class="text-xs text-gray-500 ml-6">Delete payment screenshot files from uploads/payments/</p>
+              </div>
+              
+              <div class="space-y-2">
+                <label class="flex items-center space-x-2">
+                  <input type="checkbox" id="cleanLogs" 
+                         class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                  <span class="text-sm font-medium text-gray-700">Clean Log Files</span>
+                </label>
+                <p class="text-xs text-gray-500 ml-6">Delete log files from logs/ directory (backup and export folders are excluded)</p>
+              </div>
+              
+              <div id="cleanupPreview" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p class="text-sm font-semibold text-yellow-800 mb-2">Preview:</p>
+                <p class="text-sm text-yellow-700" id="cleanupPreviewText"></p>
+              </div>
+              
+              <div class="flex space-x-3">
+                <button type="button" onclick="previewCleanup()" 
+                        class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium">
+                  Preview Cleanup
+                </button>
+                <button type="button" onclick="executeCleanup()" 
+                        class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
+                  Execute Cleanup
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       `;
       
@@ -2134,6 +2193,108 @@ async function saveSettings(e) {
   } catch (error) {
     console.error('Failed to save settings:', error);
     showToast('Save failed', 'error');
+  }
+}
+
+// 预览清理
+async function previewCleanup() {
+  try {
+    const days = parseInt(document.getElementById('cleanupDays').value) || 30;
+    const cleanPaymentScreenshots = document.getElementById('cleanPaymentScreenshots').checked;
+    const cleanLogs = document.getElementById('cleanLogs').checked;
+    
+    if (!cleanPaymentScreenshots && !cleanLogs) {
+      showToast('Please select at least one cleanup option', 'warning');
+      return;
+    }
+    
+    showGlobalLoading('Checking files...');
+    
+    const params = new URLSearchParams({
+      days: days.toString(),
+      cleanPaymentScreenshots: cleanPaymentScreenshots.toString(),
+      cleanLogs: cleanLogs.toString()
+    });
+    
+    const response = await fetch(`${API_BASE}/admin/cleanup/info?${params}`, {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      const info = data.info;
+      const previewDiv = document.getElementById('cleanupPreview');
+      const previewText = document.getElementById('cleanupPreviewText');
+      
+      if (info.totalFiles > 0) {
+        previewDiv.classList.remove('hidden');
+        previewText.textContent = `Found ${info.totalFiles} files (${info.totalSizeMB}MB) that will be deleted.`;
+        previewDiv.className = 'bg-yellow-50 border border-yellow-200 rounded-lg p-4';
+      } else {
+        previewDiv.classList.remove('hidden');
+        previewText.textContent = 'No files found matching the criteria.';
+        previewDiv.className = 'bg-green-50 border border-green-200 rounded-lg p-4';
+      }
+    } else {
+      showToast(data.message || 'Failed to preview cleanup', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Preview cleanup failed:', error);
+    showToast('Failed to preview cleanup', 'error');
+  }
+}
+
+// 执行清理
+async function executeCleanup() {
+  const days = parseInt(document.getElementById('cleanupDays').value) || 30;
+  const cleanPaymentScreenshots = document.getElementById('cleanPaymentScreenshots').checked;
+  const cleanLogs = document.getElementById('cleanLogs').checked;
+  
+  if (!cleanPaymentScreenshots && !cleanLogs) {
+    showToast('Please select at least one cleanup option', 'warning');
+    return;
+  }
+  
+  const confirmed = await showConfirmDialog(
+    'Execute Cleanup',
+    `Are you sure you want to delete files older than ${days} days? This action cannot be undone.`,
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    showGlobalLoading('Cleaning up files...');
+    
+    const response = await fetch(`${API_BASE}/admin/cleanup/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        days: days,
+        cleanPaymentScreenshots: cleanPaymentScreenshots,
+        cleanLogs: cleanLogs
+      })
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      showToast(`Cleanup completed! Deleted ${data.deletedFiles} files, freed ${data.freedSpaceMB}MB`, 'success');
+      // 隐藏预览
+      document.getElementById('cleanupPreview').classList.add('hidden');
+    } else {
+      showToast(data.message || 'Cleanup failed', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Execute cleanup failed:', error);
+    showToast('Failed to execute cleanup', 'error');
   }
 }
 

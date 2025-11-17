@@ -21,6 +21,7 @@ const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = 
 const { batchGetOrderItems } = require('../utils/order-helper');
 const cache = require('../utils/cache');
 const { backupDatabase, backupFull, getBackupList, restoreDatabase, deleteBackup } = require('../utils/backup');
+const { cleanupOldFiles, getCleanupInfo } = require('../utils/cleanup');
 
 const router = express.Router();
 
@@ -1351,6 +1352,23 @@ router.get('/orders/statistics', async (req, res) => {
       WHERE created_at >= ? AND created_at <= ?
     `, [cycle.start_time, endTime]);
     
+    // 获取已付款订单统计（排除未付款订单）
+    const paidStats = await getAsync(`
+      SELECT 
+        COUNT(*) as paid_orders,
+        COALESCE(SUM(total_amount), 0) as paid_total_amount,
+        COALESCE(SUM(discount_amount), 0) as paid_total_discount,
+        COALESCE(SUM(final_amount), 0) as paid_final_amount
+      FROM orders
+      WHERE created_at >= ? AND created_at <= ? AND status IN ('paid', 'completed')
+    `, [cycle.start_time, endTime]);
+    
+    // 合并统计结果
+    stats.paid_orders = paidStats.paid_orders || 0;
+    stats.paid_total_amount = paidStats.paid_total_amount || 0;
+    stats.paid_total_discount = paidStats.paid_total_discount || 0;
+    stats.paid_final_amount = paidStats.paid_final_amount || 0;
+    
     logger.info('Dashboard statistics result', { 
       stats,
       total_orders: stats.total_orders,
@@ -2316,6 +2334,81 @@ router.post('/backup/upload', backupUpload.single('backupFile'), async (req, res
     res.status(500).json({
       success: false,
       message: 'Failed to upload backup file: ' + error.message
+    });
+  }
+});
+
+/**
+ * GET /api/admin/cleanup/info
+ * Get cleanup information (preview what will be deleted)
+ */
+router.get('/cleanup/info', async (req, res) => {
+  try {
+    const { days = 30, cleanPaymentScreenshots = false, cleanLogs = false } = req.query;
+    
+    const info = await getCleanupInfo({
+      days: parseInt(days),
+      cleanPaymentScreenshots: cleanPaymentScreenshots === 'true',
+      cleanLogs: cleanLogs === 'true'
+    });
+    
+    res.json({
+      success: true,
+      info
+    });
+  } catch (error) {
+    logger.error('获取清理信息失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get cleanup info'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/cleanup/execute
+ * Execute cleanup (delete old files)
+ */
+router.post('/cleanup/execute', async (req, res) => {
+  try {
+    const { days = 30, cleanPaymentScreenshots = false, cleanLogs = false } = req.body;
+    
+    await logAction(req.session.adminId, 'CLEANUP_EXECUTE', 'system', null, JSON.stringify({
+      action: '执行文件清理',
+      days: parseInt(days),
+      cleanPaymentScreenshots: cleanPaymentScreenshots === true,
+      cleanLogs: cleanLogs === true
+    }), req);
+    
+    const result = await cleanupOldFiles({
+      days: parseInt(days),
+      cleanPaymentScreenshots: cleanPaymentScreenshots === true,
+      cleanLogs: cleanLogs === true
+    });
+    
+    if (result.success) {
+      logger.info('文件清理成功', { 
+        deletedFiles: result.deletedFiles, 
+        freedSpaceMB: result.freedSpaceMB,
+        adminId: req.session.adminId 
+      });
+      res.json({
+        success: true,
+        deletedFiles: result.deletedFiles,
+        freedSpaceMB: result.freedSpaceMB,
+        message: result.message
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: result.message
+      });
+    }
+  } catch (error) {
+    logger.error('执行清理失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to execute cleanup'
     });
   }
 });
