@@ -11,6 +11,8 @@ primary_region = 'iad'
 [[mounts]]
   source = 'data'
   destination = '/data'
+  uid = 0
+  gid = 0
   auto_extend_size_threshold = 80
   auto_extend_size_increment = '1GB'
   auto_extend_size_limit = '10GB'
