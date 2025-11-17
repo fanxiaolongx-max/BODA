@@ -517,19 +517,58 @@ router.put('/orders/:id', async (req, res) => {
       // 删除旧的订单详情
       await runAsync('DELETE FROM order_items WHERE order_id = ?', [id]);
 
-      // 插入新的订单详情
+      // 插入新的订单详情（安全处理，只插入存在的字段）
+      const { allAsync } = require('../db/database');
+      const orderItemsTableInfo = await allAsync("PRAGMA table_info(order_items)");
+      const orderItemsColumns = orderItemsTableInfo.map(col => col.name);
+      
       for (const item of orderItems) {
+        const insertFields = ['order_id', 'product_id', 'product_name', 'product_price', 'quantity', 'subtotal'];
+        const insertValues = [id, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal];
+        
+        if (orderItemsColumns.includes('size')) {
+          insertFields.push('size');
+          insertValues.push(item.size || null);
+        }
+        if (orderItemsColumns.includes('sugar_level')) {
+          insertFields.push('sugar_level');
+          insertValues.push(item.sugar_level || '100');
+        }
+        if (orderItemsColumns.includes('toppings')) {
+          insertFields.push('toppings');
+          insertValues.push(item.toppings || null);
+        }
+        if (orderItemsColumns.includes('ice_level')) {
+          insertFields.push('ice_level');
+          insertValues.push(item.ice_level || null);
+        }
+        
         await runAsync(
-          `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal, size, sugar_level, toppings, ice_level)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal, item.size, item.sugar_level, item.toppings, item.ice_level]
+          `INSERT INTO order_items (${insertFields.join(', ')}) VALUES (${insertFields.map(() => '?').join(', ')})`,
+          insertValues
         );
       }
 
-      // 更新订单总额和备注
+      // 安全更新订单总额和备注（检查字段是否存在）
+      const ordersTableInfo = await allAsync("PRAGMA table_info(orders)");
+      const ordersColumns = ordersTableInfo.map(col => col.name);
+      
+      const updateFields = ['total_amount = ?', 'final_amount = ?'];
+      const updateValues = [totalAmount, totalAmount];
+      
+      if (ordersColumns.includes('notes')) {
+        updateFields.push('notes = ?');
+        updateValues.push(notes || null);
+      }
+      if (ordersColumns.includes('updated_at')) {
+        updateFields.push("updated_at = datetime('now', 'localtime')");
+      }
+      
+      updateValues.push(id);
+      
       await runAsync(
-        "UPDATE orders SET total_amount = ?, final_amount = ?, notes = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-        [totalAmount, totalAmount, notes || null, id]
+        `UPDATE orders SET ${updateFields.join(', ')} WHERE id = ?`,
+        updateValues
       );
 
       await commit();

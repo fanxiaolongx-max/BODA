@@ -350,19 +350,37 @@ router.put('/products/:id', upload.single('image'), async (req, res) => {
       }
     }
     
-    logger.info('Updating product sizes, toppings and ice options', { id, sizesJson, availableToppingsJson, iceOptionsJson, receivedSizes: sizes, receivedToppings: available_toppings, receivedIceOptions: ice_options });
-
+    // 安全更新：先检查字段是否存在，然后动态构建 UPDATE 语句
+    const { allAsync } = require('../db/database');
+    const tableInfo = await allAsync("PRAGMA table_info(products)");
+    const columns = tableInfo.map(col => col.name);
+    
+    // 构建 UPDATE 语句，只更新存在的字段
+    const updateFields = [];
+    const updateValues = [];
+    
+    if (columns.includes('name')) updateFields.push('name = ?'), updateValues.push(name);
+    if (columns.includes('description')) updateFields.push('description = ?'), updateValues.push(description || '');
+    if (columns.includes('price')) updateFields.push('price = ?'), updateValues.push(price);
+    if (columns.includes('category_id')) updateFields.push('category_id = ?'), updateValues.push(category_id || null);
+    if (columns.includes('image_url')) updateFields.push('image_url = ?'), updateValues.push(image_url);
+    if (columns.includes('sort_order')) updateFields.push('sort_order = ?'), updateValues.push(sort_order || 0);
+    if (columns.includes('status')) updateFields.push('status = ?'), updateValues.push(status || 'active');
+    if (columns.includes('sizes')) updateFields.push('sizes = ?'), updateValues.push(sizesJson);
+    if (columns.includes('available_toppings')) updateFields.push('available_toppings = ?'), updateValues.push(availableToppingsJson);
+    if (columns.includes('ice_options')) updateFields.push('ice_options = ?'), updateValues.push(iceOptionsJson);
+    if (columns.includes('updated_at')) updateFields.push("updated_at = datetime('now', 'localtime')");
+    
+    updateValues.push(id);
+    
     await runAsync(
-      `UPDATE products 
-       SET name = ?, description = ?, price = ?, category_id = ?, image_url = ?, 
-           sort_order = ?, status = ?, sizes = ?, available_toppings = ?, ice_options = ?, updated_at = datetime('now', 'localtime') 
-       WHERE id = ?`,
-      [name, description || '', price, category_id || null, image_url, sort_order || 0, status || 'active', sizesJson, availableToppingsJson, iceOptionsJson, id]
+      `UPDATE products SET ${updateFields.join(', ')} WHERE id = ?`,
+      updateValues
     );
     
-    // 验证更新是否成功
-    const updatedProduct = await getAsync('SELECT * FROM products WHERE id = ?', [id]);
-    logger.info('Product updated', { id, savedSizes: updatedProduct.sizes });
+    // 验证更新是否成功（精简日志）
+    const updatedProduct = await getAsync('SELECT id, name, sizes FROM products WHERE id = ?', [id]);
+    logger.info('Product updated', { id, name: updatedProduct.name });
 
     await logAction(req.session.adminId, 'UPDATE', 'product', id, { name, price, sizes: sizesJson }, req);
     

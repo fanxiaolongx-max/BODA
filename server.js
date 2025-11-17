@@ -175,34 +175,40 @@ app.use('/show', express.static('show'));
   }
 });
 
-// 请求日志（详细记录）
+// 请求日志（精简记录，避免内存问题）
 app.use((req, res, next) => {
   const startTime = Date.now();
   
-  // 记录请求开始
+  // 精简查询参数（只保留核心字段，限制长度）
+  const querySummary = {};
+  if (req.query) {
+    Object.keys(req.query).forEach(key => {
+      const value = String(req.query[key]);
+      querySummary[key] = value.length > 50 ? value.substring(0, 50) + '...' : value;
+    });
+  }
+  
+  // 记录请求开始（精简版）
   logger.info('HTTP Request', {
     method: req.method,
-    url: req.url,
     path: req.path,
-    query: req.query,
+    query: Object.keys(querySummary).length > 0 ? querySummary : undefined,
     ip: req.ip || req.connection.remoteAddress,
-    userAgent: req.get('user-agent'),
-    referer: req.get('referer'),
-    contentType: req.get('content-type'),
-    timestamp: new Date().toISOString()
+    userAgent: req.get('user-agent') ? req.get('user-agent').substring(0, 100) : undefined
   });
   
-  // 记录响应
+  // 记录响应（精简版，不记录完整响应体）
   const originalSend = res.send;
   res.send = function(data) {
     const duration = Date.now() - startTime;
+    const dataLength = data ? (typeof data === 'string' ? data.length : JSON.stringify(data).length) : 0;
+    
     logger.info('HTTP Response', {
       method: req.method,
-      url: req.url,
+      path: req.path,
       statusCode: res.statusCode,
       duration: `${duration}ms`,
-      ip: req.ip || req.connection.remoteAddress,
-      timestamp: new Date().toISOString()
+      responseSize: dataLength > 0 ? `${Math.round(dataLength / 1024)}KB` : undefined
     });
     originalSend.call(this, data);
   };
@@ -256,6 +262,25 @@ app.use((err, req, res, next) => {
     success: false,
     message: process.env.NODE_ENV === 'production' ? '服务器错误' : err.message
   });
+});
+
+// 全局未捕获异常处理 - 防止进程崩溃
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception - 未捕获的异常', {
+    error: error.message,
+    stack: error.stack,
+    name: error.name
+  });
+  // 不退出进程，记录错误后继续运行
+  // 在生产环境中，可以考虑优雅关闭
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection - 未处理的 Promise 拒绝', {
+    reason: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined
+  });
+  // 不退出进程，记录错误后继续运行
 });
 
 // 初始化数据库并启动服务器

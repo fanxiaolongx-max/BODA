@@ -360,7 +360,14 @@ async function runAsync(sql, params = []) {
     try {
       db.run(sql, params, function(err) {
         if (err) {
-          console.error('数据库执行错误:', { sql: sql.substring(0, 50), error: err.message, code: err.code });
+          // 精简错误日志，避免打印完整 SQL（可能包含大量数据）
+          const sqlPreview = sql.length > 100 ? sql.substring(0, 100) + '...' : sql;
+          console.error('数据库执行错误:', { 
+            sql: sqlPreview, 
+            error: err.message, 
+            code: err.code,
+            paramsCount: params.length
+          });
           reject(err);
         } else {
           resolve({ id: this.lastID, changes: this.changes });

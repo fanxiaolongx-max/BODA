@@ -73,10 +73,11 @@ const logger = winston.createLogger({
   ]
 });
 
-// 开发环境添加控制台输出
+// 开发环境添加控制台输出（限制日志级别，减少内存占用）
 if (process.env.NODE_ENV !== 'production') {
   logger.add(new winston.transports.Console({
-    format: consoleFormat
+    format: consoleFormat,
+    level: 'info' // 只输出 info 及以上级别，减少 debug 日志
   }));
 }
 
