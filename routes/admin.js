@@ -20,7 +20,7 @@ const { body } = require('express-validator');
 const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = require('../utils/cycle-helper');
 const { batchGetOrderItems } = require('../utils/order-helper');
 const cache = require('../utils/cache');
-const { backupDatabase, getBackupList, restoreDatabase, deleteBackup } = require('../utils/backup');
+const { backupDatabase, backupFull, getBackupList, restoreDatabase, deleteBackup } = require('../utils/backup');
 
 const router = express.Router();
 
@@ -2024,19 +2024,22 @@ router.post('/developer/execute-sql', requireSuperAdmin, async (req, res) => {
  */
 router.post('/backup/create', async (req, res) => {
   try {
-    const result = await backupDatabase();
+    const { type = 'db' } = req.body; // 'db' or 'full'
+    const result = type === 'full' ? await backupFull() : await backupDatabase();
     
     if (result.success) {
       await logAction(req.session.adminId, 'BACKUP_CREATE', 'system', null, JSON.stringify({
-        action: '创建数据库备份',
+        action: type === 'full' ? '创建完整备份' : '创建数据库备份',
         fileName: result.fileName,
-        sizeMB: result.sizeMB
+        sizeMB: result.sizeMB,
+        type: type
       }), req);
       
       res.json({
         success: true,
         fileName: result.fileName,
         sizeMB: result.sizeMB,
+        type: type,
         message: result.message
       });
     } else {
@@ -2068,7 +2071,8 @@ router.get('/backup/list', async (req, res) => {
         fileName: backup.fileName,
         size: backup.size,
         sizeMB: backup.sizeMB,
-        created: backup.created.toISOString()
+        created: backup.created.toISOString(),
+        type: backup.type || 'db'
       }))
     });
   } catch (error) {
@@ -2088,10 +2092,18 @@ router.get('/backup/download/:fileName', async (req, res) => {
   try {
     const { fileName } = req.params;
     
-    if (!fileName.startsWith('boda-backup-') || !fileName.endsWith('.db')) {
+    // 支持数据库备份(.db)和完整备份(.zip)
+    if (!fileName.startsWith('boda-backup-') && !fileName.startsWith('boda-full-backup-')) {
       return res.status(400).json({
         success: false,
         message: 'Invalid backup file name'
+      });
+    }
+    
+    if (!fileName.endsWith('.db') && !fileName.endsWith('.zip')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid backup file extension'
       });
     }
     
@@ -2123,22 +2135,26 @@ router.post('/backup/restore', async (req, res) => {
   try {
     const { fileName } = req.body;
     
-    if (!fileName || !fileName.startsWith('boda-backup-') || !fileName.endsWith('.db')) {
+    // 支持数据库备份(.db)和完整备份(.zip)
+    if (!fileName || 
+        (!fileName.startsWith('boda-backup-') && !fileName.startsWith('boda-full-backup-')) ||
+        (!fileName.endsWith('.db') && !fileName.endsWith('.zip'))) {
       return res.status(400).json({
         success: false,
         message: 'Invalid backup file name'
       });
     }
     
+    const backupType = fileName.endsWith('.zip') ? '完整备份' : '数据库备份';
     await logAction(req.session.adminId, 'BACKUP_RESTORE', 'system', null, JSON.stringify({
-      action: '恢复数据库',
+      action: `恢复${backupType}`,
       fileName: fileName
     }), req);
     
     const result = await restoreDatabase(fileName);
     
     if (result.success) {
-      logger.info('数据库恢复成功', { fileName, adminId: req.session.adminId });
+      logger.info('备份恢复成功', { fileName, adminId: req.session.adminId, type: backupType });
       res.json({
         success: true,
         message: result.message
@@ -2150,10 +2166,10 @@ router.post('/backup/restore', async (req, res) => {
       });
     }
   } catch (error) {
-    logger.error('恢复数据库失败', { error: error.message });
+    logger.error('恢复备份失败', { error: error.message });
     res.status(500).json({
       success: false,
-      message: 'Failed to restore database'
+      message: 'Failed to restore backup'
     });
   }
 });
@@ -2166,7 +2182,10 @@ router.delete('/backup/delete', async (req, res) => {
   try {
     const { fileName } = req.body;
     
-    if (!fileName || !fileName.startsWith('boda-backup-') || !fileName.endsWith('.db')) {
+    // 支持数据库备份(.db)和完整备份(.zip)
+    if (!fileName || 
+        (!fileName.startsWith('boda-backup-') && !fileName.startsWith('boda-full-backup-')) ||
+        (!fileName.endsWith('.db') && !fileName.endsWith('.zip'))) {
       return res.status(400).json({
         success: false,
         message: 'Invalid backup file name'

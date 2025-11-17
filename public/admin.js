@@ -2785,16 +2785,26 @@ function loadAboutPage() {
         <h3 class="text-xl font-bold text-gray-900 mb-4">💾 Database Backup & Restore</h3>
         <div class="space-y-4">
           <div class="flex flex-wrap gap-3">
-            <button onclick="createBackup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-              Create Backup
+            <button onclick="createBackup('db')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+              Create DB Backup
+            </button>
+            <button onclick="createBackup('full')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">
+              Create Full Backup
             </button>
             <button onclick="loadBackupList()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
               Refresh List
             </button>
             <label class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg cursor-pointer">
-              <input type="file" id="backupFileInput" accept=".db" class="hidden" onchange="uploadBackupFile()">
+              <input type="file" id="backupFileInput" accept=".db,.zip" class="hidden" onchange="uploadBackupFile()">
               Upload Backup
             </label>
+          </div>
+          <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+            <p class="font-semibold mb-1">📝 Backup Types:</p>
+            <ul class="list-disc list-inside space-y-1">
+              <li><strong>DB Backup:</strong> Database only (smaller, faster)</li>
+              <li><strong>Full Backup:</strong> Database + all files (products images, payment screenshots, showcase images)</li>
+            </ul>
           </div>
           <div id="backupUploadStatus" class="hidden"></div>
           <div id="backupList" class="space-y-2">
@@ -3538,20 +3548,23 @@ async function executeSqlQuery() {
 
 
 // 创建数据库备份
-async function createBackup() {
+async function createBackup(type = 'db') {
   try {
-    showGlobalLoading('Creating backup...');
+    const backupType = type === 'full' ? 'Full' : 'Database';
+    showGlobalLoading(`Creating ${backupType.toLowerCase()} backup...`);
     
     const response = await fetch(`${API_BASE}/admin/backup/create`, {
       method: 'POST',
-      credentials: 'include'
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ type: type })
     });
     
     const data = await response.json();
     hideGlobalLoading();
     
     if (data.success) {
-      showToast(`Backup created successfully: ${data.fileName} (${data.sizeMB}MB)`, 'success');
+      showToast(`${backupType} backup created successfully: ${data.fileName} (${data.sizeMB}MB)`, 'success');
       loadBackupList();
     } else {
       showToast(data.message || 'Backup failed', 'error');
@@ -3585,10 +3598,17 @@ async function loadBackupList() {
       
       container.innerHTML = `
         <div class="space-y-2">
-          ${backups.map(backup => `
+          ${backups.map(backup => {
+            const typeBadge = backup.type === 'full' 
+              ? '<span class="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-semibold rounded">FULL</span>'
+              : '<span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded">DB</span>';
+            return `
             <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div class="flex-1">
-                <p class="font-medium text-gray-900">${backup.fileName}</p>
+                <div class="flex items-center gap-2 mb-1">
+                  ${typeBadge}
+                  <p class="font-medium text-gray-900">${backup.fileName}</p>
+                </div>
                 <p class="text-sm text-gray-500">
                   ${backup.sizeMB}MB • ${new Date(backup.created).toLocaleString()}
                 </p>
@@ -3608,7 +3628,8 @@ async function loadBackupList() {
                 </button>
               </div>
             </div>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       `;
     } else {

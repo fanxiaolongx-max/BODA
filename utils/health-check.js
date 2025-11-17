@@ -1,4 +1,4 @@
-const { getAsync } = require('../db/database');
+const { getAsync, DB_PATH } = require('../db/database');
 const fs = require('fs');
 const path = require('path');
 
@@ -21,9 +21,9 @@ async function performHealthCheck() {
     checks.database = { status: 'unhealthy', message: `Database error: ${error.message}` };
   }
 
-  // 检查磁盘空间（检查数据库文件所在目录）
+  // 检查磁盘空间（检查数据库文件所在目录，使用 DB_PATH）
   try {
-    const dbPath = path.join(__dirname, '../db/boda.db');
+    const dbPath = DB_PATH;
     const stats = fs.statSync(dbPath);
     const dbSize = stats.size;
     const dbSizeMB = (dbSize / 1024 / 1024).toFixed(2);

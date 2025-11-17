@@ -162,10 +162,10 @@ const loginLimiter = rateLimit({
 // 支持 fly.io 持久化卷：如果 /data 目录存在，使用 /data，否则使用本地目录
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 
-// 静态文件服务
-app.use(express.static('public'));
+// 静态文件服务（使用绝对路径，确保部署时路径正确）
+app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
-app.use('/show', express.static('show'));
+app.use('/show', express.static(path.join(__dirname, 'show')));
 
 // 确保必要目录存在
 ['uploads', 'uploads/products', 'uploads/payments', 'logs'].forEach(dir => {

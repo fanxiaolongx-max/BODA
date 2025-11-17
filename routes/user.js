@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { runAsync, getAsync, allAsync, beginTransaction, commit, rollback } = require('../db/database');
 const { requireUserAuth } = require('../middleware/auth');
@@ -13,10 +14,17 @@ const router = express.Router();
 // 用户需要登录
 router.use(requireUserAuth);
 
+// 支持 fly.io 持久化卷：如果 /data 目录存在，使用 /data，否则使用本地目录
+const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+
 // 配置付款截图上传
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/payments');
+    const uploadDir = path.join(DATA_DIR, 'uploads/payments');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueName = `payment-${Date.now()}-${uuidv4()}${path.extname(file.originalname)}`;

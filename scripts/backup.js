@@ -8,8 +8,11 @@
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, '../db/boda.db');
-const BACKUP_DIR = path.join(__dirname, '../logs/backup');
+// 支持 fly.io 持久化卷：如果 /data 目录存在，使用 /data，否则使用本地目录
+const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+const DB_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '../db');
+const DB_PATH = path.join(DB_DIR, 'boda.db');
+const BACKUP_DIR = path.join(DATA_DIR, 'logs', 'backup');
 
 // 确保备份目录存在
 if (!fs.existsSync(BACKUP_DIR)) {
