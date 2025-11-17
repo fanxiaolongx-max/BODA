@@ -3915,16 +3915,16 @@ async function uploadBackupFile() {
   
   const file = fileInput.files[0];
   
-  // 验证文件类型
-  if (!file.name.endsWith('.db')) {
-    showToast('Only .db files are allowed', 'error');
+  // 验证文件类型（支持 .db 和 .zip）
+  if (!file.name.endsWith('.db') && !file.name.endsWith('.zip')) {
+    showToast('Only .db or .zip backup files are allowed', 'error');
     fileInput.value = '';
     return;
   }
   
-  // 验证文件大小（100MB限制）
-  if (file.size > 100 * 1024 * 1024) {
-    showToast('File size exceeds 100MB limit', 'error');
+  // 验证文件大小（500MB限制，完整备份可能较大）
+  if (file.size > 500 * 1024 * 1024) {
+    showToast('File size exceeds 500MB limit', 'error');
     fileInput.value = '';
     return;
   }

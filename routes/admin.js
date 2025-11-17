@@ -2248,24 +2248,26 @@ const backupUpload = multer({
     filename: (req, file, cb) => {
       // 保持原始文件名，但如果是备份文件格式，直接使用；否则添加前缀
       const originalName = file.originalname;
-      if (originalName.startsWith('boda-backup-') && originalName.endsWith('.db')) {
+      if ((originalName.startsWith('boda-backup-') || originalName.startsWith('boda-full-backup-')) && 
+          (originalName.endsWith('.db') || originalName.endsWith('.zip'))) {
         cb(null, originalName);
       } else {
         // 如果不是标准格式，添加时间戳前缀
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
         const ext = path.extname(originalName);
         const baseName = path.basename(originalName, ext);
-        cb(null, `boda-backup-${timestamp}-${baseName}${ext}`);
+        const prefix = ext === '.zip' ? 'boda-full-backup-' : 'boda-backup-';
+        cb(null, `${prefix}${timestamp}-${baseName}${ext}`);
       }
     }
   }),
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB（完整备份可能较大）
   fileFilter: (req, file, cb) => {
-    // 只允许 .db 文件
-    if (file.originalname.endsWith('.db')) {
+    // 允许 .db 和 .zip 文件（数据库备份和完整备份）
+    if (file.originalname.endsWith('.db') || file.originalname.endsWith('.zip')) {
       cb(null, true);
     } else {
-      cb(new Error('Only .db files are allowed'));
+      cb(new Error('Only .db or .zip backup files are allowed'));
     }
   }
 });
@@ -2284,19 +2286,36 @@ router.post('/backup/upload', backupUpload.single('backupFile'), async (req, res
     const fileSize = req.file.size;
     const sizeMB = (fileSize / 1024 / 1024).toFixed(2);
 
-    // 验证文件是否是有效的 SQLite 数据库
-    // SQLite 数据库文件的前16字节是文件头，应该以 "SQLite format 3\000" 开头
+    // 验证文件格式
     try {
-      const fileBuffer = fs.readFileSync(filePath, { start: 0, end: 15 });
-      const header = fileBuffer.toString('utf8');
-      
-      if (!header.startsWith('SQLite format 3')) {
-        // 如果文件头不正确，删除文件并返回错误
-        fs.unlinkSync(filePath);
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid SQLite database file: file header does not match SQLite format'
-        });
+      if (fileName.endsWith('.db')) {
+        // 验证 SQLite 数据库文件
+        // SQLite 数据库文件的前16字节是文件头，应该以 "SQLite format 3\000" 开头
+        const fileBuffer = fs.readFileSync(filePath, { start: 0, end: 15 });
+        const header = fileBuffer.toString('utf8');
+        
+        if (!header.startsWith('SQLite format 3')) {
+          // 如果文件头不正确，删除文件并返回错误
+          fs.unlinkSync(filePath);
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid SQLite database file: file header does not match SQLite format'
+          });
+        }
+      } else if (fileName.endsWith('.zip')) {
+        // 验证 ZIP 文件（完整备份）
+        // ZIP 文件的前4字节是文件头，应该是 "PK\03\04" 或 "PK\05\06"（空ZIP）
+        const fileBuffer = fs.readFileSync(filePath, { start: 0, end: 3 });
+        const header = fileBuffer.toString('binary');
+        
+        if (!header.startsWith('PK')) {
+          // 如果文件头不正确，删除文件并返回错误
+          fs.unlinkSync(filePath);
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid ZIP file: file header does not match ZIP format'
+          });
+        }
       }
     } catch (error) {
       // 如果文件不存在或无法读取，删除文件
@@ -2305,14 +2324,16 @@ router.post('/backup/upload', backupUpload.single('backupFile'), async (req, res
       }
       return res.status(400).json({
         success: false,
-        message: 'Failed to validate database file: ' + error.message
+        message: 'Failed to validate backup file: ' + error.message
       });
     }
 
+    const backupType = fileName.endsWith('.zip') ? '完整备份' : '数据库备份';
     await logAction(req.session.adminId, 'BACKUP_UPLOAD', 'system', null, JSON.stringify({
-      action: '上传数据库备份',
+      action: `上传${backupType}`,
       fileName: fileName,
-      sizeMB: parseFloat(sizeMB)
+      sizeMB: parseFloat(sizeMB),
+      type: fileName.endsWith('.zip') ? 'full' : 'db'
     }), req);
 
     logger.info('备份文件上传成功', { fileName, sizeMB, adminId: req.session.adminId });
