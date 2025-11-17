@@ -126,15 +126,28 @@ async function restoreDatabase(backupFileName) {
       };
     }
 
-    // 关闭当前数据库连接
-    const { closeDatabase } = require('../db/database');
-    await closeDatabase();
-
-    // 备份当前数据库（以防万一）
+    // 先备份当前数据库（在关闭连接之前）
     const currentBackup = await backupDatabase();
     if (!currentBackup.success) {
       // 如果备份失败，仍然继续恢复（用户可能已经决定恢复）
       console.warn('Failed to backup current database before restore');
+    }
+
+    // 关闭当前数据库连接
+    const { closeDatabase, createDatabaseConnection } = require('../db/database');
+    await closeDatabase();
+
+    // 等待一小段时间，确保数据库文件完全关闭
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // 删除旧的 WAL 和 SHM 文件（如果存在）
+    const walPath = DB_PATH + '-wal';
+    const shmPath = DB_PATH + '-shm';
+    if (fs.existsSync(walPath)) {
+      fs.unlinkSync(walPath);
+    }
+    if (fs.existsSync(shmPath)) {
+      fs.unlinkSync(shmPath);
     }
 
     // 复制备份文件到数据库位置
@@ -152,12 +165,14 @@ async function restoreDatabase(backupFileName) {
       fs.copyFileSync(shmBackupPath, DB_PATH + '-shm');
     }
 
-    // 注意：由于数据库连接是全局的，恢复后需要重启服务器才能生效
-    // 这里只是复制文件，实际的数据库连接会在下次请求时重新建立
+    // 重新创建数据库连接
+    if (typeof createDatabaseConnection === 'function') {
+      await createDatabaseConnection();
+    }
 
     return {
       success: true,
-      message: 'Database restored successfully. Please restart the server for changes to take effect.'
+      message: 'Database restored successfully. The database connection has been reinitialized.'
     };
   } catch (error) {
     return {

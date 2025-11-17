@@ -12,19 +12,26 @@ RUN apt-get update && \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# 创建数据目录（数据库、日志、上传文件）
+# 数据存储在镜像内部，不需要外部卷挂载
+RUN mkdir -p /data /data/uploads /data/logs /data/uploads/products /data/uploads/payments && \
+    chown -R node:node /data
+
+# 确保 /app 目录的所有者是 node 用户
+RUN chown -R node:node /app
+
+# 切换到 node 用户
+USER node
+
 # 复制 package 文件
-COPY package*.json ./
+COPY --chown=node:node package*.json ./
 
 # 安装依赖
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # 复制应用代码
-COPY . .
-
-# 创建数据目录（数据库、日志、上传文件）
-# 注意：数据库会直接存储在 /data 目录，因为代码中检查 /data 目录
-RUN mkdir -p /data /data/uploads /data/logs /data/uploads/products /data/uploads/payments
+COPY --chown=node:node . .
 
 # 设置环境变量
 ENV NODE_ENV=production

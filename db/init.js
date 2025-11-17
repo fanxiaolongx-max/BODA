@@ -23,52 +23,401 @@ async function initData() {
     );
     console.log('默认管理员账户已创建 (用户名: admin, 密码: admin123)');
 
-    // 创建默认分类
+    // 创建分类（使用当前实际的分类数据）
     const categories = [
-      { name: '经典奶茶', description: '经典系列奶茶', sort_order: 1 },
-      { name: '拿铁系列', description: '各种口味拿铁', sort_order: 2 },
-      { name: '果茶系列', description: '新鲜果茶', sort_order: 3 },
-      { name: '冰沙系列', description: '清凉冰沙', sort_order: 4 }
+      { name: 'TOP DRINKS 人气推荐', sort_order: 1 },
+      { name: 'FRESH FRUIT TEA 鲜果水果茶', sort_order: 2 },
+      { name: 'BOBA MILKSHAKE 波霸奶昔', sort_order: 3 },
+      { name: 'COCOA 可可系列', sort_order: 4 },
+      { name: 'MATCHA 抹茶系列', sort_order: 5 },
+      { name: 'CREAMY TEA 奶盖茶', sort_order: 6 },
+      { name: 'BOBO MILK TEA 波波奶茶', sort_order: 7 },
+      { name: 'LEMON TEA 柠檬茶', sort_order: 8 },
+      { name: 'COFFEE 咖啡系列', sort_order: 9 }
     ];
 
+    const categoryIds = {};
     for (const cat of categories) {
-      await runAsync(
-        'INSERT INTO categories (name, description, sort_order) VALUES (?, ?, ?)',
-        [cat.name, cat.description, cat.sort_order]
+      const result = await runAsync(
+        'INSERT INTO categories (name, description, sort_order, status) VALUES (?, ?, ?, ?)',
+        [cat.name, '', cat.sort_order, 'active']
       );
+      categoryIds[cat.name] = result.id;
     }
     console.log('默认分类已创建');
 
-    // 获取分类ID
-    const catMap = {};
-    const allCats = await require('./database').allAsync('SELECT * FROM categories');
-    allCats.forEach(cat => {
-      catMap[cat.name] = cat.id;
-    });
+    // 创建加料商品（作为独立商品）
+    const toppingIds = {};
+    const toppings = [
+      { name: 'Cheese 芝士', price: 20 },
+      { name: 'Jelly 果冻', price: 20 },
+      { name: 'Boba 波霸', price: 20 },
+      { name: 'Cream 奶盖', price: 20 }
+    ];
+    
+    for (const topping of toppings) {
+      const result = await runAsync(
+        'INSERT INTO products (name, description, price, category_id, status, sugar_levels, available_toppings, ice_options) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [topping.name, '额外加料', topping.price, null, 'active', '[]', '[]', '[]']
+      );
+      toppingIds[topping.name] = result.id;
+    }
+    console.log('加料选项已创建');
 
-    // 创建默认菜单
+    // 默认所有加料选项（ID数组）
+    const allToppings = JSON.stringify([
+      toppingIds['Cheese 芝士'],
+      toppingIds['Jelly 果冻'],
+      toppingIds['Boba 波霸'],
+      toppingIds['Cream 奶盖']
+    ]);
+    
+    // 默认甜度选项
+    const allSugarLevels = JSON.stringify(['0', '30', '50', '70', '100']);
+    
+    // 默认冰度选项
+    const allIceOptions = JSON.stringify(['normal', 'less', 'no', 'room', 'hot']);
+
+    // 创建菜单（使用当前实际的菜单数据）
     const products = [
-      { name: '珍珠奶茶', price: 15, category: '经典奶茶', description: '经典珍珠奶茶' },
-      { name: '红豆奶茶', price: 16, category: '经典奶茶', description: '香甜红豆奶茶' },
-      { name: '布丁奶茶', price: 17, category: '经典奶茶', description: '顺滑布丁奶茶' },
-      { name: '椰果奶茶', price: 16, category: '经典奶茶', description: 'Q弹椰果奶茶' },
-      { name: '乌龙奶茶', price: 15, category: '经典奶茶', description: '清香乌龙奶茶' },
-      { name: '抹茶拿铁', price: 20, category: '拿铁系列', description: '浓郁抹茶拿铁' },
-      { name: '焦糖拿铁', price: 20, category: '拿铁系列', description: '丝滑焦糖拿铁' },
-      { name: '香草拿铁', price: 20, category: '拿铁系列', description: '经典香草拿铁' },
-      { name: '柠檬蜂蜜', price: 18, category: '果茶系列', description: '清新柠檬蜂蜜茶' },
-      { name: '百香果茶', price: 18, category: '果茶系列', description: '香甜百香果茶' },
-      { name: '芒果冰沙', price: 22, category: '冰沙系列', description: '热带芒果冰沙' },
-      { name: '草莓冰沙', price: 22, category: '冰沙系列', description: '鲜甜草莓冰沙' }
+      // TOP DRINKS (支持杯型)
+      {
+        name: 'Mango Coconut Milk 芒果椰椰鲜奶',
+        category: 'TOP DRINKS 人气推荐',
+        sizes: { 'Large 大杯': 170 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Strawberry Milkshake 草莓奶昔',
+        category: 'TOP DRINKS 人气推荐',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Brown Sugar Boba Milk 黑糖珍珠鲜奶',
+        category: 'TOP DRINKS 人气推荐',
+        sizes: { 'Medium 中杯': 120, 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      
+      // FRESH FRUIT TEA
+      {
+        name: 'Mango Fresh Fruit Tea 芒果鲜果茶',
+        category: 'FRESH FRUIT TEA 鲜果水果茶',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Orange Fresh Fruit Tea 橙汁鲜果茶',
+        category: 'FRESH FRUIT TEA 鲜果水果茶',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Red Grape Fruit Tea 红葡萄鲜果茶',
+        category: 'FRESH FRUIT TEA 鲜果水果茶',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Grapefruit Fruit Tea 西柚鲜果茶',
+        category: 'FRESH FRUIT TEA 鲜果水果茶',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Green Grape Fruit Tea 青提鲜果茶',
+        category: 'FRESH FRUIT TEA 鲜果水果茶',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      
+      // BOBA MILKSHAKE
+      {
+        name: 'Green Grapes Jelly Boba 芝士青提波霸',
+        category: 'BOBA MILKSHAKE 波霸奶昔',
+        sizes: { 'Large 大杯': 170 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Grape Jelly Boba 葡萄果冻波霸',
+        category: 'BOBA MILKSHAKE 波霸奶昔',
+        sizes: { 'Large 大杯': 170 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Orange Jelly Boba 橙味果冻波霸',
+        category: 'BOBA MILKSHAKE 波霸奶昔',
+        sizes: { 'Large 大杯': 170 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Mango Jelly Boba 芒果果冻波霸',
+        category: 'BOBA MILKSHAKE 波霸奶昔',
+        sizes: { 'Large 大杯': 170 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Grapefruit Jelly Boba 西柚果冻波霸',
+        category: 'BOBA MILKSHAKE 波霸奶昔',
+        sizes: { 'Large 大杯': 170 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      
+      // COCOA
+      {
+        name: 'Oreo Cocoa 奥利奥可可',
+        category: 'COCOA 可可系列',
+        sizes: { 'Medium 中杯': 120 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Chocolate Cocoa 巧克力可可',
+        category: 'COCOA 可可系列',
+        sizes: { 'Medium 中杯': 120 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Creamy Cocoa 奶香可可',
+        category: 'COCOA 可可系列',
+        sizes: { 'Medium 中杯': 120 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Thai Milk Tea Cocoa 泰式奶茶可可',
+        category: 'COCOA 可可系列',
+        sizes: { 'Medium 中杯': 120 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      
+      // MATCHA (合并中杯大杯)
+      {
+        name: 'Creamy Matcha 奶香抹茶',
+        category: 'MATCHA 抹茶系列',
+        sizes: { 'Medium 中杯': 120, 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Strawberry Matcha 草莓抹茶',
+        category: 'MATCHA 抹茶系列',
+        sizes: { 'Medium 中杯': 120, 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Mango Matcha 芒果抹茶',
+        category: 'MATCHA 抹茶系列',
+        sizes: { 'Medium 中杯': 120, 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Jasmine Matcha 茉莉抹茶',
+        category: 'MATCHA 抹茶系列',
+        sizes: { 'Medium 中杯': 120, 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      
+      // CREAMY TEA
+      {
+        name: 'Ceylon Cream Tea 锡兰红茶奶盖',
+        category: 'CREAMY TEA 奶盖茶',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Peach Oolong Cream 桃乌龙奶盖',
+        category: 'CREAMY TEA 奶盖茶',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Jasmine Cream Tea 茉莉奶盖',
+        category: 'CREAMY TEA 奶盖茶',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Yashi Cream Tea 雅诗奶盖',
+        category: 'CREAMY TEA 奶盖茶',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      
+      // BOBO MILK TEA (合并中杯大杯)
+      {
+        name: 'Ceylon Black Tea Popping Boba 锡兰红茶波波',
+        category: 'BOBO MILK TEA 波波奶茶',
+        sizes: { 'Medium 中杯': 120, 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Peach Oolong Tea Popping Boba 桃乌龙波波',
+        category: 'BOBO MILK TEA 波波奶茶',
+        sizes: { 'Medium 中杯': 120, 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Jasmine Milk Popping Boba 茉莉奶波波',
+        category: 'BOBO MILK TEA 波波奶茶',
+        sizes: { 'Medium 中杯': 120, 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Yashi Tea Popping Boba 雅诗波波',
+        category: 'BOBO MILK TEA 波波奶茶',
+        sizes: { 'Medium 中杯': 120, 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      
+      // LEMON TEA
+      {
+        name: 'Ceylon Black Ice Lemon 锡兰红茶冰柠檬',
+        category: 'LEMON TEA 柠檬茶',
+        sizes: { 'Large 大杯': 120 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Peach Oolong Ice Lemon 桃乌龙冰柠檬',
+        category: 'LEMON TEA 柠檬茶',
+        sizes: { 'Large 大杯': 120 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Jasmine Ice Lemon 茉莉冰柠檬',
+        category: 'LEMON TEA 柠檬茶',
+        sizes: { 'Large 大杯': 120 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Yashi Tea Ice Lemon 雅诗冰柠檬',
+        category: 'LEMON TEA 柠檬茶',
+        sizes: { 'Large 大杯': 120 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      
+      // COFFEE
+      {
+        name: 'American Coffee 美式咖啡',
+        category: 'COFFEE 咖啡系列',
+        sizes: { 'Medium 中杯': 120 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Coconut Latte 椰香拿铁',
+        category: 'COFFEE 咖啡系列',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Spanish Latte 西班牙拿铁',
+        category: 'COFFEE 咖啡系列',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      },
+      {
+        name: 'Matcha Latte 抹茶拿铁',
+        category: 'COFFEE 咖啡系列',
+        sizes: { 'Large 大杯': 150 },
+        sugar_levels: allSugarLevels,
+        available_toppings: allToppings,
+        ice_options: allIceOptions
+      }
     ];
 
     for (const product of products) {
+      const categoryId = categoryIds[product.category];
+      const sizesJson = JSON.stringify(product.sizes);
+      const firstSize = Object.keys(product.sizes)[0];
+      const basePrice = product.sizes[firstSize];
+      
       await runAsync(
-        'INSERT INTO products (name, description, price, category_id, status) VALUES (?, ?, ?, ?, ?)',
-        [product.name, product.description, product.price, catMap[product.category], 'active']
+        `INSERT INTO products (name, description, price, category_id, status, sizes, sugar_levels, available_toppings, ice_options) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          product.name,
+          '支持多种杯型、甜度、冰度和加料选择',
+          basePrice,
+          categoryId,
+          'active',
+          sizesJson,
+          product.sugar_levels,
+          product.available_toppings,
+          product.ice_options
+        ]
       );
     }
-    console.log('默认菜单已创建');
+    console.log(`默认菜单已创建（${products.length} 个菜品）`);
 
     // 创建默认折扣规则
     const discountRules = [

@@ -38,7 +38,6 @@ docker build -t boda-ordering-system .
 docker run -d \
   --name boda-app \
   -p 3000:3000 \
-  -v $(pwd)/data:/data \
   boda-ordering-system
 ```
 
@@ -57,16 +56,17 @@ docker stop boda-app
 docker rm boda-app
 ```
 
-## 数据持久化
+## 数据存储
 
-Docker 容器中的数据目录通过卷（volumes）挂载到宿主机，确保数据持久化：
+数据存储在容器内部（`/data` 目录），包括：
+- **数据库**：`/data/boda.db`
+- **上传文件**：`/data/uploads/`
+- **日志文件**：`/data/logs/`
 
-- **数据目录**：`./data` → `/data`（包含数据库、上传文件、日志）
-
-首次运行前，请确保创建数据目录：
-```bash
-mkdir -p data
-```
+**重要提示**：
+- 数据存储在容器内部，删除容器会丢失数据
+- 如需备份数据，请使用容器内的备份功能或导出数据
+- 如需持久化数据，可以添加卷挂载（见下方说明）
 
 ## 环境变量
 
@@ -79,7 +79,6 @@ docker run -d \
   -e NODE_ENV=production \
   -e PORT=3000 \
   -e DATA_DIR=/data \
-  -v $(pwd)/data:/data \
   --restart unless-stopped \
   boda-ordering-system
 ```
@@ -104,22 +103,55 @@ docker ps
 
 ## 备份和恢复
 
-### 备份数据库
+### 备份数据
 
+由于数据存储在容器内部，备份数据的方法：
+
+**方法 1：使用容器内的备份功能**
 ```bash
-# 进入容器
+# 进入容器执行备份
 docker exec -it boda-app sh
-
-# 在容器内执行备份（如果已配置备份功能）
-# 或直接复制数据库文件
-docker cp boda-app:/data/db/boda.db ./backup/boda.db.$(date +%Y%m%d)
+# 在容器内使用管理后台的备份功能
 ```
 
-### 恢复数据库
+**方法 2：直接复制数据库文件**
+```bash
+# 复制数据库文件
+docker cp boda-app:/data/boda.db ./backup/boda.db.$(date +%Y%m%d)
+
+# 复制整个数据目录
+docker cp boda-app:/data ./backup/data.$(date +%Y%m%d)
+```
+
+### 恢复数据
 
 ```bash
-docker cp ./backup/boda.db boda-app:/data/db/boda.db
+# 恢复数据库文件
+docker cp ./backup/boda.db boda-app:/data/boda.db
+
+# 或恢复整个数据目录
+docker cp ./backup/data/. boda-app:/data/
+
+# 重启容器
 docker restart boda-app
+```
+
+### 可选：使用卷挂载持久化数据
+
+如果需要数据持久化到宿主机，可以在运行容器时添加卷挂载：
+
+```bash
+docker run -d \
+  --name boda-app \
+  -p 3000:3000 \
+  -v $(pwd)/data:/data \
+  boda-ordering-system
+```
+
+或在 `docker-compose.yml` 中添加：
+```yaml
+volumes:
+  - ./data:/data
 ```
 
 ## 生产环境部署
@@ -165,7 +197,13 @@ docker exec -it boda-app sh
 
 ### 检查数据库文件
 ```bash
-ls -lh data/db/
+# 进入容器检查
+docker exec -it boda-app ls -lh /data/
+
+# 或复制出来检查
+docker cp boda-app:/data/boda.db ./temp-check.db
+ls -lh ./temp-check.db
+rm ./temp-check.db
 ```
 
 ### 检查端口占用

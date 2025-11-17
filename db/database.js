@@ -153,6 +153,7 @@ async function initDatabase() {
         sizes TEXT DEFAULT '{}',
         sugar_levels TEXT DEFAULT '["0","30","50","70","100"]',
         available_toppings TEXT DEFAULT '[]',
+        ice_options TEXT DEFAULT '["normal","less","no","room","hot"]',
         created_at DATETIME DEFAULT (datetime('now', 'localtime')),
         updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -280,10 +281,68 @@ async function initDatabase() {
     await runAsync('CREATE INDEX IF NOT EXISTS idx_verification_expires ON verification_codes(expires_at)');
 
     console.log('数据库表初始化完成');
+    
+    // 自动迁移：检查并添加缺失的字段
+    await migrateDatabaseSchema();
   } catch (error) {
     console.error('数据库表初始化失败:', error);
     console.error('错误堆栈:', error.stack);
     throw error;
+  }
+}
+
+// 自动迁移数据库架构（添加缺失的字段）
+async function migrateDatabaseSchema() {
+  try {
+    // 获取表信息的辅助函数
+    async function getTableInfo(tableName) {
+      return new Promise((resolve, reject) => {
+        if (!db) {
+          return reject(new Error('Database connection not available'));
+        }
+        db.all(`PRAGMA table_info(${tableName})`, (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows);
+        });
+      });
+    }
+
+    // 检查 products 表的字段
+    const productsInfo = await getTableInfo('products');
+    const productColumns = productsInfo.map(col => col.name);
+    
+    if (!productColumns.includes('ice_options')) {
+      console.log('自动迁移: 添加 products.ice_options 字段...');
+      await runAsync('ALTER TABLE products ADD COLUMN ice_options TEXT DEFAULT \'["normal","less","no","room","hot"]\'');
+    }
+
+    // 检查 order_items 表的字段
+    const orderItemsInfo = await getTableInfo('order_items');
+    const orderItemsColumns = orderItemsInfo.map(col => col.name);
+    
+    if (!orderItemsColumns.includes('ice_level')) {
+      console.log('自动迁移: 添加 order_items.ice_level 字段...');
+      await runAsync('ALTER TABLE order_items ADD COLUMN ice_level TEXT');
+    }
+    
+    if (!orderItemsColumns.includes('notes')) {
+      console.log('自动迁移: 添加 order_items.notes 字段...');
+      await runAsync('ALTER TABLE order_items ADD COLUMN notes TEXT');
+    }
+
+    // 检查 orders 表的字段
+    const ordersInfo = await getTableInfo('orders');
+    const ordersColumns = ordersInfo.map(col => col.name);
+    
+    if (!ordersColumns.includes('notes')) {
+      console.log('自动迁移: 添加 orders.notes 字段...');
+      await runAsync('ALTER TABLE orders ADD COLUMN notes TEXT');
+    }
+
+    console.log('数据库架构迁移完成');
+  } catch (error) {
+    console.error('数据库架构迁移失败:', error);
+    // 不抛出错误，允许继续运行
   }
 }
 
@@ -384,6 +443,7 @@ function closeDatabase() {
   return new Promise((resolve, reject) => {
     if (!db) {
       console.log('数据库连接不存在，无需关闭');
+      dbReady = false;
       return resolve();
     }
     db.close((err) => {
@@ -391,15 +451,99 @@ function closeDatabase() {
         // 如果已经关闭，err 可能是 "SQLITE_MISUSE: Database is closed"
         if (err.message && err.message.includes('closed')) {
           console.log('数据库连接已经关闭');
+          db = null;
+          dbReady = false;
           return resolve();
         }
         reject(err);
       } else {
         console.log('数据库连接已关闭');
+        db = null;
+        dbReady = false;
         resolve();
       }
     });
   });
+}
+
+// 重新创建数据库连接（用于恢复数据库后）
+function createDatabaseConnection() {
+  return new Promise((resolve, reject) => {
+    // 如果数据库连接已存在，先关闭
+    if (db) {
+      db.close((err) => {
+        if (err && !err.message.includes('closed')) {
+          console.warn('关闭旧数据库连接时出错:', err.message);
+        }
+        db = null;
+        dbReady = false;
+        initializeConnection(resolve, reject);
+      });
+    } else {
+      initializeConnection(resolve, reject);
+    }
+  });
+}
+
+// 初始化数据库连接的内部函数
+function initializeConnection(resolve, reject) {
+  // 重新创建 Promise
+  dbReadyPromise = new Promise((res, rej) => {
+    dbReadyResolve = res;
+    dbReadyReject = rej;
+  });
+
+  try {
+    console.log('正在重新创建数据库连接...', { DB_PATH, DB_DIR: path.dirname(DB_PATH), exists: fs.existsSync(DB_PATH) });
+    
+    db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+      if (err) {
+        console.error('数据库连接失败:', err);
+        dbReady = false;
+        if (dbReadyReject) {
+          dbReadyReject(err);
+        }
+        reject(err);
+      } else {
+        console.log('数据库连接成功:', DB_PATH);
+        dbReady = true;
+        
+        // 启用外键约束
+        db.run('PRAGMA foreign_keys = ON', (err) => {
+          if (err) {
+            console.error('设置外键约束失败:', err);
+          }
+        });
+
+        // 启用WAL模式
+        db.run('PRAGMA journal_mode = WAL', (err) => {
+          if (err) {
+            console.error('设置WAL模式失败:', err);
+          } else {
+            console.log('数据库WAL模式已启用');
+          }
+        });
+
+        if (dbReadyResolve) {
+          dbReadyResolve();
+        }
+        resolve();
+      }
+    });
+
+    // 处理数据库错误
+    db.on('error', (err) => {
+      console.error('数据库错误:', err);
+      getLogger().error('数据库错误', { error: err.message });
+      dbReady = false;
+    });
+  } catch (error) {
+    console.error('创建数据库连接时出错:', error);
+    if (dbReadyReject) {
+      dbReadyReject(error);
+    }
+    reject(error);
+  }
 }
 
 // 获取当前本地时间（用于替换CURRENT_TIMESTAMP）
@@ -417,6 +561,7 @@ module.exports = {
   commit,
   rollback,
   closeDatabase,
+  createDatabaseConnection, // 导出重新创建连接的函数
   getCurrentLocalTime,
   waitForDbReady, // 导出等待函数
   DB_PATH, // 导出数据库路径
