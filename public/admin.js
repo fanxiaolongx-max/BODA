@@ -167,6 +167,15 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     await login();
   });
+  
+  // 远程备份配置表单提交（使用事件委托，确保始终有效）
+  const remoteBackupForm = document.getElementById('remoteBackupConfigForm');
+  if (remoteBackupForm) {
+    remoteBackupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await saveRemoteBackupConfig();
+    });
+  }
 });
 
 // 应用翻译
@@ -2132,9 +2141,16 @@ async function loadSettingsPage() {
                 <div id="receiveConfigSection" class="space-y-4">
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
-                    <input type="text" id="receiveApiToken" 
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                           placeholder="Enter API token (must match the token configured on the sending site)">
+                    <div class="flex items-center space-x-2">
+                      <input type="password" id="receiveApiToken" 
+                             class="flex-1 px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="Enter API token (must match the token configured on the sending site)">
+                      <button type="button" onclick="toggleReceiveApiTokenVisibility()" 
+                              class="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm">
+                        <span id="receiveApiTokenToggleText">Show</span>
+                      </button>
+                    </div>
+                    <input type="hidden" id="receiveApiTokenOriginal" value="">
                     <p class="text-xs text-gray-500 mt-1">This token must be the same as the one configured on the sending site</p>
                   </div>
                   <div>
@@ -2203,18 +2219,6 @@ async function loadSettingsPage() {
         loadPushLogs();
         loadReceivedBackups();
       }, 100);
-      
-      // 远程备份配置表单提交（模态框在页面加载时已存在）
-      const existingForm = document.getElementById('remoteBackupConfigForm');
-      if (existingForm) {
-        // 移除旧的监听器（如果存在）
-        const newForm = existingForm.cloneNode(true);
-        existingForm.parentNode.replaceChild(newForm, existingForm);
-        document.getElementById('remoteBackupConfigForm')?.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          await saveRemoteBackupConfig();
-        });
-      }
     } else {
       container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
     }
@@ -3091,9 +3095,16 @@ function loadAboutPage() {
             <div id="receiveConfigSection" class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
-                <input type="text" id="receiveApiToken" 
-                       class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                       placeholder="Enter API token (must match the token configured on the sending site)">
+                <div class="flex items-center space-x-2">
+                  <input type="password" id="receiveApiToken" 
+                         class="flex-1 px-4 py-2 border border-gray-300 rounded-lg"
+                         placeholder="Enter API token (must match the token configured on the sending site)">
+                  <button type="button" onclick="toggleReceiveApiTokenVisibility()" 
+                          class="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm">
+                    <span id="receiveApiTokenToggleText">Show</span>
+                  </button>
+                </div>
+                <input type="hidden" id="receiveApiTokenOriginal" value="">
                 <p class="text-xs text-gray-500 mt-1">This token must be the same as the one configured on the sending site</p>
               </div>
               <div>
@@ -4294,16 +4305,42 @@ function getDayName(day) {
 
 // 保存远程备份配置
 async function saveRemoteBackupConfig() {
-  const id = document.getElementById('remoteBackupConfigId').value;
-  const name = document.getElementById('remoteBackupConfigName').value;
-  const targetUrl = document.getElementById('remoteBackupConfigUrl').value;
-  const apiToken = document.getElementById('remoteBackupConfigToken').value;
-  const scheduleType = document.getElementById('remoteBackupConfigScheduleType').value;
-  const scheduleTime = document.getElementById('remoteBackupConfigScheduleTime').value;
-  const scheduleDay = document.getElementById('remoteBackupConfigScheduleDay').value;
-  const enabled = document.getElementById('remoteBackupConfigEnabled').checked;
+  const id = document.getElementById('remoteBackupConfigId')?.value || '';
+  const name = document.getElementById('remoteBackupConfigName')?.value || '';
+  const targetUrl = document.getElementById('remoteBackupConfigUrl')?.value || '';
+  const apiToken = document.getElementById('remoteBackupConfigToken')?.value || '';
+  const scheduleType = document.getElementById('remoteBackupConfigScheduleType')?.value || 'manual';
+  const scheduleTime = document.getElementById('remoteBackupConfigScheduleTime')?.value || '';
+  const scheduleDay = document.getElementById('remoteBackupConfigScheduleDay')?.value || '';
+  const enabled = document.getElementById('remoteBackupConfigEnabled')?.checked || false;
+  
+  // 基本验证
+  if (!name || !name.trim()) {
+    showToast('Name is required', 'error');
+    return;
+  }
+  
+  if (!targetUrl || !targetUrl.trim()) {
+    showToast('Target URL is required', 'error');
+    return;
+  }
+  
+  if (!apiToken || !apiToken.trim()) {
+    showToast('API Token is required', 'error');
+    return;
+  }
+  
+  // 验证URL格式
+  try {
+    new URL(targetUrl);
+  } catch (e) {
+    showToast('Invalid URL format', 'error');
+    return;
+  }
   
   try {
+    showGlobalLoading('Saving configuration...');
+    
     const url = id ? 
       `${API_BASE}/admin/remote-backup/configs/${id}` :
       `${API_BASE}/admin/remote-backup/configs`;
@@ -4313,9 +4350,9 @@ async function saveRemoteBackupConfig() {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        name,
-        target_url: targetUrl,
-        api_token: apiToken,
+        name: name.trim(),
+        target_url: targetUrl.trim(),
+        api_token: apiToken.trim(),
         schedule_type: scheduleType,
         schedule_time: scheduleTime || null,
         schedule_day: scheduleDay ? parseInt(scheduleDay) : null,
@@ -4324,17 +4361,22 @@ async function saveRemoteBackupConfig() {
     });
     
     const data = await response.json();
+    hideGlobalLoading();
     
     if (data.success) {
       showToast('Configuration saved successfully', 'success');
       closeRemoteBackupConfigModal();
-      loadRemoteBackupConfigs();
+      // 重新加载配置列表（如果在 Settings 或 About 页面）
+      if (document.getElementById('remoteBackupConfigsList')) {
+        loadRemoteBackupConfigs();
+      }
     } else {
       showToast(data.message || 'Save failed', 'error');
     }
   } catch (error) {
+    hideGlobalLoading();
     console.error('Save remote backup config failed:', error);
-    showToast('Save failed', 'error');
+    showToast('Save failed: ' + (error.message || 'Network error'), 'error');
   }
 }
 
@@ -4400,6 +4442,47 @@ async function triggerManualPush(configId) {
   }
 }
 
+// 切换接收 API Token 的显示/隐藏
+function toggleReceiveApiTokenVisibility() {
+  const tokenInput = document.getElementById('receiveApiToken');
+  const toggleText = document.getElementById('receiveApiTokenToggleText');
+  const originalToken = document.getElementById('receiveApiTokenOriginal')?.value || '';
+  
+  if (!tokenInput) return;
+  
+  const currentValue = tokenInput.value;
+  const isPassword = tokenInput.type === 'password';
+  
+  if (isPassword) {
+    // 显示明文
+    // 如果当前值是掩码值（前3个字符+星号），则显示原始值
+    if (originalToken && currentValue && currentValue.length > 3 && currentValue.endsWith('***')) {
+      tokenInput.value = originalToken;
+    }
+    tokenInput.type = 'text';
+    toggleText.textContent = 'Hide';
+  } else {
+    // 隐藏为密码
+    // 如果当前值是原始值，保存到隐藏字段，然后显示掩码
+    if (originalToken && currentValue === originalToken) {
+      tokenInput.value = maskApiToken(originalToken);
+    } else if (currentValue && !currentValue.endsWith('***')) {
+      // 如果用户修改了值，保存新值
+      document.getElementById('receiveApiTokenOriginal').value = currentValue;
+    }
+    tokenInput.type = 'password';
+    toggleText.textContent = 'Show';
+  }
+}
+
+// 掩码 API Token（只显示前3个字符）
+function maskApiToken(token) {
+  if (!token || token.length <= 3) {
+    return '***';
+  }
+  return token.substring(0, 3) + '***';
+}
+
 // 加载接收配置
 async function loadReceiveConfig() {
   try {
@@ -4410,8 +4493,31 @@ async function loadReceiveConfig() {
     const data = await response.json();
     
     if (data.success && data.config) {
-      document.getElementById('receiveApiToken').value = data.config.api_token || '';
-      document.getElementById('receiveAutoRestore').checked = data.config.auto_restore || false;
+      const apiToken = data.config.api_token || '';
+      const tokenInput = document.getElementById('receiveApiToken');
+      const originalInput = document.getElementById('receiveApiTokenOriginal');
+      const toggleText = document.getElementById('receiveApiTokenToggleText');
+      
+      if (tokenInput && originalInput) {
+        // 保存原始值到隐藏字段
+        originalInput.value = apiToken;
+        
+        // 显示掩码值（前3个字符+星号）
+        if (apiToken) {
+          tokenInput.value = maskApiToken(apiToken);
+          tokenInput.type = 'password';
+          if (toggleText) {
+            toggleText.textContent = 'Show';
+          }
+        } else {
+          tokenInput.value = '';
+        }
+      }
+      
+      const autoRestoreCheckbox = document.getElementById('receiveAutoRestore');
+      if (autoRestoreCheckbox) {
+        autoRestoreCheckbox.checked = data.config.auto_restore || false;
+      }
     }
   } catch (error) {
     console.error('Load receive config failed:', error);
@@ -4420,8 +4526,26 @@ async function loadReceiveConfig() {
 
 // 保存接收配置
 async function saveReceiveConfig() {
-  const apiToken = document.getElementById('receiveApiToken').value;
-  const autoRestore = document.getElementById('receiveAutoRestore').checked;
+  const tokenInput = document.getElementById('receiveApiToken');
+  const originalInput = document.getElementById('receiveApiTokenOriginal');
+  const autoRestore = document.getElementById('receiveAutoRestore')?.checked || false;
+  
+  if (!tokenInput) {
+    showToast('API token input not found', 'error');
+    return;
+  }
+  
+  let apiToken = tokenInput.value.trim();
+  
+  // 如果当前值是掩码值（前3个字符+星号），使用原始值
+  if (apiToken && apiToken.endsWith('***') && originalInput && originalInput.value) {
+    apiToken = originalInput.value;
+  }
+  
+  // 如果输入为空，检查是否有原始值
+  if (!apiToken && originalInput && originalInput.value) {
+    apiToken = originalInput.value;
+  }
   
   if (!apiToken) {
     showToast('API token is required', 'error');
@@ -4429,6 +4553,8 @@ async function saveReceiveConfig() {
   }
   
   try {
+    showGlobalLoading('Saving receive config...');
+    
     const response = await fetch(`${API_BASE}/admin/remote-backup/receive-config`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -4440,15 +4566,21 @@ async function saveReceiveConfig() {
     });
     
     const data = await response.json();
+    hideGlobalLoading();
     
     if (data.success) {
       showToast('Receive config saved successfully', 'success');
+      // 重新加载配置以显示掩码值
+      setTimeout(() => {
+        loadReceiveConfig();
+      }, 500);
     } else {
       showToast(data.message || 'Save failed', 'error');
     }
   } catch (error) {
+    hideGlobalLoading();
     console.error('Save receive config failed:', error);
-    showToast('Save failed', 'error');
+    showToast('Save failed: ' + (error.message || 'Network error'), 'error');
   }
 }
 
