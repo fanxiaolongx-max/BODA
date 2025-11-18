@@ -40,7 +40,147 @@ function clearRelatedCache() {
   // 注意：products缓存需要根据category_id动态清除，这里只清除通用缓存
 }
 
-// 所有管理员路由都需要认证
+// ==================== 远程备份接收 API（需要在 requireAuth 之前注册）====================
+/**
+ * POST /api/admin/remote-backup/receive
+ * 接收远程推送的备份文件（需要token验证，不需要管理员登录）
+ */
+const receiveBackupUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const receivedDir = getReceivedBackupDir();
+      if (!fs.existsSync(receivedDir)) {
+        fs.mkdirSync(receivedDir, { recursive: true });
+      }
+      cb(null, receivedDir);
+    },
+    filename: (req, file, cb) => {
+      // 保持原始文件名，添加时间戳前缀避免冲突
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const ext = path.extname(file.originalname);
+      const baseName = path.basename(file.originalname, ext);
+      cb(null, `${timestamp}-${baseName}${ext}`);
+    }
+  }),
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
+  fileFilter: (req, file, cb) => {
+    // 只允许 .zip 文件（完整备份）
+    if (file.originalname.endsWith('.zip')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .zip backup files are allowed'));
+    }
+  }
+});
+
+router.post('/remote-backup/receive', requireRemoteBackupAuth, receiveBackupUpload.single('backupFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const fileName = req.file.filename;
+    const filePath = req.file.path;
+    const fileSize = req.file.size;
+    const sourceUrl = req.headers['x-source-url'] || req.headers['X-Source-URL'] || 'unknown';
+
+    // 验证ZIP文件格式
+    try {
+      const AdmZip = require('adm-zip');
+      const zip = new AdmZip(filePath);
+      zip.getEntries(); // 尝试读取ZIP内容
+    } catch (error) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ZIP file format'
+      });
+    }
+
+    // 记录接收到的备份
+    await runAsync(
+      `INSERT INTO backup_received (backup_file_name, source_url, file_size, status)
+       VALUES (?, ?, ?, 'received')`,
+      [fileName, sourceUrl, fileSize]
+    );
+
+    // 获取接收配置
+    const receiveConfig = await getAsync('SELECT * FROM backup_receive_config LIMIT 1');
+    const autoRestore = receiveConfig && receiveConfig.auto_restore === 1;
+
+    let restoreResult = null;
+    if (autoRestore) {
+      // 自动恢复
+      try {
+        // 将接收到的文件移动到备份目录以便恢复
+        const { BACKUP_DIR } = require('../utils/backup');
+        const targetPath = path.join(BACKUP_DIR, fileName);
+        fs.renameSync(filePath, targetPath);
+
+        restoreResult = await restoreDatabase(fileName);
+
+        if (restoreResult.success) {
+          await runAsync(
+            `UPDATE backup_received 
+             SET status = 'restored', restored_at = datetime('now', 'localtime')
+             WHERE backup_file_name = ?`,
+            [fileName]
+          );
+        } else {
+          await runAsync(
+            `UPDATE backup_received 
+             SET status = 'failed'
+             WHERE backup_file_name = ?`,
+            [fileName]
+          );
+        }
+      } catch (error) {
+        logger.error('自动恢复失败', { fileName, error: error.message });
+        await runAsync(
+          `UPDATE backup_received 
+           SET status = 'failed'
+           WHERE backup_file_name = ?`,
+          [fileName]
+        );
+        restoreResult = { success: false, message: error.message };
+      }
+    }
+
+    logger.info('接收备份文件成功', { 
+      fileName, 
+      sourceUrl, 
+      fileSize, 
+      autoRestore,
+      restoreSuccess: restoreResult ? restoreResult.success : null
+    });
+
+    res.json({
+      success: true,
+      fileName: fileName,
+      sizeMB: (fileSize / 1024 / 1024).toFixed(2),
+      autoRestore: autoRestore,
+      restoreResult: restoreResult
+    });
+  } catch (error) {
+    logger.error('接收备份文件失败', { error: error.message });
+    
+    // 如果上传失败，删除文件
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to receive backup file: ' + error.message
+    });
+  }
+});
+
+// ==================== 其他路由（需要管理员登录）====================
+// 所有其他管理员路由都需要认证
 router.use(requireAuth);
 
 // 配置文件上传（菜单图片）
@@ -2739,144 +2879,6 @@ router.put('/remote-backup/receive-config', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update receive config'
-    });
-  }
-});
-
-/**
- * POST /api/admin/remote-backup/receive
- * 接收远程推送的备份文件（需要token验证）
- */
-const receiveBackupUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const receivedDir = getReceivedBackupDir();
-      if (!fs.existsSync(receivedDir)) {
-        fs.mkdirSync(receivedDir, { recursive: true });
-      }
-      cb(null, receivedDir);
-    },
-    filename: (req, file, cb) => {
-      // 保持原始文件名，添加时间戳前缀避免冲突
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const ext = path.extname(file.originalname);
-      const baseName = path.basename(file.originalname, ext);
-      cb(null, `${timestamp}-${baseName}${ext}`);
-    }
-  }),
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
-  fileFilter: (req, file, cb) => {
-    // 只允许 .zip 文件（完整备份）
-    if (file.originalname.endsWith('.zip')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only .zip backup files are allowed'));
-    }
-  }
-});
-
-router.post('/remote-backup/receive', requireRemoteBackupAuth, receiveBackupUpload.single('backupFile'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'No file uploaded'
-      });
-    }
-
-    const fileName = req.file.filename;
-    const filePath = req.file.path;
-    const fileSize = req.file.size;
-    const sourceUrl = req.headers['x-source-url'] || req.headers['X-Source-URL'] || 'unknown';
-
-    // 验证ZIP文件格式
-    try {
-      const AdmZip = require('adm-zip');
-      const zip = new AdmZip(filePath);
-      zip.getEntries(); // 尝试读取ZIP内容
-    } catch (error) {
-      fs.unlinkSync(filePath);
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid ZIP file format'
-      });
-    }
-
-    // 记录接收到的备份
-    await runAsync(
-      `INSERT INTO backup_received (backup_file_name, source_url, file_size, status)
-       VALUES (?, ?, ?, 'received')`,
-      [fileName, sourceUrl, fileSize]
-    );
-
-    // 获取接收配置
-    const receiveConfig = await getAsync('SELECT * FROM backup_receive_config LIMIT 1');
-    const autoRestore = receiveConfig && receiveConfig.auto_restore === 1;
-
-    let restoreResult = null;
-    if (autoRestore) {
-      // 自动恢复
-      try {
-        // 将接收到的文件移动到备份目录以便恢复
-        const { BACKUP_DIR } = require('../utils/backup');
-        const targetPath = path.join(BACKUP_DIR, fileName);
-        fs.renameSync(filePath, targetPath);
-
-        restoreResult = await restoreDatabase(fileName);
-
-        if (restoreResult.success) {
-          await runAsync(
-            `UPDATE backup_received 
-             SET status = 'restored', restored_at = datetime('now', 'localtime')
-             WHERE backup_file_name = ?`,
-            [fileName]
-          );
-        } else {
-          await runAsync(
-            `UPDATE backup_received 
-             SET status = 'failed'
-             WHERE backup_file_name = ?`,
-            [fileName]
-          );
-        }
-      } catch (error) {
-        logger.error('自动恢复失败', { fileName, error: error.message });
-        await runAsync(
-          `UPDATE backup_received 
-           SET status = 'failed'
-           WHERE backup_file_name = ?`,
-          [fileName]
-        );
-        restoreResult = { success: false, message: error.message };
-      }
-    }
-
-    logger.info('接收备份文件成功', { 
-      fileName, 
-      sourceUrl, 
-      fileSize, 
-      autoRestore,
-      restoreSuccess: restoreResult ? restoreResult.success : null
-    });
-
-    res.json({
-      success: true,
-      fileName: fileName,
-      sizeMB: (fileSize / 1024 / 1024).toFixed(2),
-      autoRestore: autoRestore,
-      restoreResult: restoreResult
-    });
-  } catch (error) {
-    logger.error('接收备份文件失败', { error: error.message });
-    
-    // 如果上传失败，删除文件
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Failed to receive backup file: ' + error.message
     });
   }
 });
