@@ -282,7 +282,41 @@ systemctl start nginx
 
 为了确保项目内部时间（如订单、日志）以**埃及开罗时间**为准，请严格按照以下步骤操作：
 
-**1. 停止 & 删除旧进程**
+**方法 1：使用 ecosystem.config.js 配置文件（推荐）**
+
+**1. 创建 PM2 配置文件**
+
+在项目根目录创建 `ecosystem.config.js` 文件：
+
+```bash
+# 方法 A：复制示例文件（推荐）
+cp ecosystem.config.js.example ecosystem.config.js
+
+# 方法 B：手动创建
+nano ecosystem.config.js
+```
+
+**2. 配置文件内容**
+
+如果使用方法 B，粘贴以下内容：
+
+```javascript
+module.exports = {
+  apps: [
+    {
+      name: "boda",
+      script: "./server.js",
+      env: {
+        TZ: "Africa/Cairo"
+      }
+    }
+  ]
+}
+```
+
+*按 `Ctrl+O` 保存，`Ctrl+X` 退出。*
+
+**3. 停止 & 删除旧进程**
 
 *(如果是第一次部署，忽略报错即可)*
 
@@ -291,15 +325,13 @@ pm2 stop boda
 pm2 delete boda
 ```
 
-**2. 使用时区变量启动**
-
-*(注意：这里假设入口文件是 server.js)*
+**4. 使用配置文件启动**
 
 ```bash
-TZ=Africa/Cairo pm2 start server.js --name boda
+pm2 start ecosystem.config.js
 ```
 
-**3. 验证时区设置**
+**5. 验证时区设置**
 
 查看环境变量是否生效（`0` 是项目 ID，如果你的 ID 变了请修改数字）：
 
@@ -307,20 +339,50 @@ TZ=Africa/Cairo pm2 start server.js --name boda
 pm2 env 0 | grep TZ
 ```
 
-*如果输出 `TZ: 'Africa/Cairo'` 则表示配置成功。*
+*如果输出 `TZ: Africa/Cairo` 则表示配置成功。*
 
-**4. 设置开机自启**
+**6. 重启应用（如果需要）**
+
+```bash
+pm2 restart ecosystem.config.js --force
+```
+
+**7. 设置开机自启**
 
 ```bash
 pm2 startup
 pm2 save
 ```
 
-**5. 查看日志**
+**8. 查看日志**
 
 ```bash
 pm2 logs boda
 ```
+
+---
+
+**方法 2：使用命令行参数（临时方案）**
+
+如果不想使用配置文件，也可以直接在命令行中指定时区：
+
+```bash
+# 停止 & 删除旧进程
+pm2 stop boda
+pm2 delete boda
+
+# 使用时区变量启动
+TZ=Africa/Cairo pm2 start server.js --name boda
+
+# 验证时区设置
+pm2 env 0 | grep TZ
+
+# 设置开机自启
+pm2 startup
+pm2 save
+```
+
+**注意**：推荐使用方法 1（配置文件），因为配置更持久，便于管理和版本控制。
 
 #### 第四步：配置 Nginx 反向代理
 

@@ -6,6 +6,9 @@
 app = 'boda-t0amgq'
 primary_region = 'iad'
 
+[env]
+  TZ = "Africa/Cairo"
+
 [build]
 
 [[mounts]]
