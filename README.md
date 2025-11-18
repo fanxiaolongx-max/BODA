@@ -8,6 +8,7 @@
 - [主要功能](#主要功能)
 - [技术栈](#技术栈)
 - [安装部署](#安装部署)
+  - [生产环境部署](#生产环境部署)
 - [使用指南](#使用指南)
 - [API文档](#api文档)
 - [安全特性](#安全特性)
@@ -16,7 +17,7 @@
 - [测试](#测试)
 - [故障排查](#故障排查)
 - [更新日志](#更新日志)
-- [架构文档](#架构文档)
+- [相关文档](#相关文档)
 
 ## 🚀 快速开始
 
@@ -249,43 +250,141 @@ npm start
 
 ### 生产环境部署
 
-#### 使用PM2管理进程（推荐）
+本指南用于将 Node.js 项目部署到公网，配置 HTTPS，并确保项目运行在 **埃及开罗时区**。
+
+#### 第一步：域名申请与解析 (GoDaddy)
+
+1. **购买域名**：登录 [GoDaddy](https://www.godaddy.com/) 购买域名（例如 `bobapro.life`）。
+
+2. **配置 DNS**：
+   - 进入 **"My Products"** → 找到域名 → 点击 **"DNS"**。
+   - 点击 **"Add New Record"**，添加两条记录：
+     - **类型**: `A` | **名称**: `@` | **值**: `你的服务器IP地址` | **TTL**: `Default`
+     - **类型**: `CNAME` | **名称**: `www` | **值**: `bobapro.life` | **TTL**: `Default`
+
+3. **等待生效**：通常几分钟内生效。
+
+#### 第二步：安装 Nginx 环境
+
+登录服务器（root 权限），安装 Web 服务器。
 
 ```bash
-# 安装PM2
-npm install -g pm2
+# 更新软件源并安装 Nginx
+apt update
+apt install -y nginx
 
-# 启动应用
-pm2 start server.js --name boda
+# 启动并设置开机自启
+systemctl enable nginx
+systemctl start nginx
+```
 
-# 设置开机自启
+#### 第三步：启动 PM2 项目 (指定开罗时区)
+
+为了确保项目内部时间（如订单、日志）以**埃及开罗时间**为准，请严格按照以下步骤操作：
+
+**1. 停止 & 删除旧进程**
+
+*(如果是第一次部署，忽略报错即可)*
+
+```bash
+pm2 stop boda
+pm2 delete boda
+```
+
+**2. 使用时区变量启动**
+
+*(注意：这里假设入口文件是 server.js)*
+
+```bash
+TZ=Africa/Cairo pm2 start server.js --name boda
+```
+
+**3. 验证时区设置**
+
+查看环境变量是否生效（`0` 是项目 ID，如果你的 ID 变了请修改数字）：
+
+```bash
+pm2 env 0 | grep TZ
+```
+
+*如果输出 `TZ: 'Africa/Cairo'` 则表示配置成功。*
+
+**4. 设置开机自启**
+
+```bash
 pm2 startup
 pm2 save
+```
 
-# 查看日志
+**5. 查看日志**
+
+```bash
 pm2 logs boda
 ```
 
-#### 使用Nginx反向代理
+#### 第四步：配置 Nginx 反向代理
+
+将 80 端口流量转发给 Node.js 项目（假设端口为 `3000`）。
+
+**1. 创建配置文件**
+
+```bash
+nano /etc/nginx/sites-available/bobapro.conf
+```
+
+**2. 粘贴以下内容**
+
+*(注意修改 `server_name` 为你的域名)*
 
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com;
+    server_name bobapro.life www.bobapro.life;
 
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:3000; # 指向 PM2 运行的端口
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
     }
 }
 ```
+
+*按 `Ctrl+O` 保存，`Ctrl+X` 退出。*
+
+**3. 激活配置**
+
+```bash
+ln -s /etc/nginx/sites-available/bobapro.conf /etc/nginx/sites-enabled/
+nginx -t
+systemctl reload nginx
+```
+
+#### 第五步：配置 HTTPS (SSL 证书)
+
+```bash
+# 1. 安装 Certbot
+apt install -y certbot python3-certbot-nginx
+
+# 2. 申请证书
+certbot --nginx -d bobapro.life -d www.bobapro.life
+```
+
+#### 💡 关于各层级时间关系的说明
+
+你在部署中可能疑惑：**服务器在中国，PM2 改了埃及时间，Nginx 没改，这三者有什么关系？**
+
+这是一个**层级覆盖**的关系，它们互不冲突：
+
+1. **系统服务器时间**：可能还是北京时间。这只影响系统日志（syslog），**不影响你的业务**。
+
+2. **Nginx 时间**：记录访问日志的时间。它只是把请求"搬运"给 Node.js，**不修改请求内容**。
+
+3. **Node.js 项目时间 (PM2)**：**这是最关键的**。通过 `TZ=Africa/Cairo`，我们强行给项目戴了一块"埃及手表"。无论服务器在哪里，代码里获取到的时间（如 `new Date()`）永远是埃及时间。
+
+**结论**：只要 PM2 这一步设置对了，用户看到的业务时间就是正确的埃及时间，不用管服务器原本是哪个时区。
 
 #### 数据备份
 
@@ -305,6 +404,8 @@ tar -czf $BACKUP_DIR/uploads_$DATE.tar.gz /path/to/boda/uploads
 ```bash
 0 2 * * * /path/to/backup.sh
 ```
+
+或者使用系统内置的备份功能（管理后台 → Settings → Backup & Restore）。
 
 ## 📖 使用指南
 
@@ -835,6 +936,18 @@ describe('My Feature', () => {
 });
 ```
 
+## 📚 相关文档
+
+更多详细文档请查看 `docs/` 文件夹：
+
+- **部署文档**: `docs/DEPLOYMENT.md` - 详细的部署指南
+- **Docker 部署**: `docs/DOCKER.md` - Docker 容器化部署说明
+- **API 文档**: `docs/API.md` - 完整的 API 接口文档
+- **架构文档**: `docs/ARCHITECTURE.md` - 系统架构设计说明
+- **安全文档**: `docs/SECURITY.md` - 安全特性和最佳实践
+- **测试文档**: `docs/README_TESTING.md` - 测试相关文档
+- **项目状态**: `docs/PROJECT_STATUS.md` - 项目当前状态和计划
+
 ## 📄 许可证
 
 ISC License
@@ -846,6 +959,6 @@ ISC License
 ---
 
 **项目版本**: v2.1.0  
-**最后更新**: 2025-11-14  
+**最后更新**: 2025-11-18  
 **开发语言**: JavaScript (Node.js)  
 **许可协议**: ISC
