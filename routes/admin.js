@@ -22,6 +22,13 @@ const { batchGetOrderItems } = require('../utils/order-helper');
 const cache = require('../utils/cache');
 const { backupDatabase, backupFull, getBackupList, restoreDatabase, deleteBackup } = require('../utils/backup');
 const { cleanupOldFiles, getCleanupInfo } = require('../utils/cleanup');
+const { 
+  pushBackupToRemote, 
+  shouldPushNow, 
+  scheduleNextPush,
+  getReceivedBackupDir 
+} = require('../utils/remote-backup');
+const { requireRemoteBackupAuth } = require('../middleware/remote-backup-auth');
 
 const router = express.Router();
 
@@ -2430,6 +2437,587 @@ router.post('/cleanup/execute', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to execute cleanup'
+    });
+  }
+});
+
+// ==================== 远程备份功能 ====================
+
+/**
+ * GET /api/admin/remote-backup/configs
+ * 获取所有推送配置
+ */
+router.get('/remote-backup/configs', async (req, res) => {
+  try {
+    const configs = await allAsync('SELECT * FROM remote_backup_configs ORDER BY created_at DESC');
+    res.json({
+      success: true,
+      configs: configs.map(config => ({
+        ...config,
+        enabled: config.enabled === 1
+      }))
+    });
+  } catch (error) {
+    logger.error('获取推送配置失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get backup configs'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/remote-backup/configs
+ * 创建推送配置
+ */
+router.post('/remote-backup/configs', async (req, res) => {
+  try {
+    const { name, target_url, api_token, schedule_type, schedule_time, schedule_day, enabled } = req.body;
+
+    if (!name || !target_url || !api_token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, target_url, and api_token are required'
+      });
+    }
+
+    // 验证URL格式
+    try {
+      new URL(target_url);
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid target URL format'
+      });
+    }
+
+    const result = await runAsync(
+      `INSERT INTO remote_backup_configs (name, target_url, api_token, schedule_type, schedule_time, schedule_day, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [name, target_url, api_token, schedule_type || 'manual', schedule_time || null, schedule_day || null, enabled ? 1 : 0]
+    );
+
+    await logAction(req.session.adminId, 'REMOTE_BACKUP_CONFIG_CREATE', 'system', result.id.toString(), JSON.stringify({
+      name,
+      target_url,
+      schedule_type: schedule_type || 'manual'
+    }), req);
+
+    res.json({
+      success: true,
+      id: result.id,
+      message: 'Backup config created successfully'
+    });
+  } catch (error) {
+    logger.error('创建推送配置失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create backup config'
+    });
+  }
+});
+
+/**
+ * PUT /api/admin/remote-backup/configs/:id
+ * 更新推送配置
+ */
+router.put('/remote-backup/configs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, target_url, api_token, schedule_type, schedule_time, schedule_day, enabled } = req.body;
+
+    // 检查配置是否存在
+    const existing = await getAsync('SELECT * FROM remote_backup_configs WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Config not found'
+      });
+    }
+
+    // 如果提供了URL，验证格式
+    if (target_url) {
+      try {
+        new URL(target_url);
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid target URL format'
+        });
+      }
+    }
+
+    await runAsync(
+      `UPDATE remote_backup_configs 
+       SET name = COALESCE(?, name),
+           target_url = COALESCE(?, target_url),
+           api_token = COALESCE(?, api_token),
+           schedule_type = COALESCE(?, schedule_type),
+           schedule_time = ?,
+           schedule_day = ?,
+           enabled = COALESCE(?, enabled),
+           updated_at = datetime('now', 'localtime')
+       WHERE id = ?`,
+      [name || null, target_url || null, api_token || null, schedule_type || null, schedule_time || null, schedule_day || null, enabled !== undefined ? (enabled ? 1 : 0) : null, id]
+    );
+
+    await logAction(req.session.adminId, 'REMOTE_BACKUP_CONFIG_UPDATE', 'system', id, JSON.stringify({
+      name,
+      target_url,
+      schedule_type
+    }), req);
+
+    res.json({
+      success: true,
+      message: 'Backup config updated successfully'
+    });
+  } catch (error) {
+    logger.error('更新推送配置失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update backup config'
+    });
+  }
+});
+
+/**
+ * DELETE /api/admin/remote-backup/configs/:id
+ * 删除推送配置
+ */
+router.delete('/remote-backup/configs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await getAsync('SELECT * FROM remote_backup_configs WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Config not found'
+      });
+    }
+
+    await runAsync('DELETE FROM remote_backup_configs WHERE id = ?', [id]);
+
+    await logAction(req.session.adminId, 'REMOTE_BACKUP_CONFIG_DELETE', 'system', id, JSON.stringify({
+      name: existing.name
+    }), req);
+
+    res.json({
+      success: true,
+      message: 'Backup config deleted successfully'
+    });
+  } catch (error) {
+    logger.error('删除推送配置失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete backup config'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/remote-backup/configs/:id/push
+ * 手动触发推送
+ */
+router.post('/remote-backup/configs/:id/push', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const config = await getAsync('SELECT * FROM remote_backup_configs WHERE id = ?', [id]);
+    if (!config) {
+      return res.status(404).json({
+        success: false,
+        message: 'Config not found'
+      });
+    }
+
+    // 异步执行推送（不阻塞响应）
+    pushBackupToRemote(config)
+      .then(result => {
+        logger.info('手动推送完成', { configId: id, success: result.success });
+      })
+      .catch(error => {
+        logger.error('手动推送失败', { configId: id, error: error.message });
+      });
+
+    await logAction(req.session.adminId, 'REMOTE_BACKUP_MANUAL_PUSH', 'system', id, JSON.stringify({
+      name: config.name,
+      target_url: config.target_url
+    }), req);
+
+    res.json({
+      success: true,
+      message: 'Push started, check logs for status'
+    });
+  } catch (error) {
+    logger.error('手动触发推送失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to trigger push'
+    });
+  }
+});
+
+/**
+ * GET /api/admin/remote-backup/receive-config
+ * 获取接收配置
+ */
+router.get('/remote-backup/receive-config', async (req, res) => {
+  try {
+    const config = await getAsync('SELECT * FROM backup_receive_config LIMIT 1');
+    if (!config) {
+      // 如果没有配置，返回默认值
+      return res.json({
+        success: true,
+        config: {
+          api_token: '',
+          auto_restore: false
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      config: {
+        api_token: config.api_token,
+        auto_restore: config.auto_restore === 1
+      }
+    });
+  } catch (error) {
+    logger.error('获取接收配置失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get receive config'
+    });
+  }
+});
+
+/**
+ * PUT /api/admin/remote-backup/receive-config
+ * 更新接收配置
+ */
+router.put('/remote-backup/receive-config', async (req, res) => {
+  try {
+    const { api_token, auto_restore } = req.body;
+
+    if (!api_token) {
+      return res.status(400).json({
+        success: false,
+        message: 'API token is required'
+      });
+    }
+
+    // 检查是否已存在配置
+    const existing = await getAsync('SELECT * FROM backup_receive_config LIMIT 1');
+
+    if (existing) {
+      // 更新现有配置
+      await runAsync(
+        `UPDATE backup_receive_config 
+         SET api_token = ?, auto_restore = ?, updated_at = datetime('now', 'localtime')`,
+        [api_token, auto_restore ? 1 : 0]
+      );
+    } else {
+      // 创建新配置
+      await runAsync(
+        `INSERT INTO backup_receive_config (api_token, auto_restore)
+         VALUES (?, ?)`,
+        [api_token, auto_restore ? 1 : 0]
+      );
+    }
+
+    await logAction(req.session.adminId, 'REMOTE_BACKUP_RECEIVE_CONFIG_UPDATE', 'system', null, JSON.stringify({
+      auto_restore: auto_restore ? 1 : 0
+    }), req);
+
+    res.json({
+      success: true,
+      message: 'Receive config updated successfully'
+    });
+  } catch (error) {
+    logger.error('更新接收配置失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update receive config'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/remote-backup/receive
+ * 接收远程推送的备份文件（需要token验证）
+ */
+const receiveBackupUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const receivedDir = getReceivedBackupDir();
+      if (!fs.existsSync(receivedDir)) {
+        fs.mkdirSync(receivedDir, { recursive: true });
+      }
+      cb(null, receivedDir);
+    },
+    filename: (req, file, cb) => {
+      // 保持原始文件名，添加时间戳前缀避免冲突
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const ext = path.extname(file.originalname);
+      const baseName = path.basename(file.originalname, ext);
+      cb(null, `${timestamp}-${baseName}${ext}`);
+    }
+  }),
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
+  fileFilter: (req, file, cb) => {
+    // 只允许 .zip 文件（完整备份）
+    if (file.originalname.endsWith('.zip')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .zip backup files are allowed'));
+    }
+  }
+});
+
+router.post('/remote-backup/receive', requireRemoteBackupAuth, receiveBackupUpload.single('backupFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const fileName = req.file.filename;
+    const filePath = req.file.path;
+    const fileSize = req.file.size;
+    const sourceUrl = req.headers['x-source-url'] || req.headers['X-Source-URL'] || 'unknown';
+
+    // 验证ZIP文件格式
+    try {
+      const AdmZip = require('adm-zip');
+      const zip = new AdmZip(filePath);
+      zip.getEntries(); // 尝试读取ZIP内容
+    } catch (error) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ZIP file format'
+      });
+    }
+
+    // 记录接收到的备份
+    await runAsync(
+      `INSERT INTO backup_received (backup_file_name, source_url, file_size, status)
+       VALUES (?, ?, ?, 'received')`,
+      [fileName, sourceUrl, fileSize]
+    );
+
+    // 获取接收配置
+    const receiveConfig = await getAsync('SELECT * FROM backup_receive_config LIMIT 1');
+    const autoRestore = receiveConfig && receiveConfig.auto_restore === 1;
+
+    let restoreResult = null;
+    if (autoRestore) {
+      // 自动恢复
+      try {
+        // 将接收到的文件移动到备份目录以便恢复
+        const { BACKUP_DIR } = require('../utils/backup');
+        const targetPath = path.join(BACKUP_DIR, fileName);
+        fs.renameSync(filePath, targetPath);
+
+        restoreResult = await restoreDatabase(fileName);
+
+        if (restoreResult.success) {
+          await runAsync(
+            `UPDATE backup_received 
+             SET status = 'restored', restored_at = datetime('now', 'localtime')
+             WHERE backup_file_name = ?`,
+            [fileName]
+          );
+        } else {
+          await runAsync(
+            `UPDATE backup_received 
+             SET status = 'failed'
+             WHERE backup_file_name = ?`,
+            [fileName]
+          );
+        }
+      } catch (error) {
+        logger.error('自动恢复失败', { fileName, error: error.message });
+        await runAsync(
+          `UPDATE backup_received 
+           SET status = 'failed'
+           WHERE backup_file_name = ?`,
+          [fileName]
+        );
+        restoreResult = { success: false, message: error.message };
+      }
+    }
+
+    logger.info('接收备份文件成功', { 
+      fileName, 
+      sourceUrl, 
+      fileSize, 
+      autoRestore,
+      restoreSuccess: restoreResult ? restoreResult.success : null
+    });
+
+    res.json({
+      success: true,
+      fileName: fileName,
+      sizeMB: (fileSize / 1024 / 1024).toFixed(2),
+      autoRestore: autoRestore,
+      restoreResult: restoreResult
+    });
+  } catch (error) {
+    logger.error('接收备份文件失败', { error: error.message });
+    
+    // 如果上传失败，删除文件
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to receive backup file: ' + error.message
+    });
+  }
+});
+
+/**
+ * GET /api/admin/remote-backup/push-logs
+ * 获取推送日志列表
+ */
+router.get('/remote-backup/push-logs', async (req, res) => {
+  try {
+    const { config_id, limit = 100, offset = 0 } = req.query;
+    
+    let sql = 'SELECT * FROM backup_push_logs';
+    const params = [];
+
+    if (config_id) {
+      sql += ' WHERE config_id = ?';
+      params.push(config_id);
+    }
+
+    sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(parseInt(limit), parseInt(offset));
+
+    const logs = await allAsync(sql, params);
+
+    res.json({
+      success: true,
+      logs
+    });
+  } catch (error) {
+    logger.error('获取推送日志失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get push logs'
+    });
+  }
+});
+
+/**
+ * GET /api/admin/remote-backup/received
+ * 获取接收到的备份列表
+ */
+router.get('/remote-backup/received', async (req, res) => {
+  try {
+    const backups = await allAsync(
+      'SELECT * FROM backup_received ORDER BY created_at DESC LIMIT 100'
+    );
+
+    res.json({
+      success: true,
+      backups: backups.map(backup => ({
+        ...backup,
+        sizeMB: backup.file_size ? (backup.file_size / 1024 / 1024).toFixed(2) : '0'
+      }))
+    });
+  } catch (error) {
+    logger.error('获取接收备份列表失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get received backups'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/remote-backup/received/:id/restore
+ * 手动恢复接收到的备份
+ */
+router.post('/remote-backup/received/:id/restore', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const backup = await getAsync('SELECT * FROM backup_received WHERE id = ?', [id]);
+    if (!backup) {
+      return res.status(404).json({
+        success: false,
+        message: 'Backup not found'
+      });
+    }
+
+    if (backup.status === 'restored') {
+      return res.status(400).json({
+        success: false,
+        message: 'Backup already restored'
+      });
+    }
+
+    // 检查文件是否存在
+    const receivedDir = getReceivedBackupDir();
+    const filePath = path.join(receivedDir, backup.backup_file_name);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Backup file not found'
+      });
+    }
+
+    // 将文件移动到备份目录以便恢复
+    const { BACKUP_DIR } = require('../utils/backup');
+    const targetPath = path.join(BACKUP_DIR, backup.backup_file_name);
+    fs.renameSync(filePath, targetPath);
+
+    // 执行恢复
+    const restoreResult = await restoreDatabase(backup.backup_file_name);
+
+    if (restoreResult.success) {
+      await runAsync(
+        `UPDATE backup_received 
+         SET status = 'restored', restored_at = datetime('now', 'localtime')
+         WHERE id = ?`,
+        [id]
+      );
+
+      await logAction(req.session.adminId, 'REMOTE_BACKUP_RESTORE', 'system', id.toString(), JSON.stringify({
+        fileName: backup.backup_file_name,
+        sourceUrl: backup.source_url
+      }), req);
+
+      res.json({
+        success: true,
+        message: 'Backup restored successfully'
+      });
+    } else {
+      await runAsync(
+        `UPDATE backup_received 
+         SET status = 'failed'
+         WHERE id = ?`,
+        [id]
+      );
+
+      res.status(500).json({
+        success: false,
+        message: restoreResult.message || 'Restore failed'
+      });
+    }
+  } catch (error) {
+    logger.error('恢复接收备份失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to restore backup: ' + error.message
     });
   }
 });

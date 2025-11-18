@@ -2106,6 +2106,78 @@ async function loadSettingsPage() {
               </div>
             </div>
           </div>
+
+          <!-- Remote Backup Configuration -->
+          <div class="bg-white rounded-xl shadow-sm p-6 mt-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">🌐 Remote Backup (Cross-Site Backup)</h3>
+            <p class="text-sm text-gray-600 mb-4">Configure automatic backup push to remote sites and receive backups from other sites.</p>
+            
+            <div class="space-y-6">
+              <!-- Push Configuration -->
+              <div>
+                <div class="flex items-center justify-between mb-4">
+                  <h4 class="text-lg font-semibold text-gray-900">📤 Push Configuration</h4>
+                  <button onclick="showRemoteBackupConfigModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
+                    + Add Push Config
+                  </button>
+                </div>
+                <div id="remoteBackupConfigsList" class="space-y-2">
+                  <p class="text-gray-500 text-sm">Loading configurations...</p>
+                </div>
+              </div>
+
+              <!-- Receive Configuration -->
+              <div class="border-t pt-6">
+                <h4 class="text-lg font-semibold text-gray-900 mb-4">📥 Receive Configuration</h4>
+                <div id="receiveConfigSection" class="space-y-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
+                    <input type="text" id="receiveApiToken" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="Enter API token (must match the token configured on the sending site)">
+                    <p class="text-xs text-gray-500 mt-1">This token must be the same as the one configured on the sending site</p>
+                  </div>
+                  <div>
+                    <label class="flex items-center space-x-2">
+                      <input type="checkbox" id="receiveAutoRestore" 
+                             class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                      <span class="text-sm font-medium text-gray-700">Auto Restore</span>
+                    </label>
+                    <p class="text-xs text-gray-500 mt-1 ml-6">Automatically restore received backups (otherwise, save and wait for manual restore)</p>
+                  </div>
+                  <button onclick="saveReceiveConfig()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                    Save Receive Config
+                  </button>
+                </div>
+              </div>
+
+              <!-- Push Logs -->
+              <div class="border-t pt-6">
+                <div class="flex items-center justify-between mb-4">
+                  <h4 class="text-lg font-semibold text-gray-900">📋 Push Logs</h4>
+                  <button onclick="loadPushLogs()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
+                    Refresh
+                  </button>
+                </div>
+                <div id="pushLogsList" class="space-y-2 max-h-64 overflow-y-auto">
+                  <p class="text-gray-500 text-sm">Loading logs...</p>
+                </div>
+              </div>
+
+              <!-- Received Backups -->
+              <div class="border-t pt-6">
+                <div class="flex items-center justify-between mb-4">
+                  <h4 class="text-lg font-semibold text-gray-900">📦 Received Backups</h4>
+                  <button onclick="loadReceivedBackups()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
+                    Refresh
+                  </button>
+                </div>
+                <div id="receivedBackupsList" class="space-y-2 max-h-64 overflow-y-auto">
+                  <p class="text-gray-500 text-sm">Loading received backups...</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       `;
       
@@ -2123,6 +2195,26 @@ async function loadSettingsPage() {
           }
         }
       });
+      
+      // 等待 DOM 渲染完成后再加载远程备份配置
+      setTimeout(() => {
+        loadRemoteBackupConfigs();
+        loadReceiveConfig();
+        loadPushLogs();
+        loadReceivedBackups();
+      }, 100);
+      
+      // 远程备份配置表单提交（模态框在页面加载时已存在）
+      const existingForm = document.getElementById('remoteBackupConfigForm');
+      if (existingForm) {
+        // 移除旧的监听器（如果存在）
+        const newForm = existingForm.cloneNode(true);
+        existingForm.parentNode.replaceChild(newForm, existingForm);
+        document.getElementById('remoteBackupConfigForm')?.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          await saveRemoteBackupConfig();
+        });
+      }
     } else {
       container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
     }
@@ -2973,6 +3065,79 @@ function loadAboutPage() {
           </div>
         </div>
       </div>
+
+      <!-- Remote Backup Configuration -->
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">🌐 Remote Backup (Cross-Site Backup)</h3>
+        <p class="text-sm text-gray-600 mb-4">Configure automatic backup push to remote sites and receive backups from other sites.</p>
+        
+        <div class="space-y-6">
+          <!-- Push Configuration -->
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-lg font-semibold text-gray-900">📤 Push Configuration</h4>
+              <button onclick="showRemoteBackupConfigModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
+                + Add Push Config
+              </button>
+            </div>
+            <div id="remoteBackupConfigsList" class="space-y-2">
+              <p class="text-gray-500 text-sm">Loading configurations...</p>
+            </div>
+          </div>
+
+          <!-- Receive Configuration -->
+          <div class="border-t pt-6">
+            <h4 class="text-lg font-semibold text-gray-900 mb-4">📥 Receive Configuration</h4>
+            <div id="receiveConfigSection" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
+                <input type="text" id="receiveApiToken" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                       placeholder="Enter API token (must match the token configured on the sending site)">
+                <p class="text-xs text-gray-500 mt-1">This token must be the same as the one configured on the sending site</p>
+              </div>
+              <div>
+                <label class="flex items-center space-x-2">
+                  <input type="checkbox" id="receiveAutoRestore" 
+                         class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                  <span class="text-sm font-medium text-gray-700">Auto Restore</span>
+                </label>
+                <p class="text-xs text-gray-500 mt-1 ml-6">Automatically restore received backups (otherwise, save and wait for manual restore)</p>
+              </div>
+              <button onclick="saveReceiveConfig()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                Save Receive Config
+              </button>
+            </div>
+          </div>
+
+          <!-- Push Logs -->
+          <div class="border-t pt-6">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-lg font-semibold text-gray-900">📋 Push Logs</h4>
+              <button onclick="loadPushLogs()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
+                Refresh
+              </button>
+            </div>
+            <div id="pushLogsList" class="space-y-2 max-h-64 overflow-y-auto">
+              <p class="text-gray-500 text-sm">Loading logs...</p>
+            </div>
+          </div>
+
+          <!-- Received Backups -->
+          <div class="border-t pt-6">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-lg font-semibold text-gray-900">📦 Received Backups</h4>
+              <button onclick="loadReceivedBackups()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
+                Refresh
+              </button>
+            </div>
+            <div id="receivedBackupsList" class="space-y-2 max-h-64 overflow-y-auto">
+              <p class="text-gray-500 text-sm">Loading received backups...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="bg-white rounded-xl shadow-sm p-6">
         <h2 class="text-2xl font-bold text-gray-900 mb-4">🧋 ${currentStoreName} Ordering System</h2>
         <div class="space-y-4">
@@ -3196,6 +3361,18 @@ function loadAboutPage() {
       </div>
     </div>
   `;
+  
+  // 等待 DOM 渲染完成后再加载数据
+  setTimeout(() => {
+    // 加载备份列表
+    loadBackupList();
+    
+    // 加载远程备份配置
+    loadRemoteBackupConfigs();
+    loadReceiveConfig();
+    loadPushLogs();
+    loadReceivedBackups();
+  }, 100);
 }
 
 // ==================== 开发者工具 ====================
@@ -3968,5 +4145,454 @@ async function uploadBackupFile() {
     console.error('Upload backup failed:', error);
     showToast('Upload failed', 'error');
     fileInput.value = '';
+  }
+}
+
+// ==================== 远程备份功能 ====================
+
+// 更新计划字段显示
+function updateScheduleFields() {
+  const scheduleType = document.getElementById('remoteBackupConfigScheduleType').value;
+  const timeField = document.getElementById('scheduleTimeField');
+  const dayField = document.getElementById('scheduleDayField');
+  const dayLabel = document.getElementById('scheduleDayLabel');
+  const dayHint = document.getElementById('scheduleDayHint');
+  
+  if (scheduleType === 'hourly' || scheduleType === 'manual') {
+    timeField.classList.add('hidden');
+    dayField.classList.add('hidden');
+  } else {
+    timeField.classList.remove('hidden');
+    if (scheduleType === 'daily') {
+      dayField.classList.add('hidden');
+    } else {
+      dayField.classList.remove('hidden');
+      if (scheduleType === 'weekly') {
+        dayLabel.textContent = 'Day of Week (0=Sunday, 6=Saturday)';
+        dayHint.textContent = 'For weekly: 0=Sunday, 1=Monday, ..., 6=Saturday';
+        document.getElementById('remoteBackupConfigScheduleDay').min = 0;
+        document.getElementById('remoteBackupConfigScheduleDay').max = 6;
+      } else if (scheduleType === 'monthly') {
+        dayLabel.textContent = 'Day of Month (1-31)';
+        dayHint.textContent = 'For monthly: 1-31 (day of the month)';
+        document.getElementById('remoteBackupConfigScheduleDay').min = 1;
+        document.getElementById('remoteBackupConfigScheduleDay').max = 31;
+      }
+    }
+  }
+}
+
+// 显示远程备份配置模态框
+function showRemoteBackupConfigModal(config = null) {
+  const modal = document.getElementById('remoteBackupConfigModal');
+  const form = document.getElementById('remoteBackupConfigForm');
+  const title = document.getElementById('remoteBackupConfigModalTitle');
+  
+  if (config) {
+    title.textContent = 'Edit Push Configuration';
+    document.getElementById('remoteBackupConfigId').value = config.id;
+    document.getElementById('remoteBackupConfigName').value = config.name;
+    document.getElementById('remoteBackupConfigUrl').value = config.target_url;
+    document.getElementById('remoteBackupConfigToken').value = config.api_token;
+    document.getElementById('remoteBackupConfigScheduleType').value = config.schedule_type || 'manual';
+    document.getElementById('remoteBackupConfigScheduleTime').value = config.schedule_time || '';
+    document.getElementById('remoteBackupConfigScheduleDay').value = config.schedule_day || '';
+    document.getElementById('remoteBackupConfigEnabled').checked = config.enabled;
+    updateScheduleFields();
+  } else {
+    title.textContent = 'Add Push Configuration';
+    form.reset();
+    document.getElementById('remoteBackupConfigId').value = '';
+    document.getElementById('remoteBackupConfigEnabled').checked = true;
+    updateScheduleFields();
+  }
+  
+  modal.classList.add('active');
+}
+
+// 关闭远程备份配置模态框
+function closeRemoteBackupConfigModal(event) {
+  if (!event || event.target.id === 'remoteBackupConfigModal') {
+    document.getElementById('remoteBackupConfigModal').classList.remove('active');
+  }
+}
+
+// 加载远程备份配置列表
+async function loadRemoteBackupConfigs() {
+  const container = document.getElementById('remoteBackupConfigsList');
+  if (!container) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/remote-backup/configs`, {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      const configs = data.configs || [];
+      
+      if (configs.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm">No push configurations. Click "+ Add Push Config" to create one.</p>';
+        return;
+      }
+      
+      container.innerHTML = configs.map(config => {
+        const scheduleText = config.schedule_type === 'manual' ? 'Manual Only' :
+          config.schedule_type === 'hourly' ? 'Every Hour' :
+          config.schedule_type === 'daily' ? `Daily at ${config.schedule_time || 'N/A'}` :
+          config.schedule_type === 'weekly' ? `Weekly on ${getDayName(config.schedule_day)} at ${config.schedule_time || 'N/A'}` :
+          config.schedule_type === 'monthly' ? `Monthly on day ${config.schedule_day} at ${config.schedule_time || 'N/A'}` :
+          'Unknown';
+        
+        return `
+          <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-2">
+                  <h5 class="font-semibold text-gray-900">${config.name}</h5>
+                  ${config.enabled ? 
+                    '<span class="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">Enabled</span>' :
+                    '<span class="px-2 py-1 bg-gray-100 text-gray-800 text-xs font-semibold rounded">Disabled</span>'
+                  }
+                </div>
+                <p class="text-sm text-gray-600 mb-1"><strong>Target:</strong> ${config.target_url}</p>
+                <p class="text-sm text-gray-600"><strong>Schedule:</strong> ${scheduleText}</p>
+              </div>
+              <div class="flex space-x-2 ml-4">
+                <button onclick="triggerManualPush(${config.id})" 
+                        class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">
+                  Push Now
+                </button>
+                <button onclick="showRemoteBackupConfigModal(${JSON.stringify(config).replace(/"/g, '&quot;')})" 
+                        class="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm">
+                  Edit
+                </button>
+                <button onclick="deleteRemoteBackupConfig(${config.id})" 
+                        class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm">
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      container.innerHTML = '<p class="text-red-500 text-sm">Failed to load configurations</p>';
+    }
+  } catch (error) {
+    console.error('Load remote backup configs failed:', error);
+    container.innerHTML = '<p class="text-red-500 text-sm">Failed to load configurations</p>';
+  }
+}
+
+// 获取星期名称
+function getDayName(day) {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return days[day] || `Day ${day}`;
+}
+
+// 保存远程备份配置
+async function saveRemoteBackupConfig() {
+  const id = document.getElementById('remoteBackupConfigId').value;
+  const name = document.getElementById('remoteBackupConfigName').value;
+  const targetUrl = document.getElementById('remoteBackupConfigUrl').value;
+  const apiToken = document.getElementById('remoteBackupConfigToken').value;
+  const scheduleType = document.getElementById('remoteBackupConfigScheduleType').value;
+  const scheduleTime = document.getElementById('remoteBackupConfigScheduleTime').value;
+  const scheduleDay = document.getElementById('remoteBackupConfigScheduleDay').value;
+  const enabled = document.getElementById('remoteBackupConfigEnabled').checked;
+  
+  try {
+    const url = id ? 
+      `${API_BASE}/admin/remote-backup/configs/${id}` :
+      `${API_BASE}/admin/remote-backup/configs`;
+    
+    const response = await fetch(url, {
+      method: id ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        name,
+        target_url: targetUrl,
+        api_token: apiToken,
+        schedule_type: scheduleType,
+        schedule_time: scheduleTime || null,
+        schedule_day: scheduleDay ? parseInt(scheduleDay) : null,
+        enabled
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast('Configuration saved successfully', 'success');
+      closeRemoteBackupConfigModal();
+      loadRemoteBackupConfigs();
+    } else {
+      showToast(data.message || 'Save failed', 'error');
+    }
+  } catch (error) {
+    console.error('Save remote backup config failed:', error);
+    showToast('Save failed', 'error');
+  }
+}
+
+// 删除远程备份配置
+async function deleteRemoteBackupConfig(id) {
+  const confirmed = await showConfirmDialog(
+    'Delete Push Configuration',
+    'Are you sure you want to delete this push configuration? This action cannot be undone.'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/remote-backup/configs/${id}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast('Configuration deleted successfully', 'success');
+      loadRemoteBackupConfigs();
+    } else {
+      showToast(data.message || 'Delete failed', 'error');
+    }
+  } catch (error) {
+    console.error('Delete remote backup config failed:', error);
+    showToast('Delete failed', 'error');
+  }
+}
+
+// 手动触发推送
+async function triggerManualPush(configId) {
+  const confirmed = await showConfirmDialog(
+    'Trigger Manual Push',
+    'Are you sure you want to trigger a manual push now? This will create a full backup and push it to the target site.'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    showGlobalLoading('Triggering manual push...');
+    
+    const response = await fetch(`${API_BASE}/admin/remote-backup/configs/${configId}/push`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      showToast('Push started. Check logs for status.', 'success');
+      setTimeout(() => loadPushLogs(), 2000);
+    } else {
+      showToast(data.message || 'Push failed', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Trigger manual push failed:', error);
+    showToast('Push failed', 'error');
+  }
+}
+
+// 加载接收配置
+async function loadReceiveConfig() {
+  try {
+    const response = await fetch(`${API_BASE}/admin/remote-backup/receive-config`, {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success && data.config) {
+      document.getElementById('receiveApiToken').value = data.config.api_token || '';
+      document.getElementById('receiveAutoRestore').checked = data.config.auto_restore || false;
+    }
+  } catch (error) {
+    console.error('Load receive config failed:', error);
+  }
+}
+
+// 保存接收配置
+async function saveReceiveConfig() {
+  const apiToken = document.getElementById('receiveApiToken').value;
+  const autoRestore = document.getElementById('receiveAutoRestore').checked;
+  
+  if (!apiToken) {
+    showToast('API token is required', 'error');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/remote-backup/receive-config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        api_token: apiToken,
+        auto_restore: autoRestore
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast('Receive config saved successfully', 'success');
+    } else {
+      showToast(data.message || 'Save failed', 'error');
+    }
+  } catch (error) {
+    console.error('Save receive config failed:', error);
+    showToast('Save failed', 'error');
+  }
+}
+
+// 加载推送日志
+async function loadPushLogs() {
+  const container = document.getElementById('pushLogsList');
+  if (!container) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/remote-backup/push-logs?limit=50`, {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      const logs = data.logs || [];
+      
+      if (logs.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm">No push logs</p>';
+        return;
+      }
+      
+      container.innerHTML = logs.map(log => {
+        const statusColor = log.status === 'success' ? 'green' :
+          log.status === 'failed' ? 'red' : 'yellow';
+        const statusText = log.status === 'success' ? 'Success' :
+          log.status === 'failed' ? 'Failed' : 'Retrying';
+        
+        return `
+          <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-1 bg-${statusColor}-100 text-${statusColor}-800 text-xs font-semibold rounded">${statusText}</span>
+                  <span class="text-sm text-gray-600">${log.target_url}</span>
+                </div>
+                <p class="text-xs text-gray-500">${log.backup_file_name || 'N/A'}</p>
+                ${log.error_message ? `<p class="text-xs text-red-600 mt-1">${log.error_message}</p>` : ''}
+                <p class="text-xs text-gray-400 mt-1">${new Date(log.created_at).toLocaleString()}</p>
+              </div>
+              ${log.retry_count > 0 ? `<span class="text-xs text-gray-500">Retries: ${log.retry_count}</span>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      container.innerHTML = '<p class="text-red-500 text-sm">Failed to load logs</p>';
+    }
+  } catch (error) {
+    console.error('Load push logs failed:', error);
+    container.innerHTML = '<p class="text-red-500 text-sm">Failed to load logs</p>';
+  }
+}
+
+// 加载接收到的备份
+async function loadReceivedBackups() {
+  const container = document.getElementById('receivedBackupsList');
+  if (!container) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/remote-backup/received`, {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      const backups = data.backups || [];
+      
+      if (backups.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm">No received backups</p>';
+        return;
+      }
+      
+      container.innerHTML = backups.map(backup => {
+        const statusColor = backup.status === 'restored' ? 'green' :
+          backup.status === 'failed' ? 'red' : 'blue';
+        const statusText = backup.status === 'restored' ? 'Restored' :
+          backup.status === 'failed' ? 'Failed' : 'Received';
+        
+        return `
+          <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-1 bg-${statusColor}-100 text-${statusColor}-800 text-xs font-semibold rounded">${statusText}</span>
+                  <span class="text-sm font-medium text-gray-900">${backup.backup_file_name}</span>
+                </div>
+                <p class="text-xs text-gray-600">From: ${backup.source_url || 'Unknown'}</p>
+                <p class="text-xs text-gray-500">Size: ${backup.sizeMB}MB</p>
+                <p class="text-xs text-gray-400 mt-1">${new Date(backup.created_at).toLocaleString()}</p>
+                ${backup.restored_at ? `<p class="text-xs text-green-600 mt-1">Restored: ${new Date(backup.restored_at).toLocaleString()}</p>` : ''}
+              </div>
+              ${backup.status === 'received' ? `
+                <button onclick="restoreReceivedBackup(${backup.id})" 
+                        class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">
+                  Restore
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      container.innerHTML = '<p class="text-red-500 text-sm">Failed to load received backups</p>';
+    }
+  } catch (error) {
+    console.error('Load received backups failed:', error);
+    container.innerHTML = '<p class="text-red-500 text-sm">Failed to load received backups</p>';
+  }
+}
+
+// 恢复接收到的备份
+async function restoreReceivedBackup(id) {
+  const confirmed = await showConfirmDialog(
+    'Restore Received Backup',
+    'Are you sure you want to restore this backup? This will replace the current database and files. Make sure you have a backup of the current state.'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    showGlobalLoading('Restoring backup...');
+    
+    const response = await fetch(`${API_BASE}/admin/remote-backup/received/${id}/restore`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      showToast('Backup restored successfully. The page will reload.', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } else {
+      showToast(data.message || 'Restore failed', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Restore received backup failed:', error);
+    showToast('Restore failed', 'error');
   }
 }

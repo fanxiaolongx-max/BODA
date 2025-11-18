@@ -284,6 +284,10 @@ async function initDatabase() {
     
     // 自动迁移：检查并添加缺失的字段
     await migrateDatabaseSchema();
+    
+    // 迁移远程备份表
+    const { migrateRemoteBackup } = require('./migrate-remote-backup');
+    await migrateRemoteBackup();
   } catch (error) {
     console.error('数据库表初始化失败:', error);
     console.error('错误堆栈:', error.stack);

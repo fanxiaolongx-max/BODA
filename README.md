@@ -403,6 +403,9 @@ server {
     listen 80;
     server_name bobapro.life www.bobapro.life;
 
+    # 增加上传文件大小限制（支持最大 10MB，足够备份文件使用）
+    client_max_body_size 10M;
+
     location / {
         proxy_pass http://localhost:3000; # 指向 PM2 运行的端口
         proxy_http_version 1.1;
@@ -423,6 +426,8 @@ ln -s /etc/nginx/sites-available/bobapro.conf /etc/nginx/sites-enabled/
 nginx -t
 systemctl reload nginx
 ```
+
+**注意**：`client_max_body_size 10M;` 配置用于支持文件上传（如备份文件上传）。如果未来需要上传更大的文件，可以适当增加这个值（如 `50M` 或 `100M`）。`systemctl reload nginx` 是平滑重新加载配置，不会中断现有连接，可以安全执行。
 
 #### 第五步：配置 HTTPS (SSL 证书)
 
