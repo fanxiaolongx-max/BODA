@@ -160,6 +160,9 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTranslations();
   }
   
+  // 先加载公开设置（商店名称等），即使未登录也要显示
+  loadSettings();
+  
   checkAuth();
   
   // 登录表单提交
@@ -482,26 +485,69 @@ async function confirmCycle(cycleId) {
 // 加载系统设置
 async function loadSettings() {
   try {
+    // 先尝试获取管理员设置（需要登录）
     const response = await fetch(`${API_BASE}/admin/settings`, {
       credentials: 'include'
     });
-    const data = await response.json();
     
-    if (data.success) {
-      currentSettings = data.settings;
-      // 更新商店名称
-      if (data.settings.store_name) {
-        storeName = data.settings.store_name;
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        currentSettings = data.settings;
+        // 更新商店名称
+        if (data.settings.store_name) {
+          storeName = data.settings.store_name;
+        }
+        // 更新货币符号
+        if (data.settings.currency_symbol) {
+          currencySymbol = data.settings.currency_symbol;
+        }
+        updateStoreName();
+        updateOrderButton();
+        return; // 成功获取，直接返回
       }
-      // 更新货币符号
-      if (data.settings.currency_symbol) {
-        currencySymbol = data.settings.currency_symbol;
+    }
+    
+    // 如果管理员设置获取失败（401 或其他错误），降级到公开设置
+    // 这样即使未登录也能显示正确的商店名称
+    console.log('管理员设置获取失败，尝试获取公开设置...');
+    const publicResponse = await fetch(`${API_BASE}/public/settings`, {
+      credentials: 'include'
+    });
+    
+    if (publicResponse.ok) {
+      const publicData = await publicResponse.json();
+      if (publicData.success && publicData.settings) {
+        // 只更新公开可用的设置（商店名称、货币符号等）
+        if (publicData.settings.store_name) {
+          storeName = publicData.settings.store_name;
+        }
+        if (publicData.settings.currency_symbol) {
+          currencySymbol = publicData.settings.currency_symbol;
+        }
+        // 合并到 currentSettings（保留已有的设置）
+        currentSettings = { ...currentSettings, ...publicData.settings };
+        updateStoreName();
+        // 注意：不调用 updateOrderButton()，因为公开设置不包含订单状态
       }
-      updateStoreName();
-      updateOrderButton();
     }
   } catch (error) {
     console.error('加载设置失败:', error);
+    // 即使失败，也尝试获取公开设置作为降级方案
+    try {
+      const publicResponse = await fetch(`${API_BASE}/public/settings`, {
+        credentials: 'include'
+      });
+      if (publicResponse.ok) {
+        const publicData = await publicResponse.json();
+        if (publicData.success && publicData.settings?.store_name) {
+          storeName = publicData.settings.store_name;
+          updateStoreName();
+        }
+      }
+    } catch (fallbackError) {
+      console.error('降级方案也失败:', fallbackError);
+    }
   }
 }
 

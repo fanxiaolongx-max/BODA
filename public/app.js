@@ -479,6 +479,9 @@ function updateLoginStatus() {
     logoutBtn.classList.add('hidden');
     userName.textContent = 'Guest';
   }
+  
+  // 同时更新 profile 页面（确保登录状态同步）
+  updateProfilePage();
 }
 
 // 显示主页面
@@ -696,7 +699,7 @@ function renderProducts() {
               <button onclick='showProductDetail(${JSON.stringify(product).replace(/'/g, "&apos;")})' 
                       class="px-4 py-1.5 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-full transition text-xs"
                       ${currentSettings.ordering_open !== 'true' ? 'disabled' : ''}>
-                ${currentSettings.ordering_open === 'true' ? '选择' : '未开放'}
+                ${currentSettings.ordering_open === 'true' ? t('select_spec') : t('ordering_closed')}
               </button>
             </div>
           </div>
