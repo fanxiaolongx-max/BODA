@@ -247,7 +247,10 @@ app.get('/health', async (req, res) => {
     });
   }
 });
-
+// 微信验证
+app.get('/7a21c2d1a7f0427a2a7cb5854bfac05a.txt', (req, res) => {
+  res.send("29656752675be119d4ff6f5f0f0912d3996676d7");
+});
 // 404处理
 app.use((req, res) => {
   res.status(404).json({ success: false, message: '接口不存在' });
