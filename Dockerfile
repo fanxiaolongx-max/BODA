@@ -12,11 +12,10 @@ RUN apt-get update && \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# 创建数据目录（数据库、日志、上传文件）和 show 目录
-# 数据存储在镜像内部，不需要外部卷挂载
-RUN mkdir -p /data /data/uploads /data/logs /data/uploads/products /data/uploads/payments /app/show && \
-    chown -R node:node /data && \
-    chown -R node:node /app/show
+# 创建数据目录（数据库、日志、上传文件、show目录）
+# show 目录放在 /data/show 以便在 fly.io 上持久化
+RUN mkdir -p /data /data/uploads /data/logs /data/uploads/products /data/uploads/payments /data/show && \
+    chown -R node:node /data
 
 # 确保 /app 目录的所有者是 node 用户
 RUN chown -R node:node /app

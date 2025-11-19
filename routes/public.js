@@ -307,7 +307,11 @@ router.get('/cycle-discount', async (req, res) => {
  */
 router.get('/show-images', async (req, res) => {
   try {
-    const showDir = path.join(__dirname, '../show');
+    // 优先使用 DATA_DIR/show（持久化），如果不存在则回退到项目根目录（兼容性）
+    const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+    const SHOW_DIR = path.join(DATA_DIR, 'show');
+    const FALLBACK_SHOW_DIR = path.join(__dirname, '../show');
+    const showDir = fs.existsSync(SHOW_DIR) ? SHOW_DIR : FALLBACK_SHOW_DIR;
     
     // 检查目录是否存在，如果不存在则返回空数组（避免错误日志）
     if (!fs.existsSync(showDir)) {

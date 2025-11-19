@@ -169,10 +169,44 @@ const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 // 静态文件服务（使用绝对路径，确保部署时路径正确）
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
-app.use('/show', express.static(path.join(__dirname, 'show')));
+
+// show 目录：优先使用 DATA_DIR/show（持久化），如果不存在则回退到项目根目录（兼容性）
+const SHOW_DIR = path.join(DATA_DIR, 'show');
+const FALLBACK_SHOW_DIR = path.join(__dirname, 'show');
+
+// 确保 show 目录存在
+if (!fs.existsSync(SHOW_DIR)) {
+  // 如果 DATA_DIR/show 不存在，但项目根目录的 show 存在，则复制过去（迁移）
+  if (fs.existsSync(FALLBACK_SHOW_DIR)) {
+    try {
+      fs.mkdirSync(SHOW_DIR, { recursive: true });
+      // 复制现有文件
+      const fallbackFiles = fs.readdirSync(FALLBACK_SHOW_DIR);
+      fallbackFiles.forEach(file => {
+        const srcPath = path.join(FALLBACK_SHOW_DIR, file);
+        const destPath = path.join(SHOW_DIR, file);
+        if (fs.statSync(srcPath).isFile()) {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      });
+      if (fallbackFiles.length > 0) {
+        logger.info('Migrated show directory from project root to DATA_DIR', { fileCount: fallbackFiles.length });
+      }
+    } catch (error) {
+      logger.warn('Failed to migrate show directory, using fallback', { error: error.message });
+    }
+  } else {
+    // 如果都不存在，创建 DATA_DIR/show
+    fs.mkdirSync(SHOW_DIR, { recursive: true });
+  }
+}
+
+// 使用 DATA_DIR/show（如果存在），否则回退到项目根目录
+const actualShowDir = fs.existsSync(SHOW_DIR) ? SHOW_DIR : FALLBACK_SHOW_DIR;
+app.use('/show', express.static(actualShowDir));
 
 // 确保必要目录存在
-['uploads', 'uploads/products', 'uploads/payments', 'logs'].forEach(dir => {
+['uploads', 'uploads/products', 'uploads/payments', 'logs', 'show'].forEach(dir => {
   const dirPath = path.join(DATA_DIR, dir);
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });

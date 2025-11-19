@@ -154,7 +154,10 @@ async function backupFull() {
       }
 
       // 添加show目录（展示图片）
-      const showDir = path.join(__dirname, '..', 'show');
+      // 优先使用 DATA_DIR/show，如果不存在则回退到项目根目录
+      const SHOW_DIR = path.join(DATA_DIR, 'show');
+      const FALLBACK_SHOW_DIR = path.join(__dirname, '..', 'show');
+      const showDir = fs.existsSync(SHOW_DIR) ? SHOW_DIR : FALLBACK_SHOW_DIR;
       if (fs.existsSync(showDir)) {
         archive.directory(showDir, 'show');
       }
@@ -359,12 +362,21 @@ async function restoreFullBackup(backupPath, DB_PATH, createDatabaseConnection) 
       }
 
       // 恢复show目录
+      // 优先恢复到 DATA_DIR/show（持久化），如果不存在则回退到项目根目录
       const showBackupPath = path.join(tempDir, 'show');
-      const showTargetPath = path.join(__dirname, '..', 'show');
+      const SHOW_TARGET_DIR = path.join(DATA_DIR, 'show');
+      const FALLBACK_SHOW_TARGET_DIR = path.join(__dirname, '..', 'show');
+      const showTargetPath = fs.existsSync('/data') ? SHOW_TARGET_DIR : FALLBACK_SHOW_TARGET_DIR;
+      
       if (fs.existsSync(showBackupPath)) {
         // 如果目标目录存在，先删除
         if (fs.existsSync(showTargetPath)) {
           fs.rmSync(showTargetPath, { recursive: true, force: true });
+        }
+        // 确保目标目录的父目录存在
+        const parentDir = path.dirname(showTargetPath);
+        if (!fs.existsSync(parentDir)) {
+          fs.mkdirSync(parentDir, { recursive: true });
         }
         // 复制show目录
         fs.cpSync(showBackupPath, showTargetPath, { recursive: true });
