@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for routes/public.js</title>
+    <title>Code coverage report for utils/sms.js</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../prettify.css" />
     <link rel="stylesheet" href="../base.css" />
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../index.html">All files</a> / <a href="index.html">routes</a> public.js</h1>
+        <h1><a href="../index.html">All files</a> / <a href="index.html">utils</a> sms.js</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">82.08% </span>
+                <span class="strong">5.81% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>110/134</span>
+                <span class='fraction'>5/86</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">70% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>28/40</span>
+                <span class='fraction'>0/58</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>11/11</span>
+                <span class='fraction'>0/6</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">82.08% </span>
+                <span class="strong">5.81% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>110/134</span>
+                <span class='fraction'>5/86</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -351,731 +351,581 @@
 <a name='L286'></a><a href='#L286'>286</a>
 <a name='L287'></a><a href='#L287'>287</a>
 <a name='L288'></a><a href='#L288'>288</a>
-<a name='L289'></a><a href='#L289'>289</a>
-<a name='L290'></a><a href='#L290'>290</a>
-<a name='L291'></a><a href='#L291'>291</a>
-<a name='L292'></a><a href='#L292'>292</a>
-<a name='L293'></a><a href='#L293'>293</a>
-<a name='L294'></a><a href='#L294'>294</a>
-<a name='L295'></a><a href='#L295'>295</a>
-<a name='L296'></a><a href='#L296'>296</a>
-<a name='L297'></a><a href='#L297'>297</a>
-<a name='L298'></a><a href='#L298'>298</a>
-<a name='L299'></a><a href='#L299'>299</a>
-<a name='L300'></a><a href='#L300'>300</a>
-<a name='L301'></a><a href='#L301'>301</a>
-<a name='L302'></a><a href='#L302'>302</a>
-<a name='L303'></a><a href='#L303'>303</a>
-<a name='L304'></a><a href='#L304'>304</a>
-<a name='L305'></a><a href='#L305'>305</a>
-<a name='L306'></a><a href='#L306'>306</a>
-<a name='L307'></a><a href='#L307'>307</a>
-<a name='L308'></a><a href='#L308'>308</a>
-<a name='L309'></a><a href='#L309'>309</a>
-<a name='L310'></a><a href='#L310'>310</a>
-<a name='L311'></a><a href='#L311'>311</a>
-<a name='L312'></a><a href='#L312'>312</a>
-<a name='L313'></a><a href='#L313'>313</a>
-<a name='L314'></a><a href='#L314'>314</a>
-<a name='L315'></a><a href='#L315'>315</a>
-<a name='L316'></a><a href='#L316'>316</a>
-<a name='L317'></a><a href='#L317'>317</a>
-<a name='L318'></a><a href='#L318'>318</a>
-<a name='L319'></a><a href='#L319'>319</a>
-<a name='L320'></a><a href='#L320'>320</a>
-<a name='L321'></a><a href='#L321'>321</a>
-<a name='L322'></a><a href='#L322'>322</a>
-<a name='L323'></a><a href='#L323'>323</a>
-<a name='L324'></a><a href='#L324'>324</a>
-<a name='L325'></a><a href='#L325'>325</a>
-<a name='L326'></a><a href='#L326'>326</a>
-<a name='L327'></a><a href='#L327'>327</a>
-<a name='L328'></a><a href='#L328'>328</a>
-<a name='L329'></a><a href='#L329'>329</a>
-<a name='L330'></a><a href='#L330'>330</a>
-<a name='L331'></a><a href='#L331'>331</a>
-<a name='L332'></a><a href='#L332'>332</a>
-<a name='L333'></a><a href='#L333'>333</a>
-<a name='L334'></a><a href='#L334'>334</a>
-<a name='L335'></a><a href='#L335'>335</a>
-<a name='L336'></a><a href='#L336'>336</a>
-<a name='L337'></a><a href='#L337'>337</a>
-<a name='L338'></a><a href='#L338'>338</a>
-<a name='L339'></a><a href='#L339'>339</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
+<a name='L289'></a><a href='#L289'>289</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">16x</span>
-<span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const { getAsync, allAsync, runAsync, beginTransaction, commit, rollback } = require('../db/database');
-const { logger } = require('../utils/logger');
-const cache = require('../utils/cache');
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">const twilio = require('twilio');
+const { logger } = require('./logger');
+const { getAsync } = require('../db/database');
 &nbsp;
-const router = express.Router();
-&nbsp;
-// 缓存过期时间（5分钟）
-const CACHE_TTL = 5 * 60 * 1000;
-&nbsp;
-// ==================== 公开接口（无需登录） ====================
-&nbsp;
-// 获取系统设置
-router.get('/settings', async (req, res) =&gt; {
-  try {
-    // 尝试从缓存获取
-    const cacheKey = 'public:settings';
-    const cached = cache.get(cacheKey);
-    <span class="missing-if-branch" title="if path not taken" >I</span>if (cached) {
-<span class="cstat-no" title="statement not covered" >      return res.json({ success: true, settings: cached });</span>
-    }
-&nbsp;
-    const settings = await allAsync('SELECT * FROM settings');
-    const settingsObj = {};
-    settings.forEach(s =&gt; {
-      settingsObj[s.key] = s.value;
-    });
-    
-    // 存入缓存
-    cache.set(cacheKey, settingsObj, CACHE_TTL);
-    
-    res.json({ success: true, settings: settingsObj });
-  } catch (error) {
-<span class="cstat-no" title="statement not covered" >    logger.error('获取系统设置失败', { error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >    res.status(500).json({ success: false, message: '获取系统设置失败' });</span>
-  }
-});
+let twilioClient = null;
 &nbsp;
 /**
- * GET /api/public/categories
- * Get all active categories
- * @returns {Object} Categories array
+ * 初始化Twilio客户端
+ * @returns {Object|null} Twilio客户端实例
  */
-router.get('/categories', async (req, res) =&gt; {
-  try {
-    // 尝试从缓存获取
-    const cacheKey = 'public:categories';
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      return res.json({ success: true, categories: cached });
+async function <span class="fstat-no" title="function not covered" >initTwilioClient(</span>) {
+<span class="cstat-no" title="statement not covered" >  if (twilioClient) {</span>
+<span class="cstat-no" title="statement not covered" >    return twilioClient;</span>
+  }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  try {</span>
+    // 从数据库获取Twilio配置
+    const accountSid = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'twilio_account_sid'");</span>
+    const authToken = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'twilio_auth_token'");</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    if (!accountSid || !accountSid.value || !authToken || !authToken.value) {</span>
+<span class="cstat-no" title="statement not covered" >      logger.warn('Twilio配置未设置，将使用模拟发送');</span>
+<span class="cstat-no" title="statement not covered" >      return null;</span>
     }
 &nbsp;
-    const categories = await allAsync(
-      'SELECT * FROM categories WHERE status = ? ORDER BY sort_order, id',
-      ['active']
-    );
-    
-    // 存入缓存
-    cache.set(cacheKey, categories, CACHE_TTL);
-    
-    res.json({ success: true, categories });
+    // 也可以从环境变量读取（优先级更高）
+    const envAccountSid = <span class="cstat-no" title="statement not covered" >process.env.TWILIO_ACCOUNT_SID;</span>
+    const envAuthToken = <span class="cstat-no" title="statement not covered" >process.env.TWILIO_AUTH_TOKEN;</span>
+&nbsp;
+    const finalAccountSid = <span class="cstat-no" title="statement not covered" >envAccountSid || accountSid.value;</span>
+    const finalAuthToken = <span class="cstat-no" title="statement not covered" >envAuthToken || authToken.value;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    twilioClient = twilio(finalAccountSid, finalAuthToken);</span>
+<span class="cstat-no" title="statement not covered" >    return twilioClient;</span>
   } catch (error) {
-<span class="cstat-no" title="statement not covered" >    logger.error('获取分类失败', { error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >    res.status(500).json({ success: false, message: '获取分类失败' });</span>
+<span class="cstat-no" title="statement not covered" >    logger.error('初始化Twilio客户端失败', { error: error.message });</span>
+<span class="cstat-no" title="statement not covered" >    return null;</span>
   }
-});
+}
 &nbsp;
 /**
- * GET /api/public/products
- * Get all active products
- * @query {string} [category_id] - Filter by category ID
- * @returns {Object} Products array
+ * 格式化手机号为E.164格式
+ * @param {string} phone - 原始手机号
+ * @returns {string} E.164格式的手机号
  */
-router.get('/products', async (req, res) =&gt; {
-  try {
-    const { category_id } = req.query;
-    let sql = `
-      SELECT p.*, c.name as category_name 
-      FROM products p 
-      LEFT JOIN categories c ON p.category_id = c.id 
-      WHERE p.status = 'active'
-    `;
-    const params = [];
+function <span class="fstat-no" title="function not covered" >formatPhoneNumber(</span>phone) {
+  // 移除所有空格和特殊字符，只保留数字和+
+  let formatted = <span class="cstat-no" title="statement not covered" >phone.replace(/[^\d+]/g, '');</span>
 &nbsp;
-    if (category_id) {
-      sql += ' AND p.category_id = ?';
-      params.push(category_id);
+  // 如果没有+号，根据长度判断是否需要添加国家代码
+<span class="cstat-no" title="statement not covered" >  if (!formatted.startsWith('+')) {</span>
+    // 如果长度是11位且以1开头，可能是中国手机号，添加+86
+<span class="cstat-no" title="statement not covered" >    if (formatted.length === 11 &amp;&amp; formatted.startsWith('1')) {</span>
+<span class="cstat-no" title="statement not covered" >      formatted = '+86' + formatted;</span>
+    }
+    // 如果长度是10位，可能是美国手机号，添加+1
+    else <span class="cstat-no" title="statement not covered" >if (formatted.length === 10) {</span>
+<span class="cstat-no" title="statement not covered" >      formatted = '+1' + formatted;</span>
+    }
+    // 埃及手机号通常是10位，添加+20
+    else <span class="cstat-no" title="statement not covered" >if (formatted.length === 10) {</span>
+<span class="cstat-no" title="statement not covered" >      formatted = '+20' + formatted;</span>
+    }
+    // 其他情况，假设用户已经输入了正确的格式
+    else {
+<span class="cstat-no" title="statement not covered" >      formatted = '+' + formatted;</span>
+    }
+  }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  return formatted;</span>
+}
+&nbsp;
+/**
+ * 生成6位数字验证码
+ * @returns {string} 6位数字验证码
+ */
+function <span class="fstat-no" title="function not covered" >generateCode(</span>) {
+<span class="cstat-no" title="statement not covered" >  return Math.floor(100000 + Math.random() * 900000).toString();</span>
+}
+&nbsp;
+/**
+ * 使用Twilio Verify Service发送验证码（推荐方式）
+ * @param {string} phone - 手机号
+ * @param {string} serviceSid - Verify Service SID
+ * @returns {Promise&lt;{success: boolean, sid?: string, message: string}&gt;}
+ */
+async function <span class="fstat-no" title="function not covered" >sendVerificationCodeViaVerifyService(</span>phone, serviceSid) {
+<span class="cstat-no" title="statement not covered" >  try {</span>
+    const client = <span class="cstat-no" title="statement not covered" >await initTwilioClient();</span>
+    const formattedPhone = <span class="cstat-no" title="statement not covered" >formatPhoneNumber(phone);</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    if (!client) {</span>
+<span class="cstat-no" title="statement not covered" >      logger.warn('Twilio client not initialized, using mock mode');</span>
+      // 开发环境或未配置时，模拟发送
+<span class="cstat-no" title="statement not covered" >      if (process.env.NODE_ENV !== 'production') {</span>
+<span class="cstat-no" title="statement not covered" >        logger.info('模拟发送验证码（Verify Service）', { phone: formattedPhone });</span>
+<span class="cstat-no" title="statement not covered" >        return {</span>
+          success: true,
+          sid: 'mock_' + Date.now(),
+          message: 'Verification code sent successfully (mock)'
+        };
+      }
+<span class="cstat-no" title="statement not covered" >      return {</span>
+        success: false,
+        message: 'Twilio client not initialized. Please configure Twilio Account SID and Auth Token.'
+      };
     }
 &nbsp;
-    sql += ' ORDER BY p.category_id, p.sort_order, p.id';
-&nbsp;
-    const products = await allAsync(sql, params);
-    res.json({ success: true, products });
-  } catch (error) {
-<span class="cstat-no" title="statement not covered" >    logger.error('获取菜品失败', { error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >    res.status(500).json({ success: false, message: '获取菜品失败' });</span>
-  }
-});
-&nbsp;
-/**
- * GET /api/public/orders/:orderNumber
- * Get order details by order number (for QR code query)
- * @param {string} orderNumber - Order number (e.g., BO12345678)
- * @returns {Object} Order object with items
- */
-router.get('/orders/:orderNumber', async (req, res) =&gt; {
-  try {
-    const { orderNumber } = req.params;
-&nbsp;
-    const order = await getAsync(
-      'SELECT * FROM orders WHERE order_number = ?',
-      [orderNumber]
-    );
-&nbsp;
-    if (!order) {
-      return res.status(404).json({ success: false, message: '订单不存在' });
+<span class="cstat-no" title="statement not covered" >    if (!serviceSid || serviceSid.trim() === '') {</span>
+<span class="cstat-no" title="statement not covered" >      return {</span>
+        success: false,
+        message: 'Twilio Verify Service SID is not configured'
+      };
     }
 &nbsp;
-    order.items = await allAsync(
-      'SELECT * FROM order_items WHERE order_id = ?',
-      [order.id]
-    );
-&nbsp;
-    res.json({ success: true, order });
-  } catch (error) {
-<span class="cstat-no" title="statement not covered" >    logger.error('获取订单详情失败', { error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >    res.status(500).json({ success: false, message: '获取订单详情失败' });</span>
-  }
-});
-&nbsp;
-/**
- * GET /api/public/discount-rules
- * Get all active discount rules
- * @returns {Object} Discount rules array
- */
-router.get('/discount-rules', async (req, res) =&gt; {
-  try {
-    // 尝试从缓存获取
-    const cacheKey = 'public:discount-rules';
-    const cached = cache.get(cacheKey);
-    <span class="missing-if-branch" title="if path not taken" >I</span>if (cached) {
-<span class="cstat-no" title="statement not covered" >      return res.json({ success: true, rules: cached });</span>
-    }
-&nbsp;
-    const rules = await allAsync(
-      'SELECT * FROM discount_rules WHERE status = ? ORDER BY min_amount',
-      ['active']
-    );
-    
-    // 存入缓存
-    cache.set(cacheKey, rules, CACHE_TTL);
-    
-    res.json({ success: true, rules });
-  } catch (error) {
-<span class="cstat-no" title="statement not covered" >    logger.error('获取折扣规则失败', { error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >    res.status(500).json({ success: false, message: '获取折扣规则失败' });</span>
-  }
-});
-&nbsp;
-/**
- * POST /api/public/calculate-discount
- * Calculate and apply discount to all pending orders (only when ordering is closed)
- * @returns {Object} Discount calculation result with discount_rate and total_amount
- */
-router.post('/calculate-discount', async (req, res) =&gt; {
-  try {
-    // 检查点单是否已关闭
-    const setting = await getAsync("SELECT value FROM settings WHERE key = 'ordering_open'");
-    if (setting &amp;&amp; setting.value === 'true') {
-      return res.json({ 
-        success: true, 
-        message: '点单时间未关闭，暂不计算折扣',
-        discount_applied: false 
+    // 使用Verify Service发送验证码
+    const verification = <span class="cstat-no" title="statement not covered" >await client.verify.v2</span>
+      .services(serviceSid)
+      .verifications
+      .create({
+        to: formattedPhone,
+        channel: 'sms'
       });
-    }
 &nbsp;
-    // 获取所有待付款订单的总金额
-    const result = await getAsync(
-      "SELECT SUM(total_amount) as total FROM orders WHERE status = 'pending'"
-    );
-&nbsp;
-    const totalAmount = result.total || <span class="branch-1 cbranch-no" title="branch not covered" >0;</span>
-&nbsp;
-    // 获取折扣规则
-    const rules = await allAsync(
-      'SELECT * FROM discount_rules WHERE status = ? ORDER BY min_amount DESC',
-      ['active']
-    );
-&nbsp;
-    // 找到适用的折扣规则
-    let discountRate = 0;
-    for (const rule of rules) {
-      <span class="missing-if-branch" title="else path not taken" >E</span>if (totalAmount &gt;= rule.min_amount) {
-        <span class="missing-if-branch" title="else path not taken" >E</span>if (!rule.max_amount || <span class="branch-1 cbranch-no" title="branch not covered" >totalAmount &lt; rule.max_amount)</span> {
-          discountRate = rule.discount_rate / 100; // 数据库存储的是百分比，需要转换为小数
-          break;
-        }
-      }
-    }
-&nbsp;
-    // 批量更新所有待付款订单的折扣
-    const pendingOrders = await allAsync(
-      "SELECT * FROM orders WHERE status = 'pending'"
-    );
-&nbsp;
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (pendingOrders.length &gt; 0) {
-      // 使用事务确保数据一致性
-      try {
-        await beginTransaction();
-        for (const order of pendingOrders) {
-          const discountAmount = order.total_amount * discountRate;
-          const finalAmount = order.total_amount - discountAmount;
-&nbsp;
-          await runAsync(
-            "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-            [discountAmount, finalAmount, order.id]
-          );
-        }
-        await commit();
-      } catch (error) {
-<span class="cstat-no" title="statement not covered" >        await rollback();</span>
-<span class="cstat-no" title="statement not covered" >        logger.error('批量更新订单折扣失败', { error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >        throw error;</span>
-      }
-    }
-&nbsp;
-    logger.info('折扣计算完成', { 
-      totalAmount, 
-      discountRate, 
-      orderCount: pendingOrders.length 
+<span class="cstat-no" title="statement not covered" >    logger.info('验证码通过Verify Service发送成功', {</span>
+      phone: formattedPhone,
+      verificationSid: verification.sid,
+      status: verification.status
     });
 &nbsp;
-    res.json({ 
-      success: true, 
-      message: '折扣计算完成',
-      discount_applied: true,
-      discount_rate: discountRate,
-      total_amount: totalAmount
+<span class="cstat-no" title="statement not covered" >    return {</span>
+      success: true,
+      sid: verification.sid,
+      message: 'Verification code sent successfully'
+    };
+  } catch (error) {
+<span class="cstat-no" title="statement not covered" >    logger.error('通过Verify Service发送验证码失败', {</span>
+      phone,
+      serviceSid,
+      error: error.message,
+      code: error.code,
+      status: error.status
     });
-  } catch (error) {
-<span class="cstat-no" title="statement not covered" >    logger.error('计算折扣失败', { error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >    res.status(500).json({ success: false, message: '计算折扣失败' });</span>
+    
+    // 提供更详细的错误信息
+    let errorMessage = <span class="cstat-no" title="statement not covered" >'Failed to send verification code';</span>
+<span class="cstat-no" title="statement not covered" >    if (error.code === 20404) {</span>
+<span class="cstat-no" title="statement not covered" >      errorMessage = 'Verify Service SID not found. Please check your Twilio Verify Service SID.';</span>
+    } else <span class="cstat-no" title="statement not covered" >if (error.code === 21211) {</span>
+<span class="cstat-no" title="statement not covered" >      errorMessage = 'Invalid phone number format. Please use E.164 format (e.g., +201234567890).';</span>
+    } else <span class="cstat-no" title="statement not covered" >if (error.message) {</span>
+<span class="cstat-no" title="statement not covered" >      errorMessage = error.message;</span>
+    }
+    
+<span class="cstat-no" title="statement not covered" >    return {</span>
+      success: false,
+      message: errorMessage
+    };
   }
-});
+}
 &nbsp;
 /**
- * GET /api/public/cycle-discount
- * Get current cycle discount information
- * @returns {Object} Cycle object with currentDiscount and nextDiscount information
+ * 发送验证码短信（传统方式，使用Messages API）
+ * @param {string} phone - 手机号
+ * @param {string} code - 验证码
+ * @returns {Promise&lt;boolean&gt;} 是否发送成功
  */
-router.get('/cycle-discount', async (req, res) =&gt; {
-  try {
-    // 获取当前活跃周期
-    const cycle = await getAsync(
-      "SELECT * FROM ordering_cycles WHERE status = 'active' ORDER BY id DESC LIMIT 1"
-    );
-    
-    if (!cycle) {
-      return res.json({ success: true, cycle: null, nextDiscount: null, currentDiscount: null });
+async function <span class="fstat-no" title="function not covered" >sendVerificationCode(</span>phone, code) {
+<span class="cstat-no" title="statement not covered" >  try {</span>
+    const client = <span class="cstat-no" title="statement not covered" >await initTwilioClient();</span>
+    const formattedPhone = <span class="cstat-no" title="statement not covered" >formatPhoneNumber(phone);</span>
+&nbsp;
+    // 检查是否启用短信服务
+    const smsEnabled = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'sms_enabled'");</span>
+    const isEnabled = <span class="cstat-no" title="statement not covered" >smsEnabled &amp;&amp; smsEnabled.value === 'true';</span>
+&nbsp;
+    // 开发环境或未启用时，使用模拟发送
+<span class="cstat-no" title="statement not covered" >    if (process.env.NODE_ENV !== 'production' || !isEnabled || !client) {</span>
+<span class="cstat-no" title="statement not covered" >      logger.info('模拟发送验证码短信', {</span>
+        phone: formattedPhone,
+        code,
+        reason: !isEnabled ? '短信服务未启用' : !client ? 'Twilio未配置' : '开发环境'
+      });
+<span class="cstat-no" title="statement not covered" >      return true; </span>// 模拟发送总是成功
     }
-    
-    // 获取折扣规则（按金额从低到高排序，用于找下一个折扣）
-    const rulesAsc = await allAsync(
-      'SELECT * FROM discount_rules WHERE status = ? ORDER BY min_amount ASC',
-      ['active']
-    );
-    
-    // 获取折扣规则（按金额从高到低排序，用于找当前折扣）
-    const rulesDesc = await allAsync(
-      'SELECT * FROM discount_rules WHERE status = ? ORDER BY min_amount DESC',
-      ['active']
-    );
-    
-    // 计算当前已达到的折扣（从高到低查找，找到第一个符合条件的）
-    let currentDiscount = null;
-    for (const rule of rulesDesc) {
-      <span class="missing-if-branch" title="else path not taken" >E</span>if (cycle.total_amount &gt;= rule.min_amount) {
-        if (!rule.max_amount || cycle.total_amount &lt; rule.max_amount) {
-          currentDiscount = rule;
-          break;
-        }
-      }
+&nbsp;
+    // 获取Twilio发送号码
+    const twilioPhone = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'twilio_phone_number'");</span>
+    const fromNumber = <span class="cstat-no" title="statement not covered" >process.env.TWILIO_PHONE_NUMBER || (twilioPhone &amp;&amp; twilioPhone.value);</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    if (!fromNumber) {</span>
+<span class="cstat-no" title="statement not covered" >      logger.error('Twilio发送号码未配置');</span>
+<span class="cstat-no" title="statement not covered" >      return false;</span>
     }
-    
-    // 找到下一个可达到的折扣（从低到高查找，找到第一个未达到的）
-    let nextDiscount = null;
-    for (const rule of rulesAsc) {
-      <span class="missing-if-branch" title="if path not taken" >I</span>if (cycle.total_amount &lt; rule.min_amount) {
-<span class="cstat-no" title="statement not covered" >        nextDiscount = rule;</span>
-<span class="cstat-no" title="statement not covered" >        break;</span>
-      }
-    }
-    
-    res.json({ success: true, cycle, nextDiscount, currentDiscount });
+&nbsp;
+    // 发送短信
+    const message = <span class="cstat-no" title="statement not covered" >await client.messages.create({</span>
+      body: `Your verification code is: ${code}. Valid for 5 minutes.`,
+      from: fromNumber,
+      to: formattedPhone
+    });
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    logger.info('验证码短信发送成功', {</span>
+      phone: formattedPhone,
+      messageSid: message.sid
+    });
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    return true;</span>
   } catch (error) {
-<span class="cstat-no" title="statement not covered" >    logger.error('获取周期折扣失败', { error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >    res.status(500).json({ success: false, message: '获取周期折扣失败' });</span>
+<span class="cstat-no" title="statement not covered" >    logger.error('发送验证码短信失败', {</span>
+      phone,
+      error: error.message,
+      code: error.code
+    });
+<span class="cstat-no" title="statement not covered" >    return false;</span>
   }
-});
+}
 &nbsp;
 /**
- * GET /api/public/show-images
- * Get showcase images list
- * @returns {Object} Images array with filename and URL
+ * 使用Twilio Verify Service验证验证码
+ * @param {string} phone - 手机号
+ * @param {string} code - 验证码
+ * @param {string} serviceSid - Verify Service SID
+ * @returns {Promise&lt;{success: boolean, message: string}&gt;}
  */
-router.get('/show-images', async (req, res) =&gt; {
-  try {
-    // 优先使用 DATA_DIR/show（持久化），如果不存在则回退到项目根目录（兼容性）
-    const DATA_DIR = fs.existsSync('/data') ? <span class="branch-0 cbranch-no" title="branch not covered" >'/data' </span>: path.join(__dirname, '..');
-    const SHOW_DIR = path.join(DATA_DIR, 'show');
-    const FALLBACK_SHOW_DIR = path.join(__dirname, '../show');
-    const showDir = fs.existsSync(SHOW_DIR) ? SHOW_DIR : <span class="branch-1 cbranch-no" title="branch not covered" >FALLBACK_SHOW_DIR;</span>
-    
-    // 检查目录是否存在，如果不存在则返回空数组（避免错误日志）
-    <span class="missing-if-branch" title="if path not taken" >I</span>if (!fs.existsSync(showDir)) {
-<span class="cstat-no" title="statement not covered" >      return res.json({ success: true, images: [] });</span>
-    }
-    
-    const files = fs.readdirSync(showDir);
-    const images = files
-      .filter(file =&gt; /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
-      .map(file =&gt; ({
-        filename: file,
-        url: `/show/${file}`
-      }))
-      .sort(); // 按文件名排序
-    
-    res.json({ success: true, images });
-  } catch (error) {
-<span class="cstat-no" title="statement not covered" >    logger.error('获取新品图片失败', { error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >    res.json({ success: true, images: [] }); </span>// 出错时返回空数组
-  }
-});
+async function <span class="fstat-no" title="function not covered" >verifyCodeViaVerifyService(</span>phone, code, serviceSid) {
+<span class="cstat-no" title="statement not covered" >  try {</span>
+    const client = <span class="cstat-no" title="statement not covered" >await initTwilioClient();</span>
+    const formattedPhone = <span class="cstat-no" title="statement not covered" >formatPhoneNumber(phone);</span>
 &nbsp;
-module.exports = router;
+<span class="cstat-no" title="statement not covered" >    if (!client) {</span>
+<span class="cstat-no" title="statement not covered" >      return {</span>
+        success: false,
+        message: 'Twilio client not initialized'
+      };
+    }
+&nbsp;
+    // 使用Verify Service验证验证码
+    // 必须通过 services(serviceSid).verificationChecks 来调用
+    const verificationCheck = <span class="cstat-no" title="statement not covered" >await client.verify.v2</span>
+      .services(serviceSid)
+      .verificationChecks
+      .create({
+        to: formattedPhone,
+        code: code
+      });
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    if (verificationCheck.status === 'approved') {</span>
+<span class="cstat-no" title="statement not covered" >      logger.info('验证码通过Verify Service验证成功', {</span>
+        phone: formattedPhone,
+        verificationSid: verificationCheck.sid
+      });
+<span class="cstat-no" title="statement not covered" >      return {</span>
+        success: true,
+        message: 'Verification code verified successfully'
+      };
+    } else {
+<span class="cstat-no" title="statement not covered" >      logger.warn('验证码验证失败', {</span>
+        phone: formattedPhone,
+        status: verificationCheck.status
+      });
+<span class="cstat-no" title="statement not covered" >      return {</span>
+        success: false,
+        message: 'Invalid verification code'
+      };
+    }
+  } catch (error) {
+<span class="cstat-no" title="statement not covered" >    logger.error('通过Verify Service验证验证码失败', {</span>
+      phone,
+      error: error.message,
+      code: error.code
+    });
+<span class="cstat-no" title="statement not covered" >    return {</span>
+      success: false,
+      message: error.message || 'Failed to verify verification code'
+    };
+  }
+}
+&nbsp;
+module.exports = {
+  sendVerificationCode,
+  sendVerificationCodeViaVerifyService,
+  verifyCodeViaVerifyService,
+  generateCode,
+  formatPhoneNumber,
+  initTwilioClient
+};
 &nbsp;
 &nbsp;</pre></td></tr></table></pre>
 
@@ -1084,7 +934,7 @@ module.exports = router;
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-19T22:33:13.156Z
+                at 2025-11-19T22:33:13.114Z
             </div>
         <script src="../prettify.js"></script>
         <script>

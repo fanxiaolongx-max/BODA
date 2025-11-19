@@ -1405,6 +1405,13 @@ async function submitOrder() {
   const submitBtn = document.querySelector('#cartModal button[onclick="submitOrder()"]');
   setButtonLoading(submitBtn, true);
   
+  // 添加超时提示（如果3秒后还在处理，显示友好提示）
+  const timeoutId = setTimeout(() => {
+    if (submitBtn && submitBtn.disabled) {
+      showToast('Processing your order, please wait...', 'info');
+    }
+  }, 3000);
+  
   try {
     const orderNotes = document.getElementById('orderNotes')?.value || '';
     
@@ -1421,14 +1428,27 @@ async function submitOrder() {
       notes: orderNotes
     };
     
-    const response = await fetch(`${API_BASE}/user/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(orderData)
-    });
+    // 使用统一的 API 封装（有超时保护和错误处理）
+    // 如果 apiPost 未定义，回退到 fetch（兼容性）
+    let data;
+    if (typeof apiPost === 'function') {
+      data = await apiPost('/user/orders', orderData, {
+        showLoading: false,  // 已经有按钮 loading，不需要全局 loading
+        showError: true,     // 自动显示错误提示
+        timeout: 60000       // 60秒超时（足够数据库等待5秒）
+      });
+    } else {
+      // 回退方案：使用 fetch（兼容旧代码）
+      const response = await fetch(`${API_BASE}/user/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(orderData)
+      });
+      data = await response.json();
+    }
     
-    const data = await response.json();
+    clearTimeout(timeoutId);
     
     if (data.success) {
       showToast('Order submitted successfully! Order number: ' + data.order.order_number, 'success');
@@ -1445,8 +1465,12 @@ async function submitOrder() {
       showToast(data.message || 'Order submission failed', 'error');
     }
   } catch (error) {
+    clearTimeout(timeoutId);
     console.error('Order submission failed:', error);
-    showToast('Order submission failed, please try again', 'error');
+    // apiPost 已经处理了错误提示，这里只在回退方案时显示
+    if (typeof apiPost === 'undefined') {
+      showToast('Order submission failed, please try again', 'error');
+    }
   } finally {
     const submitBtn = document.querySelector('#cartModal button[onclick="submitOrder()"]');
     if (submitBtn) setButtonLoading(submitBtn, false);

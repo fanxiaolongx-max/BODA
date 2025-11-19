@@ -40,6 +40,8 @@ router.post('/admin/login', loginValidation, async (req, res) => {
     req.session.adminUsername = admin.username;
     req.session.adminRole = admin.role;
     req.session.adminName = admin.name;
+    // 记录登录时间（用于计算固定过期时间）
+    req.session._loginTime = Date.now();
 
     // 记录登录日志（详细）
     await logAction(admin.id, 'LOGIN', 'admin', admin.id, JSON.stringify({
@@ -196,6 +198,9 @@ router.post('/user/login', [
     req.session.userId = user.id;
     req.session.userPhone = user.phone;
     req.session.userName = user.name;
+    // 记录登录时间（用于计算固定过期时间）
+    // 每次登录都刷新登录时间，确保重新登录后过期时间重置
+    req.session._loginTime = Date.now();
 
     // 记录用户登录日志（使用系统管理员ID 0 表示系统自动记录）
     const { logAction: logUserAction } = require('../utils/logger');
@@ -375,6 +380,9 @@ router.post('/user/login-with-code', [
     req.session.userId = user.id;
     req.session.userPhone = user.phone;
     req.session.userName = user.name;
+    // 记录登录时间（用于计算固定过期时间）
+    // 每次登录都刷新登录时间，确保重新登录后过期时间重置
+    req.session._loginTime = Date.now();
 
     // 记录用户登录日志
     const { logAction: logUserAction } = require('../utils/logger');
@@ -432,6 +440,72 @@ router.get('/user/me', async (req, res) => {
     logger.error('获取用户信息失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取信息失败' });
   }
+});
+
+/**
+ * GET /api/auth/session/info
+ * Get current session information including expiration time
+ * @returns {Object} Session info with remaining time
+ */
+router.get('/session/info', (req, res) => {
+  if (!req.session) {
+    return res.status(401).json({ 
+      success: false, 
+      message: 'No session found' 
+    });
+  }
+
+  // 获取 session cookie 的过期时间
+  const cookie = req.session.cookie;
+  const now = Date.now();
+  
+  // 计算过期时间：使用登录时间 + maxAge（固定过期，不受请求影响）
+  // 即使 rolling: false，访问 req.session 也可能导致 cookie.expires 被重新计算
+  // 所以使用登录时间来计算，确保固定过期时间
+  let expires;
+  if (req.session._loginTime) {
+    // 如果有登录时间，使用登录时间 + maxAge（固定过期）
+    expires = new Date(req.session._loginTime + cookie.maxAge);
+  } else if (cookie.expires) {
+    // 如果没有登录时间但有 cookie.expires，使用它（兼容旧 session）
+    expires = new Date(cookie.expires);
+  } else {
+    // 如果都没有，说明是新 session，使用当前时间 + maxAge
+    // 但这种情况不应该发生，因为登录时会设置 _loginTime
+    expires = new Date(now + cookie.maxAge);
+  }
+  const remainingMs = expires.getTime() - now;
+  const remainingMinutes = Math.floor(remainingMs / 60000);
+  const remainingSeconds = Math.floor((remainingMs % 60000) / 1000);
+
+  // 判断用户类型（更精确的逻辑）
+  let userType = 'guest';
+  if (req.session.adminId && req.session.userId) {
+    userType = 'both'; // 同时登录管理员和普通用户
+  } else if (req.session.adminId) {
+    userType = 'admin'; // 仅管理员
+  } else if (req.session.userId) {
+    userType = 'user'; // 仅普通用户
+  }
+
+  res.json({
+    success: true,
+    session: {
+      isLoggedIn: !!(req.session.userId || req.session.adminId),
+      userType: userType,
+      userId: req.session.userId || null,
+      adminId: req.session.adminId || null,
+      expiresAt: expires.toISOString(),
+      expiresAtLocal: expires.toLocaleString(),
+      remainingMs: remainingMs,
+      remainingTime: {
+        hours: Math.floor(remainingMinutes / 60),
+        minutes: remainingMinutes % 60,
+        seconds: remainingSeconds
+      },
+      remainingFormatted: `${Math.floor(remainingMinutes / 60)}小时${remainingMinutes % 60}分钟${remainingSeconds}秒`
+    }
+  });
 });
 
 module.exports = router;

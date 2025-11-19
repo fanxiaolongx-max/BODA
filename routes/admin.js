@@ -657,7 +657,10 @@ router.post('/settings', async (req, res) => {
 
       // 如果点单从关闭变为开放，创建新周期
       if (!oldOrderingOpen && newOrderingOpen) {
-        const cycleNumber = 'CYCLE' + Date.now().toString();
+        // 生成周期号：CYCLE + 时间戳 + 随机后缀（提高唯一性）
+        const timestamp = Date.now().toString();
+        const random = Math.random().toString(36).substring(2, 6);
+        const cycleNumber = 'CYCLE' + timestamp + '-' + random;
         await runAsync(
           `INSERT INTO ordering_cycles (cycle_number, start_time, status, total_amount, discount_rate)
            VALUES (?, datetime('now', 'localtime'), 'active', 0, 0)`,
@@ -769,7 +772,10 @@ router.post('/ordering/open', async (req, res) => {
         );
         
         // 创建新周期
-        const cycleNumber = 'CYCLE' + Date.now().toString();
+        // 生成周期号：CYCLE + 时间戳 + 随机后缀（提高唯一性）
+        const timestamp = Date.now().toString();
+        const random = Math.random().toString(36).substring(2, 6);
+        const cycleNumber = 'CYCLE' + timestamp + '-' + random;
         await runAsync(
           `INSERT INTO ordering_cycles (cycle_number, start_time, status, total_amount, discount_rate)
            VALUES (?, datetime('now', 'localtime'), 'active', 0, 0)`,

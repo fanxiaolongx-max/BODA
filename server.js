@@ -114,11 +114,12 @@ const sessionConfig = {
   secret: process.env.SESSION_SECRET || 'boda-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
+  rolling: false, // 禁用滚动过期，使用固定过期时间（更安全）
   cookie: {
     secure: 'auto', // 自动检测：在 trust proxy 模式下会根据 X-Forwarded-Proto 自动判断
     httpOnly: true,
     sameSite: 'lax', // 允许跨站请求，同时保持安全性
-    maxAge: 24 * 60 * 60 * 1000 // 24小时
+    maxAge: 2 * 60 * 60 * 1000 // 2小时（固定过期，不会因活动而延长）
   },
   proxy: true, // 信任反向代理（fly.io、ngrok、Nginx 等），这样 secure: 'auto' 才能正确工作
   name: 'boda.sid' // 自定义 session cookie 名称

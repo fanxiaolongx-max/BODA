@@ -89,6 +89,24 @@ if (db) {
       console.log('数据库WAL模式已启用');
     }
   });
+  
+  // 设置busy_timeout：当数据库被锁定时，自动等待最多5秒（提升并发能力）
+  db.run('PRAGMA busy_timeout = 5000', (err) => {
+    if (err) {
+      console.error('设置busy_timeout失败:', err);
+    } else {
+      console.log('数据库busy_timeout已设置为5秒');
+    }
+  });
+  
+  // 设置synchronous：NORMAL模式平衡性能和安全性（提升写入性能）
+  db.run('PRAGMA synchronous = NORMAL', (err) => {
+    if (err) {
+      console.error('设置synchronous失败:', err);
+    } else {
+      console.log('数据库synchronous已设置为NORMAL');
+    }
+  });
 }
 
 // 设置时区为本地时间（SQLite默认使用UTC）
@@ -532,6 +550,24 @@ function initializeConnection(resolve, reject) {
             console.error('设置WAL模式失败:', err);
           } else {
             console.log('数据库WAL模式已启用');
+          }
+        });
+        
+        // 设置busy_timeout：当数据库被锁定时，自动等待最多5秒（提升并发能力）
+        db.run('PRAGMA busy_timeout = 5000', (err) => {
+          if (err) {
+            console.error('设置busy_timeout失败:', err);
+          } else {
+            console.log('数据库busy_timeout已设置为5秒');
+          }
+        });
+        
+        // 设置synchronous：NORMAL模式平衡性能和安全性（提升写入性能）
+        db.run('PRAGMA synchronous = NORMAL', (err) => {
+          if (err) {
+            console.error('设置synchronous失败:', err);
+          } else {
+            console.log('数据库synchronous已设置为NORMAL');
           }
         });
 

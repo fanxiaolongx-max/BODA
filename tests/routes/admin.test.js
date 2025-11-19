@@ -2536,8 +2536,10 @@ describe('Admin Routes', () => {
   // 每个测试后清理，确保测试隔离
   afterEach(async () => {
     // 确保所有事务都已提交或回滚
+    // 注意：使用 rollback() 函数而不是直接 runAsync，确保正确重置事务标志
     try {
-      await runAsync('ROLLBACK');
+      const { rollback } = require('../helpers/test-db');
+      await rollback();
     } catch (e) {
       // 忽略错误，可能没有活动事务
     }

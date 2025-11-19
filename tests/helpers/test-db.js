@@ -5,6 +5,8 @@ const fs = require('fs');
 const TEST_DB_PATH = path.join(__dirname, '../../db/test-boda.db');
 
 let testDb = null;
+let transactionInProgress = false;
+let transactionQueue = [];
 
 // 创建测试数据库连接
 function createTestDatabase() {
@@ -22,6 +24,10 @@ function createTestDatabase() {
         testDb.run('PRAGMA foreign_keys = ON');
         // 启用WAL模式
         testDb.run('PRAGMA journal_mode = WAL');
+        // 设置busy_timeout：当数据库被锁定时，自动等待最多5秒（提升并发能力）
+        testDb.run('PRAGMA busy_timeout = 5000');
+        // 设置synchronous：NORMAL模式平衡性能和安全性（提升写入性能）
+        testDb.run('PRAGMA synchronous = NORMAL');
         resolve(testDb);
       }
     });
@@ -339,17 +345,44 @@ function allAsync(sql, params = []) {
   });
 }
 
-function beginTransaction() {
-  return runAsync('BEGIN TRANSACTION');
+// 事务队列管理（确保事务串行执行，避免并发冲突）
+async function beginTransaction() {
+  // 如果已经有事务在进行，等待它完成（最多等待5秒，避免死锁）
+  let waitCount = 0;
+  const maxWait = 500; // 最多等待5秒（500 * 10ms）
+  
+  while (transactionInProgress && waitCount < maxWait) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+    waitCount++;
+  }
+  
+  // 如果等待超时，强制重置（可能是之前的测试没有正确清理）
+  if (transactionInProgress && waitCount >= maxWait) {
+    console.warn('事务队列等待超时，强制重置 transactionInProgress 标志');
+    transactionInProgress = false;
+  }
+  
+  transactionInProgress = true;
+  try {
+    // 使用 BEGIN IMMEDIATE 来避免并发事务冲突
+    // IMMEDIATE 模式会立即获取写锁，避免 "cannot start a transaction within a transaction" 错误
+    await runAsync('BEGIN IMMEDIATE TRANSACTION');
+  } catch (error) {
+    transactionInProgress = false;
+    throw error;
+  }
 }
 
 function commit() {
+  transactionInProgress = false;
   return runAsync('COMMIT');
 }
 
 function rollback() {
+  transactionInProgress = false;
   return runAsync('ROLLBACK');
 }
+
 
 module.exports = {
   createTestDatabase,

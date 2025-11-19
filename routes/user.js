@@ -137,25 +137,54 @@ router.post('/orders', async (req, res) => {
 
       // 创建订单
       const orderId = uuidv4();
-      const orderNumber = 'BO' + Date.now().toString().slice(-8);
-
-      await runAsync(
-        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
-         total_amount, discount_amount, final_amount, status, notes, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
-        [
-          orderId,
-          orderNumber,
-          req.session.userId,
-          customer_name || req.session.userName || '',
-          req.session.userPhone,
-          totalAmount,
-          0,
-          totalAmount,
-          'pending',
-          notes || null
-        ]
-      );
+      
+      // 生成订单号：BO + 时间戳后8位 + 3位随机字符（提高唯一性）
+      // 添加冲突重试机制，最多重试3次
+      let orderNumber;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      do {
+        const timestamp = Date.now().toString().slice(-8);
+        const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+        // 如果重试，添加重试次数后缀
+        orderNumber = 'BO' + timestamp + (attempts > 0 ? attempts.toString() : '') + random;
+        attempts++;
+        
+        try {
+          await runAsync(
+            `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+             total_amount, discount_amount, final_amount, status, notes, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+            [
+              orderId,
+              orderNumber,
+              req.session.userId,
+              customer_name || req.session.userName || '',
+              req.session.userPhone,
+              totalAmount,
+              0,
+              totalAmount,
+              'pending',
+              notes || null
+            ]
+          );
+          break; // 成功插入，退出循环
+        } catch (error) {
+          // 如果是 UNIQUE 约束冲突且还有重试次数，则重试
+          if (error.code === 'SQLITE_CONSTRAINT' && attempts < maxAttempts) {
+            // 等待10ms后重试，避免时间戳相同
+            await new Promise(resolve => setTimeout(resolve, 10));
+            continue;
+          }
+          // 其他错误或重试次数用完，抛出错误
+          throw error;
+        }
+      } while (attempts < maxAttempts);
+      
+      if (!orderNumber) {
+        throw new Error('生成订单号失败，请重试');
+      }
 
       // 插入订单详情
       for (const item of orderItems) {
@@ -166,16 +195,59 @@ router.post('/orders', async (req, res) => {
         );
       }
 
-      // 更新当前周期的总金额
+      // 更新当前周期的总金额（添加异步补偿机制，确保数据一致性）
       const activeCycle = await getAsync(
         "SELECT * FROM ordering_cycles WHERE status = 'active' ORDER BY id DESC LIMIT 1"
       );
       
       if (activeCycle) {
-        await runAsync(
-          "UPDATE ordering_cycles SET total_amount = total_amount + ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-          [totalAmount, activeCycle.id]
-        );
+        try {
+          await runAsync(
+            "UPDATE ordering_cycles SET total_amount = total_amount + ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+            [totalAmount, activeCycle.id]
+          );
+        } catch (error) {
+          // 如果是数据库繁忙错误，异步补偿更新（不阻塞订单创建）
+          if (error.code === 'SQLITE_BUSY') {
+            logger.warn('周期总金额更新失败（数据库繁忙），将异步补偿', { 
+              cycleId: activeCycle.id, 
+              orderId,
+              amount: totalAmount 
+            });
+            
+            // 异步补偿更新（不阻塞订单创建，提升用户体验）
+            setImmediate(async () => {
+              let retries = 0;
+              const maxRetries = 5;
+              while (retries < maxRetries) {
+                try {
+                  await runAsync(
+                    "UPDATE ordering_cycles SET total_amount = total_amount + ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+                    [totalAmount, activeCycle.id]
+                  );
+                  logger.info('周期总金额补偿更新成功', { cycleId: activeCycle.id, orderId, retries });
+                  break;
+                } catch (retryError) {
+                  retries++;
+                  if (retries < maxRetries) {
+                    // 指数退避：1秒、2秒、3秒、4秒、5秒
+                    await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+                  } else {
+                    logger.error('周期总金额补偿更新失败（已重试5次）', { 
+                      cycleId: activeCycle.id, 
+                      orderId,
+                      amount: totalAmount,
+                      error: retryError.message 
+                    });
+                  }
+                }
+              }
+            });
+          } else {
+            // 其他错误继续抛出
+            throw error;
+          }
+        }
       }
 
       await commit();
@@ -526,7 +598,6 @@ router.put('/orders/:id', async (req, res) => {
       await runAsync('DELETE FROM order_items WHERE order_id = ?', [id]);
 
       // 插入新的订单详情（安全处理，只插入存在的字段）
-      const { allAsync } = require('../db/database');
       const orderItemsTableInfo = await allAsync("PRAGMA table_info(order_items)");
       const orderItemsColumns = orderItemsTableInfo.map(col => col.name);
       
