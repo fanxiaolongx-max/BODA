@@ -5,6 +5,7 @@ const { loginValidation, phoneValidation, codeValidation, validate } = require('
 const { logAction, logger } = require('../utils/logger');
 const { body } = require('express-validator');
 const { createVerificationCode, verifyCode } = require('../utils/verification');
+const { getAdminSessionTimeoutMs, getUserSessionTimeoutMs } = require('../utils/session-config');
 
 const router = express.Router();
 
@@ -35,13 +36,17 @@ router.post('/admin/login', loginValidation, async (req, res) => {
       return res.status(401).json({ success: false, message: '用户名或密码错误' });
     }
 
+    // 获取管理员session过期时间
+    const adminTimeoutMs = await getAdminSessionTimeoutMs();
+    
     // 设置session
     req.session.adminId = admin.id;
     req.session.adminUsername = admin.username;
     req.session.adminRole = admin.role;
     req.session.adminName = admin.name;
-    // 记录登录时间（用于计算固定过期时间）
-    req.session._loginTime = Date.now();
+    // 记录管理员登录时间和过期时间（独立于用户登录时间）
+    req.session._adminLoginTime = Date.now();
+    req.session._adminTimeoutMs = adminTimeoutMs;
 
     // 记录登录日志（详细）
     await logAction(admin.id, 'LOGIN', 'admin', admin.id, JSON.stringify({
@@ -194,17 +199,21 @@ router.post('/user/login', [
       user.name = name || user.name;
     }
 
+    // 获取用户session过期时间
+    const userTimeoutMs = await getUserSessionTimeoutMs();
+    
     // 设置session
     req.session.userId = user.id;
     req.session.userPhone = user.phone;
     req.session.userName = user.name;
-    // 记录登录时间（用于计算固定过期时间）
+    // 记录用户登录时间和过期时间（独立于管理员登录时间）
     // 每次登录都刷新登录时间，确保重新登录后过期时间重置
-    req.session._loginTime = Date.now();
+    req.session._userLoginTime = Date.now();
+    req.session._userTimeoutMs = userTimeoutMs;
 
-    // 记录用户登录日志（使用系统管理员ID 0 表示系统自动记录）
+    // 记录用户登录日志（使用 null 表示系统自动记录，因为外键约束不允许不存在的 admin_id）
     const { logAction: logUserAction } = require('../utils/logger');
-    await logUserAction(0, 'USER_LOGIN', 'user', user.id, JSON.stringify({
+    await logUserAction(null, 'USER_LOGIN', 'user', user.id, JSON.stringify({
       action: '用户登录',
       phone: user.phone,
       name: user.name || '未设置',
@@ -376,17 +385,21 @@ router.post('/user/login-with-code', [
       user.name = name || user.name;
     }
 
+    // 获取用户session过期时间
+    const userTimeoutMs = await getUserSessionTimeoutMs();
+    
     // 设置session
     req.session.userId = user.id;
     req.session.userPhone = user.phone;
     req.session.userName = user.name;
-    // 记录登录时间（用于计算固定过期时间）
+    // 记录用户登录时间和过期时间（独立于管理员登录时间）
     // 每次登录都刷新登录时间，确保重新登录后过期时间重置
-    req.session._loginTime = Date.now();
+    req.session._userLoginTime = Date.now();
+    req.session._userTimeoutMs = userTimeoutMs;
 
-    // 记录用户登录日志
+    // 记录用户登录日志（使用 null 表示系统自动记录，因为外键约束不允许不存在的 admin_id）
     const { logAction: logUserAction } = require('../utils/logger');
-    await logUserAction(0, 'USER_LOGIN', 'user', user.id, JSON.stringify({
+    await logUserAction(null, 'USER_LOGIN', 'user', user.id, JSON.stringify({
       action: '用户登录（验证码）',
       phone: user.phone,
       name: user.name || '未设置',
@@ -445,9 +458,9 @@ router.get('/user/me', async (req, res) => {
 /**
  * GET /api/auth/session/info
  * Get current session information including expiration time
- * @returns {Object} Session info with remaining time
+ * @returns {Object} Session info with remaining time for admin and user separately
  */
-router.get('/session/info', (req, res) => {
+router.get('/session/info', async (req, res) => {
   if (!req.session) {
     return res.status(401).json({ 
       success: false, 
@@ -455,30 +468,54 @@ router.get('/session/info', (req, res) => {
     });
   }
 
-  // 获取 session cookie 的过期时间
   const cookie = req.session.cookie;
   const now = Date.now();
   
-  // 计算过期时间：使用登录时间 + maxAge（固定过期，不受请求影响）
-  // 即使 rolling: false，访问 req.session 也可能导致 cookie.expires 被重新计算
-  // 所以使用登录时间来计算，确保固定过期时间
-  let expires;
-  if (req.session._loginTime) {
-    // 如果有登录时间，使用登录时间 + maxAge（固定过期）
-    expires = new Date(req.session._loginTime + cookie.maxAge);
-  } else if (cookie.expires) {
-    // 如果没有登录时间但有 cookie.expires，使用它（兼容旧 session）
-    expires = new Date(cookie.expires);
-  } else {
-    // 如果都没有，说明是新 session，使用当前时间 + maxAge
-    // 但这种情况不应该发生，因为登录时会设置 _loginTime
-    expires = new Date(now + cookie.maxAge);
+  // 获取动态过期时间（优先使用session中存储的，否则使用默认值）
+  const adminTimeoutMs = req.session._adminTimeoutMs || (await getAdminSessionTimeoutMs());
+  const userTimeoutMs = req.session._userTimeoutMs || (await getUserSessionTimeoutMs());
+  
+  // 计算管理员过期时间（独立）
+  let adminExpires = null;
+  let adminRemainingMs = 0;
+  if (req.session.adminId && req.session._adminLoginTime) {
+    adminExpires = new Date(req.session._adminLoginTime + adminTimeoutMs);
+    adminRemainingMs = Math.max(0, adminExpires.getTime() - now);
+  } else if (req.session.adminId && req.session._loginTime) {
+    // 兼容旧session（使用旧的_loginTime和默认过期时间）
+    adminExpires = new Date(req.session._loginTime + adminTimeoutMs);
+    adminRemainingMs = Math.max(0, adminExpires.getTime() - now);
   }
-  const remainingMs = expires.getTime() - now;
-  const remainingMinutes = Math.floor(remainingMs / 60000);
-  const remainingSeconds = Math.floor((remainingMs % 60000) / 1000);
+  
+  // 计算用户过期时间（独立）
+  let userExpires = null;
+  let userRemainingMs = 0;
+  if (req.session.userId && req.session._userLoginTime) {
+    userExpires = new Date(req.session._userLoginTime + userTimeoutMs);
+    userRemainingMs = Math.max(0, userExpires.getTime() - now);
+  } else if (req.session.userId && req.session._loginTime) {
+    // 兼容旧session（使用旧的_loginTime和默认过期时间）
+    userExpires = new Date(req.session._loginTime + userTimeoutMs);
+    userRemainingMs = Math.max(0, userExpires.getTime() - now);
+  }
+  
+  // 计算cookie过期时间（取两者中较晚的，或者使用默认）
+  let cookieExpires;
+  if (adminExpires && userExpires) {
+    cookieExpires = adminExpires > userExpires ? adminExpires : userExpires;
+  } else if (adminExpires) {
+    cookieExpires = adminExpires;
+  } else if (userExpires) {
+    cookieExpires = userExpires;
+  } else if (cookie.expires) {
+    cookieExpires = new Date(cookie.expires);
+  } else {
+    cookieExpires = new Date(now + maxAge);
+  }
+  
+  const cookieRemainingMs = Math.max(0, cookieExpires.getTime() - now);
 
-  // 判断用户类型（更精确的逻辑）
+  // 判断用户类型
   let userType = 'guest';
   if (req.session.adminId && req.session.userId) {
     userType = 'both'; // 同时登录管理员和普通用户
@@ -488,6 +525,21 @@ router.get('/session/info', (req, res) => {
     userType = 'user'; // 仅普通用户
   }
 
+  // 格式化剩余时间
+  const formatRemainingTime = (ms) => {
+    if (ms <= 0) return { hours: 0, minutes: 0, seconds: 0, formatted: '已过期' };
+    const totalMinutes = Math.floor(ms / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return {
+      hours,
+      minutes,
+      seconds,
+      formatted: `${hours}小时${minutes}分钟${seconds}秒`
+    };
+  };
+
   res.json({
     success: true,
     session: {
@@ -495,17 +547,86 @@ router.get('/session/info', (req, res) => {
       userType: userType,
       userId: req.session.userId || null,
       adminId: req.session.adminId || null,
-      expiresAt: expires.toISOString(),
-      expiresAtLocal: expires.toLocaleString(),
-      remainingMs: remainingMs,
-      remainingTime: {
-        hours: Math.floor(remainingMinutes / 60),
-        minutes: remainingMinutes % 60,
-        seconds: remainingSeconds
+      // Cookie级别的过期时间（整体）
+      cookie: {
+        expiresAt: cookieExpires.toISOString(),
+        expiresAtLocal: cookieExpires.toLocaleString(),
+        remainingMs: cookieRemainingMs,
+        ...formatRemainingTime(cookieRemainingMs)
       },
-      remainingFormatted: `${Math.floor(remainingMinutes / 60)}小时${remainingMinutes % 60}分钟${remainingSeconds}秒`
+      // 管理员独立的过期时间
+      admin: req.session.adminId ? {
+        expiresAt: adminExpires ? adminExpires.toISOString() : null,
+        expiresAtLocal: adminExpires ? adminExpires.toLocaleString() : null,
+        remainingMs: adminRemainingMs,
+        isExpired: adminRemainingMs <= 0,
+        ...formatRemainingTime(adminRemainingMs)
+      } : null,
+      // 用户独立的过期时间
+      user: req.session.userId ? {
+        expiresAt: userExpires ? userExpires.toISOString() : null,
+        expiresAtLocal: userExpires ? userExpires.toLocaleString() : null,
+        remainingMs: userRemainingMs,
+        isExpired: userRemainingMs <= 0,
+        ...formatRemainingTime(userRemainingMs)
+      } : null
     }
   });
+});
+
+/**
+ * POST /api/auth/session/refresh
+ * Refresh session expiration time (rolling session)
+ * @returns {Object} Success message
+ */
+router.post('/session/refresh', async (req, res) => {
+  if (!req.session) {
+    return res.status(401).json({ 
+      success: false, 
+      message: 'No session found' 
+    });
+  }
+
+  try {
+    const now = Date.now();
+    const { getAdminSessionTimeoutMs, getUserSessionTimeoutMs } = require('../utils/session-config');
+    
+    // 刷新管理员session时间
+    if (req.session.adminId) {
+      const adminTimeoutMs = req.session._adminTimeoutMs || (await getAdminSessionTimeoutMs());
+      req.session._adminLoginTime = now;
+      req.session._adminTimeoutMs = adminTimeoutMs;
+    }
+    
+    // 刷新用户session时间
+    if (req.session.userId) {
+      const userTimeoutMs = req.session._userTimeoutMs || (await getUserSessionTimeoutMs());
+      req.session._userLoginTime = now;
+      req.session._userTimeoutMs = userTimeoutMs;
+    }
+    
+    // 保存session
+    req.session.save((err) => {
+      if (err) {
+        logger.error('刷新session失败', { error: err.message });
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Failed to refresh session' 
+        });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: 'Session refreshed successfully' 
+      });
+    });
+  } catch (error) {
+    logger.error('刷新session失败', { error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to refresh session' 
+    });
+  }
 });
 
 module.exports = router;

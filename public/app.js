@@ -19,6 +19,36 @@ function formatPrice(price) {
   return `${parseFloat(price).toFixed(0)} ${currencySymbol}`;
 }
 
+// 根据价格生成颜色（相同价格相同颜色）
+const priceColorCache = new Map(); // 缓存价格到颜色的映射
+const priceColors = [
+  'text-red-500', 'text-blue-500', 'text-green-500', 'text-purple-500', 'text-pink-500',
+  'text-yellow-500', 'text-indigo-500', 'text-orange-500', 'text-teal-500', 'text-cyan-500',
+  'text-red-600', 'text-blue-600', 'text-green-600', 'text-purple-600', 'text-pink-600',
+  'text-yellow-600', 'text-indigo-600', 'text-orange-600', 'text-teal-600', 'text-cyan-600',
+  'text-red-700', 'text-blue-700', 'text-green-700', 'text-purple-700', 'text-pink-700',
+  'text-yellow-700', 'text-indigo-700', 'text-orange-700', 'text-teal-700', 'text-cyan-700'
+];
+
+function getPriceColor(price) {
+  // 使用价格值作为key（四舍五入到整数，确保相同价格得到相同颜色）
+  const priceKey = Math.round(parseFloat(price) || 0);
+  
+  if (!priceColorCache.has(priceKey)) {
+    // 使用更好的哈希函数确保不同价格映射到不同颜色
+    // 使用多个质数来获得更好的分布
+    let hash = priceKey;
+    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
+    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
+    hash = (hash >> 16) ^ hash;
+    const index = Math.abs(hash) % priceColors.length;
+    const color = priceColors[index];
+    priceColorCache.set(priceKey, color);
+  }
+  
+  return priceColorCache.get(priceKey);
+}
+
 // 格式化价格显示（带小数）
 function formatPriceDecimal(price) {
   return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
@@ -79,6 +109,11 @@ function applyTranslations() {
   });
 }
 
+// Session过期检查定时器（用户）
+let userSessionCheckInterval = null;
+// Session刷新定时器（rolling session）
+let userSessionRefreshInterval = null;
+
 // 检查认证状态
 async function checkAuth() {
   try {
@@ -93,28 +128,150 @@ async function checkAuth() {
         if (data && data.user) {
           currentUser = data.user;
           updateLoginStatus();
+          // 启动session检查和刷新
+          startUserSessionCheck();
+          startUserSessionRefresh();
         } else {
           currentUser = null;
           updateLoginStatus();
+          // 停止session检查
+          stopUserSessionCheck();
         }
       } else {
         currentUser = null;
         updateLoginStatus();
+        // 停止session检查和刷新
+        stopUserSessionCheck();
+        stopUserSessionRefresh();
       }
     } else {
       const data = await apiGet('/auth/user/me', { showError: false });
       if (data && data.user) {
         currentUser = data.user;
         updateLoginStatus();
+        // 启动session检查
+        startUserSessionCheck();
       } else {
         currentUser = null;
         updateLoginStatus();
+        // 停止session检查和刷新
+        stopUserSessionCheck();
+        stopUserSessionRefresh();
       }
     }
   } catch (error) {
     // 认证失败是正常的（用户未登录），不显示错误，也不弹出登录框
     currentUser = null;
     updateLoginStatus();
+    // 停止session检查
+    stopUserSessionCheck();
+  }
+}
+
+// 启动用户session过期检查
+function startUserSessionCheck() {
+  // 清除旧的定时器
+  stopUserSessionCheck();
+  
+  // 每30秒检查一次session状态
+  userSessionCheckInterval = setInterval(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/auth/session/info`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.session) {
+          // 检查用户session是否即将过期（剩余时间少于1分钟）或已过期
+          if (data.session.user && (data.session.user.isExpired || data.session.user.remainingMs <= 60000)) {
+            stopUserSessionCheck();
+            showToast('Session expired, you have been logged out', 'info');
+            setTimeout(async () => {
+              // 自动退出登录
+              await logout();
+              // 跳转到主页
+              showBottomTab('home');
+            }, 1000);
+          }
+        }
+      } else if (response.status === 401) {
+        // Session已过期，检查是否是用户session过期
+        if (currentUser) {
+          stopUserSessionCheck();
+          showToast('Session expired, you have been logged out', 'info');
+          setTimeout(async () => {
+            currentUser = null;
+            updateLoginStatus();
+            showBottomTab('home');
+          }, 1000);
+        }
+      }
+    } catch (error) {
+      console.error('Session check failed:', error);
+    }
+  }, 30000); // 每30秒检查一次
+}
+
+// 停止用户session过期检查
+function stopUserSessionCheck() {
+  if (userSessionCheckInterval) {
+    clearInterval(userSessionCheckInterval);
+    userSessionCheckInterval = null;
+  }
+}
+
+// 刷新用户session时间（rolling session）
+async function refreshUserSession() {
+  try {
+    await fetch(`${API_BASE}/auth/session/refresh`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+  } catch (error) {
+    console.error('Session refresh failed:', error);
+  }
+}
+
+// 启动用户session刷新（rolling session）
+function startUserSessionRefresh() {
+  // 清除旧的定时器
+  stopUserSessionRefresh();
+  
+  // 页面加载时立即刷新一次
+  refreshUserSession();
+  
+  // 每5分钟刷新一次session时间
+  userSessionRefreshInterval = setInterval(() => {
+    refreshUserSession();
+  }, 5 * 60 * 1000); // 5分钟
+  
+  // 监听用户活动（点击、键盘输入等），延迟刷新session
+  let activityTimeout;
+  const handleActivity = () => {
+    clearTimeout(activityTimeout);
+    activityTimeout = setTimeout(() => {
+      refreshUserSession();
+    }, 60000); // 用户活动后1分钟刷新session
+  };
+  
+  document.addEventListener('click', handleActivity);
+  document.addEventListener('keydown', handleActivity);
+  document.addEventListener('scroll', handleActivity);
+  
+  // 页面可见性变化时刷新
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      refreshUserSession();
+    }
+  });
+}
+
+// 停止用户session刷新
+function stopUserSessionRefresh() {
+  if (userSessionRefreshInterval) {
+    clearInterval(userSessionRefreshInterval);
+    userSessionRefreshInterval = null;
   }
 }
 
@@ -191,6 +348,9 @@ async function loginWithCode(phone, code, name) {
       updateLoginStatus();
       showToast('Login successful!', 'success');
       
+      // 启动session检查
+      startUserSessionCheck();
+      
       // If cart has items, submit order directly
       if (cart.length > 0) {
         submitOrder();
@@ -235,6 +395,9 @@ async function loginWithoutCode(phone, name) {
       updateLoginStatus();
       showToast('Login successful!', 'success');
       
+      // 启动session检查
+      startUserSessionCheck();
+      
       // If cart has items, submit order directly
       if (cart.length > 0) {
         submitOrder();
@@ -269,6 +432,10 @@ async function loginWithoutCode(phone, name) {
 // 登出
 async function logout() {
   try {
+    // 停止session检查和刷新
+    stopUserSessionCheck();
+    stopUserSessionRefresh();
+    
     await fetch(`${API_BASE}/auth/user/logout`, {
       method: 'POST',
       credentials: 'include'
@@ -281,6 +448,11 @@ async function logout() {
     showTab('menu');
   } catch (error) {
     console.error('登出失败:', error);
+    // 即使登出失败，也清除本地状态
+    currentUser = null;
+    cart = [];
+    updateCartBadge();
+    updateLoginStatus();
   }
 }
 
@@ -670,10 +842,13 @@ function renderProducts() {
         sizes = {};
       }
       
-      // 获取最低价格
+      // 获取最低价格（用于显示和颜色）
       const prices = Object.values(sizes);
       const minPrice = prices.length > 0 ? Math.min(...prices) : product.price;
       const hasMultipleSizes = prices.length > 1;
+      
+      // 使用显示的最低价格来确定颜色（相同价格相同颜色）
+      const priceForColor = minPrice;
       
       html += `
         <div class="flex items-center p-3 bg-white hover:bg-gray-50 border-b border-gray-100">
@@ -693,13 +868,13 @@ function renderProducts() {
               ''}
             <div class="flex items-center justify-between mt-2">
               <div>
-                <span class="text-red-500 font-bold text-base">${formatPrice(minPrice)}</span>
+                <span class="${getPriceColor(priceForColor)} font-bold text-base">${formatPrice(minPrice)}</span>
                 ${hasMultipleSizes ? '<span class="text-xs text-gray-500 ml-1">起</span>' : ''}
               </div>
               <button onclick='showProductDetail(${JSON.stringify(product).replace(/'/g, "&apos;")})' 
-                      class="px-4 py-1.5 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-full transition text-xs"
+                      class="px-4 py-1.5 ${currentSettings.ordering_open === 'true' ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'} text-white font-semibold rounded-full transition text-xs"
                       ${currentSettings.ordering_open !== 'true' ? 'disabled' : ''}>
-                ${currentSettings.ordering_open === 'true' ? t('select_spec') : t('ordering_closed')}
+                ${currentSettings.ordering_open === 'true' ? 'Select' : 'Closed'}
               </button>
             </div>
           </div>
@@ -900,23 +1075,23 @@ async function showProductDetail(product) {
   selectedSize = null;
   selectedSugar = '100';
   selectedToppings = [];
+  toppingPricesMap.clear(); // 重置加料价格映射
   selectedIce = null; // 重置冰度选择
   detailQuantity = 1; // 确保每次打开都重置为1
   
-  // 加载所有加料商品
+  // 加载所有产品（用于查找加料价格）
+  // 不再依赖特定的加料产品，而是通过名称匹配所有产品
   if (allToppings.length === 0) {
     try {
       const response = await fetch(`${API_BASE}/public/products`);
       const data = await response.json();
       if (data.success) {
-        // 筛选出价格为20的商品作为加料（简单判断）
-        allToppings = data.products.filter(p => 
-          p.price === 20 && (p.name.includes('Cheese') || p.name.includes('Jelly') || 
-                             p.name.includes('Boba') || p.name.includes('Cream'))
-        );
+        // 加载所有产品，用于按名称查找加料价格
+        // 不再筛选特定的加料产品，而是保存所有产品以便按名称查找
+        allToppings = data.products;
       }
     } catch (error) {
-      console.error('加载加料失败:', error);
+      console.error('加载产品失败:', error);
     }
   }
   
@@ -930,8 +1105,8 @@ async function showProductDetail(product) {
   // 渲染甜度选择
   renderSugarOptions(product);
   
-  // 渲染加料选择
-  renderToppingOptions(product);
+  // 渲染加料选择（异步）
+  await renderToppingOptions(product);
   
   // 渲染冰度选择
   renderIceOptions(product);
@@ -1011,36 +1186,103 @@ function renderSugarOptions(product) {
   `).join('');
 }
 
-// 渲染加料选择
-function renderToppingOptions(product) {
+// 渲染加料选择 - 支持名称数组格式（不再依赖产品记录）
+async function renderToppingOptions(product) {
   const container = document.getElementById('toppingOptions');
-  let availableToppingIds = [];
+  let availableToppingNames = [];
   
   try {
-    availableToppingIds = JSON.parse(product.available_toppings || '[]');
+    const availableToppings = JSON.parse(product.available_toppings || '[]');
+    
+    // 检查格式类型
+    if (Array.isArray(availableToppings) && availableToppings.length > 0) {
+      const firstItem = availableToppings[0];
+      
+      if (typeof firstItem === 'number') {
+        // 旧格式1：ID数组，需要查找产品名称
+        try {
+          const response = await fetch(`${API_BASE}/public/products`);
+          const data = await response.json();
+          if (data.success) {
+            const allProducts = data.products;
+            availableToppingNames = availableToppings.map(id => {
+              const product = allProducts.find(p => parseInt(p.id) === parseInt(id));
+              return product ? { name: product.name, price: product.price } : { name: `Topping #${id}`, price: 0 };
+            }).filter(item => item.name);
+          }
+        } catch (e) {
+          console.error('Failed to load products for ID conversion:', e);
+          availableToppingNames = availableToppings.map(id => ({ name: `Topping #${id}`, price: 0 }));
+        }
+      } else if (typeof firstItem === 'string') {
+        // 旧格式2：名称数组（字符串），转换为对象格式
+        availableToppingNames = availableToppings.map(name => ({ name: name, price: 0 }));
+      } else if (typeof firstItem === 'object' && firstItem !== null) {
+        // 新格式：对象数组 [{name: "Cheese 芝士", price: 20}, ...]
+        availableToppingNames = availableToppings.map(item => ({
+          name: item.name || item,
+          price: item.price || 0
+        })).filter(item => item.name);
+      }
+    }
   } catch (e) {
-    availableToppingIds = [];
+    console.error('Failed to parse available_toppings:', e);
+    availableToppingNames = [];
   }
   
-  const availableToppings = allToppings.filter(t => availableToppingIds.includes(t.id));
-  
-  if (availableToppings.length === 0) {
+  if (availableToppingNames.length === 0) {
     container.innerHTML = '<p class="text-sm text-gray-500">此商品无可选加料</p>';
     return;
   }
   
-  container.innerHTML = availableToppings.map(topping => `
-    <label class="flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition ${selectedToppings.includes(topping.id) ? 'border-yellow-500 bg-yellow-50' : 'border-gray-300 hover:border-yellow-400'}">
-      <div class="flex items-center">
-        <input type="checkbox" 
-               onchange="toggleTopping(${topping.id})" 
-               ${selectedToppings.includes(topping.id) ? 'checked' : ''}
-               class="w-5 h-5 text-yellow-500 rounded">
-        <span class="ml-3 font-medium text-gray-900">${topping.name}</span>
-      </div>
-      <span class="text-sm text-gray-600">+${formatPrice(topping.price)}</span>
-    </label>
-  `).join('');
+  // 加载所有产品以查找价格（通过名称匹配）
+  let toppingPricesMap = new Map();
+  try {
+    const response = await fetch(`${API_BASE}/public/products`);
+    const data = await response.json();
+    if (data.success) {
+      data.products.forEach(p => {
+        // 按名称匹配加料产品
+        if (availableToppingNames.includes(p.name)) {
+          toppingPricesMap.set(p.name, p.price);
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Failed to load products for price lookup:', e);
+  }
+  
+  // 检查是否是新的对象格式（包含价格）
+  const isObjectFormat = availableToppingNames.length > 0 && typeof availableToppingNames[0] === 'object';
+  
+  container.innerHTML = availableToppingNames.map(toppingItem => {
+    let toppingName, toppingPrice;
+    
+    if (isObjectFormat && typeof toppingItem === 'object' && toppingItem !== null) {
+      // 新格式：对象格式 {name: "Cheese 芝士", price: 20}
+      toppingName = toppingItem.name || toppingItem;
+      toppingPrice = toppingItem.price || 0;
+    } else {
+      // 旧格式：字符串名称，尝试从产品中查找价格
+      toppingName = typeof toppingItem === 'string' ? toppingItem : (toppingItem.name || toppingItem);
+      toppingPrice = toppingPricesMap.get(toppingName) || 0;
+    }
+    
+    const isSelected = selectedToppings.includes(toppingName);
+    
+    return `
+      <label class="flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition ${isSelected ? 'border-yellow-500 bg-yellow-50' : 'border-gray-300 hover:border-yellow-400'}">
+        <div class="flex items-center">
+          <input type="checkbox" 
+                 onchange="toggleTopping('${toppingName.replace(/'/g, "\\'")}', ${toppingPrice})" 
+                 ${isSelected ? 'checked' : ''}
+                 class="w-5 h-5 text-yellow-500 rounded">
+          <span class="ml-3 font-medium text-gray-900">${toppingName}</span>
+        </div>
+        ${toppingPrice > 0 ? `<span class="text-sm text-gray-600">+${formatPrice(toppingPrice)}</span>` : ''}
+      </label>
+    `;
+  }).join('');
 }
 
 // 选择杯型
@@ -1102,13 +1344,20 @@ function selectIce(iceLevel) {
   renderIceOptions(currentDetailProduct);
 }
 
-// 切换加料
-function toggleTopping(toppingId) {
-  const index = selectedToppings.indexOf(toppingId);
+// 切换加料 - 现在使用名称，并保存价格信息
+// 加料格式：字符串（名称）或对象 {name: "Cheese 芝士", price: 20}
+let toppingPricesMap = new Map(); // 存储每个加料名称对应的价格
+
+function toggleTopping(toppingName, price = 0) {
+  const index = selectedToppings.indexOf(toppingName);
   if (index > -1) {
     selectedToppings.splice(index, 1);
+    toppingPricesMap.delete(toppingName);
   } else {
-    selectedToppings.push(toppingId);
+    selectedToppings.push(toppingName);
+    if (price > 0) {
+      toppingPricesMap.set(toppingName, price);
+    }
   }
   updateDetailPrice();
 }
@@ -1138,14 +1387,25 @@ function updateDetailPrice() {
   // 基础价格（杯型价格）
   const basePrice = sizes[selectedSize] || currentDetailProduct.price;
   
-  // 加料价格
+  // 加料价格 - 优先使用配置的价格，如果没有则查找产品价格
   let toppingPrice = 0;
-  selectedToppings.forEach(toppingId => {
-    const topping = allToppings.find(t => t.id === toppingId);
-    if (topping) {
-      toppingPrice += topping.price;
-    }
-  });
+  if (selectedToppings.length > 0) {
+    selectedToppings.forEach(toppingName => {
+      // 优先使用配置的价格（来自 toppingPricesMap）
+      const configuredPrice = toppingPricesMap.get(toppingName);
+      if (configuredPrice !== undefined && configuredPrice > 0) {
+        toppingPrice += configuredPrice;
+      } else if (allToppings.length > 0) {
+        // 如果没有配置价格，尝试从产品中查找
+        const topping = allToppings.find(t => t.name === toppingName);
+        if (topping) {
+          toppingPrice += topping.price;
+          // 缓存价格到 toppingPricesMap
+          toppingPricesMap.set(toppingName, topping.price);
+        }
+      }
+    });
+  }
   
   // 总价 = (基础价格 + 加料价格) × 数量
   const totalPrice = (basePrice + toppingPrice) * detailQuantity;
@@ -1160,10 +1420,22 @@ function addToCartFromDetail() {
     return;
   }
   
-  // 获取选中的加料信息
-  const selectedToppingItems = selectedToppings.map(toppingId => {
-    const topping = allToppings.find(t => t.id === toppingId);
-    return topping;
+  // 获取选中的加料信息 - 优先使用配置的价格，如果没有则查找产品价格
+  const selectedToppingItems = selectedToppings.map(toppingName => {
+    // 优先使用配置的价格（来自 toppingPricesMap）
+    const configuredPrice = toppingPricesMap.get(toppingName);
+    if (configuredPrice !== undefined && configuredPrice > 0) {
+      return { name: toppingName, price: configuredPrice, id: null };
+    }
+    
+    // 如果没有配置价格，尝试查找产品记录
+    const topping = allToppings.find(t => t.name === toppingName);
+    if (topping) {
+      return { name: toppingName, price: topping.price, id: topping.id };
+    }
+    
+    // 如果都找不到，返回名称和默认价格0
+    return { name: toppingName, price: 0, id: null };
   }).filter(t => t);
   
   // 获取杯型价格
@@ -1180,6 +1452,7 @@ function addToCartFromDetail() {
     product_id: currentDetailProduct.id,
     name: currentDetailProduct.name,
     size: selectedSize,
+    size_price: sizePrice, // 保存Size的基础价格
     sugar_level: selectedSugar,
     ice_level: selectedIce || null, // 添加冰度选择
     toppings: selectedToppingItems,
@@ -1190,13 +1463,17 @@ function addToCartFromDetail() {
   };
   
   // 检查是否已有相同配置的商品
-  const existingIndex = cart.findIndex(item => 
-    item.product_id === cartItem.product_id &&
-    item.size === cartItem.size &&
-    item.sugar_level === cartItem.sugar_level &&
-    item.ice_level === cartItem.ice_level &&
-    JSON.stringify(item.toppings.map(t => t.id).sort()) === JSON.stringify(cartItem.toppings.map(t => t.id).sort())
-  );
+  // 比较加料时，使用名称数组而不是ID数组
+  const existingIndex = cart.findIndex(item => {
+    const itemToppingNames = (item.toppings || []).map(t => (typeof t === 'string' ? t : t.name || t.id)).sort();
+    const cartToppingNames = (cartItem.toppings || []).map(t => (typeof t === 'string' ? t : t.name || t.id)).sort();
+    
+    return item.product_id === cartItem.product_id &&
+      item.size === cartItem.size &&
+      item.sugar_level === cartItem.sugar_level &&
+      item.ice_level === cartItem.ice_level &&
+      JSON.stringify(itemToppingNames) === JSON.stringify(cartToppingNames);
+  });
   
   if (existingIndex > -1) {
     cart[existingIndex].quantity += cartItem.quantity;
@@ -1290,11 +1567,20 @@ function showCart(event) {
         <div class="flex-1">
           <h4 class="font-semibold text-gray-900">${item.name}</h4>
           <div class="text-xs text-gray-600 mt-1 space-y-0.5">
-            <p>Size: ${item.size || 'Default'}</p>
+            <p>Size: ${item.size || 'Default'}${item.size_price !== undefined && item.size_price !== null && item.size_price > 0 ? ` (${formatPrice(item.size_price)})` : ''}</p>
             <p>Sugar: ${sugarLabels[item.sugar_level] || 'Regular'}</p>
             ${item.ice_level ? `<p>Ice: ${iceLabels[item.ice_level] || item.ice_level}</p>` : ''}
             ${item.toppings && item.toppings.length > 0 ? 
-              `<p>Toppings: ${item.toppings.map(t => t.name).join(', ')}</p>` : 
+              `<div class="mt-1">
+                <p class="text-xs font-medium text-gray-700">Toppings:</p>
+                <ul class="text-xs text-gray-600 ml-2 space-y-0.5">
+                  ${item.toppings.map(t => {
+                    const toppingName = typeof t === 'string' ? t : (t.name || t.id || t);
+                    const toppingPrice = (typeof t === 'object' && t !== null && t.price !== undefined) ? t.price : 0;
+                    return `<li>${toppingName}${toppingPrice > 0 ? ` (+${formatPrice(toppingPrice)})` : ''}</li>`;
+                  }).join('')}
+                </ul>
+              </div>` : 
               ''}
           </div>
         </div>
@@ -1365,7 +1651,7 @@ function updateCartTotal() {
   document.getElementById('cartTotal').textContent = formatPrice(total);
 }
 
-// 去结算（直接提交订单）
+// 去结算（显示购物车让用户检查订单）
 function goToCheckout(event) {
   // 如果是滚动过程中，忽略点击
   if (isScrolling) {
@@ -1375,7 +1661,8 @@ function goToCheckout(event) {
     }
     return;
   }
-  submitOrder();
+  // 显示购物车让用户检查订单内容
+  showCart(event);
 }
 
 // 关闭购物车
@@ -1421,7 +1708,24 @@ async function submitOrder() {
         quantity: item.quantity,
         size: item.size,
         sugar_level: item.sugar_level,
-        toppings: item.toppings ? item.toppings.map(t => t.id) : [],
+        // 支持新格式（对象数组，包含名称和价格）和旧格式（名称数组或ID数组）
+        toppings: item.toppings ? item.toppings.map(t => {
+          // 如果是对象，保留完整信息（包含价格）
+          if (typeof t === 'object' && t !== null) {
+            // 如果对象有 name 和 price，保留完整对象
+            if (t.name && t.price !== undefined) {
+              return { name: t.name, price: t.price };
+            }
+            // 否则只返回 name 或 id
+            return t.name || t.id || t;
+          }
+          // 如果是字符串，直接使用（新格式：名称数组）
+          if (typeof t === 'string') {
+            return t;
+          }
+          // 其他情况直接使用
+          return t;
+        }) : [],
         ice_level: item.ice_level || null
       })),
       customer_name: currentUser.name || '',
@@ -1454,6 +1758,11 @@ async function submitOrder() {
       showToast('Order submitted successfully! Order number: ' + data.order.order_number, 'success');
       cart = [];
       updateCartBadge();
+      // 清空备注输入框
+      const orderNotesInput = document.getElementById('orderNotes');
+      if (orderNotesInput) {
+        orderNotesInput.value = '';
+      }
       closeCart();
       showTab('orders');
       
@@ -1968,6 +2277,25 @@ function renderOrders(orders) {
           // 计算单价（不含数量）
           const unitPrice = item.quantity > 0 ? (item.subtotal / item.quantity) : item.product_price;
           
+          // 计算Size价格和加料总价（用于显示价格分解）
+          const sizePrice = item.size_price !== undefined && item.size_price !== null && item.size_price > 0 
+            ? item.size_price 
+            : (item.size ? unitPrice : 0); // 如果没有size_price，尝试从unitPrice推断（不准确，但至少显示）
+          
+          // 计算加料总价
+          let totalToppingPrice = 0;
+          if (Array.isArray(toppings) && toppings.length > 0) {
+            totalToppingPrice = toppings.reduce((sum, t) => {
+              const toppingPrice = (typeof t === 'object' && t !== null && t.price !== undefined) ? t.price : 0;
+              return sum + toppingPrice;
+            }, 0);
+          }
+          
+          // 如果size_price存在，使用它；否则从unitPrice减去加料价格来推断
+          const actualSizePrice = item.size_price !== undefined && item.size_price !== null && item.size_price > 0
+            ? item.size_price
+            : (item.size ? Math.max(0, unitPrice - totalToppingPrice) : unitPrice);
+          
           return `
             <div class="py-3 border-b border-gray-100 last:border-0 bg-gray-50 rounded-lg p-3">
               <div class="flex justify-between items-start mb-2">
@@ -1982,7 +2310,7 @@ function renderOrders(orders) {
                 ${item.size ? `
                   <div class="flex justify-between text-xs">
                     <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Size:</span>
-                    <span class="${expiredClass || inactiveClass} font-medium">${item.size}</span>
+                    <span class="${expiredClass || inactiveClass} font-medium">${item.size}${actualSizePrice > 0 ? ` (${formatPrice(actualSizePrice)})` : ''}</span>
                   </div>
                 ` : ''}
                 ${item.sugar_level ? `
@@ -1992,9 +2320,16 @@ function renderOrders(orders) {
                   </div>
                 ` : ''}
                 ${toppings.length > 0 ? `
-                  <div class="flex justify-between text-xs">
+                  <div class="text-xs">
                     <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Toppings:</span>
-                    <span class="${expiredClass || inactiveClass} font-medium">${Array.isArray(toppings) ? toppings.join(', ') : toppings}</span>
+                    <ul class="ml-2 mt-0.5 space-y-0.5">
+                      ${Array.isArray(toppings) ? toppings.map(t => {
+                        // 检查是否是对象格式（包含价格）
+                        const toppingName = typeof t === 'object' && t !== null && t.name ? t.name : (typeof t === 'string' ? t : String(t));
+                        const toppingPrice = (typeof t === 'object' && t !== null && t.price !== undefined) ? t.price : 0;
+                        return `<li class="${expiredClass || inactiveClass || 'text-gray-600'}">${toppingName}${toppingPrice > 0 ? ` <span class="${expiredClass || inactiveClass} font-medium">(+${formatPrice(toppingPrice)})</span>` : ''}</li>`;
+                      }).join('') : `<li class="${expiredClass || inactiveClass || 'text-gray-600'}">${toppings}</li>`}
+                    </ul>
                   </div>
                 ` : ''}
                 ${item.ice_level ? `
@@ -2004,6 +2339,14 @@ function renderOrders(orders) {
                   </div>
                 ` : ''}
                 <div class="flex justify-between text-xs pt-1 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'} mt-1">
+                  <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Price Breakdown:</span>
+                  <span class="${expiredClass || inactiveClass} font-medium text-xs">
+                    ${actualSizePrice > 0 ? formatPrice(actualSizePrice) : formatPrice(unitPrice)}
+                    ${totalToppingPrice > 0 ? ` + ${formatPrice(totalToppingPrice)}` : ''}
+                    ${actualSizePrice > 0 || totalToppingPrice > 0 ? ` = ${formatPrice(unitPrice)}` : ''}
+                  </span>
+                </div>
+                <div class="flex justify-between text-xs">
                   <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Unit Price:</span>
                   <span class="${expiredClass || inactiveClass} font-medium">${formatPrice(unitPrice)}</span>
                 </div>

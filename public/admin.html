@@ -348,7 +348,18 @@
         <div id="logsTab" class="tab-content hidden"></div>
         <div id="aboutTab" class="tab-content hidden"></div>
         <div id="developerTab" class="tab-content hidden" style="font-size: 12px;">
-          <div class="flex h-[calc(100vh-64px)]">
+          <!-- 标签切换 -->
+          <div class="bg-white border-b border-gray-200 p-2 flex space-x-2">
+            <button id="developerDbTab" onclick="switchDeveloperTab('db')" class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition">
+              📊 Database Tables
+            </button>
+            <button id="developerFileTab" onclick="switchDeveloperTab('files')" class="px-3 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition">
+              📁 File Manager
+            </button>
+          </div>
+          
+          <!-- 数据库表管理 -->
+          <div id="developerDbContent" class="flex h-[calc(100vh-112px)]">
             <!-- 左侧边栏：数据库表列表 -->
             <div class="w-48 bg-white border-r border-gray-200" style="overflow-y: scroll; overflow-x: hidden;">
               <div class="p-2 border-b border-gray-200">
@@ -384,6 +395,79 @@
                     <p class="text-xs">Please select a table from the left sidebar</p>
                     <p class="text-xs mt-1">Double-click a table name to view its data</p>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 文件管理 -->
+          <div id="developerFileContent" class="hidden flex h-[calc(100vh-112px)]">
+            <div class="flex-1 flex flex-col overflow-hidden">
+              <!-- 工具栏 -->
+              <div class="bg-white border-b border-gray-200 p-2 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <button onclick="fileManagerGoUp()" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition">
+                    ⬆️ Up
+                  </button>
+                  <button onclick="fileManagerRefresh()" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition">
+                    🔄 Refresh
+                  </button>
+                  <button onclick="fileManagerNewFolder()" class="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition">
+                    📁 New Folder
+                  </button>
+                  <button onclick="fileManagerUpload()" class="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition">
+                    📤 Upload
+                  </button>
+                  <div class="border-l border-gray-300 h-6 mx-1"></div>
+                  <button onclick="fileManagerSelectAll()" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition">
+                    ☑️ Select All
+                  </button>
+                  <button onclick="fileManagerDeselectAll()" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition">
+                    ☐ Deselect
+                  </button>
+                  <button id="fileManagerDeleteSelectedBtn" onclick="fileManagerDeleteSelected()" class="hidden px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700 transition">
+                    🗑️ Delete Selected (<span id="fileManagerSelectedCount">0</span>)
+                  </button>
+                </div>
+                <div class="text-xs text-gray-600">
+                  <span id="fileManagerPath">/</span>
+                </div>
+              </div>
+              
+              <!-- 文件列表 -->
+              <div class="flex-1 bg-gray-50 p-2" style="overflow-y: scroll;">
+                <div id="fileManagerList" class="space-y-1">
+                  <!-- 文件列表将通过JavaScript动态加载 -->
+                </div>
+              </div>
+            </div>
+            
+            <!-- 文件编辑器 -->
+            <div id="fileEditorPanel" class="hidden w-1/2 border-l border-gray-200 flex flex-col">
+              <div class="bg-white border-b border-gray-200 p-2 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span id="fileEditorName" class="text-sm font-semibold text-gray-900"></span>
+                  <span id="fileEditorSize" class="text-xs text-gray-500"></span>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <button id="fileEditorSaveBtn" onclick="fileEditorSave()" class="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition">
+                    💾 Save
+                  </button>
+                  <button onclick="fileEditorClose()" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition">
+                    ✕ Close
+                  </button>
+                </div>
+              </div>
+              <div class="flex-1 bg-white p-2" style="overflow-y: scroll;">
+                <textarea id="fileEditorContent" class="w-full h-full font-mono text-xs border border-gray-300 rounded p-2" style="min-height: 100%; resize: none;"></textarea>
+                <div id="fileEditorImage" class="hidden flex items-center justify-center p-4" style="min-height: 100%;">
+                  <img id="fileEditorImagePreview" src="" alt="Image preview" class="max-w-full max-h-full object-contain rounded shadow-lg" style="max-height: calc(100vh - 200px);">
+                </div>
+                <div id="fileEditorBinary" class="hidden text-center py-12 text-gray-500">
+                  <p class="text-xs">Binary file cannot be edited</p>
+                  <button onclick="fileEditorDownload()" class="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition">
+                    ⬇️ Download
+                  </button>
                 </div>
               </div>
             </div>
@@ -550,6 +634,9 @@
   <script src="utils/error-handler.js"></script>
   <script src="utils/network.js"></script>
   <script src="admin.js"></script>
+  
+  <!-- 文件上传隐藏input -->
+  <input type="file" id="fileUploadInput" style="display: none;" onchange="handleFileUpload(event)">
 </body>
 </html>
 

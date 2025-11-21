@@ -150,6 +150,36 @@ function formatPriceDecimal(price) {
   return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
 }
 
+// 根据价格生成颜色（相同价格相同颜色）
+const priceColorCache = new Map(); // 缓存价格到颜色的映射
+const priceColors = [
+  'text-red-500', 'text-blue-500', 'text-green-500', 'text-purple-500', 'text-pink-500',
+  'text-yellow-500', 'text-indigo-500', 'text-orange-500', 'text-teal-500', 'text-cyan-500',
+  'text-red-600', 'text-blue-600', 'text-green-600', 'text-purple-600', 'text-pink-600',
+  'text-yellow-600', 'text-indigo-600', 'text-orange-600', 'text-teal-600', 'text-cyan-600',
+  'text-red-700', 'text-blue-700', 'text-green-700', 'text-purple-700', 'text-pink-700',
+  'text-yellow-700', 'text-indigo-700', 'text-orange-700', 'text-teal-700', 'text-cyan-700'
+];
+
+function getPriceColor(price) {
+  // 使用价格值作为key（四舍五入到整数，确保相同价格得到相同颜色）
+  const priceKey = Math.round(parseFloat(price) || 0);
+  
+  if (!priceColorCache.has(priceKey)) {
+    // 使用更好的哈希函数确保不同价格映射到不同颜色
+    // 使用多个质数来获得更好的分布
+    let hash = priceKey;
+    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
+    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
+    hash = (hash >> 16) ^ hash;
+    const index = Math.abs(hash) % priceColors.length;
+    const color = priceColors[index];
+    priceColorCache.set(priceKey, color);
+  }
+  
+  return priceColorCache.get(priceKey);
+}
+
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
   // 初始化多语言
@@ -192,6 +222,11 @@ function applyTranslations() {
 }
 
 // 检查认证状态
+// Session过期检查定时器
+let sessionCheckInterval = null;
+// Session刷新定时器（rolling session）
+let sessionRefreshInterval = null;
+
 async function checkAuth() {
   try {
     const response = await fetch(`${API_BASE}/auth/admin/me`, {
@@ -204,12 +239,123 @@ async function checkAuth() {
       showMainPage();
       // 根据admin状态显示/隐藏Developer菜单
       updateDeveloperMenuVisibility();
+      
+      // 启动session过期检查和刷新
+      startSessionCheck();
+      startSessionRefresh();
     } else {
       showLoginPage();
+      // 停止session检查和刷新
+      stopSessionCheck();
+      stopSessionRefresh();
     }
   } catch (error) {
     console.error('认证检查失败:', error);
     showLoginPage();
+    // 停止session检查
+    stopSessionCheck();
+  }
+}
+
+// 刷新session时间（rolling session）
+async function refreshSession() {
+  try {
+    await fetch(`${API_BASE}/auth/session/refresh`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+  } catch (error) {
+    console.error('Session refresh failed:', error);
+  }
+}
+
+// 启动session刷新（rolling session）
+function startSessionRefresh() {
+  // 清除旧的定时器
+  stopSessionRefresh();
+  
+  // 页面加载时立即刷新一次
+  refreshSession();
+  
+  // 每5分钟刷新一次session时间
+  sessionRefreshInterval = setInterval(() => {
+    refreshSession();
+  }, 5 * 60 * 1000); // 5分钟
+  
+  // 监听用户活动（点击、键盘输入等），延迟刷新session
+  let activityTimeout;
+  const handleActivity = () => {
+    clearTimeout(activityTimeout);
+    activityTimeout = setTimeout(() => {
+      refreshSession();
+    }, 60000); // 用户活动后1分钟刷新session
+  };
+  
+  document.addEventListener('click', handleActivity);
+  document.addEventListener('keydown', handleActivity);
+  document.addEventListener('scroll', handleActivity);
+  
+  // 页面可见性变化时刷新
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      refreshSession();
+    }
+  });
+}
+
+// 停止session刷新
+function stopSessionRefresh() {
+  if (sessionRefreshInterval) {
+    clearInterval(sessionRefreshInterval);
+    sessionRefreshInterval = null;
+  }
+}
+
+// 启动session过期检查
+function startSessionCheck() {
+  // 清除旧的定时器
+  stopSessionCheck();
+  
+  // 每30秒检查一次session状态
+  sessionCheckInterval = setInterval(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/auth/session/info`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.session) {
+          // 检查管理员session是否即将过期（剩余时间少于1分钟）或已过期
+          if (data.session.admin && (data.session.admin.isExpired || data.session.admin.remainingMs <= 60000)) {
+            stopSessionCheck();
+            stopSessionRefresh();
+            showToast('Session expired, please login again', 'error');
+            setTimeout(() => {
+              logout(); // 自动登出并跳转到登录页
+            }, 1000);
+          }
+        }
+      } else if (response.status === 401) {
+        // Session已过期
+        stopSessionCheck();
+        stopSessionRefresh();
+        showToast('Session expired, please login again', 'error');
+        setTimeout(() => {
+          logout();
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Session check failed:', error);
+    }
+  }, 30000); // 每30秒检查一次
+}
+
+// 停止session过期检查
+function stopSessionCheck() {
+  if (sessionCheckInterval) {
+    clearInterval(sessionCheckInterval);
+    sessionCheckInterval = null;
   }
 }
 
@@ -248,6 +394,9 @@ async function login() {
     if (data.success) {
       currentAdmin = data.admin;
       showMainPage();
+      updateDeveloperMenuVisibility();
+      // 启动session检查
+      startSessionCheck();
     } else {
       showToast(data.message || 'Login failed', 'error');
     }
@@ -260,6 +409,10 @@ async function login() {
 // 登出
 async function logout() {
   try {
+    // 停止session检查和刷新
+    stopSessionCheck();
+    stopSessionRefresh();
+    
     await fetch(`${API_BASE}/auth/admin/logout`, {
       method: 'POST',
       credentials: 'include'
@@ -268,6 +421,9 @@ async function logout() {
     showLoginPage();
   } catch (error) {
     console.error('登出失败:', error);
+    // 即使登出失败，也清除本地状态
+    currentAdmin = null;
+    showLoginPage();
   }
 }
 
@@ -292,7 +448,12 @@ function showMainPage() {
 }
 
 // 切换标签
+let currentTab = 'dashboard'; // 当前激活的标签
+
 function switchTab(tabName) {
+  // 更新当前标签
+  currentTab = tabName;
+  
   // 隐藏所有标签内容
   document.querySelectorAll('.tab-content').forEach(tab => {
     tab.classList.add('hidden');
@@ -965,14 +1126,43 @@ function renderOrders(orders) {
       
       const unitPrice = item.quantity > 0 ? (item.subtotal / item.quantity) : item.product_price;
       
+      // 计算Size价格和加料总价（用于显示价格分解）
+      const actualSizePrice = item.size_price !== undefined && item.size_price !== null && item.size_price > 0
+        ? item.size_price
+        : (item.size ? Math.max(0, unitPrice - (Array.isArray(toppings) ? toppings.reduce((sum, t) => sum + ((typeof t === 'object' && t !== null && t.price !== undefined) ? t.price : 0), 0) : 0)) : unitPrice);
+      
+      // 计算加料总价
+      let totalToppingPrice = 0;
+      if (Array.isArray(toppings) && toppings.length > 0) {
+        totalToppingPrice = toppings.reduce((sum, t) => {
+          const toppingPrice = (typeof t === 'object' && t !== null && t.price !== undefined) ? t.price : 0;
+          return sum + toppingPrice;
+        }, 0);
+      }
+      
       return `
         <div class="mb-2 p-2 bg-gray-50 rounded text-xs">
           <div class="font-semibold text-gray-900">${item.product_name} × ${item.quantity}</div>
           <div class="mt-1 space-y-0.5 text-gray-600">
-            ${item.size ? `<div>Size: ${item.size}</div>` : ''}
+            ${item.size ? `<div>Size: ${item.size}${actualSizePrice > 0 ? ` (${formatPrice(actualSizePrice)})` : ''}</div>` : ''}
             ${item.sugar_level ? `<div>Sweetness: ${sugarLabels[item.sugar_level] || item.sugar_level}%</div>` : ''}
             ${item.ice_level ? `<div>Ice Level: ${iceLabels[item.ice_level] || item.ice_level}</div>` : ''}
-            ${toppings.length > 0 ? `<div>Toppings: ${Array.isArray(toppings) ? toppings.join(', ') : toppings}</div>` : ''}
+            ${toppings.length > 0 ? `
+              <div>
+                <div class="text-gray-700 font-medium">Toppings:</div>
+                <ul class="ml-2 space-y-0.5">
+                  ${Array.isArray(toppings) ? toppings.map(t => {
+                    // 检查是否是对象格式（包含价格）
+                    const toppingName = typeof t === 'object' && t !== null && t.name ? t.name : (typeof t === 'string' ? t : String(t));
+                    const toppingPrice = (typeof t === 'object' && t !== null && t.price !== undefined) ? t.price : 0;
+                    return `<li class="text-gray-600">${toppingName}${toppingPrice > 0 ? ` (+${formatPrice(toppingPrice)})` : ''}</li>`;
+                  }).join('') : `<li class="text-gray-600">${toppings}</li>`}
+                </ul>
+              </div>
+            ` : ''}
+            <div class="text-gray-900 font-medium">
+              Price Breakdown: ${actualSizePrice > 0 ? formatPrice(actualSizePrice) : formatPrice(unitPrice)}${totalToppingPrice > 0 ? ` + ${formatPrice(totalToppingPrice)}` : ''}${actualSizePrice > 0 || totalToppingPrice > 0 ? ` = ${formatPrice(unitPrice)}` : ''}
+            </div>
             <div class="text-gray-900 font-medium">Unit Price: ${formatPrice(unitPrice)} | Subtotal: ${formatPrice(item.subtotal)}</div>
           </div>
         </div>
@@ -1100,15 +1290,29 @@ function renderProducts(products) {
   container.innerHTML = `
     <div class="mb-6 flex justify-between items-center">
       <h2 class="text-2xl font-bold text-gray-900">Products</h2>
-      <button onclick="showProductModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-        + Add Product
-      </button>
+      <div class="flex space-x-2">
+        <button onclick="backupMenu()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+          💾 Backup Menu
+        </button>
+        <button onclick="importMenu()" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">
+          📥 Import Menu
+        </button>
+        <button id="batchEditBtn" onclick="showBatchEditModal()" class="hidden px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
+          ✏️ Batch Edit (<span id="selectedProductsCount">0</span>)
+        </button>
+        <button onclick="showProductModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+          + Add Product
+        </button>
+      </div>
     </div>
     
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+              <input type="checkbox" id="selectAllProducts" onclick="toggleSelectAllProducts()" class="w-4 h-4">
+            </th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Image</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
@@ -1118,9 +1322,12 @@ function renderProducts(products) {
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
-          ${products.length === 0 ? '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No products</td></tr>' : ''}
+          ${products.length === 0 ? '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No products</td></tr>' : ''}
           ${products.map(product => `
             <tr>
+              <td class="px-6 py-4">
+                <input type="checkbox" class="product-checkbox" value="${product.id}" data-product-id="${product.id}" onclick="updateSelectedProductsCount()">
+              </td>
               <td class="px-6 py-4">
                 ${product.image_url ? 
                   `<img src="${product.image_url}" class="w-16 h-16 object-cover rounded-lg">` :
@@ -1134,7 +1341,7 @@ function renderProducts(products) {
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 ${product.category_name || '-'}
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${getPriceColor(product.price)}">
                 ${formatPrice(product.price)}
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
@@ -1209,11 +1416,24 @@ function renderProducts(products) {
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Available Toppings</label>
-            <div id="toppingsContainer" class="border border-gray-300 rounded-lg p-4 bg-gray-50">
-              <div class="text-sm text-gray-600 mb-2">Select which toppings are available for this product</div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Sweetness Options (甜度选项)</label>
+            <div id="sugarLevelsContainer" class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
+              <div class="text-sm text-gray-600 mb-2">Add sweetness levels (e.g., 0%, 30%, 50%, 70%, 100%)</div>
+              <div id="sugarLevelsList" class="space-y-2"></div>
+              <button type="button" onclick="addSugarLevelRow()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                + Add Sweetness Level
+              </button>
+            </div>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Available Toppings (可选加料)</label>
+            <div id="toppingsContainer" class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
+              <div class="text-sm text-gray-600 mb-2">Add topping names and prices (e.g., Cheese 芝士: 20 LE, Boba 波霸: 20 LE)</div>
               <div id="toppingsList" class="space-y-2"></div>
-              <div class="text-xs text-gray-500 mt-2">Toppings are products with description "额外加料" or in "Other" category</div>
+              <button type="button" onclick="addToppingRow()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                + Add Topping
+              </button>
             </div>
           </div>
           
@@ -1279,8 +1499,7 @@ async function showProductModal(product = null) {
     console.error('加载分类失败:', error);
   }
   
-  // 加载所有加料产品
-  await loadToppings();
+  // 不再需要加载加料产品，Available Toppings 现在是完全独立的文本列表
   
   const modal = document.getElementById('productModal');
   const title = document.getElementById('productModalTitle');
@@ -1297,8 +1516,11 @@ async function showProductModal(product = null) {
     // 加载杯型价格
     loadSizes(product.sizes || '{}');
     
-    // 加载可选加料
-    loadAvailableToppings(product.available_toppings || '[]');
+    // 加载甜度选项
+    loadSugarLevels(product.sugar_levels || '["0","30","50","70","100"]');
+    
+    // 加载可选加料 - 改为可编辑形式（类似甜度选项），完全独立，不依赖任何产品
+    await loadAvailableToppings(product.available_toppings || '[]');
     
     // 加载冰度选项
     loadIceOptions(product.ice_options || '["normal","less","no","room","hot"]');
@@ -1309,13 +1531,20 @@ async function showProductModal(product = null) {
     }
   } else {
     title.textContent = 'Add Product';
+    // 清除productId字段，确保是添加而不是更新
+    document.getElementById('productId').value = '';
     document.getElementById('productForm').reset();
+    // 再次确保productId被清除（reset可能不会清除隐藏字段）
+    document.getElementById('productId').value = '';
     document.getElementById('currentImage').innerHTML = '';
     document.getElementById('sizesList').innerHTML = '';
+    document.getElementById('sugarLevelsList').innerHTML = '';
     document.getElementById('toppingsList').innerHTML = '';
     // 重置冰度选项为全选
     const iceCheckboxes = document.querySelectorAll('.ice-option-checkbox');
     iceCheckboxes.forEach(cb => cb.checked = true);
+    // 加载默认甜度选项
+    loadSugarLevels('["0","30","50","70","100"]');
   }
   
   modal.classList.add('active');
@@ -1366,6 +1595,52 @@ function addSizeRow(name = '', price = '') {
   sizesList.appendChild(row);
 }
 
+// 加载甜度选项
+function loadSugarLevels(sugarLevelsJson) {
+  const sugarLevelsList = document.getElementById('sugarLevelsList');
+  if (!sugarLevelsList) return;
+  
+  sugarLevelsList.innerHTML = '';
+  
+  try {
+    const sugarLevels = typeof sugarLevelsJson === 'string' ? JSON.parse(sugarLevelsJson) : sugarLevelsJson;
+    if (Array.isArray(sugarLevels) && sugarLevels.length > 0) {
+      sugarLevels.forEach(level => {
+        addSugarLevelRow(level);
+      });
+    } else {
+      // 如果没有数据，添加默认值
+      ['0', '30', '50', '70', '100'].forEach(level => {
+        addSugarLevelRow(level);
+      });
+    }
+  } catch (e) {
+    console.error('Failed to parse sugar_levels:', e);
+    // 解析失败时添加默认值
+    ['0', '30', '50', '70', '100'].forEach(level => {
+      addSugarLevelRow(level);
+    });
+  }
+}
+
+// 添加甜度选项行
+function addSugarLevelRow(value = '') {
+  const sugarLevelsList = document.getElementById('sugarLevelsList');
+  if (!sugarLevelsList) return;
+  
+  const row = document.createElement('div');
+  row.className = 'sugar-level-row flex gap-2 items-center';
+  row.innerHTML = `
+    <input type="text" class="sugar-level-value flex-1 px-3 py-2 border border-gray-300 rounded-lg" 
+           placeholder="Sweetness level (e.g., 0, 30, 50, 70, 100)" value="${value}">
+    <button type="button" onclick="this.parentElement.remove()" 
+            class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+      ×
+    </button>
+  `;
+  sugarLevelsList.appendChild(row);
+}
+
 // 加载所有加料产品
 let allToppings = [];
 async function loadToppings() {
@@ -1378,53 +1653,111 @@ async function loadToppings() {
         p.description === '额外加料' || 
         (p.category_name && (p.category_name.includes('Other') || p.category_name.includes('其它') || p.category_name.includes('加料')))
       );
-      renderToppingsList();
+      // 不在这里渲染，让调用者决定何时渲染以及传递选中的 ID
+      // renderToppingsList();
     }
   } catch (error) {
     console.error('加载加料产品失败:', error);
   }
 }
 
-// 渲染加料列表
-function renderToppingsList() {
+// 加载可选加料 - 改为可编辑形式（类似甜度选项），完全独立，不依赖任何产品
+async function loadAvailableToppings(availableToppingsJson) {
   const toppingsList = document.getElementById('toppingsList');
   if (!toppingsList) return;
   
-  if (allToppings.length === 0) {
-    toppingsList.innerHTML = '<div class="text-sm text-gray-500">No toppings available. Please add topping products first.</div>';
-    return;
-  }
-  
-  toppingsList.innerHTML = allToppings.map(topping => `
-    <label class="flex items-center space-x-2 cursor-pointer">
-      <input type="checkbox" class="topping-checkbox" value="${topping.id}" 
-             data-topping-id="${topping.id}">
-      <span class="text-sm text-gray-700">${topping.name} (${formatPrice(topping.price)})</span>
-    </label>
-  `).join('');
-}
-
-// 加载可选加料
-function loadAvailableToppings(availableToppingsJson) {
-  const toppingsList = document.getElementById('toppingsList');
-  if (!toppingsList) return;
+  toppingsList.innerHTML = '';
   
   try {
-    const availableToppings = typeof availableToppingsJson === 'string' 
-      ? JSON.parse(availableToppingsJson) 
-      : availableToppingsJson;
+    let availableToppings = [];
     
-    if (Array.isArray(availableToppings)) {
-      availableToppings.forEach(toppingId => {
-        const checkbox = toppingsList.querySelector(`.topping-checkbox[value="${toppingId}"]`);
-        if (checkbox) {
-          checkbox.checked = true;
+    // 解析 available_toppings
+    if (availableToppingsJson) {
+      if (typeof availableToppingsJson === 'string') {
+        try {
+          availableToppings = JSON.parse(availableToppingsJson);
+          // 如果解析后仍然是字符串，再次解析
+          if (typeof availableToppings === 'string') {
+            availableToppings = JSON.parse(availableToppings);
+          }
+        } catch (e) {
+          console.error('Failed to parse available_toppings:', e);
+        }
+      } else if (Array.isArray(availableToppingsJson)) {
+        availableToppings = availableToppingsJson;
+      }
+    }
+    
+    // 确保是数组
+    if (!Array.isArray(availableToppings)) {
+      availableToppings = [];
+    }
+    
+    // 如果是旧的ID格式，转换为名称格式（兼容旧数据）
+    // 如果数组中的元素是数字，说明是旧格式（ID），需要查找对应的名称
+    const needsConversion = availableToppings.length > 0 && typeof availableToppings[0] === 'number';
+    
+    if (needsConversion) {
+      // 从数据库查询所有产品（不限制分类），将ID转换为名称
+      // 这样即使"额外加料"产品被删除，也能找到对应的名称
+      try {
+        const response = await fetch(`${API_BASE}/admin/products`, { credentials: 'include' });
+        const data = await response.json();
+        if (data.success) {
+          const allProducts = data.products;
+          availableToppings = availableToppings.map(id => {
+            const product = allProducts.find(p => parseInt(p.id) === parseInt(id));
+            // 如果找到产品，使用产品名称；如果找不到（已删除），使用 "Topping #ID" 格式
+            return product ? product.name : `Topping #${id}`;
+          }).filter(name => name);
+        } else {
+          // 如果查询失败，使用默认格式
+          availableToppings = availableToppings.map(id => `Topping #${id}`);
+        }
+      } catch (e) {
+        console.error('Failed to load products for ID conversion:', e);
+        // 如果查询失败，使用默认格式
+        availableToppings = availableToppings.map(id => `Topping #${id}`);
+      }
+    }
+    
+    // 显示每个加料名称和价格（类似杯型价格）
+    if (availableToppings.length > 0) {
+      availableToppings.forEach(toppingItem => {
+        // 如果是字符串，说明是旧格式（只有名称）
+        if (typeof toppingItem === 'string') {
+          addToppingRow(toppingItem, '');
+        } else if (typeof toppingItem === 'object' && toppingItem !== null) {
+          // 新格式：对象格式 {name: "Cheese 芝士", price: 20}
+          addToppingRow(toppingItem.name || toppingItem, toppingItem.price || '');
+        } else {
+          addToppingRow(toppingItem, '');
         }
       });
     }
   } catch (e) {
     console.error('Failed to parse available_toppings:', e);
   }
+}
+
+// 添加加料行（类似杯型价格，包含名称和价格）
+function addToppingRow(name = '', price = '') {
+  const toppingsList = document.getElementById('toppingsList');
+  if (!toppingsList) return;
+  
+  const row = document.createElement('div');
+  row.className = 'topping-row flex gap-2 items-center';
+  row.innerHTML = `
+    <input type="text" class="topping-name flex-1 px-3 py-2 border border-gray-300 rounded-lg" 
+           placeholder="Topping name (e.g., Cheese 芝士)" value="${name}">
+    <input type="number" class="topping-price w-32 px-3 py-2 border border-gray-300 rounded-lg" 
+           placeholder="Price" step="0.01" min="0" value="${price}">
+    <button type="button" onclick="this.parentElement.remove()" 
+            class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+      ×
+    </button>
+  `;
+  toppingsList.appendChild(row);
 }
 
 // 加载冰度选项
@@ -1457,7 +1790,10 @@ function loadIceOptions(iceOptionsJson) {
 async function saveProduct(e) {
   e.preventDefault();
   
-  const id = document.getElementById('productId').value;
+  const idInput = document.getElementById('productId');
+  const id = idInput ? idInput.value.trim() : '';
+  const isEdit = id && id !== '';
+  
   const formData = new FormData();
   
   formData.append('name', document.getElementById('productName').value);
@@ -1480,11 +1816,29 @@ async function saveProduct(e) {
   formData.append('sizes', sizesJson);
   console.log('Saving product with sizes:', sizesJson);
   
-  // 收集可选加料
+  // 收集甜度选项
+  const sugarLevels = [];
+  const sugarLevelRows = document.querySelectorAll('.sugar-level-row');
+  sugarLevelRows.forEach(row => {
+    const level = row.querySelector('.sugar-level-value').value.trim();
+    if (level) {
+      sugarLevels.push(level);
+    }
+  });
+  formData.append('sugar_levels', JSON.stringify(sugarLevels));
+  console.log('Saving product with sugar_levels:', sugarLevels);
+  
+  // 收集可选加料（名称和价格形式，类似杯型价格）
   const availableToppings = [];
-  const toppingCheckboxes = document.querySelectorAll('.topping-checkbox:checked');
-  toppingCheckboxes.forEach(checkbox => {
-    availableToppings.push(parseInt(checkbox.value));
+  const toppingRows = document.querySelectorAll('.topping-row');
+  toppingRows.forEach(row => {
+    const toppingName = row.querySelector('.topping-name').value.trim();
+    const toppingPrice = row.querySelector('.topping-price').value.trim();
+    if (toppingName) {
+      // 存储为对象格式 {name: "Cheese 芝士", price: 20}
+      const price = toppingPrice ? parseFloat(toppingPrice) : 0;
+      availableToppings.push({ name: toppingName, price: price });
+    }
   });
   formData.append('available_toppings', JSON.stringify(availableToppings));
   console.log('Saving product with available_toppings:', availableToppings);
@@ -1504,8 +1858,11 @@ async function saveProduct(e) {
   }
   
   try {
-    const url = id ? `${API_BASE}/admin/products/${id}` : `${API_BASE}/admin/products`;
-    const method = id ? 'PUT' : 'POST';
+    const url = isEdit ? `${API_BASE}/admin/products/${id}` : `${API_BASE}/admin/products`;
+    const method = isEdit ? 'PUT' : 'POST';
+    
+    // 调试日志
+    console.log('Saving product:', { isEdit, id, url, method });
     
     const response = await fetch(url, {
       method,
@@ -1516,7 +1873,7 @@ async function saveProduct(e) {
     const data = await response.json();
     
     if (data.success) {
-      showToast(id ? 'Product updated successfully' : 'Product added successfully', 'success');
+      showToast(isEdit ? 'Product updated successfully' : 'Product added successfully', 'success');
       closeProductModal();
       loadProducts();
     } else {
@@ -1579,9 +1936,17 @@ function renderCategories(categories) {
   container.innerHTML = `
     <div class="mb-6 flex justify-between items-center">
       <h2 class="text-2xl font-bold text-gray-900">Categories</h2>
+      <div class="flex space-x-2">
+        <button onclick="backupMenu()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+          💾 Backup Menu
+        </button>
+        <button onclick="importMenu()" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">
+          📥 Import Menu
+        </button>
       <button onclick="showCategoryModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
         + Add Category
       </button>
+      </div>
     </div>
     
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2039,6 +2404,39 @@ async function loadSettingsPage() {
               </div>
               
               <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Session Timeout Settings</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Admin Session Timeout (seconds)</label>
+                    <input type="number" id="adminSessionTimeout" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="7200"
+                           value="${settings.admin_session_timeout || '7200'}"
+                           min="60"
+                           max="86400">
+                    <p class="text-xs text-gray-500 mt-1">Admin session expiration time in seconds (default: 7200 = 2 hours). Minimum: 60 seconds, Maximum: 86400 seconds (24 hours)</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">User Session Timeout (seconds)</label>
+                    <input type="number" id="userSessionTimeout" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="7200"
+                           value="${settings.user_session_timeout || '7200'}"
+                           min="60"
+                           max="86400">
+                    <p class="text-xs text-gray-500 mt-1">User session expiration time in seconds (default: 7200 = 2 hours). Minimum: 60 seconds, Maximum: 86400 seconds (24 hours)</p>
+                  </div>
+                </div>
+                <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p class="text-sm text-blue-800">
+                    <strong>Note:</strong> Session time will be automatically refreshed when users interact with the page (clicking buttons, scrolling, etc.). This ensures active users stay logged in.
+                  </p>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">SMS Verification Settings</h3>
                 
                 <div class="mb-4">
@@ -2094,6 +2492,29 @@ async function loadSettingsPage() {
                       Test SMS
                     </button>
                     <p class="text-xs text-gray-500 mt-1">Send a test SMS to verify configuration</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Logging Settings</h3>
+                
+                <div class="mb-4">
+                  <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="debugLoggingEnabled" 
+                           class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                           ${settings.debug_logging_enabled === 'true' ? 'checked' : ''}>
+                    <span class="text-sm font-medium text-gray-700">Enable Detailed DEBUG Logging</span>
+                  </label>
+                  <p class="text-xs text-gray-500 mt-1 ml-6">
+                    When enabled, all requests will be logged including static resources (images, CSS, JS) and cached responses (304). 
+                    When disabled (default), only API requests, errors, and slow requests (>1s) will be logged.
+                  </p>
+                  <div class="mt-2 ml-6 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p class="text-xs text-yellow-800">
+                      <strong>⚠️ Warning:</strong> Enabling detailed logging will significantly increase log file size. 
+                      Only enable when debugging issues. Default is OFF for production use.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -2284,6 +2705,22 @@ async function saveSettings(e) {
   }
   
   const smsEnabled = document.getElementById('smsEnabled')?.checked || false;
+  const debugLoggingEnabled = document.getElementById('debugLoggingEnabled')?.checked || false;
+  
+  // 获取session过期时间配置
+  const adminSessionTimeout = document.getElementById('adminSessionTimeout')?.value;
+  const userSessionTimeout = document.getElementById('userSessionTimeout')?.value;
+  
+  // 验证session过期时间
+  if (adminSessionTimeout && (parseInt(adminSessionTimeout) < 60 || parseInt(adminSessionTimeout) > 86400)) {
+    showToast('Admin session timeout must be between 60 and 86400 seconds', 'error');
+    return;
+  }
+  
+  if (userSessionTimeout && (parseInt(userSessionTimeout) < 60 || parseInt(userSessionTimeout) > 86400)) {
+    showToast('User session timeout must be between 60 and 86400 seconds', 'error');
+    return;
+  }
   
   const settings = {
     ordering_open: document.getElementById('orderingOpen').value,
@@ -2291,11 +2728,14 @@ async function saveSettings(e) {
     store_name: document.getElementById('storeName').value.trim() || 'BOBA TEA',
     currency_symbol: document.getElementById('currencySymbol').value.trim() || 'LE',
     max_visible_cycles: maxVisibleCycles.toString(),
+    admin_session_timeout: adminSessionTimeout || '7200',
+    user_session_timeout: userSessionTimeout || '7200',
     sms_enabled: smsEnabled ? 'true' : 'false',
     twilio_account_sid: document.getElementById('twilioAccountSid')?.value.trim() || '',
     twilio_auth_token: document.getElementById('twilioAuthToken')?.value.trim() || '',
     twilio_phone_number: document.getElementById('twilioPhoneNumber')?.value.trim() || '',
-    twilio_verify_service_sid: document.getElementById('twilioVerifyServiceSid')?.value.trim() || ''
+    twilio_verify_service_sid: document.getElementById('twilioVerifyServiceSid')?.value.trim() || '',
+    debug_logging_enabled: debugLoggingEnabled ? 'true' : 'false'
   };
   
   try {
@@ -2963,105 +3403,149 @@ async function deleteAdmin(adminId) {
   }
 }
 
+// 日志过滤状态
+let logsFilterState = {
+  days: 3,  // 默认显示最近3天
+  action: '',
+  operator: '',
+  target_type: '',
+  ip_address: ''
+};
+
 // 加载操作日志
 async function loadLogs() {
   const container = document.getElementById('logsTab');
   
   try {
-    const response = await fetch(`${API_BASE}/admin/logs?limit=100`, { credentials: 'include' });
+    // 构建查询参数
+    const params = new URLSearchParams({
+      limit: '100',
+      days: logsFilterState.days.toString()
+    });
+    
+    if (logsFilterState.action) params.append('action', logsFilterState.action);
+    if (logsFilterState.operator) params.append('operator', logsFilterState.operator);
+    if (logsFilterState.target_type) params.append('target_type', logsFilterState.target_type);
+    if (logsFilterState.ip_address) params.append('ip_address', logsFilterState.ip_address);
+    
+    const response = await fetch(`${API_BASE}/admin/logs?${params.toString()}`, { credentials: 'include' });
     const data = await response.json();
     
     if (data.success) {
       const logs = data.logs || [];
       
+      // 获取所有唯一的操作类型和资源类型用于下拉选项
+      const actionTypes = [...new Set(logs.map(log => log.action).filter(Boolean))].sort();
+      const resourceTypes = [...new Set(logs.map(log => log.target_type || log.resource_type).filter(Boolean))].sort();
+      
       container.innerHTML = `
         <div class="fade-in">
-          <h2 class="text-2xl font-bold text-gray-900 mb-6">Logs</h2>
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold text-gray-900">Logs</h2>
+            <div class="text-sm text-gray-600">
+              Showing logs from last <span class="font-semibold">${logsFilterState.days}</span> day${logsFilterState.days !== 1 ? 's' : ''}
+            </div>
+          </div>
           
           <div class="bg-white rounded-xl shadow-sm overflow-hidden">
             <div class="overflow-x-auto">
               <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                   <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Operator</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action Type</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Resource Type</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP Address</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <div class="flex flex-col gap-1">
+                        <span>Time</span>
+                        <input 
+                          type="text" 
+                          placeholder="Filter time..." 
+                          class="text-xs px-2 py-1 border border-gray-300 rounded"
+                          onkeyup="filterLogsByTime(this.value)"
+                        />
+                      </div>
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <div class="flex flex-col gap-1">
+                        <span>Operator</span>
+                        <input 
+                          type="text" 
+                          placeholder="Filter operator..." 
+                          class="text-xs px-2 py-1 border border-gray-300 rounded"
+                          value="${logsFilterState.operator}"
+                          onkeyup="filterLogsByOperator(this.value)"
+                        />
+                      </div>
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <div class="flex flex-col gap-1">
+                        <span>Action Type</span>
+                        <select 
+                          class="text-xs px-2 py-1 border border-gray-300 rounded w-full"
+                          onchange="filterLogsByAction(this.value)"
+                        >
+                          <option value="">All Actions</option>
+                          ${actionTypes.map(action => `
+                            <option value="${action}" ${logsFilterState.action === action ? 'selected' : ''}>${action}</option>
+                          `).join('')}
+                        </select>
+                      </div>
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <div class="flex flex-col gap-1">
+                        <span>Resource Type</span>
+                        <select 
+                          class="text-xs px-2 py-1 border border-gray-300 rounded w-full"
+                          onchange="filterLogsByResourceType(this.value)"
+                        >
+                          <option value="">All Types</option>
+                          ${resourceTypes.map(type => `
+                            <option value="${type}" ${logsFilterState.target_type === type ? 'selected' : ''}>${type}</option>
+                          `).join('')}
+                        </select>
+                      </div>
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <div class="flex flex-col gap-1">
+                        <span>Details</span>
+                        <input 
+                          type="text" 
+                          placeholder="Filter details..." 
+                          class="text-xs px-2 py-1 border border-gray-300 rounded"
+                          onkeyup="filterLogsByDetails(this.value)"
+                        />
+                      </div>
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <div class="flex flex-col gap-1">
+                        <span>IP Address</span>
+                        <input 
+                          type="text" 
+                          placeholder="Filter IP..." 
+                          class="text-xs px-2 py-1 border border-gray-300 rounded"
+                          value="${logsFilterState.ip_address}"
+                          onkeyup="filterLogsByIP(this.value)"
+                        />
+                      </div>
+                    </th>
                   </tr>
                 </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
+                <tbody class="bg-white divide-y divide-gray-200" id="logsTableBody">
                   ${logs.length === 0 ? 
                     '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No logs</td></tr>' :
-                    logs.map(log => {
-                      // 解析操作详情
-                      let detailsText = '-';
-                      let detailsObj = null;
-                      try {
-                        if (log.details) {
-                          detailsObj = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
-                          if (typeof detailsObj === 'object' && detailsObj !== null) {
-                            detailsText = Object.entries(detailsObj)
-                              .map(([key, value]) => {
-                                const keyMap = {
-                                  'action': 'Action',
-                                  'name': 'Name',
-                                  'price': 'Price',
-                                  'count': 'Count',
-                                  'username': 'Username',
-                                  'phone': 'Phone',
-                                  'role': 'Role',
-                                  'isNewUser': 'Is New User',
-                                  'discountRate': 'Discount Rate',
-                                  'orderCount': 'Order Count',
-                                  'status': 'Status'
-                                };
-                                const displayKey = keyMap[key] || key;
-                                return `${displayKey}: ${value}`;
-                              })
-                              .join(', ');
-                          } else {
-                            detailsText = String(detailsObj);
-                          }
-                        }
-                      } catch (e) {
-                        detailsText = log.details || '-';
-                      }
-                      
-                      // 操作类型显示
-                      const actionMap = {
-                        'CREATE': { text: 'Create', class: 'bg-green-100 text-green-800' },
-                        'UPDATE': { text: 'Update', class: 'bg-blue-100 text-blue-800' },
-                        'DELETE': { text: 'Delete', class: 'bg-red-100 text-red-800' },
-                        'LOGIN': { text: 'Login', class: 'bg-purple-100 text-purple-800' },
-                        'USER_LOGIN': { text: 'User Login', class: 'bg-indigo-100 text-indigo-800' }
-                      };
-                      const actionInfo = actionMap[log.action] || { text: log.action, class: 'bg-gray-100 text-gray-800' };
-                      
-                      // 操作者显示
-                      const operatorName = log.admin_username || (log.action === 'USER_LOGIN' ? 'System' : '-');
-                      
-                      return `
-                        <tr class="hover:bg-gray-50">
-                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${log.created_at ? new Date(log.created_at).toLocaleString('en-US') : '-'}</td>
-                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${operatorName}</td>
-                          <td class="px-6 py-4 whitespace-nowrap text-sm">
-                            <span class="px-2 py-1 text-xs rounded-full ${actionInfo.class}">
-                              ${actionInfo.text}
-                            </span>
-                          </td>
-                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.target_type || log.resource_type || '-'}</td>
-                          <td class="px-6 py-4 text-sm text-gray-700 max-w-md">
-                            <div class="truncate" title="${detailsText}">${detailsText}</div>
-                          </td>
-                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${log.ip_address || '-'}</td>
-                        </tr>
-                      `;
-                    }).join('')
+                    logs.map(log => renderLogRow(log)).join('')
                   }
                 </tbody>
               </table>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+              <div class="text-sm text-gray-600">
+                Total: <span class="font-semibold">${data.pagination?.total || logs.length}</span> logs
+              </div>
+              <button 
+                onclick="loadMoreLogs()" 
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                Show More Logs (+1 day)
+              </button>
             </div>
           </div>
         </div>
@@ -3075,14 +3559,234 @@ async function loadLogs() {
   }
 }
 
+// 渲染日志行
+function renderLogRow(log) {
+  // 解析操作详情
+  let detailsText = '-';
+  let detailsObj = null;
+  try {
+    if (log.details) {
+      detailsObj = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+      if (typeof detailsObj === 'object' && detailsObj !== null) {
+        detailsText = Object.entries(detailsObj)
+          .map(([key, value]) => {
+            const keyMap = {
+              'action': 'Action',
+              'name': 'Name',
+              'price': 'Price',
+              'count': 'Count',
+              'username': 'Username',
+              'phone': 'Phone',
+              'role': 'Role',
+              'isNewUser': 'Is New User',
+              'discountRate': 'Discount Rate',
+              'orderCount': 'Order Count',
+              'status': 'Status'
+            };
+            const displayKey = keyMap[key] || key;
+            return `${displayKey}: ${value}`;
+          })
+          .join(', ');
+      } else {
+        detailsText = String(detailsObj);
+      }
+    }
+  } catch (e) {
+    detailsText = log.details || '-';
+  }
+  
+  // 操作类型显示
+  const actionMap = {
+    'CREATE': { text: 'Create', class: 'bg-green-100 text-green-800' },
+    'UPDATE': { text: 'Update', class: 'bg-blue-100 text-blue-800' },
+    'DELETE': { text: 'Delete', class: 'bg-red-100 text-red-800' },
+    'LOGIN': { text: 'Login', class: 'bg-purple-100 text-purple-800' },
+    'USER_LOGIN': { text: 'User Login', class: 'bg-indigo-100 text-indigo-800' }
+  };
+  const actionInfo = actionMap[log.action] || { text: log.action, class: 'bg-gray-100 text-gray-800' };
+  
+  // 操作者显示
+  const operatorName = log.admin_username || (log.action === 'USER_LOGIN' ? 'System' : '-');
+  
+  return `
+    <tr class="hover:bg-gray-50 log-row" 
+        data-time="${log.created_at || ''}"
+        data-operator="${operatorName.toLowerCase()}"
+        data-action="${log.action || ''}"
+        data-resource="${(log.target_type || log.resource_type || '').toLowerCase()}"
+        data-details="${detailsText.toLowerCase()}"
+        data-ip="${log.ip_address || ''}"
+    >
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${log.created_at ? new Date(log.created_at).toLocaleString('en-US') : '-'}</td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${operatorName}</td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm">
+        <span class="px-2 py-1 text-xs rounded-full ${actionInfo.class}">
+          ${actionInfo.text}
+        </span>
+      </td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.target_type || log.resource_type || '-'}</td>
+      <td class="px-6 py-4 text-sm text-gray-700 max-w-md">
+        <div class="truncate" title="${detailsText}">${detailsText}</div>
+      </td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${log.ip_address || '-'}</td>
+    </tr>
+  `;
+}
+
+// 显示更多日志（增加一天）
+function loadMoreLogs() {
+  logsFilterState.days += 1;
+  loadLogs();
+}
+
+// 过滤函数
+function filterLogsByTime(value) {
+  filterLogsTable('time', value);
+}
+
+function filterLogsByOperator(value) {
+  logsFilterState.operator = value;
+  loadLogs();
+}
+
+function filterLogsByAction(value) {
+  logsFilterState.action = value;
+  loadLogs();
+}
+
+function filterLogsByResourceType(value) {
+  logsFilterState.target_type = value;
+  loadLogs();
+}
+
+function filterLogsByDetails(value) {
+  filterLogsTable('details', value);
+}
+
+function filterLogsByIP(value) {
+  logsFilterState.ip_address = value;
+  loadLogs();
+}
+
+// 客户端表格过滤（用于不需要重新加载的字段）
+function filterLogsTable(field, value) {
+  const rows = document.querySelectorAll('.log-row');
+  const filterValue = value.toLowerCase().trim();
+  
+  rows.forEach(row => {
+    const cellValue = row.getAttribute(`data-${field}`) || '';
+    if (filterValue === '' || cellValue.includes(filterValue)) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+
 // 加载关于页面
 function loadAboutPage() {
   const container = document.getElementById('aboutTab');
-  const version = '1.0.0';
+  const version = '2.1.0';
   const currentStoreName = storeName || 'BOBA TEA'; // 使用当前商店名称，如果没有则使用默认值
   
   container.innerHTML = `
     <div class="space-y-6">
+      <!-- 系统信息 -->
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">🧋 ${currentStoreName} Ordering System</h2>
+        <div class="space-y-4">
+          <div>
+            <p class="text-sm text-gray-600 mb-2">Version</p>
+            <p class="text-lg font-semibold text-gray-900">v${version}</p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-600 mb-2">Description</p>
+            <p class="text-gray-700">A comprehensive online ordering system for ${currentStoreName.toLowerCase()} shops with cycle-based order management, discount rules, and payment tracking.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 主要功能 -->
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">✨ Main Features</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-3">👥 User Features</h4>
+            <ul class="list-disc list-inside space-y-1.5 text-sm text-gray-700 ml-2">
+              <li>Phone number quick login (no password required)</li>
+              <li>Browse menu with category filtering</li>
+              <li>Product customization (cup size, sugar, ice, toppings)</li>
+              <li>Shopping cart management</li>
+              <li>Order creation and tracking</li>
+              <li>Payment screenshot upload</li>
+              <li>Real-time discount viewing</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-3">🔐 Admin Features</h4>
+            <ul class="list-disc list-inside space-y-1.5 text-sm text-gray-700 ml-2">
+              <li>Dashboard with statistics</li>
+              <li>Menu and category management</li>
+              <li>Order management and status updates</li>
+              <li>Discount rules configuration</li>
+              <li>User and admin management</li>
+              <li>Operation logs</li>
+              <li>System settings</li>
+            </ul>
+          </div>
+          </div>
+          </div>
+
+      <!-- 技术栈 -->
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">🛠️ Technology Stack</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">Backend</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>Node.js + Express</li>
+              <li>SQLite3 (WAL mode)</li>
+              <li>bcryptjs (password hashing)</li>
+              <li>express-session (session management)</li>
+              <li>Winston (logging)</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">Frontend</h4>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>Vanilla JavaScript</li>
+              <li>Tailwind CSS</li>
+              <li>Responsive design</li>
+            </ul>
+          </div>
+          </div>
+          </div>
+
+      <!-- 安全特性 -->
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-xl font-bold text-gray-900 mb-4">🔒 Security Features</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+          <div>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>Password encryption (bcrypt)</li>
+              <li>Session-based authentication</li>
+              <li>Rate limiting (API protection)</li>
+              <li>SQL injection prevention</li>
+              <li>XSS protection (Helmet)</li>
+            </ul>
+          </div>
+          <div>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>Input validation</li>
+              <li>File upload security</li>
+              <li>Role-based access control</li>
+              <li>HSTS enabled</li>
+              <li>Comprehensive logging</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <!-- 数据库备份和恢复 -->
       <div class="bg-white rounded-xl shadow-sm p-6">
         <h3 class="text-xl font-bold text-gray-900 mb-4">💾 Database Backup & Restore</h3>
@@ -3101,7 +3805,7 @@ function loadAboutPage() {
               <input type="file" id="backupFileInput" accept=".db,.zip" class="hidden" onchange="uploadBackupFile()">
               Upload Backup
             </label>
-          </div>
+        </div>
           <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
             <p class="font-semibold mb-1">📝 Backup Types:</p>
             <ul class="list-disc list-inside space-y-1">
@@ -3115,307 +3819,6 @@ function loadAboutPage() {
           </div>
         </div>
       </div>
-
-      <!-- Remote Backup Configuration -->
-      <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">🌐 Remote Backup (Cross-Site Backup)</h3>
-        <p class="text-sm text-gray-600 mb-4">Configure automatic backup push to remote sites and receive backups from other sites.</p>
-        
-        <div class="space-y-6">
-          <!-- Push Configuration -->
-          <div>
-            <div class="flex items-center justify-between mb-4">
-              <h4 class="text-lg font-semibold text-gray-900">📤 Push Configuration</h4>
-              <button onclick="showRemoteBackupConfigModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
-                + Add Push Config
-              </button>
-            </div>
-            <div id="remoteBackupConfigsList" class="space-y-2">
-              <p class="text-gray-500 text-sm">Loading configurations...</p>
-            </div>
-          </div>
-
-          <!-- Receive Configuration -->
-          <div class="border-t pt-6">
-            <h4 class="text-lg font-semibold text-gray-900 mb-4">📥 Receive Configuration</h4>
-            <div id="receiveConfigSection" class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
-                <div class="flex items-center space-x-2">
-                  <input type="password" id="receiveApiToken" 
-                         class="flex-1 px-4 py-2 border border-gray-300 rounded-lg"
-                         placeholder="Enter API token (must match the token configured on the sending site)">
-                  <button type="button" onclick="toggleReceiveApiTokenVisibility()" 
-                          class="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm">
-                    <span id="receiveApiTokenToggleText">Show</span>
-                  </button>
-                </div>
-                <input type="hidden" id="receiveApiTokenOriginal" value="">
-                <p class="text-xs text-gray-500 mt-1">This token must be the same as the one configured on the sending site</p>
-              </div>
-              <div>
-                <label class="flex items-center space-x-2">
-                  <input type="checkbox" id="receiveAutoRestore" 
-                         class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                  <span class="text-sm font-medium text-gray-700">Auto Restore</span>
-                </label>
-                <p class="text-xs text-gray-500 mt-1 ml-6">Automatically restore received backups (otherwise, save and wait for manual restore)</p>
-              </div>
-              <button onclick="saveReceiveConfig()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-                Save Receive Config
-              </button>
-            </div>
-          </div>
-
-          <!-- Push Logs -->
-          <div class="border-t pt-6">
-            <div class="flex items-center justify-between mb-4">
-              <h4 class="text-lg font-semibold text-gray-900">📋 Push Logs</h4>
-              <button onclick="loadPushLogs()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
-                Refresh
-              </button>
-            </div>
-            <div id="pushLogsList" class="space-y-2 max-h-64 overflow-y-auto">
-              <p class="text-gray-500 text-sm">Loading logs...</p>
-            </div>
-          </div>
-
-          <!-- Received Backups -->
-          <div class="border-t pt-6">
-            <div class="flex items-center justify-between mb-4">
-              <h4 class="text-lg font-semibold text-gray-900">📦 Received Backups</h4>
-              <button onclick="loadReceivedBackups()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
-                Refresh
-              </button>
-            </div>
-            <div id="receivedBackupsList" class="space-y-2 max-h-64 overflow-y-auto">
-              <p class="text-gray-500 text-sm">Loading received backups...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm p-6">
-        <h2 class="text-2xl font-bold text-gray-900 mb-4">🧋 ${currentStoreName} Ordering System</h2>
-        <div class="space-y-4">
-          <div>
-            <p class="text-sm text-gray-600 mb-2">Version</p>
-            <p class="text-lg font-semibold text-gray-900">${version}</p>
-          </div>
-          <div>
-            <p class="text-sm text-gray-600 mb-2">Description</p>
-            <p class="text-gray-700">A comprehensive online ordering system for ${currentStoreName.toLowerCase()} shops with cycle-based order management, discount rules, and payment tracking.</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">📋 User Order Logic</h3>
-        <div class="space-y-4 text-gray-700">
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">1. User Registration & Login</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>Users can browse the menu without logging in</li>
-              <li>When placing an order, users must provide a phone number (required, 8-15 digits)</li>
-              <li>Name field is optional</li>
-              <li>Phone number is used as the unique identifier for users</li>
-              <li>If a phone number already exists, the system will use the existing user account</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">2. Order Placement</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>Users can add products to cart and customize:
-                <ul class="list-circle list-inside ml-6 mt-1 space-y-1">
-                  <li>Cup size (Small, Medium, Large) - affects base price</li>
-                  <li>Sugar level (0%, 30%, 50%, 70%, 100%)</li>
-                  <li>Ice level (Normal Ice, Less Ice, No Ice, Room Temperature, Hot) - if allowed by product</li>
-                  <li>Extra toppings - each topping adds to the price</li>
-                  <li>Order notes (optional text field)</li>
-                </ul>
-              </li>
-              <li>Real-time price calculation based on selections</li>
-              <li>Orders can only be placed when ordering is open (admin-controlled)</li>
-              <li>Each order gets a unique order number (e.g., BO12345678)</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">3. Order Status Flow</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li><strong>Pending Payment</strong>: Initial status when order is placed
-                <ul class="list-circle list-inside ml-6 mt-1">
-                  <li>Users can modify or delete orders during the ordering open period</li>
-                  <li>Users can upload payment screenshots (only after ordering is closed)</li>
-                </ul>
-              </li>
-              <li><strong>Paid</strong>: Admin marks order as paid after verifying payment screenshot</li>
-              <li><strong>Completed</strong>: Admin marks order as completed after fulfillment</li>
-              <li><strong>Cancelled</strong>: Order is cancelled (by user or admin)</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">4. Order Modification & Deletion</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>Users can only modify/delete orders with "Pending Payment" status</li>
-              <li>Modification is only allowed during the ordering open period</li>
-              <li>Once ordering is closed, users can only upload payment screenshots</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">5. Payment Screenshot Upload</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>Upload button is disabled and grayed out while ordering is open</li>
-              <li>Users can upload payment screenshots only after admin closes ordering</li>
-              <li>Payment screenshots can be viewed by both users and admins</li>
-              <li>Admin verifies payment and updates order status to "Paid"</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">🔄 Order Cycle Logic</h3>
-        <div class="space-y-4 text-gray-700">
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">1. Cycle Creation</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>When admin opens ordering (Settings → Ordering Open = ON), a new cycle is automatically created</li>
-              <li>Each cycle has a unique ID and cycle number (e.g., CYCLE1763034929647)</li>
-              <li>Cycle status is set to "active"</li>
-              <li>Cycle start time is recorded as the current local time</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">2. Active Cycle Period</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>All orders placed during this period belong to the active cycle</li>
-              <li>Orders are automatically associated with the cycle based on their creation time</li>
-              <li>Users can place, modify, and delete orders freely</li>
-              <li>Total order amount for the cycle is calculated in real-time</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">3. Cycle Closure</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>When admin closes ordering (Settings → Ordering Open = OFF), the cycle is automatically ended</li>
-              <li>Cycle end time is recorded as the current local time</li>
-              <li>Cycle status changes from "active" to "ended"</li>
-              <li>System automatically calculates the total amount for all "Pending Payment" orders in this cycle</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">4. Automatic Discount Calculation</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>When a cycle ends, the system automatically calculates discounts based on:
-                <ul class="list-circle list-inside ml-6 mt-1">
-                  <li>Total amount of all orders in the cycle (sum of final_amount)</li>
-                  <li>Discount rules configured in the Discounts section</li>
-                </ul>
-              </li>
-              <li>Discount rules are evaluated in descending order of min_amount</li>
-              <li>The first matching rule (where total_amount >= min_amount) is applied</li>
-              <li>Discount is applied to all "Pending Payment" orders in the cycle:
-                <ul class="list-circle list-inside ml-6 mt-1">
-                  <li>discount_amount = total_amount × discount_rate</li>
-                  <li>final_amount = total_amount - discount_amount</li>
-                </ul>
-              </li>
-              <li>Cycle discount_rate is updated to reflect the applied discount</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">5. Payment Verification Period</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>After cycle closure, users can upload payment screenshots</li>
-              <li>Admin reviews payment screenshots and marks orders as "Paid"</li>
-              <li>Once all orders are verified, admin can confirm the cycle (Dashboard → Confirm Cycle)</li>
-              <li>Cycle status changes from "ended" to "confirmed"</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">6. Order Cycle Association</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>Orders are associated with cycles based on their created_at timestamp</li>
-              <li>An order belongs to a cycle if: cycle.start_time <= order.created_at <= cycle.end_time (or current time if cycle is active)</li>
-              <li>If no active cycle exists, all orders are considered part of the "current cycle" (not grayed out)</li>
-              <li>Orders from previous cycles are displayed in gray when a new cycle starts</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">7. Cycle Archiving</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4 text-sm">
-              <li>Only the most recent N cycles are displayed (configurable in Settings → Max Visible Cycles, default: 10)</li>
-              <li>Older cycles are automatically archived to CSV files in logs/export/ directory</li>
-              <li>Archived cycles are no longer visible in the Orders page</li>
-              <li>Archived CSV files contain all order details including cycle information</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">⚙️ System Features</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">Product Management</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4">
-              <li>Product categories with custom sorting</li>
-              <li>Multiple cup sizes with individual pricing</li>
-              <li>Customizable sugar levels per product</li>
-              <li>Ice level options (configurable per product)</li>
-              <li>Extra toppings management</li>
-              <li>Product images support</li>
-            </ul>
-          </div>
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">Discount System</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4">
-              <li>Flexible discount rules based on total amount</li>
-              <li>Automatic discount calculation per cycle</li>
-              <li>Discount applied to all orders in a cycle</li>
-            </ul>
-          </div>
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">User Management</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4">
-              <li>Phone-based user identification</li>
-              <li>User order history</li>
-              <li>Order status tracking</li>
-            </ul>
-          </div>
-          <div>
-            <h4 class="font-semibold text-gray-900 mb-2">Admin Features</h4>
-            <ul class="list-disc list-inside space-y-1 ml-4">
-              <li>Order management and status updates</li>
-              <li>Payment screenshot verification</li>
-              <li>Cycle management and confirmation</li>
-              <li>Comprehensive operation logs</li>
-              <li>Order export to CSV</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">🔒 Security & Data</h3>
-        <div class="space-y-2 text-sm text-gray-700">
-          <p><strong>Database:</strong> SQLite with WAL mode for better concurrency</p>
-          <p><strong>Authentication:</strong> Session-based with bcrypt password hashing</p>
-          <p><strong>Rate Limiting:</strong> API rate limiting to prevent abuse</p>
-          <p><strong>Logging:</strong> Comprehensive logging with daily rotation</p>
-          <p><strong>Time Zone:</strong> Uses server local time (datetime('now', 'localtime'))</p>
-        </div>
-      </div>
     </div>
   `;
   
@@ -3423,12 +3826,6 @@ function loadAboutPage() {
   setTimeout(() => {
     // 加载备份列表
     loadBackupList();
-    
-    // 加载远程备份配置
-    loadRemoteBackupConfigs();
-    loadReceiveConfig();
-    loadPushLogs();
-    loadReceivedBackups();
   }, 100);
 }
 
@@ -3457,6 +3854,8 @@ const tableDescriptions = {
 
 // 加载开发者页面
 async function loadDeveloperPage() {
+  // 默认显示数据库表标签
+  switchDeveloperTab('db');
   await loadTablesList();
 }
 
@@ -4772,5 +5171,1036 @@ async function restoreReceivedBackup(id) {
     hideGlobalLoading();
     console.error('Restore received backup failed:', error);
     showToast('Restore failed', 'error');
+  }
+}
+
+// ==================== 文件管理 ====================
+
+let currentFileManagerPath = '';
+let currentEditingFile = null;
+let currentFileContent = null;
+let selectedFiles = new Set(); // 存储选中的文件路径
+
+// 切换Developer标签
+function switchDeveloperTab(tab) {
+  const dbTab = document.getElementById('developerDbTab');
+  const fileTab = document.getElementById('developerFileTab');
+  const dbContent = document.getElementById('developerDbContent');
+  const fileContent = document.getElementById('developerFileContent');
+  
+  if (tab === 'db') {
+    dbTab.classList.remove('bg-gray-200', 'text-gray-700');
+    dbTab.classList.add('bg-blue-600', 'text-white');
+    fileTab.classList.remove('bg-blue-600', 'text-white');
+    fileTab.classList.add('bg-gray-200', 'text-gray-700');
+    dbContent.classList.remove('hidden');
+    fileContent.classList.add('hidden');
+  } else {
+    fileTab.classList.remove('bg-gray-200', 'text-gray-700');
+    fileTab.classList.add('bg-blue-600', 'text-white');
+    dbTab.classList.remove('bg-blue-600', 'text-white');
+    dbTab.classList.add('bg-gray-200', 'text-gray-700');
+    fileContent.classList.remove('hidden');
+    dbContent.classList.add('hidden');
+    
+    // 加载文件列表
+    if (currentFileManagerPath === '') {
+      loadFileManager('/');
+    }
+  }
+}
+
+// 加载文件列表
+async function loadFileManager(path) {
+  try {
+    // 如果切换了目录，清空选中状态
+    if (currentFileManagerPath !== path) {
+      selectedFiles.clear();
+    }
+    currentFileManagerPath = path;
+    document.getElementById('fileManagerPath').textContent = path || '/';
+    
+    const response = await fetch(`${API_BASE}/admin/developer/files/list?path=${encodeURIComponent(path)}`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      const container = document.getElementById('fileManagerList');
+      container.innerHTML = data.items.map(item => {
+        const icon = item.isDirectory ? '📁' : getFileIcon(item.name);
+        const size = item.isDirectory ? '' : formatFileSize(item.size);
+        const modified = new Date(item.modified).toLocaleString();
+        const isSelected = selectedFiles.has(item.path);
+        const checkboxId = `fileCheckbox_${item.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        // 转义路径用于HTML属性
+        const escapedPath = item.path.replace(/'/g, "\\'");
+        
+        return `
+          <div class="flex items-center justify-between p-2 bg-white rounded border border-gray-200 hover:bg-gray-50 ${isSelected ? 'bg-blue-50 border-blue-300' : ''}"
+               ${item.isDirectory ? `ondblclick="fileManagerOpenFolder('${escapedPath}')"` : `ondblclick="fileManagerOpenFile('${escapedPath}')"`}>
+            <div class="flex items-center space-x-2 flex-1 min-w-0">
+              <input type="checkbox" 
+                     id="${checkboxId}"
+                     data-path="${escapeHtml(item.path)}"
+                     data-is-directory="${item.isDirectory}"
+                     ${isSelected ? 'checked' : ''}
+                     onclick="event.stopPropagation(); fileManagerToggleSelect('${escapedPath}', ${item.isDirectory}, this)"
+                     class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+              <span class="text-lg">${icon}</span>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-medium text-gray-900 truncate">${escapeHtml(item.name)}</div>
+                <div class="text-xs text-gray-500">${size} • ${modified}</div>
+              </div>
+            </div>
+            <div class="flex items-center space-x-1">
+              ${!item.isDirectory ? `
+                <button onclick="event.stopPropagation(); fileManagerDownload('${escapedPath}')" 
+                        class="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition">
+                  ⬇️
+                </button>
+              ` : ''}
+              <button onclick="event.stopPropagation(); fileManagerDelete('${escapedPath}', ${item.isDirectory})" 
+                      class="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700 transition">
+                🗑️
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      // 更新选中数量显示
+      updateSelectedCount();
+    } else {
+      showToast(data.message || 'Failed to load files', 'error');
+    }
+  } catch (error) {
+    console.error('Load file manager failed:', error);
+    showToast('Failed to load files', 'error');
+  }
+}
+
+// 获取文件图标
+function getFileIcon(fileName) {
+  const ext = fileName.split('.').pop().toLowerCase();
+  const iconMap = {
+    'js': '📜', 'json': '📋', 'html': '🌐', 'css': '🎨', 'md': '📝',
+    'log': '📄', 'txt': '📄', 'sql': '🗄️', 'sh': '⚙️', 'py': '🐍',
+    'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️', 'svg': '🖼️',
+    'pdf': '📕', 'zip': '📦', 'tar': '📦', 'gz': '📦'
+  };
+  return iconMap[ext] || '📄';
+}
+
+// 格式化文件大小
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+// 转义HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// 打开文件夹
+function fileManagerOpenFolder(path) {
+  loadFileManager(path);
+}
+
+// 检查是否为图片文件
+function isImageFile(fileName) {
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.bmp', '.ico'];
+  const ext = '.' + fileName.split('.').pop().toLowerCase();
+  return imageExtensions.includes(ext);
+}
+
+// 打开文件
+async function fileManagerOpenFile(path) {
+  try {
+    currentEditingFile = path;
+    const fileName = path.split('/').pop();
+    const isImage = isImageFile(fileName);
+    
+    // 如果是图片，直接显示预览
+    if (isImage) {
+      // 先获取文件信息以显示大小
+      const infoResponse = await fetch(`${API_BASE}/admin/developer/files/read?path=${encodeURIComponent(path)}`, {
+        credentials: 'include'
+      });
+      const infoData = await infoResponse.json();
+      
+      document.getElementById('fileEditorName').textContent = fileName;
+      document.getElementById('fileEditorSize').textContent = infoData.success ? formatFileSize(infoData.size) : '';
+      
+      // 隐藏所有编辑器
+      document.getElementById('fileEditorContent').classList.add('hidden');
+      document.getElementById('fileEditorBinary').classList.add('hidden');
+      document.getElementById('fileEditorImage').classList.remove('hidden');
+      
+      // 设置图片源（使用下载接口的预览模式）
+      const imageUrl = `${API_BASE}/admin/developer/files/download?path=${encodeURIComponent(path)}&preview=true`;
+      document.getElementById('fileEditorImagePreview').src = imageUrl;
+      currentFileContent = null;
+      
+      // 隐藏保存按钮（图片不能编辑）
+      document.getElementById('fileEditorSaveBtn').classList.add('hidden');
+      
+      document.getElementById('fileEditorPanel').classList.remove('hidden');
+      return;
+    }
+    
+    // 非图片文件，使用原有逻辑
+    const response = await fetch(`${API_BASE}/admin/developer/files/read?path=${encodeURIComponent(path)}`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      document.getElementById('fileEditorName').textContent = fileName;
+      document.getElementById('fileEditorSize').textContent = formatFileSize(data.size);
+      
+      // 隐藏图片预览
+      document.getElementById('fileEditorImage').classList.add('hidden');
+      
+      if (data.isTextFile) {
+        document.getElementById('fileEditorContent').value = data.content;
+        document.getElementById('fileEditorContent').classList.remove('hidden');
+        document.getElementById('fileEditorBinary').classList.add('hidden');
+        currentFileContent = data.content;
+        // 显示保存按钮
+        document.getElementById('fileEditorSaveBtn').classList.remove('hidden');
+      } else {
+        document.getElementById('fileEditorContent').classList.add('hidden');
+        document.getElementById('fileEditorBinary').classList.remove('hidden');
+        currentFileContent = null;
+        // 隐藏保存按钮（二进制文件不能编辑）
+        document.getElementById('fileEditorSaveBtn').classList.add('hidden');
+      }
+      
+      document.getElementById('fileEditorPanel').classList.remove('hidden');
+    } else {
+      showToast(data.message || 'Failed to read file', 'error');
+    }
+  } catch (error) {
+    console.error('Open file failed:', error);
+    showToast('Failed to read file', 'error');
+  }
+}
+
+// 保存文件
+async function fileEditorSave() {
+  if (!currentEditingFile || currentFileContent === null) {
+    showToast('Cannot save binary file', 'error');
+    return;
+  }
+  
+  try {
+    const newContent = document.getElementById('fileEditorContent').value;
+    
+    const response = await fetch(`${API_BASE}/admin/developer/files/write`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        path: currentEditingFile,
+        content: newContent
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      currentFileContent = newContent;
+      showToast('File saved successfully', 'success');
+    } else {
+      showToast(data.message || 'Failed to save file', 'error');
+    }
+  } catch (error) {
+    console.error('Save file failed:', error);
+    showToast('Failed to save file', 'error');
+  }
+}
+
+// 关闭编辑器
+function fileEditorClose() {
+  // 检查是否有未保存的文本文件更改
+  const textEditor = document.getElementById('fileEditorContent');
+  if (!textEditor.classList.contains('hidden') && currentFileContent !== null && currentFileContent !== textEditor.value) {
+    if (!confirm('You have unsaved changes. Are you sure you want to close?')) {
+      return;
+    }
+  }
+  
+  // 清除图片预览
+  document.getElementById('fileEditorImagePreview').src = '';
+  
+  document.getElementById('fileEditorPanel').classList.add('hidden');
+  currentEditingFile = null;
+  currentFileContent = null;
+}
+
+// 下载文件
+function fileManagerDownload(path) {
+  window.open(`${API_BASE}/admin/developer/files/download?path=${encodeURIComponent(path)}`, '_blank');
+}
+
+// 删除文件/目录
+async function fileManagerDelete(path, isDirectory) {
+  if (!confirm(`Are you sure you want to delete this ${isDirectory ? 'directory' : 'file'}?`)) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/developer/files?path=${encodeURIComponent(path)}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast('Deleted successfully', 'success');
+      loadFileManager(currentFileManagerPath);
+    } else {
+      showToast(data.message || 'Failed to delete', 'error');
+    }
+  } catch (error) {
+    console.error('Delete file failed:', error);
+    showToast('Failed to delete', 'error');
+  }
+}
+
+// 返回上一级
+function fileManagerGoUp() {
+  if (currentFileManagerPath === '/' || currentFileManagerPath === '') {
+    return;
+  }
+  
+  const parts = currentFileManagerPath.split('/').filter(p => p);
+  parts.pop();
+  const newPath = parts.length > 0 ? '/' + parts.join('/') : '/';
+  loadFileManager(newPath);
+}
+
+// 刷新
+function fileManagerRefresh() {
+  loadFileManager(currentFileManagerPath);
+}
+
+// 新建文件夹
+async function fileManagerNewFolder() {
+  const folderName = prompt('Enter folder name:');
+  if (!folderName) {
+    return;
+  }
+  
+  try {
+    const newPath = currentFileManagerPath === '/' 
+      ? `/${folderName}` 
+      : `${currentFileManagerPath}/${folderName}`;
+    
+    const response = await fetch(`${API_BASE}/admin/developer/files/mkdir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ path: newPath })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast('Folder created successfully', 'success');
+      loadFileManager(currentFileManagerPath);
+    } else {
+      showToast(data.message || 'Failed to create folder', 'error');
+    }
+  } catch (error) {
+    console.error('Create folder failed:', error);
+    showToast('Failed to create folder', 'error');
+  }
+}
+
+// 上传文件
+function fileManagerUpload() {
+  document.getElementById('fileUploadInput').click();
+}
+
+// 处理文件上传
+async function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) {
+    return;
+  }
+  
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', currentFileManagerPath === '/' 
+      ? `/${file.name}` 
+      : `${currentFileManagerPath}/${file.name}`);
+    
+    const response = await fetch(`${API_BASE}/admin/developer/files/upload`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast('File uploaded successfully', 'success');
+      loadFileManager(currentFileManagerPath);
+    } else {
+      showToast(data.message || 'Failed to upload file', 'error');
+    }
+  } catch (error) {
+    console.error('Upload file failed:', error);
+    showToast('Failed to upload file', 'error');
+  }
+  
+  // 重置input
+  event.target.value = '';
+}
+
+// 下载文件（编辑器中的二进制文件）
+function fileEditorDownload() {
+  if (currentEditingFile) {
+    fileManagerDownload(currentEditingFile);
+  }
+}
+
+// ==================== 文件多选功能 ====================
+
+// 切换文件选中状态
+function fileManagerToggleSelect(filePath, isDirectory, checkbox) {
+  if (checkbox.checked) {
+    selectedFiles.add(filePath);
+  } else {
+    selectedFiles.delete(filePath);
+  }
+  updateSelectedCount();
+}
+
+// 全选
+function fileManagerSelectAll() {
+  const checkboxes = document.querySelectorAll('#fileManagerList input[type="checkbox"]');
+  checkboxes.forEach(checkbox => {
+    const path = checkbox.getAttribute('data-path');
+    checkbox.checked = true;
+    selectedFiles.add(path);
+  });
+  updateSelectedCount();
+  // 重新渲染以更新样式
+  loadFileManager(currentFileManagerPath);
+}
+
+// 取消全选
+function fileManagerDeselectAll() {
+  // 只清空当前目录的选中项
+  const checkboxes = document.querySelectorAll('#fileManagerList input[type="checkbox"]');
+  checkboxes.forEach(checkbox => {
+    const path = checkbox.getAttribute('data-path');
+    checkbox.checked = false;
+    selectedFiles.delete(path);
+  });
+  updateSelectedCount();
+  // 重新渲染以更新样式
+  loadFileManager(currentFileManagerPath);
+}
+
+// 更新选中数量显示
+function updateSelectedCount() {
+  const count = selectedFiles.size;
+  const countSpan = document.getElementById('fileManagerSelectedCount');
+  const deleteBtn = document.getElementById('fileManagerDeleteSelectedBtn');
+  
+  if (countSpan) {
+    countSpan.textContent = count;
+  }
+  
+  if (deleteBtn) {
+    if (count > 0) {
+      deleteBtn.classList.remove('hidden');
+    } else {
+      deleteBtn.classList.add('hidden');
+    }
+  }
+}
+
+// 批量删除选中的文件
+async function fileManagerDeleteSelected() {
+  if (selectedFiles.size === 0) {
+    showToast('No files selected', 'error');
+    return;
+  }
+  
+  const filesToDelete = Array.from(selectedFiles);
+  const fileCount = filesToDelete.length;
+  
+  if (!confirm(`Are you sure you want to delete ${fileCount} item(s)?`)) {
+    return;
+  }
+  
+  try {
+    showGlobalLoading();
+    
+    // 逐个删除文件
+    let successCount = 0;
+    let failCount = 0;
+    const errors = [];
+    
+    for (const filePath of filesToDelete) {
+      try {
+        const response = await fetch(`${API_BASE}/admin/developer/files?path=${encodeURIComponent(filePath)}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          successCount++;
+        } else {
+          failCount++;
+          errors.push(`${filePath}: ${data.message}`);
+        }
+      } catch (error) {
+        failCount++;
+        errors.push(`${filePath}: ${error.message}`);
+      }
+    }
+    
+    hideGlobalLoading();
+    
+    // 清空选中状态
+    selectedFiles.clear();
+    updateSelectedCount();
+    
+    // 显示结果
+    if (failCount === 0) {
+      showToast(`Successfully deleted ${successCount} item(s)`, 'success');
+    } else {
+      showToast(`Deleted ${successCount} item(s), failed ${failCount} item(s)`, 'error');
+      console.error('Delete errors:', errors);
+    }
+    
+    // 刷新文件列表
+    loadFileManager(currentFileManagerPath);
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Batch delete failed:', error);
+    showToast('Failed to delete files', 'error');
+  }
+}
+
+// ==================== 菜单备份/导入功能 ====================
+
+// 备份菜单（产品和分类）
+async function backupMenu() {
+  try {
+    showGlobalLoading();
+    
+    const response = await fetch(`${API_BASE}/admin/menu/backup`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      // 下载备份文件（使用直接下载方式，避免多次重试）
+      const downloadUrl = `${API_BASE}/admin/menu/backup/download?fileName=${encodeURIComponent(data.fileName)}`;
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = data.fileName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showToast(`Backup created successfully! ${data.categories} categories, ${data.products} products, ${data.images} images`, 'success');
+    } else {
+      showToast(data.message || 'Backup failed', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Backup menu failed:', error);
+    showToast('Backup failed', 'error');
+  }
+}
+
+// 导入菜单
+function importMenu() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.zip';
+  input.onchange = async (event) => {
+    const file = event.target.files[0];
+    if (!file) {
+      return;
+    }
+    
+    if (!file.name.endsWith('.zip')) {
+      showToast('Please select a valid backup file (.zip)', 'error');
+      return;
+    }
+    
+    // 显示导入选项对话框
+    showImportMenuDialog(file);
+  };
+  
+  input.click();
+}
+
+// ==================== 产品批量编辑功能 ====================
+
+let selectedProductIds = new Set();
+
+// 更新选中产品数量
+function updateSelectedProductsCount() {
+  const checkboxes = document.querySelectorAll('.product-checkbox:checked');
+  selectedProductIds.clear();
+  checkboxes.forEach(cb => {
+    selectedProductIds.add(parseInt(cb.value));
+  });
+  
+  const count = selectedProductIds.size;
+  const countElement = document.getElementById('selectedProductsCount');
+  if (countElement) {
+    countElement.textContent = count;
+  }
+  
+  const batchEditBtn = document.getElementById('batchEditBtn');
+  if (batchEditBtn) {
+    if (count > 0) {
+      batchEditBtn.classList.remove('hidden');
+    } else {
+      batchEditBtn.classList.add('hidden');
+    }
+  }
+}
+
+// 全选/取消全选
+function toggleSelectAllProducts() {
+  const selectAll = document.getElementById('selectAllProducts');
+  const checkboxes = document.querySelectorAll('.product-checkbox');
+  checkboxes.forEach(cb => {
+    cb.checked = selectAll.checked;
+  });
+  updateSelectedProductsCount();
+}
+
+// 显示批量编辑模态框
+function showBatchEditModal() {
+  if (selectedProductIds.size === 0) {
+    showToast('Please select at least one product', 'error');
+    return;
+  }
+  
+  const modal = document.createElement('div');
+  modal.className = 'modal active';
+  modal.id = 'batchEditModal';
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 p-8 max-h-[90vh] overflow-y-auto">
+      <h3 class="text-2xl font-bold text-gray-900 mb-4">Batch Edit Products</h3>
+      <p class="text-gray-600 mb-6">Editing <span class="font-semibold">${selectedProductIds.size}</span> product(s)</p>
+      
+      <form id="batchEditForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+          <select id="batchCategory" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            <option value="">-- No Change --</option>
+          </select>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+          <select id="batchStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            <option value="">-- No Change --</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Price Adjustment</label>
+          <div class="flex gap-2">
+            <select id="batchPriceAction" class="px-4 py-2 border border-gray-300 rounded-lg">
+              <option value="">-- No Change --</option>
+              <option value="set">Set to</option>
+              <option value="add">Add</option>
+              <option value="multiply">Multiply by</option>
+            </select>
+            <input type="number" id="batchPriceValue" step="0.01" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="Value">
+          </div>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Sort Order</label>
+          <input type="number" id="batchSortOrder" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="-- No Change --">
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Cup Sizes & Prices</label>
+          <div class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50 max-h-48 overflow-y-auto">
+            <div class="text-sm text-gray-600 mb-2">Leave empty to keep current values. Format: SizeName:Price (e.g., Medium:120, Large:150)</div>
+            <textarea id="batchSizes" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm" 
+                      rows="3" placeholder="Medium:120, Large:150"></textarea>
+          </div>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Sweetness Options (甜度选项)</label>
+          <div class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
+            <div class="text-sm text-gray-600 mb-2">Leave empty to keep current values. Separate with commas (e.g., 0, 30, 50, 70, 100)</div>
+            <input type="text" id="batchSugarLevels" class="w-full px-4 py-2 border border-gray-300 rounded-lg" 
+                   placeholder="0, 30, 50, 70, 100">
+          </div>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Available Toppings (可选加料)</label>
+          <div class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
+            <div class="text-sm text-gray-600 mb-2">Leave empty to keep current values. Format: Name:Price (e.g., Cheese 芝士:20, Boba 波霸:20) or Name only</div>
+            <input type="text" id="batchAvailableToppings" class="w-full px-4 py-2 border border-gray-300 rounded-lg" 
+                   placeholder="Cheese 芝士:20, Boba 波霸:20, Cream 奶盖:20">
+          </div>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Available Ice Options</label>
+          <div class="border border-gray-300 rounded-lg p-4 bg-gray-50">
+            <div class="text-sm text-gray-600 mb-2">Select options (leave unchecked to keep current values)</div>
+            <div class="space-y-2">
+              <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" class="batch-ice-option" value="normal">
+                <span class="text-sm text-gray-700">Normal Ice 正常冰</span>
+              </label>
+              <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" class="batch-ice-option" value="less">
+                <span class="text-sm text-gray-700">Less Ice 少冰</span>
+              </label>
+              <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" class="batch-ice-option" value="no">
+                <span class="text-sm text-gray-700">No Ice 去冰</span>
+              </label>
+              <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" class="batch-ice-option" value="room">
+                <span class="text-sm text-gray-700">Room Temperature 常温</span>
+              </label>
+              <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" class="batch-ice-option" value="hot">
+                <span class="text-sm text-gray-700">Hot 热</span>
+              </label>
+            </div>
+            <div class="mt-2">
+              <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="batchIceOptionsSet">
+                <span class="text-xs text-gray-600">Set these options (otherwise keep current values)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <div class="flex space-x-3 mt-6">
+          <button type="button" onclick="closeBatchEditModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
+            Cancel
+          </button>
+          <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
+            Apply Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // 加载分类列表
+  loadCategoriesForBatchEdit();
+  
+  // 设置表单提交事件
+  document.getElementById('batchEditForm').addEventListener('submit', saveBatchEdit);
+  
+  // 添加关闭事件
+  modal.querySelector('.bg-white').addEventListener('click', (e) => e.stopPropagation());
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeBatchEditModal();
+    }
+  });
+}
+
+// 加载分类列表（用于批量编辑）
+async function loadCategoriesForBatchEdit() {
+  try {
+    const response = await fetch(`${API_BASE}/admin/categories`, { credentials: 'include' });
+    const data = await response.json();
+    if (data.success) {
+      const select = document.getElementById('batchCategory');
+      select.innerHTML = '<option value="">-- No Change --</option>' +
+        data.categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
+    }
+  } catch (error) {
+    console.error('加载分类失败:', error);
+  }
+}
+
+// 关闭批量编辑模态框
+function closeBatchEditModal() {
+  const modal = document.getElementById('batchEditModal');
+  if (modal) {
+    modal.remove();
+  }
+}
+
+// 保存批量编辑
+async function saveBatchEdit(e) {
+  e.preventDefault();
+  
+  const categoryId = document.getElementById('batchCategory').value;
+  const status = document.getElementById('batchStatus').value;
+  const priceAction = document.getElementById('batchPriceAction').value;
+  const priceValue = document.getElementById('batchPriceValue').value;
+  const sortOrder = document.getElementById('batchSortOrder').value;
+  
+  // 收集杯型价格
+  const sizesText = document.getElementById('batchSizes').value.trim();
+  let sizes = null;
+  if (sizesText) {
+    try {
+      sizes = {};
+      // 解析格式: "Medium:120, Large:150" 或 "Medium:120,Large:150"
+      const pairs = sizesText.split(',').map(p => p.trim());
+      pairs.forEach(pair => {
+        const [name, price] = pair.split(':').map(s => s.trim());
+        if (name && price) {
+          sizes[name] = parseFloat(price);
+        }
+      });
+    } catch (e) {
+      showToast('Invalid sizes format. Use: SizeName:Price (e.g., Medium:120, Large:150)', 'error');
+      return;
+    }
+  }
+  
+  // 收集甜度选项
+  const sugarLevelsText = document.getElementById('batchSugarLevels').value.trim();
+  let sugarLevels = null;
+  if (sugarLevelsText) {
+    sugarLevels = sugarLevelsText.split(',').map(s => s.trim()).filter(s => s);
+  }
+  
+  // 收集可选加料（名称和价格格式：Name:Price,Name:Price 或 Name,Name）
+  const toppingsText = document.getElementById('batchAvailableToppings').value.trim();
+  let availableToppings = null;
+  if (toppingsText) {
+    try {
+      // 解析格式: "Cheese 芝士:20, Boba 波霸:20" 或 "Cheese 芝士, Boba 波霸"
+      availableToppings = toppingsText.split(',').map(s => {
+        const trimmed = s.trim();
+        if (trimmed.includes(':')) {
+          // 有价格的格式：Name:Price
+          const [name, price] = trimmed.split(':').map(p => p.trim());
+          return { name: name, price: price ? parseFloat(price) : 0 };
+        } else {
+          // 只有名称的格式：Name
+          return { name: trimmed, price: 0 };
+        }
+      }).filter(t => t.name);
+    } catch (e) {
+      showToast('Invalid toppings format. Use: Name:Price (e.g., Cheese 芝士:20, Boba 波霸:20)', 'error');
+      return;
+    }
+  }
+  
+  // 收集冰度选项
+  const iceOptionsSet = document.getElementById('batchIceOptionsSet').checked;
+  let iceOptions = null;
+  if (iceOptionsSet) {
+    const selectedIceOptions = [];
+    document.querySelectorAll('.batch-ice-option:checked').forEach(cb => {
+      selectedIceOptions.push(cb.value);
+    });
+    if (selectedIceOptions.length > 0) {
+      iceOptions = selectedIceOptions;
+    }
+  }
+  
+  const updates = {};
+  if (categoryId) updates.category_id = categoryId;
+  if (status) updates.status = status;
+  if (priceAction && priceValue) {
+    updates.price_action = priceAction;
+    updates.price_value = parseFloat(priceValue);
+  }
+  if (sortOrder !== '') updates.sort_order = parseInt(sortOrder);
+  if (sizes !== null) updates.sizes = sizes;
+  if (sugarLevels !== null) updates.sugar_levels = sugarLevels;
+  if (availableToppings !== null) updates.available_toppings = availableToppings;
+  if (iceOptions !== null) updates.ice_options = iceOptions;
+  
+  if (Object.keys(updates).length === 0) {
+    showToast('Please select at least one field to update', 'error');
+    return;
+  }
+  
+  try {
+    showGlobalLoading();
+    
+    const response = await fetch(`${API_BASE}/admin/products/batch-update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        product_ids: Array.from(selectedProductIds),
+        updates: updates
+      })
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      showToast(`Successfully updated ${data.updated} product(s)`, 'success');
+      closeBatchEditModal();
+      selectedProductIds.clear();
+      updateSelectedProductsCount();
+      loadProducts();
+    } else {
+      showToast(data.message || 'Batch update failed', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Batch update failed:', error);
+    showToast('Batch update failed', 'error');
+  }
+}
+
+// 显示导入菜单选项对话框
+function showImportMenuDialog(file) {
+  // 创建模态框
+  const modal = document.createElement('div');
+  modal.className = 'modal active';
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
+      <h3 class="text-2xl font-bold text-gray-900 mb-4">Import Menu</h3>
+      <p class="text-gray-600 mb-6">File: <span class="font-semibold">${file.name}</span></p>
+      
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-3">Import Mode:</label>
+        <div class="space-y-3">
+          <label class="flex items-start p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+            <input type="radio" name="importMode" value="merge" class="mt-1 mr-3" checked>
+            <div>
+              <div class="font-semibold text-gray-900">Merge (Keep Existing)</div>
+              <div class="text-sm text-gray-500">Keep current data. Duplicate items (by name) will be replaced.</div>
+            </div>
+          </label>
+          <label class="flex items-start p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+            <input type="radio" name="importMode" value="replace" class="mt-1 mr-3">
+            <div>
+              <div class="font-semibold text-gray-900">Replace (Clear All)</div>
+              <div class="text-sm text-gray-500">Clear all existing categories and products, then import from backup.</div>
+            </div>
+          </label>
+        </div>
+      </div>
+      
+      <div class="flex space-x-3">
+        <button onclick="closeImportMenuDialog()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
+          Cancel
+        </button>
+        <button onclick="confirmImportMenu(event)" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
+          Import
+        </button>
+      </div>
+    </div>
+  `;
+  
+  // 存储文件引用
+  modal.dataset.file = JSON.stringify({ name: file.name, size: file.size });
+  modal.dataset.fileInput = 'temp'; // 标记需要重新获取文件
+  
+  // 添加关闭事件
+  modal.querySelector('.bg-white').addEventListener('click', (e) => e.stopPropagation());
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeImportMenuDialog();
+    }
+  });
+  
+  document.body.appendChild(modal);
+  
+  // 存储文件到全局变量（因为input会丢失文件引用）
+  window._pendingImportFile = file;
+}
+
+// 关闭导入对话框
+function closeImportMenuDialog() {
+  const modal = document.querySelector('.modal.active');
+  if (modal && modal.querySelector('input[name="importMode"]')) {
+    modal.remove();
+  }
+  window._pendingImportFile = null;
+}
+
+// 确认导入
+async function confirmImportMenu(event) {
+  const modal = event.target.closest('.modal');
+  if (!modal) return;
+  
+  const importMode = modal.querySelector('input[name="importMode"]:checked').value;
+  const clearExisting = importMode === 'replace';
+  
+  const file = window._pendingImportFile;
+  if (!file) {
+    showToast('File not found', 'error');
+    closeImportMenuDialog();
+    return;
+  }
+  
+  closeImportMenuDialog();
+  
+  try {
+    showGlobalLoading();
+    
+    const formData = new FormData();
+    formData.append('backupFile', file);
+    formData.append('clearExisting', clearExisting.toString());
+    
+    const response = await fetch(`${API_BASE}/admin/menu/import`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+    
+    const data = await response.json();
+    hideGlobalLoading();
+    
+    if (data.success) {
+      const modeText = clearExisting ? 'replaced' : 'merged';
+      showToast(`Menu imported successfully (${modeText})! ${data.categories} categories, ${data.products} products`, 'success');
+      // 刷新页面数据
+      if (currentTab === 'products') {
+        loadProducts();
+      } else if (currentTab === 'categories') {
+        loadCategories();
+      }
+    } else {
+      showToast(data.message || 'Import failed', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Import menu failed:', error);
+    showToast('Import failed', 'error');
+  } finally {
+    window._pendingImportFile = null;
   }
 }

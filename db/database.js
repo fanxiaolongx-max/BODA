@@ -306,6 +306,10 @@ async function initDatabase() {
     // 迁移远程备份表
     const { migrateRemoteBackup } = require('./migrate-remote-backup');
     await migrateRemoteBackup();
+    
+    // 迁移系统设置（检查并创建缺失的设置项）
+    const { migrateSettings } = require('./migrate-settings');
+    await migrateSettings();
   } catch (error) {
     console.error('数据库表初始化失败:', error);
     console.error('错误堆栈:', error.stack);
@@ -333,6 +337,21 @@ async function migrateDatabaseSchema() {
     const productsInfo = await getTableInfo('products');
     const productColumns = productsInfo.map(col => col.name);
     
+    if (!productColumns.includes('sizes')) {
+      console.log('自动迁移: 添加 products.sizes 字段...');
+      await runAsync('ALTER TABLE products ADD COLUMN sizes TEXT DEFAULT "{}"');
+    }
+    
+    if (!productColumns.includes('sugar_levels')) {
+      console.log('自动迁移: 添加 products.sugar_levels 字段...');
+      await runAsync('ALTER TABLE products ADD COLUMN sugar_levels TEXT DEFAULT \'["0","30","50","70","100"]\'');
+    }
+    
+    if (!productColumns.includes('available_toppings')) {
+      console.log('自动迁移: 添加 products.available_toppings 字段...');
+      await runAsync('ALTER TABLE products ADD COLUMN available_toppings TEXT DEFAULT "[]"');
+    }
+    
     if (!productColumns.includes('ice_options')) {
       console.log('自动迁移: 添加 products.ice_options 字段...');
       await runAsync('ALTER TABLE products ADD COLUMN ice_options TEXT DEFAULT \'["normal","less","no","room","hot"]\'');
@@ -341,6 +360,21 @@ async function migrateDatabaseSchema() {
     // 检查 order_items 表的字段
     const orderItemsInfo = await getTableInfo('order_items');
     const orderItemsColumns = orderItemsInfo.map(col => col.name);
+    
+    if (!orderItemsColumns.includes('size')) {
+      console.log('自动迁移: 添加 order_items.size 字段...');
+      await runAsync('ALTER TABLE order_items ADD COLUMN size TEXT');
+    }
+    
+    if (!orderItemsColumns.includes('sugar_level')) {
+      console.log('自动迁移: 添加 order_items.sugar_level 字段...');
+      await runAsync('ALTER TABLE order_items ADD COLUMN sugar_level TEXT');
+    }
+    
+    if (!orderItemsColumns.includes('toppings')) {
+      console.log('自动迁移: 添加 order_items.toppings 字段...');
+      await runAsync('ALTER TABLE order_items ADD COLUMN toppings TEXT');
+    }
     
     if (!orderItemsColumns.includes('ice_level')) {
       console.log('自动迁移: 添加 order_items.ice_level 字段...');
@@ -351,6 +385,11 @@ async function migrateDatabaseSchema() {
       console.log('自动迁移: 添加 order_items.notes 字段...');
       await runAsync('ALTER TABLE order_items ADD COLUMN notes TEXT');
     }
+    
+    if (!orderItemsColumns.includes('size_price')) {
+      console.log('自动迁移: 添加 order_items.size_price 字段...');
+      await runAsync('ALTER TABLE order_items ADD COLUMN size_price REAL');
+    }
 
     // 检查 orders 表的字段
     const ordersInfo = await getTableInfo('orders');
@@ -359,6 +398,11 @@ async function migrateDatabaseSchema() {
     if (!ordersColumns.includes('notes')) {
       console.log('自动迁移: 添加 orders.notes 字段...');
       await runAsync('ALTER TABLE orders ADD COLUMN notes TEXT');
+    }
+    
+    if (!ordersColumns.includes('cycle_id')) {
+      console.log('自动迁移: 添加 orders.cycle_id 字段...');
+      await runAsync('ALTER TABLE orders ADD COLUMN cycle_id INTEGER');
     }
 
     console.log('数据库架构迁移完成');

@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const sharp = require('sharp');
 
 // 支持 fly.io 持久化卷
 const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
@@ -21,6 +22,8 @@ const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = 
 const { batchGetOrderItems } = require('../utils/order-helper');
 const cache = require('../utils/cache');
 const { backupDatabase, backupFull, getBackupList, restoreDatabase, deleteBackup } = require('../utils/backup');
+const archiver = require('archiver');
+const AdmZip = require('adm-zip');
 const { cleanupOldFiles, getCleanupInfo } = require('../utils/cleanup');
 const { 
   pushBackupToRemote, 
@@ -213,6 +216,54 @@ const upload = multer({
   }
 });
 
+// 图片压缩函数（针对产品图片，用户端显示较小）
+async function compressProductImage(imagePath) {
+  try {
+    const stats = await fs.promises.stat(imagePath);
+    const originalSize = stats.size;
+    
+    // 读取图片信息
+    const metadata = await sharp(imagePath).metadata();
+    
+    // 计算目标尺寸（用户端显示为 80x80，但保留一些余量，设置为 200x200）
+    const maxWidth = 200;
+    const maxHeight = 200;
+    
+    // 如果图片已经很小，不需要压缩
+    if (metadata.width <= maxWidth && metadata.height <= maxHeight && originalSize < 50 * 1024) {
+      return { compressed: false, originalSize, finalSize: originalSize };
+    }
+    
+    // 压缩图片：调整大小、转换为 JPEG 格式、降低质量
+    const compressedBuffer = await sharp(imagePath)
+      .resize(maxWidth, maxHeight, {
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .jpeg({ quality: 80, mozjpeg: true }) // 转换为 JPEG，质量 80%
+      .toBuffer();
+    
+    // 覆盖原文件
+    await fs.promises.writeFile(imagePath, compressedBuffer);
+    
+    const finalSize = compressedBuffer.length;
+    const compressionRatio = ((1 - finalSize / originalSize) * 100).toFixed(1);
+    
+    logger.info('图片压缩完成', {
+      file: path.basename(imagePath),
+      originalSize: `${(originalSize / 1024).toFixed(2)} KB`,
+      finalSize: `${(finalSize / 1024).toFixed(2)} KB`,
+      compressionRatio: `${compressionRatio}%`
+    });
+    
+    return { compressed: true, originalSize, finalSize, compressionRatio };
+  } catch (error) {
+    logger.error('图片压缩失败', { error: error.message, file: imagePath });
+    // 压缩失败不影响上传，返回原文件
+    return { compressed: false, error: error.message };
+  }
+}
+
 // ==================== 菜单分类管理 ====================
 
 // 获取所有分类
@@ -342,6 +393,13 @@ router.get('/products', async (req, res) => {
 router.post('/products', upload.single('image'), async (req, res) => {
   try {
     const { name, description, price, category_id, sort_order, status, sizes, ice_options } = req.body;
+    
+    // 如果有上传图片，先压缩
+    if (req.file) {
+      const imagePath = path.join(DATA_DIR, 'uploads/products', req.file.filename);
+      await compressProductImage(imagePath);
+    }
+    
     const image_url = req.file ? `/uploads/products/${req.file.filename}` : null;
     
     // 处理杯型价格
@@ -362,20 +420,43 @@ router.post('/products', upload.single('image'), async (req, res) => {
       }
     }
 
+    // 处理甜度选项
+    let sugarLevelsJson = '["0","30","50","70","100"]';
+    if (req.body.sugar_levels !== undefined) {
+      const sugarLevelsValue = req.body.sugar_levels;
+      if (sugarLevelsValue && sugarLevelsValue !== '' && sugarLevelsValue !== '[]') {
+        try {
+          const parsedSugarLevels = typeof sugarLevelsValue === 'string' ? JSON.parse(sugarLevelsValue) : sugarLevelsValue;
+          if (Array.isArray(parsedSugarLevels)) {
+            sugarLevelsJson = JSON.stringify(parsedSugarLevels);
+          }
+        } catch (e) {
+          logger.error('Invalid sugar_levels format', { error: e.message, sugarLevelsValue });
+        }
+      } else if (sugarLevelsValue === '[]') {
+        sugarLevelsJson = '[]'; // 不允许选择甜度
+      }
+    }
+    
     // 处理可选加料
     let availableToppingsJson = '[]';
     if (req.body.available_toppings !== undefined) {
       const toppingsValue = req.body.available_toppings;
-      if (toppingsValue && toppingsValue !== '' && toppingsValue !== '[]') {
+      // 重要：即使是空数组也要保存
+      if (toppingsValue !== undefined && toppingsValue !== null) {
         try {
           const parsedToppings = typeof toppingsValue === 'string' ? JSON.parse(toppingsValue) : toppingsValue;
           if (Array.isArray(parsedToppings)) {
             availableToppingsJson = JSON.stringify(parsedToppings);
+          } else {
+            availableToppingsJson = '[]';
           }
         } catch (e) {
           logger.error('Invalid available_toppings format', { error: e.message, toppingsValue });
           availableToppingsJson = '[]';
         }
+      } else if (toppingsValue === '[]' || toppingsValue === '') {
+        availableToppingsJson = '[]';
       }
     }
     
@@ -399,9 +480,9 @@ router.post('/products', upload.single('image'), async (req, res) => {
     }
 
     const result = await runAsync(
-      `INSERT INTO products (name, description, price, category_id, image_url, sort_order, status, sizes, available_toppings, ice_options) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, description || '', price, category_id || null, image_url, sort_order || 0, status || 'active', sizesJson, availableToppingsJson, iceOptionsJson]
+      `INSERT INTO products (name, description, price, category_id, image_url, sort_order, status, sizes, sugar_levels, available_toppings, ice_options) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, description || '', price, category_id || null, image_url, sort_order || 0, status || 'active', sizesJson, sugarLevelsJson, availableToppingsJson, iceOptionsJson]
     );
 
     await logAction(req.session.adminId, 'CREATE', 'product', result.id, { name, price, sizes: sizesJson }, req);
@@ -426,6 +507,12 @@ router.put('/products/:id', upload.single('image'), async (req, res) => {
     const oldProduct = await getAsync('SELECT * FROM products WHERE id = ?', [id]);
     if (!oldProduct) {
       return res.status(404).json({ success: false, message: '菜品不存在' });
+    }
+
+    // 如果有新上传的图片，先压缩
+    if (req.file) {
+      const imagePath = path.join(DATA_DIR, 'uploads/products', req.file.filename);
+      await compressProductImage(imagePath);
     }
 
     const image_url = req.file ? `/uploads/products/${req.file.filename}` : oldProduct.image_url;
@@ -460,15 +547,37 @@ router.put('/products/:id', upload.single('image'), async (req, res) => {
       }
     }
     
+    // 处理甜度选项
+    let sugarLevelsJson = oldProduct.sugar_levels || '["0","30","50","70","100"]';
+    if (req.body.sugar_levels !== undefined) {
+      const sugarLevelsValue = req.body.sugar_levels;
+      if (sugarLevelsValue && sugarLevelsValue !== '' && sugarLevelsValue !== '[]') {
+        try {
+          const parsedSugarLevels = typeof sugarLevelsValue === 'string' ? JSON.parse(sugarLevelsValue) : sugarLevelsValue;
+          if (Array.isArray(parsedSugarLevels)) {
+            sugarLevelsJson = JSON.stringify(parsedSugarLevels);
+          }
+        } catch (e) {
+          logger.error('Invalid sugar_levels format', { error: e.message, sugarLevelsValue });
+          sugarLevelsJson = oldProduct.sugar_levels || '["0","30","50","70","100"]';
+        }
+      } else if (sugarLevelsValue === '[]' || sugarLevelsValue === '') {
+        sugarLevelsJson = '[]'; // 不允许选择甜度
+      }
+    }
+    
     // 处理可选加料
     let availableToppingsJson = oldProduct.available_toppings || '[]';
     if (req.body.available_toppings !== undefined) {
       const toppingsValue = req.body.available_toppings;
-      if (toppingsValue && toppingsValue !== '' && toppingsValue !== '[]') {
+      // 重要：即使是空数组也要保存
+      if (toppingsValue !== undefined && toppingsValue !== null) {
         try {
           const parsedToppings = typeof toppingsValue === 'string' ? JSON.parse(toppingsValue) : toppingsValue;
           if (Array.isArray(parsedToppings)) {
             availableToppingsJson = JSON.stringify(parsedToppings);
+          } else {
+            availableToppingsJson = '[]';
           }
         } catch (e) {
           logger.error('Invalid available_toppings format', { error: e.message, toppingsValue });
@@ -515,6 +624,7 @@ router.put('/products/:id', upload.single('image'), async (req, res) => {
     if (columns.includes('sort_order')) updateFields.push('sort_order = ?'), updateValues.push(sort_order || 0);
     if (columns.includes('status')) updateFields.push('status = ?'), updateValues.push(status || 'active');
     if (columns.includes('sizes')) updateFields.push('sizes = ?'), updateValues.push(sizesJson);
+    if (columns.includes('sugar_levels')) updateFields.push('sugar_levels = ?'), updateValues.push(sugarLevelsJson);
     if (columns.includes('available_toppings')) updateFields.push('available_toppings = ?'), updateValues.push(availableToppingsJson);
     if (columns.includes('ice_options')) updateFields.push('ice_options = ?'), updateValues.push(iceOptionsJson);
     if (columns.includes('updated_at')) updateFields.push("updated_at = datetime('now', 'localtime')");
@@ -547,16 +657,191 @@ router.delete('/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    await runAsync('UPDATE products SET status = ? WHERE id = ?', ['deleted', id]);
-    await logAction(req.session.adminId, 'DELETE', 'product', id, null, req);
+    // 先获取产品信息，以便删除关联的图片
+    const product = await getAsync('SELECT image_url FROM products WHERE id = ?', [id]);
     
-    // 清除相关缓存
-    clearRelatedCache();
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
 
-    res.json({ success: true, message: '菜品删除成功' });
+    await beginTransaction();
+    
+    try {
+      // 删除关联的订单详情（因为外键约束）
+      await runAsync('DELETE FROM order_items WHERE product_id = ?', [id]);
+      
+      // 删除产品
+      await runAsync('DELETE FROM products WHERE id = ?', [id]);
+      
+      // 删除关联的图片文件
+      if (product.image_url) {
+        const imagePath = product.image_url.startsWith('/') 
+          ? path.join(DATA_DIR, product.image_url.substring(1))
+          : path.join(DATA_DIR, product.image_url);
+        
+        if (fs.existsSync(imagePath)) {
+          try {
+            fs.unlinkSync(imagePath);
+            logger.info('删除产品图片', { imagePath, productId: id });
+          } catch (error) {
+            logger.warn('删除产品图片失败', { imagePath, error: error.message, productId: id });
+            // 图片删除失败不影响产品删除
+          }
+        }
+      }
+      
+      await commit();
+      
+      await logAction(req.session.adminId, 'DELETE', 'product', id, JSON.stringify({
+        action: '删除产品',
+        productId: id,
+        imageDeleted: !!product.image_url
+      }), req);
+      
+      // 清除相关缓存
+      clearRelatedCache();
+
+      res.json({ success: true, message: 'Product deleted successfully' });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
   } catch (error) {
-    logger.error('删除菜品失败', { error: error.message });
-    res.status(500).json({ success: false, message: '删除菜品失败' });
+    logger.error('删除菜品失败', { error: error.message, productId: req.params.id });
+    res.status(500).json({ success: false, message: '删除菜品失败: ' + error.message });
+  }
+});
+
+// 批量更新产品
+router.post('/products/batch-update', async (req, res) => {
+  try {
+    const { product_ids, updates } = req.body;
+    
+    if (!Array.isArray(product_ids) || product_ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'Product IDs are required' });
+    }
+    
+    if (!updates || Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one update field is required' });
+    }
+    
+    await beginTransaction();
+    
+    try {
+      let updatedCount = 0;
+      
+      for (const productId of product_ids) {
+        // 获取当前产品信息
+        const product = await getAsync('SELECT * FROM products WHERE id = ?', [productId]);
+        if (!product) {
+          continue;
+        }
+        
+        // 构建更新字段
+        const updateFields = [];
+        const updateValues = [];
+        
+        if (updates.category_id !== undefined) {
+          updateFields.push('category_id = ?');
+          updateValues.push(updates.category_id || null);
+        }
+        
+        if (updates.status !== undefined) {
+          updateFields.push('status = ?');
+          updateValues.push(updates.status);
+        }
+        
+        if (updates.sort_order !== undefined) {
+          updateFields.push('sort_order = ?');
+          updateValues.push(updates.sort_order);
+        }
+        
+        // 处理价格调整
+        if (updates.price_action && updates.price_value !== undefined) {
+          let newPrice = product.price;
+          if (updates.price_action === 'set') {
+            newPrice = updates.price_value;
+          } else if (updates.price_action === 'add') {
+            newPrice = product.price + updates.price_value;
+          } else if (updates.price_action === 'multiply') {
+            newPrice = product.price * updates.price_value;
+          }
+          updateFields.push('price = ?');
+          updateValues.push(newPrice);
+        }
+        
+        // 处理杯型价格
+        if (updates.sizes !== undefined) {
+          const sizesJson = typeof updates.sizes === 'object' 
+            ? JSON.stringify(updates.sizes) 
+            : updates.sizes;
+          updateFields.push('sizes = ?');
+          updateValues.push(sizesJson);
+        }
+        
+        // 处理甜度选项
+        if (updates.sugar_levels !== undefined) {
+          const sugarLevelsJson = Array.isArray(updates.sugar_levels)
+            ? JSON.stringify(updates.sugar_levels)
+            : updates.sugar_levels;
+          updateFields.push('sugar_levels = ?');
+          updateValues.push(sugarLevelsJson);
+        }
+        
+        // 处理可选加料
+        if (updates.available_toppings !== undefined) {
+          const availableToppingsJson = Array.isArray(updates.available_toppings)
+            ? JSON.stringify(updates.available_toppings)
+            : updates.available_toppings;
+          updateFields.push('available_toppings = ?');
+          updateValues.push(availableToppingsJson);
+        }
+        
+        // 处理冰度选项
+        if (updates.ice_options !== undefined) {
+          const iceOptionsJson = Array.isArray(updates.ice_options)
+            ? JSON.stringify(updates.ice_options)
+            : updates.ice_options;
+          updateFields.push('ice_options = ?');
+          updateValues.push(iceOptionsJson);
+        }
+        
+        if (updateFields.length > 0) {
+          updateFields.push("updated_at = datetime('now', 'localtime')");
+          updateValues.push(productId);
+          
+          await runAsync(
+            `UPDATE products SET ${updateFields.join(', ')} WHERE id = ?`,
+            updateValues
+          );
+          updatedCount++;
+        }
+      }
+      
+      await commit();
+      
+      // 清除缓存
+      clearRelatedCache();
+      
+      await logAction(req.session.adminId, 'BATCH_UPDATE', 'product', null, JSON.stringify({
+        action: '批量更新产品',
+        productIds: product_ids,
+        updates: updates,
+        updatedCount: updatedCount
+      }), req);
+      
+      res.json({
+        success: true,
+        message: `Successfully updated ${updatedCount} product(s)`,
+        updated: updatedCount
+      });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('批量更新产品失败', { error: error.message });
+    res.status(500).json({ success: false, message: '批量更新失败: ' + error.message });
   }
 });
 
@@ -638,6 +923,7 @@ router.post('/settings', async (req, res) => {
   try {
     const settings = req.body;
     const { beginTransaction, commit, rollback } = require('../db/database');
+    const { clearSettingsCache } = require('../utils/log-helper');
 
     await beginTransaction();
     
@@ -735,6 +1021,11 @@ router.post('/settings', async (req, res) => {
 
       await commit();
       await logAction(req.session.adminId, 'UPDATE', 'settings', null, settings, req);
+      
+      // 如果更新了日志相关设置，清除缓存（在事务提交后，确保立即生效）
+      if (settings.debug_logging_enabled !== undefined) {
+        clearSettingsCache();
+      }
       
       // 清除相关缓存
       clearRelatedCache();
@@ -1047,9 +1338,19 @@ router.get('/orders', async (req, res) => {
   }
 });
 
+// 归档检查缓存（避免短时间内重复执行）
+let lastArchiveCheck = 0;
+const ARCHIVE_CHECK_INTERVAL = 5000; // 5秒内只执行一次
+
 // 归档超过最大可见周期数的订单
 async function archiveOldCycles() {
   try {
+    // 检查缓存，避免短时间内重复执行
+    const now = Date.now();
+    if (now - lastArchiveCheck < ARCHIVE_CHECK_INTERVAL) {
+      return; // 最近刚检查过，跳过
+    }
+    lastArchiveCheck = now;
     // 获取最大可见周期数设置
     const maxVisibleSetting = await getAsync("SELECT value FROM settings WHERE key = 'max_visible_cycles'");
     const maxVisibleCycles = parseInt(maxVisibleSetting?.value || '10', 10);
@@ -1069,6 +1370,11 @@ async function archiveOldCycles() {
         fs.mkdirSync(exportDir, { recursive: true });
       }
       
+      // 统计信息
+      let archivedCount = 0;
+      let skippedCount = 0;
+      let emptyCount = 0;
+      
       // 为每个需要归档的周期导出订单
       for (const cycle of cyclesToArchive) {
         // 检查是否已经归档过（通过检查文件是否存在）
@@ -1079,8 +1385,8 @@ async function archiveOldCycles() {
         const archiveFilePath = path.join(exportDir, archiveFileName);
         
         if (fs.existsSync(archiveFilePath)) {
-          logger.info('Cycle already archived', { cycleId: cycle.id, cycleNumber: cycle.cycle_number });
-          continue; // 已经归档过，跳过
+          skippedCount++; // 已经归档过，跳过
+          continue;
         }
         
         // 获取该周期的所有订单
@@ -1096,7 +1402,7 @@ async function archiveOldCycles() {
         );
         
         if (orders.length === 0) {
-          logger.info('No orders to archive for cycle', { cycleId: cycle.id, cycleNumber: cycle.cycle_number });
+          emptyCount++; // 没有订单，跳过
           continue;
         }
         
@@ -1110,6 +1416,19 @@ async function archiveOldCycles() {
         
         // 生成CSV内容
         const csvRows = [];
+        
+        // 获取基础URL（从环境变量或设置中获取，如果没有则使用默认值）
+        // 优先使用环境变量，如果没有则尝试从设置中获取，最后使用默认值
+        let baseUrl = process.env.BASE_URL || process.env.DOMAIN;
+        if (!baseUrl) {
+          // 尝试从设置中获取域名
+          const domainSetting = await getAsync("SELECT value FROM settings WHERE key = 'domain'");
+          baseUrl = domainSetting?.value || 'http://localhost:3000';
+        }
+        // 确保 baseUrl 是完整的 URL（包含协议）
+        if (baseUrl && !baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+          baseUrl = `http://${baseUrl}`;
+        }
         
         // CSV头部
         csvRows.push([
@@ -1132,7 +1451,8 @@ async function archiveOldCycles() {
           'Created At',
           'Updated At',
           'Cycle ID',
-          'Cycle Number'
+          'Cycle Number',
+          'Payment Screenshot Link'
         ].join(','));
         
         // 订单数据
@@ -1154,10 +1474,32 @@ async function archiveOldCycles() {
                 `"${order.status === 'pending' ? 'Pending Payment' : order.status === 'paid' ? 'Paid' : order.status === 'completed' ? 'Completed' : 'Cancelled'}"`,
                 `"${item.product_name || ''}"`,
                 item.quantity || 0,
-                `"${item.size || ''}"`,
+                `"${item.size ? (item.size + (item.size_price !== undefined && item.size_price !== null && item.size_price > 0 ? ` (${item.size_price.toFixed(2)})` : '')) : ''}"`,
                 `"${item.sugar_level || ''}"`,
                 `"${item.ice_level ? (iceLabels[item.ice_level] || item.ice_level) : ''}"`,
-                `"${item.toppings ? (typeof item.toppings === 'string' ? item.toppings : JSON.stringify(item.toppings)).replace(/"/g, '""') : ''}"`,
+                `"${(() => {
+                  if (!item.toppings) return '';
+                  try {
+                    // 解析加料数据
+                    let toppings = typeof item.toppings === 'string' ? JSON.parse(item.toppings) : item.toppings;
+                    if (!Array.isArray(toppings)) return '';
+                    
+                    // 格式化加料显示：如果是对象数组（包含name和price），显示为 "Name (Price)"；如果是字符串数组，只显示名称
+                    const formatted = toppings.map(t => {
+                      if (typeof t === 'object' && t !== null && t.name) {
+                        // 对象格式：包含名称和价格
+                        return t.price && t.price > 0 ? `${t.name} (${t.price.toFixed(2)})` : t.name;
+                      } else {
+                        // 字符串格式：只有名称
+                        return String(t);
+                      }
+                    });
+                    return formatted.join('; ');
+                  } catch (e) {
+                    // 如果解析失败，返回原始字符串
+                    return typeof item.toppings === 'string' ? item.toppings : String(item.toppings);
+                  }
+                })().replace(/"/g, '""')}"`,
                 (item.product_price || 0).toFixed(2),
                 (item.subtotal || 0).toFixed(2),
                 (order.total_amount || 0).toFixed(2),
@@ -1167,7 +1509,8 @@ async function archiveOldCycles() {
                 `"${order.created_at || ''}"`,
                 `"${order.updated_at || ''}"`,
                 `"${cycle.id}"`,
-                `"${cycle.cycle_number || ''}"`
+                `"${cycle.cycle_number || ''}"`,
+                `"${order.payment_image ? `${baseUrl}${order.payment_image}` : ''}"`
               ];
               csvRows.push(row.join(','));
             }
@@ -1193,7 +1536,8 @@ async function archiveOldCycles() {
               `"${order.created_at || ''}"`,
               `"${order.updated_at || ''}"`,
               `"${cycle.id}"`,
-              `"${cycle.cycle_number || ''}"`
+              `"${cycle.cycle_number || ''}"`,
+              `"${order.payment_image ? `${baseUrl}${order.payment_image}` : ''}"`
             ];
             csvRows.push(row.join(','));
           }
@@ -1204,12 +1548,23 @@ async function archiveOldCycles() {
         // 写入文件
         fs.writeFileSync(archiveFilePath, '\ufeff' + csvContent, 'utf8');
         
-        logger.info('Cycle archived successfully', {
-          cycleId: cycle.id,
-          cycleNumber: cycle.cycle_number,
-          orderCount: orders.length,
-          filePath: archiveFilePath
-        });
+        archivedCount++; // 成功归档
+      }
+      
+      // 汇总日志（只在有操作或需要记录时才输出）
+      if (cyclesToArchive.length > 0) {
+        // 只在开启详细日志或真正执行了归档操作时记录
+        const { shouldLogDebug } = require('../utils/log-helper');
+        const debugEnabled = await shouldLogDebug();
+        
+        if (debugEnabled || archivedCount > 0) {
+          logger.info('Cycle archive check completed', {
+            totalCycles: cyclesToArchive.length,
+            archived: archivedCount,
+            alreadyArchived: skippedCount,
+            emptyCycles: emptyCount
+          });
+        }
       }
     }
   } catch (error) {
@@ -1239,9 +1594,60 @@ router.get('/cycles', async (req, res) => {
   }
 });
 
+// 获取请求的基础URL（域名或IP）
+function getBaseUrl(req) {
+  // 优先使用 Host 头（包含域名和端口）
+  let host = req.get('host');
+  
+  // 如果没有 Host 头，尝试其他方式
+  if (!host) {
+    host = req.hostname || req.host;
+  }
+  
+  // 如果还是没有，尝试从请求头中获取
+  if (!host) {
+    host = req.headers.host;
+  }
+  
+  // 判断是否是IP地址（IPv4或IPv6）
+  const isIP = host && (
+    /^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(host) || // IPv4
+    /^\[[\da-f:]+\](:\d+)?$/i.test(host) || // IPv6 with brackets
+    /^[\da-f:]+(:\d+)?$/i.test(host) // IPv6 without brackets
+  );
+  
+  // 获取协议
+  let protocol = req.protocol;
+  if (!protocol) {
+    // 检查是否通过代理设置了协议
+    protocol = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+  }
+  
+  if (host && !isIP) {
+    // 如果有域名（不是纯IP），使用域名
+    return `${protocol}://${host}`;
+  } else if (host) {
+    // 如果是IP地址，直接使用
+    return `${protocol}://${host}`;
+  } else {
+    // 如果都没有，尝试使用服务器IP
+    const serverIP = req.connection.localAddress || req.socket.localAddress || 'localhost';
+    const port = req.connection.localPort || process.env.PORT || 3000;
+    
+    // 如果是本地IP，使用 localhost
+    if (serverIP === '127.0.0.1' || serverIP === '::1' || serverIP === '::ffff:127.0.0.1' || serverIP === '0.0.0.0') {
+      return `${protocol}://localhost:${port}`;
+    }
+    
+    return `${protocol}://${serverIP}:${port}`;
+  }
+}
+
 // 导出订单（CSV格式，只导出最近N个周期的订单，N由设置决定）
 router.get('/orders/export', async (req, res) => {
   try {
+    // 获取基础URL用于构建付款截图链接
+    const baseUrl = getBaseUrl(req);
     // 先执行归档检查
     await archiveOldCycles();
     
@@ -1357,7 +1763,8 @@ router.get('/orders/export', async (req, res) => {
       '实付金额',
       '订单备注',
       '创建时间',
-      '更新时间'
+      '更新时间',
+      '付款截图链接'
     ].join(','));
 
     // 订单数据
@@ -1379,10 +1786,32 @@ router.get('/orders/export', async (req, res) => {
             `"${order.status === 'pending' ? '待付款' : order.status === 'paid' ? '已付款' : order.status === 'completed' ? '已完成' : '已取消'}"`,
             `"${item.product_name || ''}"`,
             item.quantity || 0,
-            `"${item.size || ''}"`,
+            `"${item.size ? (item.size + (item.size_price !== undefined && item.size_price !== null && item.size_price > 0 ? ` (${item.size_price.toFixed(2)})` : '')) : ''}"`,
             `"${item.sugar_level || ''}"`,
             `"${item.ice_level ? (iceLabels[item.ice_level] || item.ice_level) : ''}"`,
-            `"${item.toppings ? JSON.parse(item.toppings).join('; ') : ''}"`,
+            `"${(() => {
+              if (!item.toppings) return '';
+              try {
+                // 解析加料数据
+                let toppings = typeof item.toppings === 'string' ? JSON.parse(item.toppings) : item.toppings;
+                if (!Array.isArray(toppings)) return '';
+                
+                // 格式化加料显示：如果是对象数组（包含name和price），显示为 "Name (Price)"；如果是字符串数组，只显示名称
+                const formatted = toppings.map(t => {
+                  if (typeof t === 'object' && t !== null && t.name) {
+                    // 对象格式：包含名称和价格
+                    return t.price && t.price > 0 ? `${t.name} (${t.price.toFixed(2)})` : t.name;
+                  } else {
+                    // 字符串格式：只有名称
+                    return String(t);
+                  }
+                });
+                return formatted.join('; ');
+              } catch (e) {
+                // 如果解析失败，返回原始字符串
+                return typeof item.toppings === 'string' ? item.toppings : String(item.toppings);
+              }
+            })().replace(/"/g, '""')}"`,
             (item.product_price || 0).toFixed(2),
             (item.subtotal || 0).toFixed(2),
             (order.total_amount || 0).toFixed(2),
@@ -1390,7 +1819,8 @@ router.get('/orders/export', async (req, res) => {
             (order.final_amount || 0).toFixed(2),
             `"${order.notes || ''}"`,
             `"${order.created_at || ''}"`,
-            `"${order.updated_at || ''}"`
+            `"${order.updated_at || ''}"`,
+            `"${order.payment_image ? `${baseUrl}${order.payment_image}` : ''}"`
           ];
           csvRows.push(row.join(','));
         }
@@ -1414,7 +1844,8 @@ router.get('/orders/export', async (req, res) => {
           (order.final_amount || 0).toFixed(2),
           `"${order.notes || ''}"`,
           `"${order.created_at || ''}"`,
-          `"${order.updated_at || ''}"`
+          `"${order.updated_at || ''}"`,
+          `"${order.payment_image ? `${baseUrl}${order.payment_image}` : ''}"`
         ];
         csvRows.push(row.join(','));
       }
@@ -1919,7 +2350,16 @@ router.delete('/admins/:id', requireSuperAdmin, async (req, res) => {
 // 获取操作日志
 router.get('/logs', async (req, res) => {
   try {
-    const { page = 1, limit = 50, action, admin_id } = req.query;
+    const { 
+      page = 1, 
+      limit = 50, 
+      action, 
+      admin_id,
+      target_type,
+      ip_address,
+      operator,
+      days = 3  // 默认显示最近3天
+    } = req.query;
     const offset = (page - 1) * limit;
 
     let sql = `
@@ -1930,14 +2370,49 @@ router.get('/logs', async (req, res) => {
     `;
     const params = [];
 
+    // 日期范围过滤（默认最近N天）
+    if (days) {
+      const daysInt = parseInt(days);
+      if (daysInt > 0) {
+        // SQLite不支持动态拼接，需要手动构建日期字符串
+        const dateStr = `datetime('now', '-${daysInt} days', 'localtime')`;
+        sql += ` AND l.created_at >= ${dateStr}`;
+      }
+    }
+
+    // 操作类型过滤
     if (action) {
       sql += ' AND l.action = ?';
       params.push(action);
     }
 
+    // 管理员ID过滤
     if (admin_id) {
       sql += ' AND l.admin_id = ?';
       params.push(admin_id);
+    }
+
+    // 资源类型过滤
+    if (target_type) {
+      sql += ' AND l.target_type = ?';
+      params.push(target_type);
+    }
+
+    // IP地址过滤（支持部分匹配）
+    if (ip_address) {
+      sql += ' AND l.ip_address LIKE ?';
+      params.push(`%${ip_address}%`);
+    }
+
+    // 操作者过滤（通过用户名，支持System关键字）
+    if (operator) {
+      if (operator.toLowerCase() === 'system') {
+        sql += ' AND l.action = ?';
+        params.push('USER_LOGIN');
+      } else {
+        sql += ' AND a.username LIKE ?';
+        params.push(`%${operator}%`);
+      }
     }
 
     sql += ' ORDER BY l.created_at DESC LIMIT ? OFFSET ?';
@@ -1946,15 +2421,46 @@ router.get('/logs', async (req, res) => {
     const logs = await allAsync(sql, params);
 
     // 获取总数
-    let countSql = 'SELECT COUNT(*) as total FROM logs WHERE 1=1';
+    let countSql = `
+      SELECT COUNT(*) as total 
+      FROM logs l 
+      LEFT JOIN admins a ON l.admin_id = a.id 
+      WHERE 1=1
+    `;
     const countParams = [];
+    
+    // 应用相同的过滤条件
+    if (days) {
+      const daysInt = parseInt(days);
+      if (daysInt > 0) {
+        const dateStr = `datetime('now', '-${daysInt} days', 'localtime')`;
+        countSql += ` AND l.created_at >= ${dateStr}`;
+      }
+    }
     if (action) {
-      countSql += ' AND action = ?';
+      countSql += ' AND l.action = ?';
       countParams.push(action);
     }
     if (admin_id) {
-      countSql += ' AND admin_id = ?';
+      countSql += ' AND l.admin_id = ?';
       countParams.push(admin_id);
+    }
+    if (target_type) {
+      countSql += ' AND l.target_type = ?';
+      countParams.push(target_type);
+    }
+    if (ip_address) {
+      countSql += ' AND l.ip_address LIKE ?';
+      countParams.push(`%${ip_address}%`);
+    }
+    if (operator) {
+      if (operator.toLowerCase() === 'system') {
+        countSql += ' AND l.action = ?';
+        countParams.push('USER_LOGIN');
+      } else {
+        countSql += ' AND a.username LIKE ?';
+        countParams.push(`%${operator}%`);
+      }
     }
 
     const { total } = await getAsync(countSql, countParams);
@@ -2135,6 +2641,385 @@ router.put('/developer/table-data/:tableName', requireSuperAdmin, async (req, re
   }
 });
 
+// ==================== 文件管理 ====================
+// 注意：这些接口只有super_admin可以访问
+
+// 获取项目根目录路径（安全限制：只允许访问项目目录）
+function getProjectRoot() {
+  const projectRoot = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+  return path.resolve(projectRoot);
+}
+
+// 验证路径是否在项目目录内（防止路径遍历攻击）
+function isPathSafe(filePath, basePath) {
+  const resolvedPath = path.resolve(filePath);
+  const resolvedBase = path.resolve(basePath);
+  return resolvedPath.startsWith(resolvedBase);
+}
+
+// 列出目录内容
+router.get('/developer/files/list', requireSuperAdmin, async (req, res) => {
+  try {
+    const { path: dirPath = '' } = req.query;
+    const projectRoot = getProjectRoot();
+    const fullPath = dirPath ? path.join(projectRoot, dirPath) : projectRoot;
+    
+    // 验证路径安全性
+    if (!isPathSafe(fullPath, projectRoot)) {
+      return res.status(403).json({ success: false, message: 'Access denied: Path outside project directory' });
+    }
+    
+    // 检查路径是否存在
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ success: false, message: 'Directory not found' });
+    }
+    
+    // 检查是否为目录
+    const stats = fs.statSync(fullPath);
+    if (!stats.isDirectory()) {
+      return res.status(400).json({ success: false, message: 'Path is not a directory' });
+    }
+    
+    // 读取目录内容
+    const items = fs.readdirSync(fullPath).map(item => {
+      const itemPath = path.join(fullPath, item);
+      const itemStats = fs.statSync(itemPath);
+      const relativePath = dirPath ? path.join(dirPath, item) : item;
+      
+      return {
+        name: item,
+        path: relativePath,
+        isDirectory: itemStats.isDirectory(),
+        size: itemStats.isFile() ? itemStats.size : 0,
+        modified: itemStats.mtime.toISOString(),
+        permissions: itemStats.mode.toString(8).slice(-3)
+      };
+    });
+    
+    // 排序：目录在前，然后按名称排序
+    items.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) {
+        return a.isDirectory ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    
+    res.json({ 
+      success: true, 
+      path: dirPath || '/',
+      items 
+    });
+  } catch (error) {
+    logger.error('列出目录失败', { error: error.message, path: req.query.path });
+    res.status(500).json({ success: false, message: 'Failed to list directory: ' + error.message });
+  }
+});
+
+// 读取文件内容
+router.get('/developer/files/read', requireSuperAdmin, async (req, res) => {
+  try {
+    const { path: filePath } = req.query;
+    if (!filePath) {
+      return res.status(400).json({ success: false, message: 'File path is required' });
+    }
+    
+    const projectRoot = getProjectRoot();
+    const fullPath = path.join(projectRoot, filePath);
+    
+    // 验证路径安全性
+    if (!isPathSafe(fullPath, projectRoot)) {
+      return res.status(403).json({ success: false, message: 'Access denied: Path outside project directory' });
+    }
+    
+    // 检查文件是否存在
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ success: false, message: 'File not found' });
+    }
+    
+    // 检查是否为文件
+    const stats = fs.statSync(fullPath);
+    if (!stats.isFile()) {
+      return res.status(400).json({ success: false, message: 'Path is not a file' });
+    }
+    
+    // 检查文件大小（限制为10MB）
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (stats.size > maxSize) {
+      return res.status(400).json({ success: false, message: 'File too large (max 10MB)' });
+    }
+    
+    // 读取文件内容
+    const content = fs.readFileSync(fullPath, 'utf8');
+    
+    // 判断文件类型
+    const ext = path.extname(filePath).toLowerCase();
+    const textExtensions = ['.txt', '.js', '.json', '.md', '.log', '.css', '.html', '.xml', '.yaml', '.yml', '.env', '.sh', '.sql', '.py', '.java', '.cpp', '.c', '.h', '.ts', '.tsx', '.jsx', '.vue', '.php', '.rb', '.go', '.rs', '.swift', '.kt'];
+    const isTextFile = textExtensions.includes(ext) || stats.size < 1024 * 1024; // 小于1MB的文件也尝试作为文本
+    
+    res.json({ 
+      success: true, 
+      path: filePath,
+      content: isTextFile ? content : null,
+      isTextFile,
+      size: stats.size,
+      encoding: isTextFile ? 'utf8' : 'binary',
+      modified: stats.mtime.toISOString()
+    });
+  } catch (error) {
+    logger.error('读取文件失败', { error: error.message, path: req.query.path });
+    res.status(500).json({ success: false, message: 'Failed to read file: ' + error.message });
+  }
+});
+
+// 写入文件内容
+router.post('/developer/files/write', requireSuperAdmin, async (req, res) => {
+  try {
+    const { path: filePath, content } = req.body;
+    if (!filePath) {
+      return res.status(400).json({ success: false, message: 'File path is required' });
+    }
+    
+    const projectRoot = getProjectRoot();
+    const fullPath = path.join(projectRoot, filePath);
+    
+    // 验证路径安全性
+    if (!isPathSafe(fullPath, projectRoot)) {
+      return res.status(403).json({ success: false, message: 'Access denied: Path outside project directory' });
+    }
+    
+    // 确保目录存在
+    const dir = path.dirname(fullPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    // 写入文件
+    fs.writeFileSync(fullPath, content || '', 'utf8');
+    
+    await logAction(req.session.adminId, 'UPDATE', 'file', filePath, JSON.stringify({
+      action: '文件编辑',
+      path: filePath
+    }), req);
+    
+    res.json({ success: true, message: 'File saved successfully' });
+  } catch (error) {
+    logger.error('写入文件失败', { error: error.message, path: req.body.path });
+    res.status(500).json({ success: false, message: 'Failed to write file: ' + error.message });
+  }
+});
+
+// 删除文件或目录
+router.delete('/developer/files', requireSuperAdmin, async (req, res) => {
+  try {
+    const { path: filePath } = req.query;
+    if (!filePath) {
+      return res.status(400).json({ success: false, message: 'File path is required' });
+    }
+    
+    const projectRoot = getProjectRoot();
+    const fullPath = path.join(projectRoot, filePath);
+    
+    // 验证路径安全性
+    if (!isPathSafe(fullPath, projectRoot)) {
+      return res.status(403).json({ success: false, message: 'Access denied: Path outside project directory' });
+    }
+    
+    // 检查路径是否存在
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ success: false, message: 'File or directory not found' });
+    }
+    
+    // 防止删除关键目录
+    const criticalDirs = ['db', 'node_modules', '.git'];
+    const pathParts = filePath.split(path.sep);
+    if (criticalDirs.some(dir => pathParts.includes(dir))) {
+      return res.status(403).json({ success: false, message: 'Cannot delete critical directories' });
+    }
+    
+    // 删除文件或目录
+    const stats = fs.statSync(fullPath);
+    if (stats.isDirectory()) {
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(fullPath);
+    }
+    
+    await logAction(req.session.adminId, 'DELETE', 'file', filePath, JSON.stringify({
+      action: '删除文件/目录',
+      path: filePath,
+      isDirectory: stats.isDirectory()
+    }), req);
+    
+    res.json({ success: true, message: 'File or directory deleted successfully' });
+  } catch (error) {
+    logger.error('删除文件失败', { error: error.message, path: req.query.path });
+    res.status(500).json({ success: false, message: 'Failed to delete file: ' + error.message });
+  }
+});
+
+// 创建目录
+router.post('/developer/files/mkdir', requireSuperAdmin, async (req, res) => {
+  try {
+    const { path: dirPath } = req.body;
+    if (!dirPath) {
+      return res.status(400).json({ success: false, message: 'Directory path is required' });
+    }
+    
+    const projectRoot = getProjectRoot();
+    const fullPath = path.join(projectRoot, dirPath);
+    
+    // 验证路径安全性
+    if (!isPathSafe(fullPath, projectRoot)) {
+      return res.status(403).json({ success: false, message: 'Access denied: Path outside project directory' });
+    }
+    
+    // 创建目录
+    if (fs.existsSync(fullPath)) {
+      return res.status(400).json({ success: false, message: 'Directory already exists' });
+    }
+    
+    fs.mkdirSync(fullPath, { recursive: true });
+    
+    await logAction(req.session.adminId, 'CREATE', 'file', dirPath, JSON.stringify({
+      action: '创建目录',
+      path: dirPath
+    }), req);
+    
+    res.json({ success: true, message: 'Directory created successfully' });
+  } catch (error) {
+    logger.error('创建目录失败', { error: error.message, path: req.body.path });
+    res.status(500).json({ success: false, message: 'Failed to create directory: ' + error.message });
+  }
+});
+
+// 上传文件
+const tempDir = path.join(__dirname, '..', 'temp');
+// 确保temp目录存在
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+}
+const fileManagerUpload = multer({
+  dest: tempDir,
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+});
+
+router.post('/developer/files/upload', requireSuperAdmin, fileManagerUpload.single('file'), async (req, res) => {
+  try {
+    const { path: targetPath } = req.body;
+    if (!targetPath || !req.file) {
+      return res.status(400).json({ success: false, message: 'File path and file are required' });
+    }
+    
+    const projectRoot = getProjectRoot();
+    const fullPath = path.join(projectRoot, targetPath);
+    
+    // 验证路径安全性
+    if (!isPathSafe(fullPath, projectRoot)) {
+      // 清理临时文件
+      if (req.file && req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(403).json({ success: false, message: 'Access denied: Path outside project directory' });
+    }
+    
+    // 确保目录存在
+    const dir = path.dirname(fullPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    // 移动文件到目标位置
+    fs.renameSync(req.file.path, fullPath);
+    
+    await logAction(req.session.adminId, 'CREATE', 'file', targetPath, JSON.stringify({
+      action: '上传文件',
+      path: targetPath,
+      size: req.file.size
+    }), req);
+    
+    res.json({ success: true, message: 'File uploaded successfully' });
+  } catch (error) {
+    // 清理临时文件
+    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    logger.error('上传文件失败', { error: error.message, path: req.body.path });
+    res.status(500).json({ success: false, message: 'Failed to upload file: ' + error.message });
+  }
+});
+
+// 获取文件的MIME类型
+function getMimeType(fileName) {
+  const ext = path.extname(fileName).toLowerCase();
+  const mimeTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.webp': 'image/webp',
+    '.bmp': 'image/bmp',
+    '.ico': 'image/x-icon',
+    '.pdf': 'application/pdf',
+    '.zip': 'application/zip',
+    '.json': 'application/json',
+    '.js': 'application/javascript',
+    '.css': 'text/css',
+    '.html': 'text/html',
+    '.txt': 'text/plain',
+    '.md': 'text/markdown',
+    '.xml': 'application/xml'
+  };
+  return mimeTypes[ext] || 'application/octet-stream';
+}
+
+// 下载文件
+router.get('/developer/files/download', requireSuperAdmin, async (req, res) => {
+  try {
+    const { path: filePath, preview } = req.query;
+    if (!filePath) {
+      return res.status(400).json({ success: false, message: 'File path is required' });
+    }
+    
+    const projectRoot = getProjectRoot();
+    const fullPath = path.join(projectRoot, filePath);
+    
+    // 验证路径安全性
+    if (!isPathSafe(fullPath, projectRoot)) {
+      return res.status(403).json({ success: false, message: 'Access denied: Path outside project directory' });
+    }
+    
+    // 检查文件是否存在
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ success: false, message: 'File not found' });
+    }
+    
+    // 检查是否为文件
+    const stats = fs.statSync(fullPath);
+    if (!stats.isFile()) {
+      return res.status(400).json({ success: false, message: 'Path is not a file' });
+    }
+    
+    // 设置Content-Type
+    const mimeType = getMimeType(filePath);
+    res.setHeader('Content-Type', mimeType);
+    
+    // 如果是预览模式（用于图片显示），不设置Content-Disposition
+    // 否则设置为下载
+    if (preview !== 'true') {
+      const fileName = path.basename(filePath);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    }
+    
+    // 发送文件
+    const fileStream = fs.createReadStream(fullPath);
+    fileStream.pipe(res);
+  } catch (error) {
+    logger.error('下载文件失败', { error: error.message, path: req.query.path });
+    res.status(500).json({ success: false, message: 'Failed to download file: ' + error.message });
+  }
+});
+
 // 执行SQL查询
 router.post('/developer/execute-sql', requireSuperAdmin, async (req, res) => {
   try {
@@ -2224,6 +3109,618 @@ router.post('/backup/create', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to create backup'
+    });
+  }
+});
+
+// ==================== 产品和分类备份/导入 ====================
+
+/**
+ * POST /api/admin/menu/backup
+ * 备份产品和分类数据（包括图片）
+ */
+router.post('/menu/backup', async (req, res) => {
+  try {
+    const { BACKUP_DIR } = require('../utils/backup');
+    const exportDir = path.join(DATA_DIR, 'logs', 'export');
+    if (!fs.existsSync(exportDir)) {
+      fs.mkdirSync(exportDir, { recursive: true });
+    }
+    
+    // 获取所有分类
+    const categories = await allAsync('SELECT * FROM categories ORDER BY sort_order, id');
+    
+    // 获取所有产品
+    const products = await allAsync('SELECT * FROM products ORDER BY category_id, sort_order, id');
+    
+    // 收集所有图片路径
+    const imagePaths = new Set();
+    products.forEach(product => {
+      if (product.image_url) {
+        const imagePath = product.image_url.startsWith('/') 
+          ? path.join(DATA_DIR, product.image_url.substring(1))
+          : path.join(DATA_DIR, product.image_url);
+        if (fs.existsSync(imagePath)) {
+          imagePaths.add(product.image_url);
+        }
+      }
+    });
+    
+    // 创建备份数据对象
+    // 注意：categories保留id用于导入时的ID映射，products移除id因为会重新生成
+    const backupData = {
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      categories: categories, // 保留id用于导入时的ID映射
+      products: products.map(p => {
+        // 使用解构和rest操作符，确保所有字段都被备份（除了id和时间戳）
+        const { id, created_at, updated_at, ...rest } = p;
+        // 确保所有JSON字段都是字符串格式（如果数据库返回的是对象，转换为字符串）
+        const productBackup = { ...rest };
+        
+        // 确保JSON字段以字符串形式保存（即使值为null或空字符串也要保留）
+        // sizes
+        if (productBackup.sizes !== undefined && productBackup.sizes !== null) {
+          productBackup.sizes = typeof productBackup.sizes === 'string' ? productBackup.sizes : JSON.stringify(productBackup.sizes);
+        } else {
+          productBackup.sizes = '{}';
+        }
+        // sugar_levels
+        if (productBackup.sugar_levels !== undefined && productBackup.sugar_levels !== null) {
+          productBackup.sugar_levels = typeof productBackup.sugar_levels === 'string' ? productBackup.sugar_levels : JSON.stringify(productBackup.sugar_levels);
+        } else {
+          productBackup.sugar_levels = '["0","30","50","70","100"]';
+        }
+        // available_toppings - 重要：确保正确备份
+        if (productBackup.available_toppings !== undefined && productBackup.available_toppings !== null) {
+          if (typeof productBackup.available_toppings === 'string') {
+            // 已经是字符串，直接保留（包括空字符串）
+            productBackup.available_toppings = productBackup.available_toppings;
+          } else {
+            // 是数组或其他类型，转换为JSON字符串
+            productBackup.available_toppings = JSON.stringify(productBackup.available_toppings);
+          }
+        } else {
+          productBackup.available_toppings = '[]';
+        }
+        // ice_options
+        if (productBackup.ice_options !== undefined && productBackup.ice_options !== null) {
+          productBackup.ice_options = typeof productBackup.ice_options === 'string' ? productBackup.ice_options : JSON.stringify(productBackup.ice_options);
+        } else {
+          productBackup.ice_options = '["normal","less","no","room","hot"]';
+        }
+        
+        return productBackup;
+      })
+    };
+    
+    // 记录备份数据内容用于调试
+    logger.info('创建菜单备份', {
+      categoriesCount: categories.length,
+      productsCount: products.length,
+      categories: categories.map(c => ({ id: c.id, name: c.name, status: c.status })),
+      sampleProducts: products.slice(0, 3).map(p => {
+        // 检查所有字段是否存在
+        const productFields = {
+          name: p.name,
+          category_id: p.category_id,
+          description: p.description,
+          price: p.price,
+          image_url: p.image_url,
+          status: p.status,
+          sort_order: p.sort_order,
+          sizes: p.sizes,
+          sugar_levels: p.sugar_levels,
+          available_toppings: p.available_toppings,
+          ice_options: p.ice_options
+        };
+        logger.info('备份产品字段检查', { product: p.name, fields: productFields, allKeys: Object.keys(p) });
+        return productFields;
+      })
+    });
+    
+    // 生成备份文件名
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const backupFileName = `menu-backup-${timestamp}.zip`;
+    const backupPath = path.join(exportDir, backupFileName);
+    
+    // 创建ZIP文件
+    const output = fs.createWriteStream(backupPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    
+    return new Promise((resolve, reject) => {
+      output.on('close', async () => {
+        const stats = fs.statSync(backupPath);
+        const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+        
+        await logAction(req.session.adminId, 'BACKUP_CREATE', 'menu', null, JSON.stringify({
+          action: '备份菜单数据',
+          fileName: backupFileName,
+          sizeMB: sizeMB,
+          categories: categories.length,
+          products: products.length,
+          images: imagePaths.size
+        }), req);
+        
+        res.json({
+          success: true,
+          fileName: backupFileName,
+          sizeMB: parseFloat(sizeMB),
+          categories: categories.length,
+          products: products.length,
+          images: imagePaths.size,
+          message: 'Menu backup created successfully'
+        });
+        resolve();
+      });
+      
+      archive.on('error', (err) => {
+        logger.error('创建菜单备份失败', { error: err.message });
+        res.status(500).json({
+          success: false,
+          message: 'Failed to create menu backup: ' + err.message
+        });
+        reject(err);
+      });
+      
+      archive.pipe(output);
+      
+      // 添加JSON数据
+      archive.append(JSON.stringify(backupData, null, 2), { name: 'data.json' });
+      
+      // 添加图片文件
+      imagePaths.forEach(imageUrl => {
+        const imagePath = imageUrl.startsWith('/') 
+          ? path.join(DATA_DIR, imageUrl.substring(1))
+          : path.join(DATA_DIR, imageUrl);
+        if (fs.existsSync(imagePath)) {
+          const fileName = path.basename(imagePath);
+          archive.file(imagePath, { name: `images/${fileName}` });
+        }
+      });
+      
+      archive.finalize();
+    });
+  } catch (error) {
+    logger.error('创建菜单备份失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create menu backup: ' + error.message
+    });
+  }
+});
+
+/**
+ * POST /api/admin/menu/import
+ * 导入产品和分类数据（从ZIP文件）
+ */
+const menuImportUpload = multer({
+  dest: path.join(__dirname, '..', 'temp'),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/zip' || file.originalname.endsWith('.zip')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .zip backup files are allowed'));
+    }
+  }
+});
+
+router.post('/menu/import', menuImportUpload.single('backupFile'), async (req, res) => {
+  let tempFilePath = null;
+  
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Backup file is required'
+      });
+    }
+    
+    // 获取导入选项
+    const clearExisting = req.body.clearExisting === 'true';
+    
+    tempFilePath = req.file.path;
+    const zip = new AdmZip(tempFilePath);
+    const zipEntries = zip.getEntries();
+    
+    // 查找data.json文件
+    let dataEntry = null;
+    for (const entry of zipEntries) {
+      if (entry.entryName === 'data.json' || entry.entryName.endsWith('/data.json')) {
+        dataEntry = entry;
+        break;
+      }
+    }
+    
+    if (!dataEntry) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid backup file: data.json not found'
+      });
+    }
+    
+    // 解析备份数据
+    const backupData = JSON.parse(dataEntry.getData().toString('utf8'));
+    
+      // 记录备份文件内容
+      const sampleProduct = backupData.products?.[0];
+      logger.info('备份文件内容检查', {
+        categoriesCount: backupData.categories?.length || 0,
+        productsCount: backupData.products?.length || 0,
+        categories: backupData.categories?.map(c => ({ id: c.id, name: c.name })) || [],
+        hasCategories: !!backupData.categories,
+        hasProducts: !!backupData.products,
+        sampleProduct: sampleProduct ? {
+          name: sampleProduct.name,
+          allKeys: Object.keys(sampleProduct),
+          sizes: sampleProduct.sizes,
+          sugar_levels: sampleProduct.sugar_levels,
+          available_toppings: sampleProduct.available_toppings,
+          ice_options: sampleProduct.ice_options,
+          description: sampleProduct.description,
+          price: sampleProduct.price,
+          category_id: sampleProduct.category_id,
+          image_url: sampleProduct.image_url,
+          status: sampleProduct.status,
+          sort_order: sampleProduct.sort_order
+        } : null
+      });
+    
+    if (!backupData.categories || !backupData.products) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid backup file: missing categories or products',
+        backupDataKeys: Object.keys(backupData),
+        categoriesCount: backupData.categories?.length || 0,
+        productsCount: backupData.products?.length || 0
+      });
+    }
+    
+    // 如果选择清空现有数据，需要在事务开始前禁用外键约束
+    let foreignKeysWasEnabled = true;
+    if (clearExisting) {
+      // 检查当前外键约束状态
+      const fkResult = await getAsync('PRAGMA foreign_keys');
+      foreignKeysWasEnabled = fkResult && fkResult.foreign_keys === 1;
+      
+      // 在事务开始前禁用外键约束（SQLite 要求在事务外设置）
+      await runAsync('PRAGMA foreign_keys = OFF');
+    }
+    
+    await beginTransaction();
+    
+    try {
+      // 如果选择清空现有数据，先删除所有产品和分类
+      if (clearExisting) {
+        // 注意：不删除 order_items，保留历史订单记录
+        // 即使产品被删除，order_items 中已保存了 product_name，可以正常显示
+        
+        // 1. 删除产品（引用categories）
+        // 注意：外键约束已在事务开始前禁用
+        await runAsync('DELETE FROM products');
+        // 2. 删除分类
+        await runAsync('DELETE FROM categories');
+        
+        // 注意：order_items 保留，因为：
+        // - 订单是历史记录，不应该被删除
+        // - order_items 中已保存了 product_name，即使 product_id 无效也能显示
+        // - 外键约束已在事务开始前禁用，所以可以删除 products 而不影响 order_items
+      }
+      
+      // 创建分类ID映射（旧ID -> 新ID）
+      const categoryIdMap = new Map();
+      
+      // 导入分类
+      for (const category of backupData.categories) {
+        const { id: oldId, created_at, updated_at, ...categoryData } = category;
+        
+        // 检查分类是否已存在（按名称）
+        const existing = await getAsync('SELECT id FROM categories WHERE name = ?', [categoryData.name]);
+        
+        if (existing) {
+          // 更新现有分类（导入后统一设置为active）
+          await runAsync(
+            'UPDATE categories SET description = ?, sort_order = ?, status = ?, updated_at = datetime("now", "localtime") WHERE id = ?',
+            [categoryData.description || '', categoryData.sort_order || 0, 'active', existing.id]
+          );
+          categoryIdMap.set(oldId, existing.id);
+        } else {
+          // 插入新分类（导入后统一设置为active）
+          const result = await runAsync(
+            'INSERT INTO categories (name, description, sort_order, status) VALUES (?, ?, ?, ?)',
+            [categoryData.name, categoryData.description || '', categoryData.sort_order || 0, 'active']
+          );
+          // runAsync返回 { id: lastID, changes: changes }
+          const newCategoryId = result.id;
+          if (!newCategoryId) {
+            logger.error('分类插入失败，未获取到ID', { categoryName: categoryData.name, result });
+            throw new Error(`Failed to insert category: ${categoryData.name}`);
+          }
+          categoryIdMap.set(oldId, newCategoryId);
+        }
+      }
+      
+      // 验证分类导入结果
+      const importedCategories = await allAsync('SELECT id, name, status FROM categories ORDER BY id');
+      logger.info('分类导入完成', { 
+        importedCount: importedCategories.length,
+        categoryIdMapSize: categoryIdMap.size,
+        backupCategoriesCount: backupData.categories.length,
+        importedCategories: importedCategories,
+        categoryIdMap: Array.from(categoryIdMap.entries()).map(([oldId, newId]) => ({ oldId, newId }))
+      });
+      
+      // 导入产品
+      const uploadDir = path.join(DATA_DIR, 'uploads/products');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      
+      for (const product of backupData.products) {
+        // 记录原始产品数据用于调试
+        if (backupData.products.indexOf(product) < 3) {
+          logger.info('导入产品原始数据', {
+            productName: product.name,
+            allKeys: Object.keys(product),
+            sizes: product.sizes,
+            sugar_levels: product.sugar_levels,
+            available_toppings: product.available_toppings,
+            ice_options: product.ice_options,
+            available_toppings_type: typeof product.available_toppings,
+            available_toppings_value: product.available_toppings
+          });
+        }
+        
+        // 提取字段，保留所有其他字段
+        const { created_at, updated_at, category_id: oldCategoryId, image_url, ...productData } = product;
+        
+        // 映射分类ID
+        let newCategoryId = null;
+        if (oldCategoryId) {
+          newCategoryId = categoryIdMap.get(oldCategoryId);
+          if (newCategoryId === undefined) {
+            // 如果分类ID映射失败，记录警告但继续导入（产品将没有分类）
+            logger.warn('分类ID映射失败', { 
+              oldCategoryId, 
+              productName: productData.name,
+              availableCategoryIds: Array.from(categoryIdMap.keys())
+            });
+            newCategoryId = null;
+          }
+        }
+        
+        // 处理图片
+        let newImageUrl = null;
+        if (image_url) {
+          const imageFileName = path.basename(image_url);
+          const imageEntry = zipEntries.find(e => 
+            e.entryName === `images/${imageFileName}` || 
+            e.entryName.endsWith(`/images/${imageFileName}`)
+          );
+          
+          if (imageEntry) {
+            // 生成新的文件名
+            const ext = path.extname(imageFileName);
+            const newFileName = `product-${Date.now()}-${uuidv4()}${ext}`;
+            const newImagePath = path.join(uploadDir, newFileName);
+            
+            // 提取并保存图片
+            fs.writeFileSync(newImagePath, imageEntry.getData());
+            // 压缩导入的图片
+            await compressProductImage(newImagePath);
+            newImageUrl = `/uploads/products/${newFileName}`;
+          }
+        }
+        
+        // 检查产品是否已存在（按名称和分类）
+        const existing = await getAsync(
+          'SELECT id FROM products WHERE name = ? AND category_id = ?',
+          [productData.name, newCategoryId]
+        );
+        
+        // 确保可选参数正确保留（如果备份数据中有值就使用，否则使用默认值）
+        // 注意：这些字段在数据库中存储为JSON字符串，需要确保正确保留
+        let sizes = '{}';
+        if (productData.sizes !== undefined && productData.sizes !== null) {
+          // 如果是字符串（包括空字符串），直接使用；如果是对象，转换为JSON字符串
+          if (typeof productData.sizes === 'string') {
+            sizes = productData.sizes; // 保留原始字符串值
+          } else {
+            sizes = JSON.stringify(productData.sizes);
+          }
+        }
+        
+        let sugarLevels = '["0","30","50","70","100"]';
+        if (productData.sugar_levels !== undefined && productData.sugar_levels !== null) {
+          if (typeof productData.sugar_levels === 'string') {
+            sugarLevels = productData.sugar_levels; // 保留原始字符串值
+          } else {
+            sugarLevels = JSON.stringify(productData.sugar_levels);
+          }
+        }
+        
+        let availableToppings = '[]';
+        if (productData.available_toppings !== undefined && productData.available_toppings !== null) {
+          // 如果是字符串（包括空字符串），直接使用；如果是数组，转换为JSON字符串
+          if (typeof productData.available_toppings === 'string') {
+            // 保留原始字符串值，即使是空字符串也要保留
+            availableToppings = productData.available_toppings;
+          } else if (Array.isArray(productData.available_toppings)) {
+            // 如果是数组，转换为JSON字符串
+            availableToppings = JSON.stringify(productData.available_toppings);
+          } else {
+            // 其他类型也尝试转换为JSON字符串
+            availableToppings = JSON.stringify(productData.available_toppings);
+          }
+        }
+        
+        let iceOptions = '["normal","less","no","room","hot"]';
+        if (productData.ice_options !== undefined && productData.ice_options !== null) {
+          if (typeof productData.ice_options === 'string') {
+            iceOptions = productData.ice_options; // 保留原始字符串值
+          } else {
+            iceOptions = JSON.stringify(productData.ice_options);
+          }
+        }
+        
+        // 记录处理后的值用于调试
+        if (backupData.products.indexOf(product) < 3) {
+          logger.info('导入产品处理后的值', {
+            productName: productData.name,
+            sizes,
+            sugarLevels,
+            availableToppings,
+            iceOptions
+          });
+        }
+        
+        if (existing) {
+          // 更新现有产品（导入后统一设置为active）
+          await runAsync(
+            `UPDATE products SET 
+              description = ?, price = ?, image_url = ?, sort_order = ?, status = ?,
+              sizes = ?, sugar_levels = ?, available_toppings = ?, ice_options = ?,
+              updated_at = datetime("now", "localtime")
+              WHERE id = ?`,
+            [
+              productData.description || '',
+              productData.price,
+              newImageUrl || productData.image_url,
+              productData.sort_order || 0,
+              'active', // 导入后统一设置为active
+              sizes,
+              sugarLevels,
+              availableToppings,
+              iceOptions,
+              existing.id
+            ]
+          );
+        } else {
+          // 插入新产品（导入后统一设置为active）
+          await runAsync(
+            `INSERT INTO products 
+              (name, description, price, category_id, image_url, sort_order, status, sizes, sugar_levels, available_toppings, ice_options)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              productData.name,
+              productData.description || '',
+              productData.price,
+              newCategoryId,
+              newImageUrl || productData.image_url,
+              productData.sort_order || 0,
+              'active', // 导入后统一设置为active
+              sizes,
+              sugarLevels,
+              availableToppings,
+              iceOptions
+            ]
+          );
+        }
+      }
+      
+      await commit();
+      
+      // 如果之前禁用了外键约束，现在重新启用
+      if (clearExisting) {
+        await runAsync('PRAGMA foreign_keys = ON');
+      }
+      
+      // 清除缓存
+      cache.delete('categories');
+      cache.delete('products');
+      
+      // 最终验证
+      const finalCategories = await allAsync('SELECT COUNT(*) as count FROM categories');
+      const finalProducts = await allAsync('SELECT COUNT(*) as count FROM products');
+      const finalCategoriesCount = finalCategories[0]?.count || 0;
+      const finalProductsCount = finalProducts[0]?.count || 0;
+      
+      await logAction(req.session.adminId, 'BACKUP_RESTORE', 'menu', null, JSON.stringify({
+        action: '导入菜单数据',
+        clearExisting: clearExisting,
+        backupCategories: backupData.categories.length,
+        backupProducts: backupData.products.length,
+        finalCategories: finalCategoriesCount,
+        finalProducts: finalProductsCount
+      }), req);
+      
+      res.json({
+        success: true,
+        message: clearExisting 
+          ? 'Menu imported successfully (existing data cleared)' 
+          : 'Menu imported successfully (existing data merged)',
+        clearExisting: clearExisting,
+        backupCategories: backupData.categories.length,
+        backupProducts: backupData.products.length,
+        finalCategories: finalCategoriesCount,
+        finalProducts: finalProductsCount
+      });
+    } catch (error) {
+      await rollback();
+      
+      // 如果之前禁用了外键约束，现在重新启用（即使发生错误也要恢复）
+      if (clearExisting) {
+        await runAsync('PRAGMA foreign_keys = ON').catch(() => {
+          // 忽略恢复外键约束时的错误，确保继续执行
+        });
+      }
+      
+      throw error;
+    }
+  } catch (error) {
+    logger.error('导入菜单失败', { error: error.message });
+    
+    // 确保外键约束被恢复（即使发生未捕获的错误）
+    if (clearExisting) {
+      await runAsync('PRAGMA foreign_keys = ON').catch(() => {
+        // 忽略恢复外键约束时的错误
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to import menu: ' + error.message
+    });
+  } finally {
+    // 清理临时文件
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+  }
+});
+
+/**
+ * GET /api/admin/menu/backup/download
+ * Download menu backup file
+ */
+router.get('/menu/backup/download', async (req, res) => {
+  try {
+    const { fileName } = req.query;
+    
+    if (!fileName || !fileName.startsWith('menu-backup-') || !fileName.endsWith('.zip')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid backup file name'
+      });
+    }
+    
+    const exportDir = path.join(DATA_DIR, 'logs', 'export');
+    const backupPath = path.join(exportDir, fileName);
+    
+    if (!fs.existsSync(backupPath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Backup file not found'
+      });
+    }
+    
+    res.download(backupPath, fileName);
+  } catch (error) {
+    logger.error('下载菜单备份文件失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to download backup file'
     });
   }
 });

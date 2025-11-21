@@ -153,6 +153,11 @@ const apiLimiter = rateLimit({
   message: { success: false, message: '请求过于频繁，请稍后再试' },
   standardHeaders: true,
   legacyHeaders: false,
+  // 跳过下载接口的速率限制
+  skip: (req) => {
+    // 跳过备份文件下载和菜单备份下载
+    return req.path.includes('/backup/download') || req.path.includes('/menu/backup/download') || req.path.includes('/developer/files/download');
+  }
 });
 
 const loginLimiter = rateLimit({
@@ -214,10 +219,22 @@ app.use('/show', express.static(actualShowDir));
   }
 });
 
-// 请求日志（精简记录，避免内存问题）
+// 请求日志（优化记录，排除静态资源和健康检查）
+const { shouldLogRequest } = require('./utils/log-helper');
+
 app.use((req, res, next) => {
   const startTime = Date.now();
   
+  // 记录响应（精简版，不记录完整响应体）
+  const originalSend = res.send;
+  res.send = async function(data) {
+    const duration = Date.now() - startTime;
+    
+    // 检查是否应该记录此请求
+    const shouldLog = await shouldLogRequest(req, res);
+    
+    // 记录请求和响应（合并为一条日志，减少日志量）
+    if (shouldLog || res.statusCode >= 400) {
   // 精简查询参数（只保留核心字段，限制长度）
   const querySummary = {};
   if (req.query) {
@@ -227,28 +244,21 @@ app.use((req, res, next) => {
     });
   }
   
-  // 记录请求开始（精简版）
+      const dataLength = data ? (typeof data === 'string' ? data.length : JSON.stringify(data).length) : 0;
+      
+      // 合并请求和响应信息为一条日志
   logger.info('HTTP Request', {
     method: req.method,
     path: req.path,
     query: Object.keys(querySummary).length > 0 ? querySummary : undefined,
+        statusCode: res.statusCode,
+        duration: `${duration}ms`,
+        responseSize: dataLength > 0 ? `${Math.round(dataLength / 1024)}KB` : undefined,
     ip: req.ip || req.connection.remoteAddress,
     userAgent: req.get('user-agent') ? req.get('user-agent').substring(0, 100) : undefined
   });
-  
-  // 记录响应（精简版，不记录完整响应体）
-  const originalSend = res.send;
-  res.send = function(data) {
-    const duration = Date.now() - startTime;
-    const dataLength = data ? (typeof data === 'string' ? data.length : JSON.stringify(data).length) : 0;
+    }
     
-    logger.info('HTTP Response', {
-      method: req.method,
-      path: req.path,
-      statusCode: res.statusCode,
-      duration: `${duration}ms`,
-      responseSize: dataLength > 0 ? `${Math.round(dataLength / 1024)}KB` : undefined
-    });
     originalSend.call(this, data);
   };
   

@@ -445,9 +445,12 @@ async function initData() {
       { key: 'currency', value: 'EGP', description: '货币单位' },
       { key: 'currency_symbol', value: 'LE', description: '货币符号' },
       { key: 'max_visible_cycles', value: '10', description: '最大可见周期数' },
+      { key: 'admin_session_timeout', value: '7200', description: '管理员session过期时间（秒），默认7200秒（2小时）' },
+      { key: 'user_session_timeout', value: '7200', description: '用户session过期时间（秒），默认7200秒（2小时）' },
       { key: 'sms_enabled', value: 'false', description: '是否启用短信验证码' },
       { key: 'sms_provider', value: 'twilio', description: '短信服务商' },
       { key: 'twilio_account_sid', value: '', description: 'Twilio Account SID' },
+      { key: 'debug_logging_enabled', value: 'false', description: '是否启用详细DEBUG日志（记录所有请求，包括静态资源）' },
       { key: 'twilio_auth_token', value: '', description: 'Twilio Auth Token' },
       { key: 'twilio_phone_number', value: '', description: 'Twilio发送号码' },
       { key: 'twilio_verify_service_sid', value: '', description: 'Twilio Verify Service SID (推荐使用)' }

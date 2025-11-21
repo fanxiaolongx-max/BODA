@@ -1,4 +1,5 @@
 const { logger } = require('../utils/logger');
+const { shouldLogPerformance } = require('../utils/log-helper');
 
 // 性能监控中间件
 function monitoringMiddleware(req, res, next) {
@@ -6,15 +7,20 @@ function monitoringMiddleware(req, res, next) {
   const startMemory = process.memoryUsage().heapUsed;
 
   // 监听响应完成
-  res.on('finish', () => {
+  res.on('finish', async () => {
     const duration = Date.now() - startTime;
     const endMemory = process.memoryUsage().heapUsed;
     const memoryDelta = ((endMemory - startMemory) / 1024 / 1024).toFixed(2);
 
-    // 记录性能指标
+    // 检查是否应该记录性能日志
+    const shouldLog = await shouldLogPerformance(req, duration);
+    
+    if (shouldLog) {
+      // 记录性能指标（合并到一条日志中）
     logger.info('Request Performance', {
       method: req.method,
       url: req.url,
+        path: req.path,
       statusCode: res.statusCode,
       duration: `${duration}ms`,
       memoryDelta: `${memoryDelta}MB`,
@@ -26,8 +32,10 @@ function monitoringMiddleware(req, res, next) {
       logger.warn('Slow Request Detected', {
         method: req.method,
         url: req.url,
+          path: req.path,
         duration: `${duration}ms`
       });
+      }
     }
   });
 

@@ -112,7 +112,7 @@ router.post('/orders', async (req, res) => {
         }
 
         // 使用helper函数计算价格
-        const { price: finalPrice, toppingNames } = await calculateItemPrice(
+        const { price: finalPrice, toppingNames, toppingsWithPrice, sizePrice } = await calculateItemPrice(
           product,
           item.size || null,
           item.toppings || [],
@@ -129,8 +129,12 @@ router.post('/orders', async (req, res) => {
           quantity: quantity,
           subtotal: subtotal,
           size: item.size || null,
+          size_price: sizePrice || null, // 保存Size的基础价格
           sugar_level: item.sugar_level || '100',
-          toppings: toppingNames.length > 0 ? JSON.stringify(toppingNames) : null,
+          // 保存包含价格信息的加料数组（优先使用 toppingsWithPrice，如果没有则使用 toppingNames）
+          toppings: (toppingsWithPrice && toppingsWithPrice.length > 0) 
+            ? JSON.stringify(toppingsWithPrice) 
+            : (toppingNames.length > 0 ? JSON.stringify(toppingNames) : null),
           ice_level: item.ice_level || null
         });
       }
@@ -189,9 +193,9 @@ router.post('/orders', async (req, res) => {
       // 插入订单详情
       for (const item of orderItems) {
         await runAsync(
-          `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal, size, sugar_level, toppings, ice_level)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [orderId, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal, item.size, item.sugar_level, item.toppings, item.ice_level]
+          `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal, size, size_price, sugar_level, toppings, ice_level)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [orderId, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal, item.size, item.size_price || null, item.sugar_level, item.toppings, item.ice_level]
         );
       }
 
@@ -266,6 +270,7 @@ router.post('/orders', async (req, res) => {
           id: orderId,
           order_number: orderNumber,
           total_amount: totalAmount,
+          notes: notes || null,
           items: orderItems
         }
       });
@@ -571,7 +576,7 @@ router.put('/orders/:id', async (req, res) => {
         }
 
         // 使用helper函数计算价格
-        const { price: finalPrice, toppingNames } = await calculateItemPrice(
+        const { price: finalPrice, toppingNames, toppingsWithPrice, sizePrice } = await calculateItemPrice(
           product,
           item.size || null,
           item.toppings || [],
@@ -588,8 +593,12 @@ router.put('/orders/:id', async (req, res) => {
           quantity: quantity,
           subtotal: subtotal,
           size: item.size || null,
+          size_price: sizePrice || null, // 保存Size的基础价格
           sugar_level: item.sugar_level || '100',
-          toppings: toppingNames.length > 0 ? JSON.stringify(toppingNames) : null,
+          // 保存包含价格信息的加料数组（优先使用 toppingsWithPrice，如果没有则使用 toppingNames）
+          toppings: (toppingsWithPrice && toppingsWithPrice.length > 0) 
+            ? JSON.stringify(toppingsWithPrice) 
+            : (toppingNames.length > 0 ? JSON.stringify(toppingNames) : null),
           ice_level: item.ice_level || null
         });
       }
@@ -608,6 +617,10 @@ router.put('/orders/:id', async (req, res) => {
         if (orderItemsColumns.includes('size')) {
           insertFields.push('size');
           insertValues.push(item.size || null);
+        }
+        if (orderItemsColumns.includes('size_price')) {
+          insertFields.push('size_price');
+          insertValues.push(item.size_price || null);
         }
         if (orderItemsColumns.includes('sugar_level')) {
           insertFields.push('sugar_level');
