@@ -175,7 +175,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
   
   // Load user language preference (在设置加载之后)
-  const savedLanguage = localStorage.getItem('language') || 'en';
+  // 优先使用用户手动设置，否则使用浏览器语言
+  const savedLanguage = typeof getInitialLanguage === 'function' 
+    ? getInitialLanguage() 
+    : (localStorage.getItem('language') || 'en');
   if (typeof setLanguage === 'function') {
     setLanguage(savedLanguage);
   } else {
@@ -241,7 +244,9 @@ function updateLanguageButton() {
   const languageBtnProfile = document.getElementById('languageDisplayProfile');
   if (typeof getLanguage === 'function') {
     const lang = getLanguage();
-    const displayText = lang === 'zh' ? '中文' : 'EN';
+    // 显示可以切换到的语言（而不是当前语言）
+    // 当前是中文时显示"EN"，当前是英文时显示"中文"
+    const displayText = lang === 'zh' ? 'EN' : '中文';
     if (languageBtn) {
       languageBtn.textContent = displayText;
     }
@@ -598,7 +603,7 @@ async function logout() {
     updateCartBadge();
     updateLoginStatus();
     showToast(t('logged_out'));
-    showTab('menu');
+    showTab('home'); // 登出后跳转到首页
   } catch (error) {
     console.error('登出失败:', error);
     // 即使登出失败，也清除本地状态
@@ -606,6 +611,7 @@ async function logout() {
     cart = [];
     updateCartBadge();
     updateLoginStatus();
+    showTab('home'); // 登出后跳转到首页
   }
 }
 

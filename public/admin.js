@@ -3560,11 +3560,16 @@ async function deleteAdmin(adminId) {
 
 // 日志过滤状态
 let logsFilterState = {
-  days: 3,  // 默认显示最近3天
+  page: 1,        // 当前页码
+  limit: 30,       // 每页条数
+  start_date: '',  // 开始日期
+  end_date: '',    // 结束日期
+  days: 3,         // 默认显示最近3天（如果未指定日期范围）
   action: '',
   operator: '',
   target_type: '',
-  ip_address: ''
+  ip_address: '',
+  details: ''      // Details模糊匹配
 };
 
 // 加载操作日志
@@ -3572,135 +3577,247 @@ async function loadLogs() {
   const container = document.getElementById('logsTab');
   
   try {
+    // 获取过滤器选项（用于下拉菜单）
+    const optionsResponse = await fetch(`${API_BASE}/admin/logs/filter-options`, { credentials: 'include' });
+    const optionsData = await optionsResponse.json();
+    const filterOptions = optionsData.success ? optionsData.options : { actions: [], resourceTypes: [], operators: [] };
+    
     // 构建查询参数
     const params = new URLSearchParams({
-      limit: '100',
-      days: logsFilterState.days.toString()
+      page: logsFilterState.page.toString(),
+      limit: logsFilterState.limit.toString()
     });
     
+    // 日期范围（优先使用start_date和end_date）
+    if (logsFilterState.start_date && logsFilterState.end_date) {
+      params.append('start_date', logsFilterState.start_date);
+      params.append('end_date', logsFilterState.end_date);
+    } else if (logsFilterState.start_date) {
+      params.append('start_date', logsFilterState.start_date);
+    } else if (logsFilterState.end_date) {
+      params.append('end_date', logsFilterState.end_date);
+    } else {
+      params.append('days', logsFilterState.days.toString());
+    }
+    
+    // 其他过滤条件
     if (logsFilterState.action) params.append('action', logsFilterState.action);
     if (logsFilterState.operator) params.append('operator', logsFilterState.operator);
     if (logsFilterState.target_type) params.append('target_type', logsFilterState.target_type);
     if (logsFilterState.ip_address) params.append('ip_address', logsFilterState.ip_address);
+    if (logsFilterState.details) params.append('details', logsFilterState.details);
     
     const response = await fetch(`${API_BASE}/admin/logs?${params.toString()}`, { credentials: 'include' });
     const data = await response.json();
     
     if (data.success) {
       const logs = data.logs || [];
+      const pagination = data.pagination || { page: 1, limit: 30, total: 0, totalPages: 1 };
       
-      // 获取所有唯一的操作类型和资源类型用于下拉选项
-      const actionTypes = [...new Set(logs.map(log => log.action).filter(Boolean))].sort();
-      const resourceTypes = [...new Set(logs.map(log => log.target_type || log.resource_type).filter(Boolean))].sort();
+      // 计算日期范围显示文本
+      let dateRangeText = '';
+      if (logsFilterState.start_date && logsFilterState.end_date) {
+        dateRangeText = `${logsFilterState.start_date} to ${logsFilterState.end_date}`;
+      } else if (logsFilterState.start_date) {
+        dateRangeText = `From ${logsFilterState.start_date}`;
+      } else if (logsFilterState.end_date) {
+        dateRangeText = `Until ${logsFilterState.end_date}`;
+      } else {
+        dateRangeText = `Last ${logsFilterState.days} day${logsFilterState.days !== 1 ? 's' : ''}`;
+      }
       
       container.innerHTML = `
         <div class="fade-in">
           <div class="flex items-center justify-between mb-6">
             <h2 class="text-2xl font-bold text-gray-900">Logs</h2>
             <div class="text-sm text-gray-600">
-              Showing logs from last <span class="font-semibold">${logsFilterState.days}</span> day${logsFilterState.days !== 1 ? 's' : ''}
+              ${dateRangeText} | Total: <span class="font-semibold">${pagination.total}</span> logs
             </div>
           </div>
           
+          <!-- 过滤器区域 -->
+          <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <!-- 日期范围选择 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                <input 
+                  type="date" 
+                  id="logStartDate"
+                  value="${logsFilterState.start_date}"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onchange="updateLogDateRange()"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                <input 
+                  type="date" 
+                  id="logEndDate"
+                  value="${logsFilterState.end_date}"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onchange="updateLogDateRange()"
+                />
+              </div>
+              <div class="flex items-end">
+                <button 
+                  onclick="clearLogDateRange()"
+                  class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Clear Date Range
+                </button>
+              </div>
+              
+              <!-- Action Type 下拉菜单 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Action Type</label>
+                <select 
+                  id="logActionFilter"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onchange="filterLogsByAction(this.value)"
+                >
+                  <option value="">All Actions</option>
+                  ${filterOptions.actions.map(action => `
+                    <option value="${action}" ${logsFilterState.action === action ? 'selected' : ''}>${action}</option>
+                  `).join('')}
+                </select>
+              </div>
+              
+              <!-- Resource Type 下拉菜单 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Resource Type</label>
+                <select 
+                  id="logResourceTypeFilter"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onchange="filterLogsByResourceType(this.value)"
+                >
+                  <option value="">All Types</option>
+                  ${filterOptions.resourceTypes.map(type => `
+                    <option value="${type}" ${logsFilterState.target_type === type ? 'selected' : ''}>${type}</option>
+                  `).join('')}
+                </select>
+              </div>
+              
+              <!-- Operator 下拉菜单 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Operator</label>
+                <select 
+                  id="logOperatorFilter"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onchange="filterLogsByOperator(this.value)"
+                >
+                  <option value="">All Operators</option>
+                  ${filterOptions.operators.map(op => `
+                    <option value="${op}" ${logsFilterState.operator === op ? 'selected' : ''}>${op}</option>
+                  `).join('')}
+                </select>
+              </div>
+              
+              <!-- Details 模糊匹配输入框 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Details (Fuzzy Match)</label>
+                <input 
+                  type="text" 
+                  id="logDetailsFilter"
+                  placeholder="Search in details..."
+                  value="${logsFilterState.details}"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onkeyup="debounceFilterLogsByDetails(this.value)"
+                />
+              </div>
+              
+              <!-- IP Address 模糊匹配输入框 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">IP Address (Fuzzy Match)</label>
+                <input 
+                  type="text" 
+                  id="logIPFilter"
+                  placeholder="Search IP address..."
+                  value="${logsFilterState.ip_address}"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onkeyup="debounceFilterLogsByIP(this.value)"
+                />
+              </div>
+              
+              <!-- 清除所有过滤器 -->
+              <div class="flex items-end">
+                <button 
+                  onclick="clearAllLogFilters()"
+                  class="w-full px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Clear All Filters
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 日志表格 -->
           <div class="bg-white rounded-xl shadow-sm overflow-hidden">
             <div class="overflow-x-auto">
               <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                   <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      <div class="flex flex-col gap-1">
-                        <span>Time</span>
-                        <input 
-                          type="text" 
-                          placeholder="Filter time..." 
-                          class="text-xs px-2 py-1 border border-gray-300 rounded"
-                          onkeyup="filterLogsByTime(this.value)"
-                        />
-                      </div>
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      <div class="flex flex-col gap-1">
-                        <span>Operator</span>
-                        <input 
-                          type="text" 
-                          placeholder="Filter operator..." 
-                          class="text-xs px-2 py-1 border border-gray-300 rounded"
-                          value="${logsFilterState.operator}"
-                          onkeyup="filterLogsByOperator(this.value)"
-                        />
-                      </div>
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      <div class="flex flex-col gap-1">
-                        <span>Action Type</span>
-                        <select 
-                          class="text-xs px-2 py-1 border border-gray-300 rounded w-full"
-                          onchange="filterLogsByAction(this.value)"
-                        >
-                          <option value="">All Actions</option>
-                          ${actionTypes.map(action => `
-                            <option value="${action}" ${logsFilterState.action === action ? 'selected' : ''}>${action}</option>
-                          `).join('')}
-                        </select>
-                      </div>
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      <div class="flex flex-col gap-1">
-                        <span>Resource Type</span>
-                        <select 
-                          class="text-xs px-2 py-1 border border-gray-300 rounded w-full"
-                          onchange="filterLogsByResourceType(this.value)"
-                        >
-                          <option value="">All Types</option>
-                          ${resourceTypes.map(type => `
-                            <option value="${type}" ${logsFilterState.target_type === type ? 'selected' : ''}>${type}</option>
-                          `).join('')}
-                        </select>
-                      </div>
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      <div class="flex flex-col gap-1">
-                        <span>Details</span>
-                        <input 
-                          type="text" 
-                          placeholder="Filter details..." 
-                          class="text-xs px-2 py-1 border border-gray-300 rounded"
-                          onkeyup="filterLogsByDetails(this.value)"
-                        />
-                      </div>
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      <div class="flex flex-col gap-1">
-                        <span>IP Address</span>
-                        <input 
-                          type="text" 
-                          placeholder="Filter IP..." 
-                          class="text-xs px-2 py-1 border border-gray-300 rounded"
-                          value="${logsFilterState.ip_address}"
-                          onkeyup="filterLogsByIP(this.value)"
-                        />
-                      </div>
-                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Operator</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action Type</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Resource Type</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP Address</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200" id="logsTableBody">
                   ${logs.length === 0 ? 
-                    '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No logs</td></tr>' :
+                    '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No logs found</td></tr>' :
                     logs.map(log => renderLogRow(log)).join('')
                   }
                 </tbody>
               </table>
             </div>
-            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-              <div class="text-sm text-gray-600">
-                Total: <span class="font-semibold">${data.pagination?.total || logs.length}</span> logs
+            
+            <!-- 分页控件 -->
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200">
+              <div class="flex items-center justify-between">
+                <div class="text-sm text-gray-600">
+                  Showing <span class="font-semibold">${(pagination.page - 1) * pagination.limit + 1}</span> to 
+                  <span class="font-semibold">${Math.min(pagination.page * pagination.limit, pagination.total)}</span> of 
+                  <span class="font-semibold">${pagination.total}</span> logs
+                </div>
+                
+                <div class="flex items-center gap-2">
+                  <!-- 上一页按钮 -->
+                  <button 
+                    onclick="goToLogPage(${pagination.page - 1})"
+                    ${pagination.page <= 1 ? 'disabled' : ''}
+                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium ${pagination.page <= 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
+                  >
+                    Previous
+                  </button>
+                  
+                  <!-- 页码显示和输入 -->
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-600">Page</span>
+                    <input 
+                      type="number" 
+                      id="logPageInput"
+                      min="1" 
+                      max="${pagination.totalPages}"
+                      value="${pagination.page}"
+                      class="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      onkeyup="if(event.key==='Enter') goToLogPage(parseInt(this.value))"
+                    />
+                    <span class="text-sm text-gray-600">of ${pagination.totalPages}</span>
+                  </div>
+                  
+                  <!-- 下一页按钮 -->
+                  <button 
+                    onclick="goToLogPage(${pagination.page + 1})"
+                    ${pagination.page >= pagination.totalPages ? 'disabled' : ''}
+                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium ${pagination.page >= pagination.totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
-              <button 
-                onclick="loadMoreLogs()" 
-                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-              >
-                Show More Logs (+1 day)
-              </button>
             </div>
           </div>
         </div>
@@ -3788,54 +3905,92 @@ function renderLogRow(log) {
   `;
 }
 
-// 显示更多日志（增加一天）
-function loadMoreLogs() {
-  logsFilterState.days += 1;
+// 更新日期范围
+function updateLogDateRange() {
+  const startDate = document.getElementById('logStartDate').value;
+  const endDate = document.getElementById('logEndDate').value;
+  
+  logsFilterState.start_date = startDate || '';
+  logsFilterState.end_date = endDate || '';
+  logsFilterState.page = 1; // 重置到第一页
+  loadLogs();
+}
+
+// 清除日期范围
+function clearLogDateRange() {
+  logsFilterState.start_date = '';
+  logsFilterState.end_date = '';
+  logsFilterState.page = 1;
+  document.getElementById('logStartDate').value = '';
+  document.getElementById('logEndDate').value = '';
+  loadLogs();
+}
+
+// 清除所有过滤器
+function clearAllLogFilters() {
+  logsFilterState = {
+    page: 1,
+    limit: 30,
+    start_date: '',
+    end_date: '',
+    days: 3,
+    action: '',
+    operator: '',
+    target_type: '',
+    ip_address: '',
+    details: ''
+  };
+  loadLogs();
+}
+
+// 分页函数
+function goToLogPage(page) {
+  const totalPages = parseInt(document.querySelector('#logPageInput')?.max || 1);
+  if (page < 1) page = 1;
+  if (page > totalPages) page = totalPages;
+  
+  logsFilterState.page = page;
   loadLogs();
 }
 
 // 过滤函数
-function filterLogsByTime(value) {
-  filterLogsTable('time', value);
-}
-
-function filterLogsByOperator(value) {
-  logsFilterState.operator = value;
-  loadLogs();
-}
-
 function filterLogsByAction(value) {
-  logsFilterState.action = value;
+  logsFilterState.action = value || '';
+  logsFilterState.page = 1; // 重置到第一页
   loadLogs();
 }
 
 function filterLogsByResourceType(value) {
-  logsFilterState.target_type = value;
+  logsFilterState.target_type = value || '';
+  logsFilterState.page = 1;
   loadLogs();
 }
 
-function filterLogsByDetails(value) {
-  filterLogsTable('details', value);
-}
-
-function filterLogsByIP(value) {
-  logsFilterState.ip_address = value;
+function filterLogsByOperator(value) {
+  logsFilterState.operator = value || '';
+  logsFilterState.page = 1;
   loadLogs();
 }
 
-// 客户端表格过滤（用于不需要重新加载的字段）
-function filterLogsTable(field, value) {
-  const rows = document.querySelectorAll('.log-row');
-  const filterValue = value.toLowerCase().trim();
-  
-  rows.forEach(row => {
-    const cellValue = row.getAttribute(`data-${field}`) || '';
-    if (filterValue === '' || cellValue.includes(filterValue)) {
-      row.style.display = '';
-    } else {
-      row.style.display = 'none';
-    }
-  });
+// Details和IP的防抖过滤
+let detailsFilterTimeout = null;
+function debounceFilterLogsByDetails(value) {
+  clearTimeout(detailsFilterTimeout);
+  detailsFilterTimeout = setTimeout(() => {
+    logsFilterState.details = value || '';
+    logsFilterState.page = 1;
+    loadLogs();
+  }, 500); // 500ms防抖
+}
+
+let ipFilterTimeout = null;
+function debounceFilterLogsByIP(value) {
+  clearTimeout(ipFilterTimeout);
+  ipFilterTimeout = setTimeout(() => {
+    logsFilterState.ip_address = value || '';
+    logsFilterState.page = 1;
+    loadLogs();
+  }, 500); // 500ms防抖
 }
 
 // 加载关于页面

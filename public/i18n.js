@@ -538,8 +538,37 @@ const translations = {
   }
 };
 
-// Current language (default: 'en')
-let currentLanguage = localStorage.getItem('language') || 'en';
+// 检测浏览器语言
+function detectBrowserLanguage() {
+  // 优先使用 navigator.languages（支持多语言偏好）
+  const languages = navigator.languages || [navigator.language || 'en'];
+  
+  // 检查是否包含中文（支持各种中文变体）
+  for (const lang of languages) {
+    const langCode = lang.toLowerCase().split('-')[0]; // 获取语言代码（如 'zh' from 'zh-CN'）
+    if (langCode === 'zh') {
+      return 'zh';
+    }
+  }
+  
+  // 默认返回英文
+  return 'en';
+}
+
+// 获取初始语言（优先使用用户设置，否则使用浏览器语言）
+function getInitialLanguage() {
+  // 检查用户是否手动设置过语言
+  const savedLanguage = localStorage.getItem('language');
+  if (savedLanguage && (savedLanguage === 'en' || savedLanguage === 'zh')) {
+    return savedLanguage;
+  }
+  
+  // 如果没有手动设置，使用浏览器语言
+  return detectBrowserLanguage();
+}
+
+// Current language (default: 根据浏览器语言自动检测)
+let currentLanguage = getInitialLanguage();
 
 // Translation function with placeholder support
 function t(key, params) {
@@ -599,6 +628,10 @@ function setLanguage(lang) {
     if (typeof updateOrderingStatus === 'function') {
       updateOrderingStatus();
     }
+    // Update language button display
+    if (typeof updateLanguageButton === 'function') {
+      updateLanguageButton();
+    }
     // Re-setup category scroll highlight after language change
     if (typeof setupCategoryScrollHighlight === 'function') {
       // 延迟一点执行，确保 DOM 已更新
@@ -619,4 +652,6 @@ if (typeof window !== 'undefined') {
   window.t = t;
   window.setLanguage = setLanguage;
   window.getLanguage = getLanguage;
+  window.detectBrowserLanguage = detectBrowserLanguage;
+  window.getInitialLanguage = getInitialLanguage;
 }

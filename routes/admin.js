@@ -2921,13 +2921,16 @@ router.get('/logs', async (req, res) => {
   try {
     const { 
       page = 1, 
-      limit = 50, 
+      limit = 30,  // 默认每页30条
       action, 
       admin_id,
       target_type,
       ip_address,
       operator,
-      days = 3  // 默认显示最近3天
+      details,     // Details字段模糊匹配
+      start_date,  // 开始日期（YYYY-MM-DD格式）
+      end_date,    // 结束日期（YYYY-MM-DD格式）
+      days = 3     // 如果没有指定日期范围，默认显示最近3天
     } = req.query;
     const offset = (page - 1) * limit;
 
@@ -2939,11 +2942,23 @@ router.get('/logs', async (req, res) => {
     `;
     const params = [];
 
-    // 日期范围过滤（默认最近N天）
-    if (days) {
+    // 日期范围过滤（优先使用start_date和end_date，否则使用days）
+    if (start_date && end_date) {
+      // 使用指定的日期范围
+      sql += ' AND l.created_at >= ? AND l.created_at <= ?';
+      params.push(`${start_date} 00:00:00`, `${end_date} 23:59:59`);
+    } else if (start_date) {
+      // 只有开始日期
+      sql += ' AND l.created_at >= ?';
+      params.push(`${start_date} 00:00:00`);
+    } else if (end_date) {
+      // 只有结束日期
+      sql += ' AND l.created_at <= ?';
+      params.push(`${end_date} 23:59:59`);
+    } else if (days) {
+      // 使用days参数（向后兼容）
       const daysInt = parseInt(days);
       if (daysInt > 0) {
-        // SQLite不支持动态拼接，需要手动构建日期字符串
         const dateStr = `datetime('now', '-${daysInt} days', 'localtime')`;
         sql += ` AND l.created_at >= ${dateStr}`;
       }
@@ -2984,6 +2999,12 @@ router.get('/logs', async (req, res) => {
       }
     }
 
+    // Details字段模糊匹配
+    if (details) {
+      sql += ' AND l.details LIKE ?';
+      params.push(`%${details}%`);
+    }
+
     sql += ' ORDER BY l.created_at DESC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
 
@@ -2998,8 +3019,17 @@ router.get('/logs', async (req, res) => {
     `;
     const countParams = [];
     
-    // 应用相同的过滤条件
-    if (days) {
+    // 应用相同的过滤条件（日期范围）
+    if (start_date && end_date) {
+      countSql += ' AND l.created_at >= ? AND l.created_at <= ?';
+      countParams.push(`${start_date} 00:00:00`, `${end_date} 23:59:59`);
+    } else if (start_date) {
+      countSql += ' AND l.created_at >= ?';
+      countParams.push(`${start_date} 00:00:00`);
+    } else if (end_date) {
+      countSql += ' AND l.created_at <= ?';
+      countParams.push(`${end_date} 23:59:59`);
+    } else if (days) {
       const daysInt = parseInt(days);
       if (daysInt > 0) {
         const dateStr = `datetime('now', '-${daysInt} days', 'localtime')`;
@@ -3032,6 +3062,12 @@ router.get('/logs', async (req, res) => {
       }
     }
 
+    // Details字段模糊匹配（计数查询）
+    if (details) {
+      countSql += ' AND l.details LIKE ?';
+      countParams.push(`%${details}%`);
+    }
+
     const { total } = await getAsync(countSql, countParams);
 
     res.json({ 
@@ -3040,12 +3076,55 @@ router.get('/logs', async (req, res) => {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total
+        total,
+        totalPages: Math.ceil(total / parseInt(limit))
       }
     });
   } catch (error) {
     logger.error('获取日志失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取日志失败' });
+  }
+});
+
+// 获取日志过滤器选项（用于下拉菜单）
+router.get('/logs/filter-options', async (req, res) => {
+  try {
+    // 获取所有唯一的操作类型
+    const actionTypes = await allAsync(`
+      SELECT DISTINCT action 
+      FROM logs 
+      WHERE action IS NOT NULL AND action != ''
+      ORDER BY action
+    `);
+    
+    // 获取所有唯一的资源类型
+    const resourceTypes = await allAsync(`
+      SELECT DISTINCT target_type 
+      FROM logs 
+      WHERE target_type IS NOT NULL AND target_type != ''
+      ORDER BY target_type
+    `);
+    
+    // 获取所有唯一的操作者（管理员用户名）
+    const operators = await allAsync(`
+      SELECT DISTINCT a.username 
+      FROM logs l
+      LEFT JOIN admins a ON l.admin_id = a.id
+      WHERE a.username IS NOT NULL AND a.username != ''
+      ORDER BY a.username
+    `);
+    
+    res.json({
+      success: true,
+      options: {
+        actions: actionTypes.map(row => row.action),
+        resourceTypes: resourceTypes.map(row => row.target_type),
+        operators: operators.map(row => row.username)
+      }
+    });
+  } catch (error) {
+    logger.error('获取日志过滤器选项失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取过滤器选项失败' });
   }
 });
 
