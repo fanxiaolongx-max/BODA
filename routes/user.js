@@ -7,7 +7,7 @@ const { runAsync, getAsync, allAsync, beginTransaction, commit, rollback } = req
 const { requireUserAuth } = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = require('../utils/cycle-helper');
-const { calculateItemPrice, batchGetToppingProducts, batchGetOrderItems } = require('../utils/order-helper');
+const { calculateItemPrice, batchGetToppingProducts, batchGetOrderItems, roundAmount } = require('../utils/order-helper');
 
 const router = express.Router();
 
@@ -119,7 +119,8 @@ router.post('/orders', async (req, res) => {
           toppingProductsMap
         );
 
-        const subtotal = finalPrice * quantity;
+        // 使用精度处理，避免浮点数误差
+        const subtotal = roundAmount(finalPrice * quantity);
         totalAmount += subtotal;
 
         orderItems.push({
@@ -166,9 +167,9 @@ router.post('/orders', async (req, res) => {
               req.session.userId,
               customer_name || req.session.userName || '',
               req.session.userPhone,
-              totalAmount,
+              roundAmount(totalAmount),
               0,
-              totalAmount,
+              roundAmount(totalAmount),
               'pending',
               notes || null
             ]
@@ -583,7 +584,8 @@ router.put('/orders/:id', async (req, res) => {
           toppingProductsMap
         );
 
-        const subtotal = finalPrice * quantity;
+        // 使用精度处理，避免浮点数误差
+        const subtotal = roundAmount(finalPrice * quantity);
         totalAmount += subtotal;
 
         orderItems.push({
@@ -672,7 +674,7 @@ router.put('/orders/:id', async (req, res) => {
         message: '订单更新成功',
         order: {
           id,
-          total_amount: totalAmount,
+          total_amount: roundAmount(totalAmount),
           items: orderItems
         }
       });

@@ -2,6 +2,16 @@ const { allAsync } = require('../db/database');
 const { logger } = require('./logger');
 
 /**
+ * 统一处理金额精度（四舍五入到2位小数）
+ * 避免浮点数精度问题
+ * @param {number} amount - 金额
+ * @returns {number} 四舍五入后的金额
+ */
+function roundAmount(amount) {
+  return Math.round(parseFloat(amount || 0) * 100) / 100;
+}
+
+/**
  * 计算商品价格（考虑杯型和加料）
  * @param {Object} product - 商品对象
  * @param {string|null} size - 杯型
@@ -117,8 +127,8 @@ async function calculateItemPrice(product, size, toppingIds, toppingProductsMap 
     }
   }
 
-  // 最终单价 = 基础价格 + 加料价格
-  const finalPrice = itemPrice + toppingPrice;
+  // 最终单价 = 基础价格 + 加料价格（使用精度处理）
+  const finalPrice = roundAmount(itemPrice + toppingPrice);
   
   // 构建包含价格信息的加料数组（用于保存到订单）
   const toppingsWithPrice = [];
@@ -273,6 +283,7 @@ async function batchGetOrderItems(orderIds) {
 module.exports = {
   calculateItemPrice,
   batchGetToppingProducts,
-  batchGetOrderItems
+  batchGetOrderItems,
+  roundAmount
 };
 

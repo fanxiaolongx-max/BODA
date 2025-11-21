@@ -209,9 +209,10 @@ router.post('/calculate-discount', async (req, res) => {
       // 使用事务确保数据一致性
       try {
         await beginTransaction();
+        const { roundAmount } = require('../utils/order-helper');
         for (const order of pendingOrders) {
-          const discountAmount = order.total_amount * discountRate;
-          const finalAmount = order.total_amount - discountAmount;
+          const discountAmount = roundAmount(order.total_amount * discountRate);
+          const finalAmount = roundAmount(order.total_amount - discountAmount);
 
           await runAsync(
             "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",

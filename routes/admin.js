@@ -997,9 +997,10 @@ router.post('/settings', async (req, res) => {
           }
           
           // 批量更新所有订单的折扣（已经在事务中，不需要再开启新事务）
+          const { roundAmount } = require('../utils/order-helper');
           for (const order of orders) {
-            const discountAmount = order.total_amount * discountRate;
-            const finalAmount = order.total_amount - discountAmount;
+            const discountAmount = roundAmount(order.total_amount * discountRate);
+            const finalAmount = roundAmount(order.total_amount - discountAmount);
             
             await runAsync(
               "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
@@ -1146,9 +1147,10 @@ router.post('/ordering/close', async (req, res) => {
           }
           
           // 批量更新所有订单的折扣（已经在事务中，不需要再开启新事务）
+          const { roundAmount } = require('../utils/order-helper');
           for (const order of orders) {
-            const discountAmount = order.total_amount * discountRate;
-            const finalAmount = order.total_amount - discountAmount;
+            const discountAmount = roundAmount(order.total_amount * discountRate);
+            const finalAmount = roundAmount(order.total_amount - discountAmount);
             
             await runAsync(
               "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
