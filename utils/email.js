@@ -129,6 +129,10 @@ async function sendCycleExportEmail(cycleId, excelFilePath) {
       return { success: false, message: '邮件功能未启用' };
     }
 
+    // 获取商店名称
+    const storeNameSetting = await getAsync("SELECT value FROM settings WHERE key = 'store_name'");
+    const storeName = storeNameSetting?.value || '订单系统';
+
     // 读取Excel文件
     let attachment = null;
     if (fs.existsSync(excelFilePath)) {
@@ -138,15 +142,15 @@ async function sendCycleExportEmail(cycleId, excelFilePath) {
       };
     }
 
-    const subject = `订单导出 - 周期 #${cycleId}`;
-    const text = `周期 #${cycleId} 的订单已导出，请查看附件。`;
+    const subject = `订单导出 - ${storeName} - 周期 #${cycleId}`;
+    const text = `${storeName} - 周期 #${cycleId} 的订单已导出，请查看附件。`;
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2 style="color: #333;">订单导出通知</h2>
-        <p>周期 #${cycleId} 的订单已成功导出。</p>
+        <p><strong>${storeName}</strong> - 周期 #${cycleId} 的订单已成功导出。</p>
         <p>请查看附件中的Excel文件。</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-        <p style="color: #666; font-size: 12px;">此邮件由系统自动发送。</p>
+        <p style="color: #666; font-size: 12px;">此邮件由${storeName}自动发送。</p>
       </div>
     `;
 
@@ -182,13 +186,17 @@ async function testEmailConfig() {
       return { success: false, message: '无法创建邮件传输器' };
     }
 
+    // 获取商店名称
+    const storeNameSetting = await getAsync("SELECT value FROM settings WHERE key = 'store_name'");
+    const storeName = storeNameSetting?.value || '订单系统';
+
     // 发送测试邮件
-    const testSubject = '测试邮件 - BODA订单系统';
-    const testText = '这是一封测试邮件。如果您收到此邮件，说明邮件配置正确。';
+    const testSubject = `测试邮件 - ${storeName}`;
+    const testText = `这是一封测试邮件。如果您收到此邮件，说明${storeName}的邮件配置正确。`;
     const testHtml = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2 style="color: #333;">测试邮件</h2>
-        <p>这是一封测试邮件。如果您收到此邮件，说明邮件配置正确。</p>
+        <p>这是一封测试邮件。如果您收到此邮件，说明<strong>${storeName}</strong>的邮件配置正确。</p>
         <p style="color: #666; font-size: 12px;">发送时间：${new Date().toLocaleString('zh-CN')}</p>
       </div>
     `;
