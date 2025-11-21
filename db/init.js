@@ -457,8 +457,10 @@ async function initData() {
     ];
 
     for (const setting of settings) {
+      // 使用 INSERT OR IGNORE 避免与 migrateSettings() 冲突
+      // migrateSettings() 已经在 initDatabase() 中执行，可能已经添加了这些设置项
       await runAsync(
-        'INSERT INTO settings (key, value, description) VALUES (?, ?, ?)',
+        'INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)',
         [setting.key, setting.value, setting.description]
       );
     }

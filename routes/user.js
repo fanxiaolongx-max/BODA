@@ -716,6 +716,30 @@ router.post('/orders/:id/payment', upload.single('payment_image'), async (req, r
       return res.status(400).json({ success: false, message: '订单已付款' });
     }
 
+    // 检查订单是否已被取消（周期确认后自动取消）
+    if (order.status === 'cancelled') {
+      return res.status(400).json({ success: false, message: '订单已取消，无法上传付款截图' });
+    }
+
+    // 检查订单所属周期是否已确认（如果周期已确认，禁止上传付款截图）
+    if (order.cycle_id) {
+      const cycle = await getAsync('SELECT status FROM ordering_cycles WHERE id = ?', [order.cycle_id]);
+      if (cycle && cycle.status === 'confirmed') {
+        return res.status(400).json({ success: false, message: '该周期已确认，无法上传付款截图' });
+      }
+    } else {
+      // 如果没有 cycle_id，通过订单创建时间查找对应的周期
+      const cycle = await getAsync(
+        `SELECT status FROM ordering_cycles 
+         WHERE start_time <= ? AND (end_time >= ? OR end_time IS NULL) 
+         ORDER BY start_time DESC LIMIT 1`,
+        [order.created_at, order.created_at]
+      );
+      if (cycle && cycle.status === 'confirmed') {
+        return res.status(400).json({ success: false, message: '该周期已确认，无法上传付款截图' });
+      }
+    }
+
     if (!req.file) {
       return res.status(400).json({ success: false, message: '请上传付款截图' });
     }

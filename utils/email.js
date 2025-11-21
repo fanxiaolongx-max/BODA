@@ -96,19 +96,82 @@ async function sendEmail(options) {
       return { success: false, message: '邮件配置不完整' };
     }
 
-    const mailOptions = {
-      from: config.from,
-      to: options.to || config.to,
-      subject: options.subject,
-      text: options.text,
-      html: options.html || options.text,
-      attachments: options.attachments || []
+    // 解析收件人地址（支持分号或逗号分隔的多个地址）
+    const parseRecipients = (recipients) => {
+      if (!recipients) return [];
+      // 支持分号和逗号分隔，也支持空格分隔
+      return recipients.split(/[;,]/)
+        .map(addr => addr.trim())
+        .filter(addr => addr.length > 0);
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    logger.info('邮件发送成功', { messageId: info.messageId, to: mailOptions.to });
-    
-    return { success: true, messageId: info.messageId };
+    const recipients = options.to || config.to;
+    const recipientList = parseRecipients(recipients);
+
+    if (recipientList.length === 0) {
+      logger.warn('没有有效的收件人地址');
+      return { success: false, message: '没有有效的收件人地址' };
+    }
+
+    // 分别发送给每个收件人，避免部分失败导致全部失败
+    const results = {
+      success: true,
+      total: recipientList.length,
+      succeeded: [],
+      failed: []
+    };
+
+    for (const recipient of recipientList) {
+      try {
+        const mailOptions = {
+          from: config.from,
+          to: recipient,
+          subject: options.subject,
+          text: options.text,
+          html: options.html || options.text,
+          attachments: options.attachments || []
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        results.succeeded.push({ email: recipient, messageId: info.messageId });
+        logger.info('邮件发送成功', { messageId: info.messageId, to: recipient });
+      } catch (error) {
+        results.success = false; // 至少有一个失败
+        results.failed.push({ email: recipient, error: error.message });
+        logger.error('邮件发送失败', { to: recipient, error: error.message });
+      }
+    }
+
+    // 如果至少有一个成功，返回部分成功
+    if (results.succeeded.length > 0) {
+      logger.info('邮件发送完成', { 
+        total: results.total, 
+        succeeded: results.succeeded.length, 
+        failed: results.failed.length,
+        failedRecipients: results.failed.map(f => f.email)
+      });
+      
+      return {
+        success: results.failed.length === 0, // 全部成功才返回true
+        partialSuccess: results.succeeded.length > 0,
+        total: results.total,
+        succeeded: results.succeeded.length,
+        failed: results.failed.length,
+        failedRecipients: results.failed.map(f => f.email),
+        messageId: results.succeeded[0]?.messageId
+      };
+    } else {
+      // 全部失败
+      logger.error('所有收件人发送失败', { 
+        total: results.total,
+        failedRecipients: results.failed.map(f => f.email)
+      });
+      return { 
+        success: false, 
+        message: '所有收件人发送失败',
+        failedRecipients: results.failed.map(f => f.email)
+      };
+    }
   } catch (error) {
     logger.error('发送邮件失败', { error: error.message });
     return { success: false, message: error.message };

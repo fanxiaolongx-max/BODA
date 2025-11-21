@@ -203,14 +203,6 @@ function getPriceColor(price) {
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
-  // 初始化多语言
-  if (typeof initLanguageSwitcher === 'function') {
-    initLanguageSwitcher();
-  }
-  if (typeof applyTranslations === 'function') {
-    applyTranslations();
-  }
-  
   // 先加载公开设置（商店名称等），即使未登录也要显示
   loadSettings();
   
@@ -231,16 +223,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
-
-// 应用翻译
-function applyTranslations() {
-  document.querySelectorAll('[data-i18n]').forEach(el => {
-    const key = el.getAttribute('data-i18n');
-    if (key && typeof t === 'function') {
-      el.textContent = t(key);
-    }
-  });
-}
 
 // 检查认证状态
 // Session过期检查定时器
@@ -640,8 +622,8 @@ async function loadDashboard() {
 // 确认周期
 async function confirmCycle(cycleId) {
   const confirmed = await showConfirmDialog(
-    'End Cycle',
-    'Are you sure you want to end the current cycle and calculate discounts? This action cannot be undone.',
+    'Confirm Cycle and Calculate Discount',
+    'Are you sure you want to confirm this cycle and calculate discounts? This will:\n\n1. Calculate and apply discounts to all orders\n2. Automatically cancel all pending orders\n3. Prevent users from uploading payment screenshots for these orders\n\nThis action cannot be undone.',
     'Confirm',
     'Cancel'
   );
@@ -652,7 +634,8 @@ async function confirmCycle(cycleId) {
     const data = await apiPost(`/admin/cycles/${cycleId}/confirm`);
     
     if (data.success) {
-      showToast(`Cycle confirmed successfully! Discount rate: ${data.discountRate.toFixed(1)}%, updated ${data.orderCount} orders`, 'success');
+      const message = `Cycle confirmed successfully! Discount rate: ${data.discountRate.toFixed(1)}%, updated ${data.orderCount} orders${data.cancelledCount > 0 ? `, cancelled ${data.cancelledCount} pending orders` : ''}`;
+      showToast(message, 'success');
       loadDashboard();
       loadOrders();
     } else {
@@ -2595,11 +2578,11 @@ async function loadSettingsPage() {
                     
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-2">To Email Address *</label>
-                      <input type="email" id="emailTo" 
+                      <input type="text" id="emailTo" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                             placeholder="recipient@example.com"
+                             placeholder="recipient@example.com; another@example.com"
                              value="${settings.email_to || ''}">
-                      <p class="text-xs text-gray-500 mt-1">Recipient email address for order export notifications</p>
+                      <p class="text-xs text-gray-500 mt-1">Recipient email address(es) for order export notifications. Multiple addresses can be separated by semicolons (;)</p>
                     </div>
                   </div>
                   

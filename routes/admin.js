@@ -1816,9 +1816,13 @@ router.get('/orders/export', async (req, res) => {
       'hot': 'Hot'
     };
 
-    // 添加数据行
+    // 添加数据行并跟踪订单行范围（用于合并单元格）
     let rowIndex = 2; // 从第2行开始（第1行是标题）
+    const orderRowRanges = []; // 存储每个订单的行范围 {orderId, firstRow, lastRow}
+    
     for (const order of orders) {
+      const orderFirstRow = rowIndex;
+      
       if (order.items && order.items.length > 0) {
         for (const item of order.items) {
           // 格式化加料
@@ -1998,6 +2002,31 @@ router.get('/orders/export', async (req, res) => {
         }
 
         rowIndex++;
+      }
+      
+      // 记录订单的行范围
+      const orderLastRow = rowIndex - 1;
+      if (orderLastRow >= orderFirstRow) {
+        orderRowRanges.push({ orderId: order.id, firstRow: orderFirstRow, lastRow: orderLastRow });
+      }
+    }
+
+    // 合并同一订单的单元格（除了商品相关列）
+    // 需要合并的列：1(订单编号), 2(客户姓名), 3(客户电话), 4(订单状态), 
+    // 13(订单总金额), 14(折扣金额), 15(实付金额), 16(订单备注), 
+    // 17(创建时间), 18(更新时间), 19(付款截图链接)
+    // 不合并的列：5(商品名称), 6(数量), 7(杯型), 8(甜度), 9(冰度), 10(加料), 11(单价), 12(小计)
+    const mergeColumns = [1, 2, 3, 4, 13, 14, 15, 16, 17, 18, 19];
+    
+    for (const range of orderRowRanges) {
+      if (range.lastRow > range.firstRow) {
+        // 如果订单有多行，需要合并
+        for (const col of mergeColumns) {
+          worksheet.mergeCells(range.firstRow, col, range.lastRow, col);
+          // 设置合并后的单元格垂直居中
+          const cell = worksheet.getCell(range.firstRow, col);
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        }
       }
     }
 
@@ -2275,9 +2304,13 @@ async function generateCycleExcelFile(cycleId, baseUrl) {
       'hot': 'Hot'
     };
 
-    // 添加数据行
+    // 添加数据行并跟踪订单行范围（用于合并单元格）
     let rowIndex = 2;
+    const orderRowRanges = []; // 存储每个订单的行范围 {orderId, firstRow, lastRow}
+    
     for (const order of orders) {
+      const orderFirstRow = rowIndex;
+      
       if (order.items && order.items.length > 0) {
         for (const item of order.items) {
           // 格式化加料
@@ -2449,6 +2482,30 @@ async function generateCycleExcelFile(cycleId, baseUrl) {
 
         rowIndex++;
       }
+      
+      // 记录订单的行范围
+      const orderLastRow = rowIndex - 1;
+      if (orderLastRow >= orderFirstRow) {
+        orderRowRanges.push({ orderId: order.id, firstRow: orderFirstRow, lastRow: orderLastRow });
+      }
+    }
+
+    // 合并同一订单的单元格（除了商品相关列）
+    // 需要合并的列：1(订单编号), 2(客户姓名), 3(客户电话), 4(订单状态), 
+    // 13(订单总金额), 14(折扣金额), 15(实付金额), 16(订单备注), 
+    // 17(创建时间), 18(更新时间), 19(付款截图链接)
+    const mergeColumns = [1, 2, 3, 4, 13, 14, 15, 16, 17, 18, 19];
+    
+    for (const range of orderRowRanges) {
+      if (range.lastRow > range.firstRow) {
+        // 如果订单有多行，需要合并
+        for (const col of mergeColumns) {
+          worksheet.mergeCells(range.firstRow, col, range.lastRow, col);
+          // 设置合并后的单元格垂直居中
+          const cell = worksheet.getCell(range.firstRow, col);
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        }
+      }
     }
 
     // 冻结首行
@@ -2518,15 +2575,26 @@ router.post('/cycles/:id/confirm', async (req, res) => {
         }
       }
       
-      // 更新所有订单的折扣
+      // 更新所有订单的折扣，并将待付款订单自动取消
+      let cancelledCount = 0;
       for (const order of orders) {
         const discountAmount = order.total_amount * discountRate;
         const finalAmount = order.total_amount - discountAmount;
         
-        await runAsync(
-          "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-          [discountAmount, finalAmount, order.id]
-        );
+        // 如果订单是待付款状态，自动取消
+        if (order.status === 'pending') {
+          await runAsync(
+            "UPDATE orders SET discount_amount = ?, final_amount = ?, status = 'cancelled', updated_at = datetime('now', 'localtime') WHERE id = ?",
+            [discountAmount, finalAmount, order.id]
+          );
+          cancelledCount++;
+        } else {
+          // 已付款的订单只更新折扣
+          await runAsync(
+            "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+            [discountAmount, finalAmount, order.id]
+          );
+        }
       }
       
       // 更新周期状态
@@ -2536,6 +2604,12 @@ router.post('/cycles/:id/confirm', async (req, res) => {
          WHERE id = ?`,
         [discountRate * 100, id]
       );
+      
+      logger.info('周期确认完成，已自动取消待付款订单', { 
+        cycleId: id, 
+        cancelledCount, 
+        totalOrders: orders.length 
+      });
       
       await commit();
       await logAction(req.session.adminId, 'UPDATE', 'ordering_cycle', id, { discountRate, orderCount: orders.length }, req);
@@ -2562,7 +2636,8 @@ router.post('/cycles/:id/confirm', async (req, res) => {
         success: true, 
         message: '周期确认成功',
         discountRate: discountRate * 100,
-        orderCount: orders.length
+        orderCount: orders.length,
+        cancelledCount: cancelledCount
       });
     } catch (error) {
       await rollback();

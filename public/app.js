@@ -75,6 +75,94 @@ function formatPriceDecimal(price) {
   return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
 }
 
+// 智能分割中英文文本
+function smartSplitText(text) {
+  if (!text) return { en: '', zh: '' };
+  
+  // 检测中文字符的正则表达式
+  const chineseRegex = /[\u4e00-\u9fa5]/;
+  const englishRegex = /[a-zA-Z]/;
+  
+  // 如果文本不包含中文，全部作为英文
+  if (!chineseRegex.test(text)) {
+    return { en: text.trim(), zh: '' };
+  }
+  
+  // 如果文本不包含英文，全部作为中文
+  if (!englishRegex.test(text)) {
+    return { en: '', zh: text.trim() };
+  }
+  
+  // 尝试多种分割模式
+  // 模式1: "English 中文" 或 "English中文" (英文在前，最常见)
+  const pattern1 = /^([a-zA-Z\s]+?)([\u4e00-\u9fa5]+.*)$/;
+  const match1 = text.match(pattern1);
+  if (match1) {
+    return { en: match1[1].trim(), zh: match1[2].trim() };
+  }
+  
+  // 模式2: "中文 English" 或 "中文English" (中文在前)
+  const pattern2 = /^([\u4e00-\u9fa5]+.*?)([a-zA-Z\s]+)$/;
+  const match2 = text.match(pattern2);
+  if (match2) {
+    return { en: match2[2].trim(), zh: match2[1].trim() };
+  }
+  
+  // 模式3: 混合格式，尝试按空格分割
+  const parts = text.split(/\s+/);
+  const enParts = [];
+  const zhParts = [];
+  
+  parts.forEach(part => {
+    if (chineseRegex.test(part)) {
+      zhParts.push(part);
+    } else if (englishRegex.test(part)) {
+      enParts.push(part);
+    } else if (part.trim()) {
+      // 如果既没有中文也没有英文，可能是数字或符号，根据上下文判断
+      // 默认放到英文部分
+      enParts.push(part);
+    }
+  });
+  
+  return {
+    en: enParts.join(' ').trim(),
+    zh: zhParts.join(' ').trim()
+  };
+}
+
+// 根据当前语言获取文本（带缓存）
+const localizedTextCache = new Map();
+function getLocalizedText(text) {
+  if (!text) return '';
+  
+  const lang = typeof getLanguage === 'function' ? getLanguage() : 'en';
+  const cacheKey = `${lang}:${text}`;
+  
+  if (localizedTextCache.has(cacheKey)) {
+    return localizedTextCache.get(cacheKey);
+  }
+  
+  const split = smartSplitText(text);
+  let result;
+  
+  if (lang === 'zh') {
+    // 优先显示中文，如果没有中文则显示英文
+    result = split.zh || split.en || text;
+  } else {
+    // 优先显示英文，如果没有英文则显示中文
+    result = split.en || split.zh || text;
+  }
+  
+  localizedTextCache.set(cacheKey, result);
+  return result;
+}
+
+// 清除本地化文本缓存（语言切换时调用）
+function clearLocalizedTextCache() {
+  localizedTextCache.clear();
+}
+
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
   // 先隐藏所有tab，避免闪烁
@@ -86,9 +174,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 先加载设置，更新商店名称，避免闪烁
   await loadSettings();
   
-  // Apply translations (在设置加载之后，确保商店名称已更新)
-  if (typeof applyTranslations === 'function') {
-    applyTranslations();
+  // Load user language preference (在设置加载之后)
+  const savedLanguage = localStorage.getItem('language') || 'en';
+  if (typeof setLanguage === 'function') {
+    setLanguage(savedLanguage);
+  } else {
+    // 如果 setLanguage 还未加载，直接应用翻译
+    if (typeof applyTranslations === 'function') {
+      applyTranslations();
+    }
   }
   
   // 直接显示主页面，无需登录
@@ -128,6 +222,44 @@ function applyTranslations() {
       el.textContent = t(key);
     }
   });
+  
+  // Update placeholder attributes
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (key && typeof t === 'function') {
+      el.placeholder = t(key);
+    }
+  });
+  
+  // Update language display button
+  updateLanguageButton();
+}
+
+// 更新语言切换按钮显示
+function updateLanguageButton() {
+  const languageBtn = document.getElementById('languageDisplay');
+  const languageBtnProfile = document.getElementById('languageDisplayProfile');
+  if (typeof getLanguage === 'function') {
+    const lang = getLanguage();
+    const displayText = lang === 'zh' ? '中文' : 'EN';
+    if (languageBtn) {
+      languageBtn.textContent = displayText;
+    }
+    if (languageBtnProfile) {
+      languageBtnProfile.textContent = displayText;
+    }
+  }
+}
+
+// 切换语言
+function toggleLanguage() {
+  if (typeof getLanguage === 'function' && typeof setLanguage === 'function') {
+    const currentLang = getLanguage();
+    const newLang = currentLang === 'en' ? 'zh' : 'en';
+    setLanguage(newLang);
+    // 清除本地化文本缓存
+    clearLocalizedTextCache();
+  }
 }
 
 // Session过期检查定时器（用户）
@@ -207,7 +339,7 @@ function startUserSessionCheck() {
           // 检查用户session是否即将过期（剩余时间少于1分钟）或已过期
           if (data.session.user && (data.session.user.isExpired || data.session.user.remainingMs <= 60000)) {
             stopUserSessionCheck();
-            showToast('Session expired, you have been logged out', 'info');
+            showToast(t('session_expired'), 'info');
             setTimeout(async () => {
               // 自动退出登录
               await logout();
@@ -220,7 +352,7 @@ function startUserSessionCheck() {
         // Session已过期，检查是否是用户session过期
         if (currentUser) {
           stopUserSessionCheck();
-          showToast('Session expired, you have been logged out', 'info');
+          showToast(t('session_expired'), 'info');
           setTimeout(async () => {
             currentUser = null;
             updateLoginStatus();
@@ -306,18 +438,18 @@ async function login() {
 
   // 验证手机号（只验证长度，不限制格式）
   if (!phone) {
-    showToast('Please enter phone number', 'error');
+    showToast(t('please_enter_phone'), 'error');
     return;
   }
   
   if (phone.length < 8 || phone.length > 15) {
-    showToast('Phone number length should be between 8-15 digits', 'error');
+    showToast(t('phone_length_error'), 'error');
     return;
   }
   
   // Only allow digits and + (international prefix)
   if (!/^[+\d]+$/.test(phone)) {
-    showToast('Phone number can only contain digits and +', 'error');
+    showToast(t('phone_format_error'), 'error');
     return;
   }
 
@@ -327,12 +459,12 @@ async function login() {
   if (smsEnabled) {
     // 如果启用了短信验证码，必须提供验证码
     if (!code) {
-      showToast('Please enter verification code', 'error');
+      showToast(t('please_enter_code'), 'error');
       return;
     }
     
     if (code.length !== 6 || !/^\d{6}$/.test(code)) {
-      showToast('Verification code must be 6 digits', 'error');
+      showToast(t('code_length_error'), 'error');
       return;
     }
     
@@ -367,7 +499,7 @@ async function loginWithCode(phone, code, name) {
       currentUser = data.user;
       closeLoginModal();
       updateLoginStatus();
-      showToast('Login successful!', 'success');
+      showToast(t('login_success'), 'success');
       
       // 启动session检查
       startUserSessionCheck();
@@ -382,11 +514,11 @@ async function loginWithCode(phone, code, name) {
         }
       }
     } else {
-      showToast(data.message || 'Login failed', 'error');
+      showToast(data.message || t('login_failed'), 'error');
     }
   } catch (error) {
     console.error('Login failed:', error);
-    showToast('Login failed, please try again', 'error');
+    showToast(t('login_failed_retry'), 'error');
   } finally {
     setButtonLoading(loginBtn, false);
   }
@@ -414,7 +546,7 @@ async function loginWithoutCode(phone, name) {
       currentUser = data.user;
       closeLoginModal();
       updateLoginStatus();
-      showToast('Login successful!', 'success');
+      showToast(t('login_success'), 'success');
       
       // 启动session检查
       startUserSessionCheck();
@@ -431,7 +563,7 @@ async function loginWithoutCode(phone, name) {
     } else {
       // 如果返回requiresCode，显示验证码输入框
       if (data.requiresCode) {
-        showToast('SMS verification is required', 'info');
+        showToast(t('sms_verification_required'), 'info');
         const codeSection = document.getElementById('verificationCodeSection');
         if (codeSection) {
           codeSection.classList.remove('hidden');
@@ -439,12 +571,12 @@ async function loginWithoutCode(phone, name) {
         // 自动发送验证码
         await sendVerificationCode();
       } else {
-        showToast(data.message || 'Login failed', 'error');
+        showToast(data.message || t('login_failed'), 'error');
       }
     }
   } catch (error) {
     console.error('Login failed:', error);
-    showToast('Login failed, please try again', 'error');
+    showToast(t('login_failed_retry'), 'error');
   } finally {
     setButtonLoading(loginBtn, false);
   }
@@ -465,7 +597,7 @@ async function logout() {
     cart = [];
     updateCartBadge();
     updateLoginStatus();
-    showToast('Logged out');
+    showToast(t('logged_out'));
     showTab('menu');
   } catch (error) {
     console.error('登出失败:', error);
@@ -521,17 +653,17 @@ async function sendVerificationCode() {
   const phone = document.getElementById('phone').value.trim();
   
   if (!phone) {
-    showToast('Please enter phone number first', 'error');
+    showToast(t('please_enter_phone_first'), 'error');
     return;
   }
   
   if (phone.length < 8 || phone.length > 15) {
-    showToast('Phone number length should be between 8-15 digits', 'error');
+    showToast(t('phone_length_error'), 'error');
     return;
   }
   
   if (!/^[+\d]+$/.test(phone)) {
-    showToast('Phone number can only contain digits and +', 'error');
+    showToast(t('phone_format_error'), 'error');
     return;
   }
 
@@ -549,7 +681,7 @@ async function sendVerificationCode() {
     const data = await response.json();
 
     if (data.success) {
-      showToast(data.message || 'Verification code sent successfully', 'success');
+      showToast(data.message || t('verification_code_sent'), 'success');
       
       // 显示验证码输入框
       const codeSection = document.getElementById('verificationCodeSection');
@@ -560,17 +692,17 @@ async function sendVerificationCode() {
       // 开发环境显示验证码（如果返回了）
       if (data.code) {
         console.log('Verification code (dev only):', data.code);
-        showToast(`Verification code: ${data.code} (dev only)`, 'info');
+        showToast(t('verification_code_dev', { code: data.code }), 'info');
       }
       
       // 开始倒计时
       startCountdown();
     } else {
-      showToast(data.message || 'Failed to send verification code', 'error');
+      showToast(data.message || t('failed_send_code'), 'error');
     }
   } catch (error) {
     console.error('Send verification code failed:', error);
-    showToast('Failed to send verification code, please try again', 'error');
+    showToast(t('failed_send_code_retry'), 'error');
   } finally {
     setButtonLoading(sendBtn, false);
   }
@@ -598,7 +730,7 @@ function startCountdown() {
     countdownSeconds--;
     
     if (countdownEl) {
-      countdownEl.textContent = `Resend code in ${countdownSeconds} seconds`;
+      countdownEl.textContent = t('resend_code_in', { seconds: countdownSeconds });
     }
     
     if (countdownSeconds <= 0) {
@@ -619,7 +751,7 @@ function startCountdown() {
 // 更新商店名称显示
 function updateStoreName() {
   // 更新页面标题
-  document.title = `${storeName} Ordering System`;
+  document.title = t('store_ordering_system', { storeName: storeName });
   
   // 更新所有显示商店名称的元素
   const storeNameElements = document.querySelectorAll('[data-store-name]');
@@ -636,7 +768,7 @@ function updateStoreName() {
   // 更新Home页面的欢迎文字
   const welcomeTitle = document.getElementById('homeWelcomeTitle');
   if (welcomeTitle) {
-    welcomeTitle.textContent = `Welcome to ${storeName}`;
+    welcomeTitle.textContent = t('welcome_to_store', { storeName: storeName });
   }
 }
 
@@ -670,7 +802,7 @@ function updateLoginStatus() {
   } else {
     loginBtn.classList.remove('hidden');
     logoutBtn.classList.add('hidden');
-    userName.textContent = 'Guest';
+    userName.textContent = t('guest');
   }
   
   // 同时更新 profile 页面（确保登录状态同步）
@@ -773,13 +905,15 @@ function renderCategoryFilter() {
   // 添加"全部"选项
   let html = `
     <button onclick="filterCategory(null)" class="category-nav-btn w-full py-4 text-center ${selectedCategory === null ? 'bg-white text-green-600 font-semibold border-l-3 border-green-600' : 'text-gray-600 hover:bg-gray-100'}">
-      <div class="text-xs">All</div>
+      <div class="text-xs">${t('all')}</div>
     </button>
   `;
   
   categories.forEach(cat => {
-    // 简化分类名称显示
-    const shortName = cat.name.includes(' ') ? cat.name.split(' ')[1] || cat.name.split(' ')[0] : cat.name;
+    // 使用智能分割获取本地化分类名称
+    const localizedName = getLocalizedText(cat.name);
+    // 简化分类名称显示（如果名称太长，只显示前几个字符）
+    const shortName = localizedName.length > 8 ? localizedName.substring(0, 8) + '...' : localizedName;
     html += `
       <button onclick="filterCategory(${cat.id})" class="category-nav-btn w-full py-4 text-center ${selectedCategory === cat.id ? 'bg-white text-green-600 font-semibold border-l-3 border-green-600' : 'text-gray-600 hover:bg-gray-100'}">
         <div class="text-xs leading-tight px-1">${shortName}</div>
@@ -810,7 +944,7 @@ function renderProducts() {
   }
   
   if (filteredProducts.length === 0) {
-    container.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500">No products</div>';
+    container.innerHTML = `<div class="col-span-full text-center py-12 text-gray-500">${t('no_products')}</div>`;
     return;
   }
   
@@ -849,9 +983,9 @@ function renderProducts() {
   
   sortedCategories.forEach(catName => {
     const prods = groupedProducts[catName];
-    html += `<div class="mb-4" id="category-${catName}">`;
+      html += `<div class="mb-4" id="category-${catName}">`;
     if (selectedCategory === null) {
-      html += `<h3 class="text-sm font-bold text-gray-700 mb-3 px-2">${catName}</h3>`;
+      html += `<h3 class="text-sm font-bold text-gray-700 mb-3 px-2">${getLocalizedText(catName)}</h3>`;
     }
     
     prods.forEach(product => {
@@ -883,9 +1017,9 @@ function renderProducts() {
           
           <!-- 商品信息 -->
           <div class="flex-1 min-w-0">
-            <h4 class="text-sm font-bold text-gray-900 line-clamp-1">${product.name}</h4>
+            <h4 class="text-sm font-bold text-gray-900 line-clamp-1">${getLocalizedText(product.name)}</h4>
             ${product.description && !product.description.includes('支持多种') ? 
-              `<p class="text-xs text-gray-500 mt-1 line-clamp-1">${product.description}</p>` : 
+              `<p class="text-xs text-gray-500 mt-1 line-clamp-1">${getLocalizedText(product.description)}</p>` : 
               ''}
             <div class="flex items-center justify-between mt-2">
               <div>
@@ -895,7 +1029,7 @@ function renderProducts() {
               <button onclick='showProductDetail(${JSON.stringify(product).replace(/'/g, "&apos;")})' 
                       class="px-4 py-1.5 ${currentSettings.ordering_open === 'true' ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'} text-white font-semibold rounded-full transition text-xs"
                       ${currentSettings.ordering_open !== 'true' ? 'disabled' : ''}>
-                ${currentSettings.ordering_open === 'true' ? 'Select' : 'Closed'}
+                ${currentSettings.ordering_open === 'true' ? t('select') : t('closed')}
               </button>
             </div>
           </div>
@@ -906,98 +1040,80 @@ function renderProducts() {
     html += '</div>';
   });
   
-  container.innerHTML = html || '<div class="text-center py-12 text-gray-500">暂无商品</div>';
+  container.innerHTML = html || `<div class="text-center py-12 text-gray-500">${t('no_products_chinese')}</div>`;
   
   // 设置滚动监听，实现左侧分类自动高亮
   setupCategoryScrollHighlight();
 }
 
-// 设置分类滚动高亮
+// 设置分类滚动高亮（使用 Intersection Observer API - 业界推荐方案）
 function setupCategoryScrollHighlight() {
   const productsScroll = document.getElementById('productsScroll');
   if (!productsScroll) return;
   
-  // 移除旧的监听器（如果存在）
-  if (productsScroll._scrollHandler) {
-    productsScroll.removeEventListener('scroll', productsScroll._scrollHandler);
+  // 清理旧的 Observer
+  if (productsScroll._categoryObserver) {
+    productsScroll._categoryObserver.disconnect();
+    productsScroll._categoryObserver = null;
   }
   
-  // 创建新的滚动监听器
-  productsScroll._scrollHandler = () => {
-    const scrollTop = productsScroll.scrollTop;
-    const clientHeight = productsScroll.clientHeight;
-    
-    // 获取所有分类区域（从DOM中获取）
-    const categoryElements = document.querySelectorAll('[id^="category-"]');
-    const categorySections = [];
-    
-    categoryElements.forEach(element => {
-      const rect = element.getBoundingClientRect();
-      const containerRect = productsScroll.getBoundingClientRect();
-      
-      categorySections.push({
-        name: element.id.replace('category-', ''),
-        element: element,
-        top: rect.top - containerRect.top + scrollTop,
-        bottom: rect.bottom - containerRect.top + scrollTop,
-        height: rect.height
+  // 移除旧的滚动监听器（如果存在）
+  if (productsScroll._scrollHandler) {
+    productsScroll.removeEventListener('scroll', productsScroll._scrollHandler);
+    productsScroll._scrollHandler = null;
+  }
+  
+  // 获取所有分类区域
+  const categoryElements = document.querySelectorAll('[id^="category-"]');
+  if (categoryElements.length === 0) return;
+  
+  // 存储每个分类的可见性状态
+  const categoryVisibility = new Map();
+  
+  // 创建 Intersection Observer
+  // rootMargin: 顶部偏移，让分类在进入视口前就开始高亮
+  // threshold: 当元素可见度达到 10% 时就触发
+  const observerOptions = {
+    root: productsScroll,
+    rootMargin: '-20% 0px -70% 0px', // 顶部20%到70%的区域视为"激活区域"
+    threshold: [0, 0.1, 0.5, 1.0] // 多个阈值，更精确的检测
+  };
+  
+  productsScroll._categoryObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const categoryName = entry.target.id.replace('category-', '');
+      // 记录可见性，使用 intersectionRatio 判断可见程度
+      categoryVisibility.set(categoryName, {
+        isIntersecting: entry.isIntersecting,
+        ratio: entry.intersectionRatio,
+        boundingClientRect: entry.boundingClientRect
       });
     });
     
-    if (categorySections.length === 0) return;
+    // 找到最合适的激活分类
+    let activeCategory = findActiveCategory(categoryVisibility, productsScroll);
     
-    // 找到当前可见的分类
-    const viewportTop = scrollTop;
-    const viewportBottom = scrollTop + clientHeight;
-    const viewportCenter = scrollTop + clientHeight / 2;
-    
-    let activeCategory = null;
-    
-    // 优先选择视口中心附近的分类
-    for (const section of categorySections) {
-      if (viewportCenter >= section.top && viewportCenter <= section.bottom) {
-        activeCategory = section.name;
-        break;
-      }
-    }
-    
-    // 如果没有找到，选择视口顶部附近的分类
-    if (!activeCategory) {
-      for (const section of categorySections) {
-        if (viewportTop >= section.top && viewportTop <= section.bottom) {
-          activeCategory = section.name;
-          break;
-        }
-      }
-    }
-    
-    // 如果还是没有找到，选择第一个可见的分类
-    if (!activeCategory) {
-      for (const section of categorySections) {
-        if (section.top < viewportBottom && section.bottom > viewportTop) {
-          activeCategory = section.name;
-          break;
-        }
-      }
-    }
-    
-    // 更新左侧分类高亮
+    // 更新高亮
     if (activeCategory !== null) {
       highlightCategory(activeCategory);
     }
-  };
+  }, observerOptions);
   
-  // 添加滚动监听
-  productsScroll.addEventListener('scroll', productsScroll._scrollHandler, { passive: true });
+  // 观察所有分类元素
+  categoryElements.forEach(element => {
+    productsScroll._categoryObserver.observe(element);
+  });
   
   // 添加滚动开始/结束检测，防止误触购物车按钮
-  productsScroll.addEventListener('scroll', () => {
+  productsScroll._scrollHandler = () => {
     isScrolling = true;
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(() => {
       isScrolling = false;
-    }, 150); // 滚动结束后150ms才允许点击
-  }, { passive: true });
+    }, 150);
+  };
+  
+  productsScroll.addEventListener('scroll', productsScroll._scrollHandler, { passive: true });
   
   // 添加触摸事件检测
   productsScroll.addEventListener('touchstart', (e) => {
@@ -1019,7 +1135,6 @@ function setupCategoryScrollHighlight() {
     const deltaY = Math.abs(touchEndY - touchStartY);
     const deltaTime = touchEndTime - touchStartTime;
     
-    // 如果移动距离大于10px或时间超过300ms，认为是滚动
     if (deltaY > 10 || deltaTime > 300) {
       isScrolling = true;
       clearTimeout(scrollTimer);
@@ -1029,33 +1144,114 @@ function setupCategoryScrollHighlight() {
     }
   }, { passive: true });
   
-  // 初始触发一次
-  setTimeout(() => productsScroll._scrollHandler(), 100);
+  // 初始触发一次（延迟确保DOM已渲染）
+  setTimeout(() => {
+    const activeCategory = findActiveCategory(categoryVisibility, productsScroll);
+    if (activeCategory !== null) {
+      highlightCategory(activeCategory);
+    }
+  }, 200);
 }
 
-// 高亮指定分类
-function highlightCategory(categoryName) {
-  const navButtons = document.querySelectorAll('.category-nav-btn');
-  navButtons.forEach(btn => {
-    const btnText = btn.textContent.trim();
-    // 获取分类名称（可能是简化后的名称）
-    const fullCategoryName = categories.find(cat => {
-      const shortName = cat.name.includes(' ') ? cat.name.split(' ')[1] || cat.name.split(' ')[0] : cat.name;
-      return shortName === btnText || cat.name === btnText;
-    });
+// 找到当前最应该激活的分类
+function findActiveCategory(categoryVisibility, container) {
+  if (categoryVisibility.size === 0) return null;
+  
+  const containerRect = container.getBoundingClientRect();
+  const containerCenter = containerRect.top + containerRect.height * 0.3; // 视口上方30%位置作为激活点
+  
+  let bestCategory = null;
+  let bestScore = -1;
+  
+  // 遍历所有可见的分类
+  categoryVisibility.forEach((visibility, categoryName) => {
+    if (!visibility.isIntersecting) return;
     
-    const isMatch = (categoryName === null && btnText === '全部') ||
-                    (fullCategoryName && fullCategoryName.name === categoryName) ||
-                    btnText === categoryName;
+    const element = document.getElementById(`category-${categoryName}`);
+    if (!element) return;
     
-    if (isMatch) {
-      btn.classList.add('bg-white', 'text-green-600', 'font-semibold', 'border-l-3', 'border-green-600');
-      btn.classList.remove('text-gray-600', 'hover:bg-gray-100');
-    } else {
-      btn.classList.remove('bg-white', 'text-green-600', 'font-semibold', 'border-l-3', 'border-green-600');
-      btn.classList.add('text-gray-600', 'hover:bg-gray-100');
+    const rect = element.getBoundingClientRect();
+    const elementCenter = rect.top + rect.height / 2;
+    
+    // 计算分数：距离激活点越近，分数越高
+    // 同时考虑可见度比例
+    const distanceFromCenter = Math.abs(elementCenter - containerCenter);
+    const visibilityScore = visibility.ratio;
+    
+    // 综合分数：可见度权重70%，距离权重30%
+    const score = visibilityScore * 0.7 + (1 - Math.min(distanceFromCenter / containerRect.height, 1)) * 0.3;
+    
+    if (score > bestScore) {
+      bestScore = score;
+      bestCategory = categoryName;
     }
   });
+  
+  return bestCategory;
+}
+
+// 高亮指定分类（优化版本，支持防抖和更准确的匹配）
+let highlightTimeout = null;
+function highlightCategory(categoryName) {
+  // 防抖处理，避免频繁更新
+  if (highlightTimeout) {
+    clearTimeout(highlightTimeout);
+  }
+  
+  highlightTimeout = setTimeout(() => {
+    const navButtons = document.querySelectorAll('.category-nav-btn');
+    let hasActive = false;
+    
+    navButtons.forEach(btn => {
+      const btnText = btn.textContent.trim();
+      let shouldHighlight = false;
+      
+      // 如果是"全部"按钮
+      if (categoryName === null) {
+        shouldHighlight = btnText === t('all');
+      } else {
+        // 查找匹配的分类（categoryName 是原始分类名称，如 "TOP DRINKS 人气推荐"）
+        const matchedCategory = categories.find(cat => cat.name === categoryName);
+        
+        if (matchedCategory) {
+          // 获取本地化后的名称
+          const localizedName = getLocalizedText(matchedCategory.name);
+          const shortName = localizedName.length > 8 ? localizedName.substring(0, 8) + '...' : localizedName;
+          
+          // 检查按钮文本是否匹配（支持完整名称和截断名称）
+          shouldHighlight = btnText === localizedName || btnText === shortName;
+        }
+      }
+      
+      // 更新按钮样式
+      if (shouldHighlight) {
+        hasActive = true;
+        btn.classList.add('bg-white', 'text-green-600', 'font-semibold', 'border-l-3', 'border-green-600');
+        btn.classList.remove('text-gray-600', 'hover:bg-gray-100');
+      } else {
+        btn.classList.remove('bg-white', 'text-green-600', 'font-semibold', 'border-l-3', 'border-green-600');
+        btn.classList.add('text-gray-600', 'hover:bg-gray-100');
+      }
+    });
+    
+    // 如果没有找到匹配的按钮，可能是分类名称不匹配，尝试直接匹配
+    if (!hasActive && categoryName !== null) {
+      // 尝试通过原始名称直接匹配（作为后备方案）
+      navButtons.forEach(btn => {
+        const btnText = btn.textContent.trim();
+        const matchedCategory = categories.find(cat => {
+          const localizedName = getLocalizedText(cat.name);
+          const shortName = localizedName.length > 8 ? localizedName.substring(0, 8) + '...' : localizedName;
+          return (cat.name === categoryName) && (btnText === localizedName || btnText === shortName);
+        });
+        
+        if (matchedCategory) {
+          btn.classList.add('bg-white', 'text-green-600', 'font-semibold', 'border-l-3', 'border-green-600');
+          btn.classList.remove('text-gray-600', 'hover:bg-gray-100');
+        }
+      });
+    }
+  }, 50); // 50ms 防抖
 }
 
 // 更新点单状态显示（简单显示，无倒计时）
@@ -1069,10 +1265,10 @@ async function updateOrderingStatus() {
     
     if (isOpen) {
       container.className = 'mb-6 p-4 rounded-lg bg-green-100 border border-green-300 text-green-800';
-      container.innerHTML = '✅ Ordering is open, welcome to order!';
+      container.innerHTML = t('ordering_open_welcome');
     } else {
       container.className = 'mb-6 p-4 rounded-lg bg-yellow-100 border border-yellow-300 text-yellow-800';
-      container.innerHTML = '⚠️ Ordering is closed, please wait for notification';
+      container.innerHTML = t('ordering_closed_notification');
     }
   } catch (error) {
     console.error('Failed to get ordering status:', error);
@@ -1117,8 +1313,8 @@ async function showProductDetail(product) {
   }
   
   // 设置商品名称和描述
-  document.getElementById('detailProductName').textContent = product.name;
-  document.getElementById('detailProductDesc').textContent = product.description || '';
+  document.getElementById('detailProductName').textContent = getLocalizedText(product.name);
+  document.getElementById('detailProductDesc').textContent = getLocalizedText(product.description || '');
   
   // 渲染杯型选择
   renderSizeOptions(product);
@@ -1160,7 +1356,9 @@ function renderSizeOptions(product) {
   }
   
   if (Object.keys(sizes).length === 0) {
-    sizes = { '默认': product.price };
+    // 使用翻译的默认值，但需要保存原始key以便后续查找
+    const defaultKey = '默认';
+    sizes = { [defaultKey]: product.price };
   }
   
   // 默认选中第一个杯型
@@ -1171,7 +1369,7 @@ function renderSizeOptions(product) {
   container.innerHTML = Object.entries(sizes).map(([sizeName, price]) => `
     <button onclick="selectSize('${sizeName}')" 
             class="size-option px-6 py-3 border-2 rounded-lg transition ${selectedSize === sizeName ? 'border-yellow-500 bg-yellow-50 text-yellow-700 font-semibold' : 'border-gray-300 text-gray-700 hover:border-yellow-400'}">
-      ${sizeName} <span class="text-sm">${formatPrice(price)}</span>
+      ${getLocalizedText(sizeName)} <span class="text-sm">${formatPrice(price)}</span>
     </button>
   `).join('');
 }
@@ -1192,17 +1390,17 @@ function renderSugarOptions(product) {
   }
   
   const sugarLabels = {
-    '0': 'Zero',
-    '30': 'Light',
-    '50': 'Half',
-    '70': 'Less',
-    '100': 'Regular'
+    '0': t('sugar_zero'),
+    '30': t('sugar_light'),
+    '50': t('sugar_half'),
+    '70': t('sugar_less'),
+    '100': t('sugar_regular')
   };
   
   container.innerHTML = sugarLevels.map(level => `
     <button onclick="selectSugar('${level}')" 
             class="sugar-option px-5 py-2 border-2 rounded-lg transition text-sm ${selectedSugar === level ? 'border-yellow-500 bg-yellow-50 text-yellow-700 font-semibold' : 'border-gray-300 text-gray-700 hover:border-yellow-400'}">
-      ${sugarLabels[level]} ${level}%${level === '100' ? ' (推荐)' : ''}
+      ${sugarLabels[level]} ${level}%${level === '100' ? ' ' + t('sugar_recommended') : ''}
     </button>
   `).join('');
 }
@@ -1252,7 +1450,7 @@ async function renderToppingOptions(product) {
   }
   
   if (availableToppingNames.length === 0) {
-    container.innerHTML = '<p class="text-sm text-gray-500">此商品无可选加料</p>';
+    container.innerHTML = `<p class="text-sm text-gray-500">${t('no_toppings_available')}</p>`;
     return;
   }
   
@@ -1298,7 +1496,7 @@ async function renderToppingOptions(product) {
                  onchange="toggleTopping('${toppingName.replace(/'/g, "\\'")}', ${toppingPrice})" 
                  ${isSelected ? 'checked' : ''}
                  class="w-5 h-5 text-yellow-500 rounded">
-          <span class="ml-3 font-medium text-gray-900">${toppingName}</span>
+          <span class="ml-3 font-medium text-gray-900">${getLocalizedText(toppingName)}</span>
         </div>
         ${toppingPrice > 0 ? `<span class="text-sm text-gray-600">+${formatPrice(toppingPrice)}</span>` : ''}
       </label>
@@ -1339,11 +1537,11 @@ function renderIceOptions(product) {
   document.getElementById('iceSection').style.display = 'block';
   
   const iceLabels = {
-    'normal': 'Normal Ice 正常冰',
-    'less': 'Less Ice 少冰',
-    'no': 'No Ice 去冰',
-    'room': 'Room Temperature 常温',
-    'hot': 'Hot 热'
+    'normal': t('ice_normal'),
+    'less': t('ice_less'),
+    'no': t('ice_no'),
+    'room': t('ice_room'),
+    'hot': t('ice_hot')
   };
   
   // 如果没有选中，默认选中第一个选项
@@ -1437,7 +1635,7 @@ function updateDetailPrice() {
 // 从详情页加入购物车
 function addToCartFromDetail() {
   if (!currentDetailProduct || !selectedSize) {
-    showToast('Please select specifications', 'warning');
+    showToast(t('please_select_specs'), 'warning');
     return;
   }
   
@@ -1504,7 +1702,7 @@ function addToCartFromDetail() {
   
   updateCartBadge();
   closeProductDetail();
-  showToast('Added to cart');
+  showToast(t('added_to_cart'));
 }
 
 // 关闭商品详情
@@ -1561,44 +1759,44 @@ function showCart(event) {
   }
   
   if (cart.length === 0) {
-    showToast('Cart is empty', 'warning');
+    showToast(t('cart_empty'), 'warning');
     return;
   }
   
   const container = document.getElementById('cartItems');
   const sugarLabels = {
-    '0': 'Zero',
-    '30': 'Light',
-    '50': 'Half',
-    '70': 'Less',
-    '100': 'Regular'
+    '0': t('sugar_zero'),
+    '30': t('sugar_light'),
+    '50': t('sugar_half'),
+    '70': t('sugar_less'),
+    '100': t('sugar_regular')
   };
   
   const iceLabels = {
-    'normal': 'Normal Ice',
-    'less': 'Less Ice',
-    'no': 'No Ice',
-    'room': 'Room Temperature',
-    'hot': 'Hot'
+    'normal': t('ice_normal'),
+    'less': t('ice_less'),
+    'no': t('ice_no'),
+    'room': t('ice_room'),
+    'hot': t('ice_hot')
   };
   
   container.innerHTML = cart.map((item, index) => `
     <div class="p-4 bg-gray-50 rounded-lg">
       <div class="flex items-start justify-between mb-2">
         <div class="flex-1">
-          <h4 class="font-semibold text-gray-900">${item.name}</h4>
+          <h4 class="font-semibold text-gray-900">${getLocalizedText(item.name)}</h4>
           <div class="text-xs text-gray-600 mt-1 space-y-0.5">
-            <p>Size: ${item.size || 'Default'}${item.size_price !== undefined && item.size_price !== null && item.size_price > 0 ? ` (${formatPrice(item.size_price)})` : ''}</p>
-            <p>Sugar: ${sugarLabels[item.sugar_level] || 'Regular'}</p>
-            ${item.ice_level ? `<p>Ice: ${iceLabels[item.ice_level] || item.ice_level}</p>` : ''}
+            <p>${t('size_label_colon')} ${getLocalizedText(item.size || t('default'))}${item.size_price !== undefined && item.size_price !== null && item.size_price > 0 ? ` (${formatPrice(item.size_price)})` : ''}</p>
+            <p>${t('sugar_label_colon')} ${sugarLabels[item.sugar_level] || t('regular')}</p>
+            ${item.ice_level ? `<p>${t('ice_label_colon')} ${iceLabels[item.ice_level] || getLocalizedText(item.ice_level)}</p>` : ''}
             ${item.toppings && item.toppings.length > 0 ? 
               `<div class="mt-1">
-                <p class="text-xs font-medium text-gray-700">Toppings:</p>
+                <p class="text-xs font-medium text-gray-700">${t('toppings_label_colon')}</p>
                 <ul class="text-xs text-gray-600 ml-2 space-y-0.5">
                   ${item.toppings.map(t => {
                     const toppingName = typeof t === 'string' ? t : (t.name || t.id || t);
                     const toppingPrice = (typeof t === 'object' && t !== null && t.price !== undefined) ? t.price : 0;
-                    return `<li>${toppingName}${toppingPrice > 0 ? ` (+${formatPrice(toppingPrice)})` : ''}</li>`;
+                    return `<li>${getLocalizedText(toppingName)}${toppingPrice > 0 ? ` (+${formatPrice(toppingPrice)})` : ''}</li>`;
                   }).join('')}
                 </ul>
               </div>` : 
@@ -1694,12 +1892,12 @@ function closeCart() {
 // 提交订单
 async function submitOrder() {
   if (cart.length === 0) {
-    showToast('Cart is empty', 'warning');
+    showToast(t('cart_empty'), 'warning');
     return;
   }
   
   if (currentSettings.ordering_open !== 'true') {
-    showToast('Ordering is closed', 'warning');
+    showToast(t('ordering_closed_warning'), 'warning');
     return;
   }
   
@@ -1716,7 +1914,7 @@ async function submitOrder() {
   // 添加超时提示（如果3秒后还在处理，显示友好提示）
   const timeoutId = setTimeout(() => {
     if (submitBtn && submitBtn.disabled) {
-      showToast('Processing your order, please wait...', 'info');
+      showToast(t('processing_order'), 'info');
     }
   }, 3000);
   
@@ -1776,7 +1974,7 @@ async function submitOrder() {
     clearTimeout(timeoutId);
     
     if (data.success) {
-      showToast('Order submitted successfully! Order number: ' + data.order.order_number, 'success');
+      showToast(t('order_submitted_success', { orderNumber: data.order.order_number }), 'success');
       cart = [];
       updateCartBadge();
       // 清空备注输入框
@@ -1792,14 +1990,14 @@ async function submitOrder() {
         loadOrders();
       }, 500);
     } else {
-      showToast(data.message || 'Order submission failed', 'error');
+      showToast(data.message || t('order_submission_failed'), 'error');
     }
   } catch (error) {
     clearTimeout(timeoutId);
     console.error('Order submission failed:', error);
     // apiPost 已经处理了错误提示，这里只在回退方案时显示
     if (typeof apiPost === 'undefined') {
-      showToast('Order submission failed, please try again', 'error');
+      showToast(t('order_submission_failed_retry'), 'error');
     }
   } finally {
     const submitBtn = document.querySelector('#cartModal button[onclick="submitOrder()"]');
@@ -1900,11 +2098,11 @@ async function loadShowcaseImages() {
       // 添加自动滚动功能（可选）
       setupAutoScroll(container);
     } else {
-      container.innerHTML = '<div class="text-center text-gray-500 py-8 w-full">No images available</div>';
+      container.innerHTML = `<div class="text-center text-gray-500 py-8 w-full">${t('no_images_available')}</div>`;
     }
   } catch (error) {
     console.error('加载展示图片失败:', error);
-    container.innerHTML = '<div class="text-center text-gray-500 py-8 w-full">Failed to load images</div>';
+    container.innerHTML = `<div class="text-center text-gray-500 py-8 w-full">${t('failed_load_images')}</div>`;
   }
 }
 
@@ -2002,7 +2200,7 @@ function showPaymentImageModal(imageUrl) {
     
     if (slider) {
       slider.value = 100;
-      document.getElementById('zoomValue').textContent = '100%';
+      document.getElementById('zoomValue').textContent = t('zoom_percent', { value: '100' });
     }
     modal.classList.add('active');
     
@@ -2115,7 +2313,7 @@ function updateImageZoom(value) {
     
     updateImageTransform(img);
     img.style.transformOrigin = 'center center';
-    zoomValue.textContent = value + '%';
+    zoomValue.textContent = t('zoom_percent', { value: value });
   }
 }
 
@@ -2133,11 +2331,11 @@ function closePaymentImageModal(event) {
 // 更新个人中心页面
 function updateProfilePage() {
   if (currentUser) {
-    document.getElementById('profileName').textContent = currentUser.name || '用户';
+    document.getElementById('profileName').textContent = currentUser.name || t('user_chinese');
     document.getElementById('profilePhone').textContent = currentUser.phone;
   } else {
-    document.getElementById('profileName').textContent = '访客';
-    document.getElementById('profilePhone').textContent = '点击登录';
+    document.getElementById('profileName').textContent = t('guest_chinese');
+    document.getElementById('profilePhone').textContent = t('click_login_chinese');
   }
 }
 
@@ -2153,7 +2351,7 @@ async function loadOrders() {
   try {
     // 先检查是否登录
     if (!currentUser) {
-      container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">Please login to view orders</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">Login</button></div>';
+      container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 mb-4">${t('please_login_view_orders')}</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">${t('login')}</button></div>`;
       return;
     }
     
@@ -2166,7 +2364,7 @@ async function loadOrders() {
         if (data.orders && data.orders.length > 0) {
           renderOrders(data.orders);
         } else {
-          container.innerHTML = '<div class="text-center py-12 text-gray-500">You have no orders yet</div>';
+          container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('you_have_no_orders')}</div>`;
         }
         return;
       }
@@ -2175,7 +2373,7 @@ async function loadOrders() {
       if (error.status === 401) {
         currentUser = null;
         updateLoginStatus();
-        container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">Login expired, please login again</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">Login</button></div>';
+        container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 mb-4">${t('login_expired_please_login')}</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">${t('login')}</button></div>`;
         return;
       }
     }
@@ -2188,19 +2386,19 @@ async function loadOrders() {
         if (data.orders && data.orders.length > 0) {
           renderOrders(data.orders);
         } else {
-          container.innerHTML = '<div class="text-center py-12 text-gray-500">You have no orders yet</div>';
+          container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('you_have_no_orders')}</div>`;
         }
       } else {
-        container.innerHTML = '<div class="text-center py-12 text-red-500">' + (data?.message || 'Failed to load orders, please refresh and try again') + '</div>';
+        container.innerHTML = `<div class="text-center py-12 text-red-500">${data?.message || t('failed_load_orders_refresh')}</div>`;
       }
     } catch (error) {
       if (error.status === 401) {
         currentUser = null;
         updateLoginStatus();
-        container.innerHTML = '<div class="text-center py-12"><p class="text-gray-500 mb-4">Login expired, please login again</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">Login</button></div>';
+        container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 mb-4">${t('login_expired_please_login')}</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">${t('login')}</button></div>`;
       } else {
         console.error('加载订单失败:', error);
-        container.innerHTML = '<div class="text-center py-12 text-red-500">Failed to load orders: ' + (error.message || 'Network error') + '</div>';
+        container.innerHTML = `<div class="text-center py-12 text-red-500">${t('failed_load_orders_error', { error: error.message || t('network_error') })}</div>`;
       }
     }
   } catch (error) {
@@ -2214,7 +2412,7 @@ function renderOrders(orders) {
   const container = document.getElementById('ordersList');
   
   if (orders.length === 0) {
-    container.innerHTML = '<div class="text-center py-12 text-gray-500">您还没有订单</div>';
+    container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('no_orders_chinese')}</div>`;
     return;
   }
   
@@ -2226,28 +2424,28 @@ function renderOrders(orders) {
   };
   
   const statusText = {
-    pending: 'Pending Payment',
-    paid: 'Paid',
-    completed: 'Completed',
-    cancelled: 'Cancelled'
+    pending: t('status_pending'),
+    paid: t('status_paid'),
+    completed: t('status_completed'),
+    cancelled: t('status_cancelled')
   };
   
   const canEdit = currentSettings.ordering_open === 'true';
   
   const sugarLabels = {
-    '0': 'Zero',
-    '30': 'Light',
-    '50': 'Half',
-    '70': 'Less',
-    '100': 'Regular'
+    '0': t('sugar_zero'),
+    '30': t('sugar_light'),
+    '50': t('sugar_half'),
+    '70': t('sugar_less'),
+    '100': t('sugar_regular')
   };
   
   const iceLabels = {
-    'normal': 'Normal Ice',
-    'less': 'Less Ice',
-    'no': 'No Ice',
-    'room': 'Room Temperature',
-    'hot': 'Hot'
+    'normal': t('ice_normal'),
+    'less': t('ice_less'),
+    'no': t('ice_no'),
+    'room': t('ice_room'),
+    'hot': t('ice_hot')
   };
   
   container.innerHTML = orders.map(order => {
@@ -2263,11 +2461,11 @@ function renderOrders(orders) {
     let cycleInfo = '';
     if (order.cycle_id) {
       const startTime = order.cycle_start_time ? new Date(order.cycle_start_time).toLocaleString('en-US') : 'N/A';
-      const endTime = order.cycle_end_time ? new Date(order.cycle_end_time).toLocaleString('en-US') : 'Ongoing';
+      const endTime = order.cycle_end_time ? new Date(order.cycle_end_time).toLocaleString('en-US') : t('ongoing');
       cycleInfo = `
         <div class="mt-2 p-2 bg-blue-50 rounded text-xs">
-          <div class="text-gray-600">Cycle ID: <span class="font-semibold">${order.cycle_id}</span> | Cycle Number: <span class="font-semibold">${order.cycle_number || 'N/A'}</span></div>
-          <div class="text-gray-600 mt-1">Cycle Time: ${startTime} - ${endTime}</div>
+          <div class="text-gray-600">${t('cycle_id')} <span class="font-semibold">${order.cycle_id}</span> | ${t('cycle_number')}: <span class="font-semibold">${order.cycle_number || 'N/A'}</span></div>
+          <div class="text-gray-600 mt-1">${t('cycle_time')} ${startTime} - ${endTime}</div>
         </div>
       `;
     }
@@ -2276,10 +2474,10 @@ function renderOrders(orders) {
     <div class="${expiredBgClass} rounded-xl shadow-md p-6 ${!isActiveCycle || isExpired ? 'opacity-75' : ''}">
       <div class="flex justify-between items-start mb-4">
         <div class="flex-1">
-          <h3 class="text-lg font-bold ${expiredClass}">Order Number: ${order.order_number}</h3>
+          <h3 class="text-lg font-bold ${expiredClass}">${t('order_number_label')} ${order.order_number}</h3>
           <p class="text-sm ${expiredClass || 'text-gray-500'}">${new Date(order.created_at).toLocaleString('en-US')}</p>
           ${cycleInfo}
-          ${isExpired ? '<p class="text-sm text-red-600 font-semibold mt-1">⚠️ Order Expired</p>' : ''}
+          ${isExpired ? `<p class="text-sm text-red-600 font-semibold mt-1">⚠️ ${t('order_expired')}</p>` : ''}
         </div>
         <span class="px-3 py-1 rounded-full text-sm font-semibold ${statusColors[order.status]}">
           ${statusText[order.status]}
@@ -2321,8 +2519,8 @@ function renderOrders(orders) {
             <div class="py-3 border-b border-gray-100 last:border-0 bg-gray-50 rounded-lg p-3">
               <div class="flex justify-between items-start mb-2">
                 <div class="flex-1">
-                  <p class="font-semibold ${expiredClass || inactiveClass} text-base">${item.product_name}</p>
-                  <p class="text-sm ${expiredClass || inactiveClass || 'text-gray-500'} mt-1">Quantity: ${item.quantity}</p>
+                  <p class="font-semibold ${expiredClass || inactiveClass} text-base">${getLocalizedText(item.product_name)}</p>
+                  <p class="text-sm ${expiredClass || inactiveClass || 'text-gray-500'} mt-1">${t('quantity_label')} ${item.quantity}</p>
                 </div>
                 <span class="${expiredClass || inactiveClass} font-bold text-lg">${formatPrice(item.subtotal)}</span>
               </div>
@@ -2330,37 +2528,37 @@ function renderOrders(orders) {
               <div class="${!isActiveCycle || isExpired ? 'bg-gray-50' : 'bg-white'} rounded p-2 mt-2 space-y-1">
                 ${item.size ? `
                   <div class="flex justify-between text-xs">
-                    <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Size:</span>
+                    <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('size_label')}</span>
                     <span class="${expiredClass || inactiveClass} font-medium">${item.size}${actualSizePrice > 0 ? ` (${formatPrice(actualSizePrice)})` : ''}</span>
                   </div>
                 ` : ''}
                 ${item.sugar_level ? `
                   <div class="flex justify-between text-xs">
-                    <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Sweetness:</span>
+                    <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('sweetness_label')}</span>
                     <span class="${expiredClass || inactiveClass} font-medium">${sugarLabels[item.sugar_level] || item.sugar_level}%</span>
                   </div>
                 ` : ''}
                 ${toppings.length > 0 ? `
                   <div class="text-xs">
-                    <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Toppings:</span>
+                    <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('toppings_label')}</span>
                     <ul class="ml-2 mt-0.5 space-y-0.5">
                       ${Array.isArray(toppings) ? toppings.map(t => {
                         // 检查是否是对象格式（包含价格）
                         const toppingName = typeof t === 'object' && t !== null && t.name ? t.name : (typeof t === 'string' ? t : String(t));
                         const toppingPrice = (typeof t === 'object' && t !== null && t.price !== undefined) ? t.price : 0;
-                        return `<li class="${expiredClass || inactiveClass || 'text-gray-600'}">${toppingName}${toppingPrice > 0 ? ` <span class="${expiredClass || inactiveClass} font-medium">(+${formatPrice(toppingPrice)})</span>` : ''}</li>`;
+                        return `<li class="${expiredClass || inactiveClass || 'text-gray-600'}">${getLocalizedText(toppingName)}${toppingPrice > 0 ? ` <span class="${expiredClass || inactiveClass} font-medium">(+${formatPrice(toppingPrice)})</span>` : ''}</li>`;
                       }).join('') : `<li class="${expiredClass || inactiveClass || 'text-gray-600'}">${toppings}</li>`}
                     </ul>
                   </div>
                 ` : ''}
                 ${item.ice_level ? `
                   <div class="flex justify-between text-xs">
-                    <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Ice Level:</span>
-                    <span class="${expiredClass || inactiveClass} font-medium">${iceLabels[item.ice_level] || item.ice_level}</span>
+                    <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('ice_level_label')}</span>
+                    <span class="${expiredClass || inactiveClass} font-medium">${iceLabels[item.ice_level] || getLocalizedText(item.ice_level)}</span>
                   </div>
                 ` : ''}
                 <div class="flex justify-between text-xs pt-1 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'} mt-1">
-                  <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Price Breakdown:</span>
+                  <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('price_breakdown')}</span>
                   <span class="${expiredClass || inactiveClass} font-medium text-xs">
                     ${actualSizePrice > 0 ? formatPrice(actualSizePrice) : formatPrice(unitPrice)}
                     ${totalToppingPrice > 0 ? ` + ${formatPrice(totalToppingPrice)}` : ''}
@@ -2368,11 +2566,11 @@ function renderOrders(orders) {
                   </span>
                 </div>
                 <div class="flex justify-between text-xs">
-                  <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Unit Price:</span>
+                  <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('unit_price')}</span>
                   <span class="${expiredClass || inactiveClass} font-medium">${formatPrice(unitPrice)}</span>
                 </div>
                 <div class="flex justify-between text-xs">
-                  <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Subtotal:</span>
+                  <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('subtotal')}</span>
                   <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} font-bold">${formatPrice(item.subtotal)}</span>
                 </div>
               </div>
@@ -2384,22 +2582,22 @@ function renderOrders(orders) {
       <div class="border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'} pt-4 mb-4 ${!isActiveCycle || isExpired ? 'bg-gray-50' : 'bg-gray-50'} rounded-lg p-4">
         <div class="space-y-2">
           <div class="flex justify-between items-center text-sm">
-            <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Original Price:</span>
+            <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('original_price')}</span>
             <span class="${expiredClass || inactiveClass} font-medium">${formatPrice(order.total_amount)}</span>
           </div>
           ${order.discount_amount > 0 ? `
             <div class="flex justify-between items-center text-sm">
-              <span class="${expiredClass || inactiveClass || 'text-gray-600'}">Discount:</span>
+              <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('discount_label')}</span>
               <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'} font-medium">-${formatPrice(order.discount_amount)}</span>
             </div>
           ` : ''}
           <div class="flex justify-between items-center text-lg font-bold pt-2 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-300'}">
-            <span class="${expiredClass || inactiveClass}">Final Amount:</span>
+            <span class="${expiredClass || inactiveClass}">${t('final_amount_label')}</span>
             <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} text-xl">${formatPrice(order.final_amount)}</span>
           </div>
           ${order.notes ? `
             <div class="mt-3 pt-3 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'}">
-              <div class="text-xs text-gray-500 mb-1">Order Notes:</div>
+              <div class="text-xs text-gray-500 mb-1">${t('order_notes')}</div>
               <div class="text-sm ${expiredClass || inactiveClass || 'text-gray-700'} bg-gray-50 p-2 rounded">${order.notes}</div>
             </div>
           ` : ''}
@@ -2411,21 +2609,21 @@ function renderOrders(orders) {
           ${canEdit ? `
             <button onclick="deleteOrder('${order.id}')" 
                     class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition">
-              Delete Order
+              ${t('delete_order')}
             </button>
           ` : ''}
           ${currentSettings.ordering_open === 'true' ? `
             <button disabled
                     class="${canEdit ? 'flex-1' : 'w-full'} bg-gray-400 text-white font-semibold py-3 rounded-lg transition cursor-not-allowed relative">
               <div class="flex flex-col items-center">
-                <span>Upload Payment Screenshot</span>
-                <span class="text-xs font-normal mt-1 opacity-90">Please wait for Close Ordering and final price calculation</span>
+                <span>${t('upload_payment_screenshot')}</span>
+                <span class="text-xs font-normal mt-1 opacity-90">${t('wait_close_ordering')}</span>
               </div>
             </button>
           ` : `
             <button onclick="showPaymentModal('${order.id}')" 
                     class="${canEdit ? 'flex-1' : 'w-full'} bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition">
-              Upload Payment Screenshot
+              ${t('upload_payment_screenshot')}
             </button>
           `}
         </div>
@@ -2433,8 +2631,8 @@ function renderOrders(orders) {
       
       ${order.payment_image ? `
         <div class="mt-4">
-          <p class="text-sm text-gray-600 mb-2">Payment Screenshot:</p>
-          <button onclick="showPaymentImageModal('${order.payment_image}')" class="text-blue-600 hover:text-blue-800 text-sm underline">View Payment Screenshot</button>
+          <p class="text-sm text-gray-600 mb-2">${t('payment_screenshot')}:</p>
+          <button onclick="showPaymentImageModal('${order.payment_image}')" class="text-blue-600 hover:text-blue-800 text-sm underline">${t('view_payment_screenshot')}</button>
         </div>
       ` : ''}
     </div>
@@ -2445,10 +2643,10 @@ function renderOrders(orders) {
 // 删除订单
 async function deleteOrder(orderId) {
   const confirmed = await showConfirmDialog(
-    'Delete Order',
-    'Are you sure you want to delete this order? This action cannot be undone.',
-    'Delete',
-    'Cancel'
+    t('delete_order_confirm'),
+    t('delete_order_message'),
+    t('delete'),
+    t('cancel')
   );
   
   if (!confirmed) return;
@@ -2462,14 +2660,14 @@ async function deleteOrder(orderId) {
     const data = await response.json();
     
     if (data.success) {
-      showToast('Order deleted', 'success');
+      showToast(t('order_deleted'), 'success');
       loadOrders();
     } else {
-      showToast(data.message || 'Delete failed', 'error');
+      showToast(data.message || t('delete_failed_retry'), 'error');
     }
   } catch (error) {
     console.error('Failed to delete order:', error);
-    showToast('Delete failed, please try again', 'error');
+    showToast(t('delete_failed_retry'), 'error');
   }
 }
 
@@ -2508,7 +2706,7 @@ async function uploadPayment() {
   const file = fileInput.files[0];
   
   if (!file) {
-    showToast('Please select payment screenshot', 'warning');
+    showToast(t('please_select_payment'), 'warning');
     setButtonLoading(uploadBtn, false);
     return;
   }
@@ -2526,7 +2724,7 @@ async function uploadPayment() {
     const data = await response.json();
     
     if (data.success) {
-      showToast('Payment screenshot uploaded successfully!', 'success');
+      showToast(t('payment_upload_success'), 'success');
       closePayment();
       loadOrders();
     } else {
@@ -2534,7 +2732,7 @@ async function uploadPayment() {
     }
   } catch (error) {
     console.error('上传付款截图失败:', error);
-    showToast('Upload failed, please try again', 'error');
+    showToast(t('upload_failed_retry'), 'error');
   } finally {
     setButtonLoading(uploadBtn, false);
   }

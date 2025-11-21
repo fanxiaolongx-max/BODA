@@ -109,44 +109,44 @@
   <div id="loginModal" class="modal">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8 fade-in">
       <div class="text-center mb-6">
-        <h2 class="text-2xl font-bold text-gray-900 mb-2">Login to Continue</h2>
-        <p class="text-gray-600">Please enter your phone number to place an order</p>
+        <h2 class="text-2xl font-bold text-gray-900 mb-2" data-i18n="login_to_continue">Login to Continue</h2>
+        <p class="text-gray-600" data-i18n="please_enter_phone_to_order">Please enter your phone number to place an order</p>
       </div>
       
       <form id="loginForm" class="space-y-6">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="phone_number_required">Phone Number *</label>
           <input type="tel" id="phone" required
                  class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                 placeholder="Enter phone number">
+                 data-i18n-placeholder="enter_phone_number" placeholder="Enter phone number">
         </div>
         <div id="verificationCodeSection" class="hidden">
-          <label class="block text-sm font-medium text-gray-700 mb-2">Verification Code *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="verification_code_required">Verification Code *</label>
           <div class="flex space-x-2">
             <input type="text" id="verificationCode" maxlength="6"
                    class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                   placeholder="Enter 6-digit code">
+                   data-i18n-placeholder="enter_6_digit_code" placeholder="Enter 6-digit code">
             <button type="button" id="sendCodeBtn" onclick="sendVerificationCode()"
                     class="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition whitespace-nowrap">
-              Send Code
+              <span data-i18n="send_code">Send Code</span>
             </button>
           </div>
           <div id="codeCountdown" class="hidden mt-2 text-sm text-gray-500 text-center"></div>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Name (Optional)</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="name_optional_label">Name (Optional)</label>
           <input type="text" id="name"
                  class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                 placeholder="Leave empty or enter name">
+                 data-i18n-placeholder="leave_empty_or_enter_name" placeholder="Leave empty or enter name">
         </div>
         <div class="flex space-x-3">
           <button type="submit" id="loginSubmitBtn"
                   class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 rounded-lg transition duration-300">
-            Login
+            <span data-i18n="login">Login</span>
           </button>
           <button type="button" onclick="closeLoginModal()"
                   class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg transition">
-            Cancel
+            <span data-i18n="cancel">Cancel</span>
           </button>
         </div>
       </form>
@@ -167,6 +167,9 @@
             </div>
           </div>
           <div class="flex items-center space-x-2">
+            <button id="languageBtn" onclick="toggleLanguage()" class="px-3 py-2 text-gray-700 hover:text-blue-600 transition text-sm font-semibold" title="Switch Language">
+              <span id="languageDisplay">EN</span>
+            </button>
             <button id="loginBtn" onclick="showLoginModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm" data-i18n="login">Login</button>
             <button id="logoutBtn" onclick="logout()" class="hidden px-3 py-2 text-gray-700 hover:text-red-600 transition text-sm" data-i18n="logout">Logout</button>
           </div>
@@ -179,13 +182,13 @@
       <div class="max-w-7xl mx-auto px-4 py-6">
         <!-- 欢迎区域 -->
         <div class="text-center mb-6">
-          <h2 class="text-3xl font-bold text-gray-900 mb-2" id="homeWelcomeTitle">Welcome</h2>
-          <p class="text-gray-600">Discover our latest creations</p>
+          <h2 class="text-3xl font-bold text-gray-900 mb-2" id="homeWelcomeTitle" data-i18n="welcome">Welcome</h2>
+          <p class="text-gray-600" data-i18n="discover_latest">Discover our latest creations</p>
         </div>
         
         <!-- 新品图片滚动展示 -->
         <div class="mb-8">
-          <h3 class="text-xl font-semibold text-gray-800 mb-4 px-2">✨ New Products</h3>
+          <h3 class="text-xl font-semibold text-gray-800 mb-4 px-2" data-i18n="new_products">✨ New Products</h3>
           <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-50 to-purple-50 p-4 shadow-lg">
             <div id="showcaseContainer" class="flex gap-4 overflow-x-auto scrollbar-hide pb-2" style="scroll-snap-type: x mandatory; scroll-behavior: smooth;">
               <!-- 图片将通过JavaScript动态加载 -->
@@ -197,13 +200,13 @@
         <div class="grid grid-cols-2 gap-4 mb-6">
           <button onclick="showBottomTab('menu')" class="bg-gradient-to-r from-green-400 to-green-500 text-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
             <div class="text-4xl mb-2">🧋</div>
-            <div class="font-bold text-lg">Order Now</div>
-            <div class="text-sm opacity-90 mt-1">Browse Menu</div>
+            <div class="font-bold text-lg" data-i18n="order_now">Order Now</div>
+            <div class="text-sm opacity-90 mt-1" data-i18n="browse_menu">Browse Menu</div>
           </button>
           <button onclick="showBottomTab('orders')" class="bg-gradient-to-r from-blue-400 to-blue-500 text-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
             <div class="text-4xl mb-2">📋</div>
-            <div class="font-bold text-lg">My Orders</div>
-            <div class="text-sm opacity-90 mt-1">View History</div>
+            <div class="font-bold text-lg" data-i18n="my_orders">My Orders</div>
+            <div class="text-sm opacity-90 mt-1" data-i18n="view_history">View History</div>
           </button>
         </div>
       </div>
@@ -248,12 +251,12 @@
               <span id="cartBarBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">0</span>
             </button>
             <div>
-              <p class="text-xs text-gray-500">Selected Items</p>
+              <p class="text-xs text-gray-500" data-i18n="selected_items">Selected Items</p>
               <p id="cartBarTotal" class="text-lg font-bold text-red-500">0 LE</p>
             </div>
           </div>
           <button onclick="goToCheckout(event)" class="px-8 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-full text-base touch-none" style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;">
-            Checkout
+            <span data-i18n="checkout">Checkout</span>
           </button>
         </div>
       </div>
@@ -261,7 +264,7 @@
 
     <!-- 订单页面 -->
     <div id="ordersTab" class="hidden overflow-y-auto px-4 py-4" style="height: calc(100vh - 64px - 60px);">
-      <h2 class="text-2xl font-bold text-gray-900 mb-4">My Orders</h2>
+      <h2 class="text-2xl font-bold text-gray-900 mb-4" data-i18n="my_orders">My Orders</h2>
       <div id="ordersList" class="space-y-4 pb-20">
       </div>
     </div>
@@ -284,15 +287,23 @@
         <button onclick="showTab('orders')" class="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
           <div class="flex items-center space-x-3">
             <span class="text-2xl">📝</span>
-            <span class="font-medium">My Orders</span>
+            <span class="font-medium" data-i18n="my_orders">My Orders</span>
           </div>
           <span class="text-gray-400">›</span>
+        </button>
+        
+        <button onclick="toggleLanguage()" class="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+          <div class="flex items-center space-x-3">
+            <span class="text-2xl">🌐</span>
+            <span class="font-medium" data-i18n="switch_language">Switch Language</span>
+          </div>
+          <span class="text-gray-400" id="languageDisplayProfile">EN</span>
         </button>
         
         <button onclick="logout()" class="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg text-red-600">
           <div class="flex items-center space-x-3">
             <span class="text-2xl">🚪</span>
-            <span class="font-medium">Logout</span>
+            <span class="font-medium" data-i18n="logout">Logout</span>
           </div>
           <span class="text-gray-400">›</span>
         </button>
@@ -305,19 +316,19 @@
     <div class="flex justify-around items-center h-[60px]">
       <button onclick="showBottomTab('home')" id="homeNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-gray-600">
         <span class="text-xl">🏠</span>
-        <span class="text-xs">Home</span>
+        <span class="text-xs" data-i18n="home">Home</span>
       </button>
       <button onclick="showBottomTab('menu')" id="menuNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-green-600 font-semibold">
         <span class="text-xl">🧋</span>
-        <span class="text-xs">Order</span>
+        <span class="text-xs" data-i18n="order">Order</span>
       </button>
       <button onclick="showBottomTab('orders')" id="ordersNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-gray-600">
         <span class="text-xl">📋</span>
-        <span class="text-xs">Orders</span>
+        <span class="text-xs" data-i18n="orders">Orders</span>
       </button>
       <button onclick="showBottomTab('profile')" id="profileNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-gray-600">
         <span class="text-xl">👤</span>
-        <span class="text-xs">Profile</span>
+        <span class="text-xs" data-i18n="profile">Profile</span>
       </button>
     </div>
   </nav>
@@ -338,25 +349,25 @@
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
         <!-- 杯型选择 -->
         <div id="sizeSection">
-          <h4 class="text-sm font-semibold text-gray-900 mb-2">Size</h4>
+          <h4 class="text-sm font-semibold text-gray-900 mb-2" data-i18n="size_title">Size</h4>
           <div id="sizeOptions" class="flex flex-wrap gap-2"></div>
         </div>
         
         <!-- 甜度选择 -->
         <div id="sugarSection">
-          <h4 class="text-sm font-semibold text-gray-900 mb-2">Sweetness</h4>
+          <h4 class="text-sm font-semibold text-gray-900 mb-2" data-i18n="sweetness_title">Sweetness</h4>
           <div id="sugarOptions" class="flex flex-wrap gap-2"></div>
         </div>
         
         <!-- 加料选择 -->
         <div id="toppingSection">
-          <h4 class="text-sm font-semibold text-gray-900 mb-2">Toppings (Multiple)</h4>
+          <h4 class="text-sm font-semibold text-gray-900 mb-2" data-i18n="toppings_title">Toppings (Multiple)</h4>
           <div id="toppingOptions" class="space-y-2"></div>
         </div>
         
         <!-- 冰度选择 -->
         <div id="iceSection">
-          <h4 class="text-sm font-semibold text-gray-900 mb-2">Ice Level</h4>
+          <h4 class="text-sm font-semibold text-gray-900 mb-2" data-i18n="ice_level_title">Ice Level</h4>
           <div id="iceOptions" class="flex flex-wrap gap-2"></div>
         </div>
       </div>
@@ -369,12 +380,12 @@
             <button onclick="updateDetailQuantity(1)" class="w-9 h-9 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-bold text-base">+</button>
           </div>
           <div class="text-right">
-            <p class="text-xs text-gray-500">Total</p>
+            <p class="text-xs text-gray-500" data-i18n="total">Total</p>
             <p id="detailTotalPrice" class="text-xl font-bold text-blue-600">0 LE</p>
           </div>
         </div>
         <button onclick="addToCartFromDetail()" class="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-gray-900 font-bold py-3 rounded-xl transition duration-300 text-base">
-          Add to Cart
+          <span data-i18n="add_to_cart_button">Add to Cart</span>
         </button>
       </div>
     </div>
@@ -385,7 +396,7 @@
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
       <div class="p-6 border-b border-gray-200">
         <div class="flex justify-between items-center">
-          <h3 class="text-2xl font-bold text-gray-900">Cart</h3>
+          <h3 class="text-2xl font-bold text-gray-900" data-i18n="cart_title">Cart</h3>
           <button onclick="closeCart()" class="text-gray-400 hover:text-gray-600 text-2xl">×</button>
         </div>
       </div>
@@ -396,15 +407,15 @@
       
       <div class="p-6 border-t border-gray-200 bg-gray-50">
         <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-2">Order Notes (Optional)</label>
-          <textarea id="orderNotes" rows="2" placeholder="Any special requests or notes..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"></textarea>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="order_notes_optional">Order Notes (Optional)</label>
+          <textarea id="orderNotes" rows="2" data-i18n-placeholder="order_notes_placeholder" placeholder="Any special requests or notes..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"></textarea>
         </div>
         <div class="flex justify-between items-center mb-4">
-          <span class="text-lg font-semibold text-gray-700">Total:</span>
+          <span class="text-lg font-semibold text-gray-700" data-i18n="total_label_colon">Total:</span>
           <span id="cartTotal" class="text-2xl font-bold text-blue-600">0.00 LE</span>
         </div>
         <button onclick="submitOrder()" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 rounded-lg transition duration-300 transform hover:scale-105">
-          Submit Order
+          <span data-i18n="submit_order_button">Submit Order</span>
         </button>
       </div>
     </div>
@@ -414,14 +425,14 @@
   <div id="paymentImageModal" class="modal" onclick="closePaymentImageModal(event)">
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 p-6" onclick="event.stopPropagation()">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-xl font-bold text-gray-900">Payment Screenshot</h3>
+        <h3 class="text-xl font-bold text-gray-900" data-i18n="payment_screenshot_title">Payment Screenshot</h3>
         <button onclick="closePaymentImageModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
       </div>
       <div class="mb-4 flex justify-center">
         <img id="paymentImageDisplay" src="" alt="Payment Screenshot" class="max-w-full h-auto rounded-lg border border-gray-200 shadow-lg" style="max-height: 70vh;">
       </div>
       <div class="flex items-center space-x-4">
-        <label class="text-sm font-medium text-gray-700">Zoom:</label>
+        <label class="text-sm font-medium text-gray-700" data-i18n="zoom_label">Zoom:</label>
         <input type="range" id="imageZoomSlider" min="50" max="200" value="100" 
                class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                oninput="updateImageZoom(this.value)">
@@ -433,17 +444,17 @@
   <!-- 付款模态框 -->
   <div id="paymentModal" class="modal">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
-      <h3 class="text-2xl font-bold text-gray-900 mb-4">Upload Payment Screenshot</h3>
+      <h3 class="text-2xl font-bold text-gray-900 mb-4" data-i18n="upload_payment_screenshot_title">Upload Payment Screenshot</h3>
       <div id="paymentOrderInfo" class="mb-4 p-4 bg-gray-50 rounded-lg"></div>
       <form id="paymentForm" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Select Payment Screenshot</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="select_payment_screenshot">Select Payment Screenshot</label>
           <input type="file" id="paymentImage" accept="image/*" required
                  class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg">
         </div>
         <div class="flex space-x-3">
           <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
-            Upload
+            <span data-i18n="upload_button">Upload</span>
           </button>
           <button type="button" onclick="closePayment()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg transition">
             Cancel
@@ -459,14 +470,14 @@
   <!-- 确认对话框 -->
   <div id="confirmDialog" class="modal">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6" onclick="event.stopPropagation()">
-      <h3 id="confirmDialogTitle" class="text-xl font-bold text-gray-900 mb-4">Confirm</h3>
+      <h3 id="confirmDialogTitle" class="text-xl font-bold text-gray-900 mb-4" data-i18n="confirm">Confirm</h3>
       <p id="confirmDialogMessage" class="text-gray-700 mb-6"></p>
       <div class="flex space-x-3">
         <button id="confirmDialogCancel" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-2 rounded-lg transition">
-          Cancel
+          <span data-i18n="cancel">Cancel</span>
         </button>
         <button id="confirmDialogConfirm" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-lg transition">
-          Confirm
+          <span data-i18n="confirm">Confirm</span>
         </button>
       </div>
     </div>
@@ -476,7 +487,7 @@
   <div id="globalLoading" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div class="bg-white rounded-lg p-6 flex flex-col items-center space-y-4">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      <p id="globalLoadingMessage" class="text-gray-700 font-medium">Loading...</p>
+      <p id="globalLoadingMessage" class="text-gray-700 font-medium" data-i18n="loading">Loading...</p>
     </div>
   </div>
 
