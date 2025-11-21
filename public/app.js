@@ -21,13 +21,33 @@ function formatPrice(price) {
 
 // 根据价格生成颜色（相同价格相同颜色）
 const priceColorCache = new Map(); // 缓存价格到颜色的映射
+// 使用高对比度的颜色，确保不同价格有明显区别
+// 按色相分组，避免相似颜色相邻
 const priceColors = [
-  'text-red-500', 'text-blue-500', 'text-green-500', 'text-purple-500', 'text-pink-500',
-  'text-yellow-500', 'text-indigo-500', 'text-orange-500', 'text-teal-500', 'text-cyan-500',
-  'text-red-600', 'text-blue-600', 'text-green-600', 'text-purple-600', 'text-pink-600',
-  'text-yellow-600', 'text-indigo-600', 'text-orange-600', 'text-teal-600', 'text-cyan-600',
-  'text-red-700', 'text-blue-700', 'text-green-700', 'text-purple-700', 'text-pink-700',
-  'text-yellow-700', 'text-indigo-700', 'text-orange-700', 'text-teal-700', 'text-cyan-700'
+  'text-red-600',      // 红色 - 高对比度
+  'text-blue-600',     // 蓝色 - 高对比度
+  'text-green-600',    // 绿色 - 高对比度
+  'text-purple-600',   // 紫色 - 高对比度
+  'text-orange-600',   // 橙色 - 高对比度
+  'text-pink-600',     // 粉色 - 高对比度
+  'text-indigo-600',   // 靛蓝 - 高对比度
+  'text-teal-600',     // 青绿 - 高对比度
+  'text-red-700',      // 深红
+  'text-blue-700',     // 深蓝
+  'text-green-700',    // 深绿
+  'text-purple-700',   // 深紫
+  'text-orange-700',   // 深橙
+  'text-pink-700',     // 深粉
+  'text-indigo-700',   // 深靛
+  'text-teal-700',     // 深青
+  'text-red-500',      // 亮红
+  'text-blue-500',     // 亮蓝
+  'text-green-500',    // 亮绿
+  'text-purple-500',   // 亮紫
+  'text-orange-500',   // 亮橙
+  'text-pink-500',     // 亮粉
+  'text-indigo-500',   // 亮靛
+  'text-teal-500'      // 亮青
 ];
 
 function getPriceColor(price) {
@@ -35,11 +55,12 @@ function getPriceColor(price) {
   const priceKey = Math.round(parseFloat(price) || 0);
   
   if (!priceColorCache.has(priceKey)) {
-    // 使用更好的哈希函数确保不同价格映射到不同颜色
-    // 使用多个质数来获得更好的分布
+    // 改进的哈希函数：使用更大的质数确保更好的分布
+    // 并确保相邻价格值映射到明显不同的颜色
     let hash = priceKey;
-    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
-    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
+    // 使用多个质数进行混合，确保更好的分布
+    hash = ((hash >> 16) ^ hash) * 0x85ebca6b;
+    hash = ((hash >> 16) ^ hash) * 0xc2b2ae35;
     hash = (hash >> 16) ^ hash;
     const index = Math.abs(hash) % priceColors.length;
     const color = priceColors[index];

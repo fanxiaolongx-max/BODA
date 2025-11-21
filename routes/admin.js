@@ -24,7 +24,9 @@ const cache = require('../utils/cache');
 const { backupDatabase, backupFull, getBackupList, restoreDatabase, deleteBackup } = require('../utils/backup');
 const archiver = require('archiver');
 const AdmZip = require('adm-zip');
+const ExcelJS = require('exceljs');
 const { cleanupOldFiles, getCleanupInfo } = require('../utils/cleanup');
+const { sendCycleExportEmail, testEmailConfig } = require('../utils/email');
 const { 
   pushBackupToRemote, 
   shouldPushNow, 
@@ -1643,7 +1645,7 @@ function getBaseUrl(req) {
   }
 }
 
-// 导出订单（CSV格式，只导出最近N个周期的订单，N由设置决定）
+// 导出订单（XLSX格式，只导出最近N个周期的订单，N由设置决定）
 router.get('/orders/export', async (req, res) => {
   try {
     // 获取基础URL用于构建付款截图链接
@@ -1741,11 +1743,12 @@ router.get('/orders/export', async (req, res) => {
       );
     }
 
-    // 生成CSV内容
-    const csvRows = [];
-    
-    // CSV头部
-    csvRows.push([
+    // 创建Excel工作簿
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('订单导出');
+
+    // 定义列标题
+    const headers = [
       '订单编号',
       '客户姓名',
       '客户电话',
@@ -1765,98 +1768,254 @@ router.get('/orders/export', async (req, res) => {
       '创建时间',
       '更新时间',
       '付款截图链接'
-    ].join(','));
+    ];
 
-    // 订单数据
+    // 设置列标题
+    worksheet.columns = headers.map(header => ({ header, key: header }));
+
+    // 设置标题行样式
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4472C4' } // 蓝色背景
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 25;
+
+    // 设置列宽
+    worksheet.columns.forEach((column, index) => {
+      if (index === 0) column.width = 15; // 订单编号
+      else if (index === 1) column.width = 12; // 客户姓名
+      else if (index === 2) column.width = 15; // 客户电话
+      else if (index === 3) column.width = 12; // 订单状态
+      else if (index === 4) column.width = 20; // 商品名称
+      else if (index === 5) column.width = 10; // 商品数量
+      else if (index === 6) column.width = 12; // 杯型
+      else if (index === 7) column.width = 10; // 甜度
+      else if (index === 8) column.width = 12; // 冰度
+      else if (index === 9) column.width = 25; // 加料
+      else if (index === 10) column.width = 12; // 单价
+      else if (index === 11) column.width = 12; // 小计
+      else if (index === 12) column.width = 12; // 订单总金额
+      else if (index === 13) column.width = 12; // 折扣金额
+      else if (index === 14) column.width = 12; // 实付金额
+      else if (index === 15) column.width = 20; // 订单备注
+      else if (index === 16) column.width = 20; // 创建时间
+      else if (index === 17) column.width = 20; // 更新时间
+      else if (index === 18) column.width = 40; // 付款截图链接
+    });
+
+    // 冰度标签映射
+    const iceLabels = {
+      'normal': 'Normal Ice',
+      'less': 'Less Ice',
+      'no': 'No Ice',
+      'room': 'Room Temperature',
+      'hot': 'Hot'
+    };
+
+    // 添加数据行
+    let rowIndex = 2; // 从第2行开始（第1行是标题）
     for (const order of orders) {
       if (order.items && order.items.length > 0) {
         for (const item of order.items) {
-          const iceLabels = {
-            'normal': 'Normal Ice',
-            'less': 'Less Ice',
-            'no': 'No Ice',
-            'room': 'Room Temperature',
-            'hot': 'Hot'
-          };
-          
-          const row = [
-            `"${order.order_number || ''}"`,
-            `"${order.customer_name || ''}"`,
-            `"${order.customer_phone || ''}"`,
-            `"${order.status === 'pending' ? '待付款' : order.status === 'paid' ? '已付款' : order.status === 'completed' ? '已完成' : '已取消'}"`,
-            `"${item.product_name || ''}"`,
-            item.quantity || 0,
-            `"${item.size ? (item.size + (item.size_price !== undefined && item.size_price !== null && item.size_price > 0 ? ` (${item.size_price.toFixed(2)})` : '')) : ''}"`,
-            `"${item.sugar_level || ''}"`,
-            `"${item.ice_level ? (iceLabels[item.ice_level] || item.ice_level) : ''}"`,
-            `"${(() => {
-              if (!item.toppings) return '';
-              try {
-                // 解析加料数据
-                let toppings = typeof item.toppings === 'string' ? JSON.parse(item.toppings) : item.toppings;
-                if (!Array.isArray(toppings)) return '';
-                
-                // 格式化加料显示：如果是对象数组（包含name和price），显示为 "Name (Price)"；如果是字符串数组，只显示名称
+          // 格式化加料
+          let toppingsText = '';
+          if (item.toppings) {
+            try {
+              let toppings = typeof item.toppings === 'string' ? JSON.parse(item.toppings) : item.toppings;
+              if (Array.isArray(toppings)) {
                 const formatted = toppings.map(t => {
                   if (typeof t === 'object' && t !== null && t.name) {
-                    // 对象格式：包含名称和价格
                     return t.price && t.price > 0 ? `${t.name} (${t.price.toFixed(2)})` : t.name;
                   } else {
-                    // 字符串格式：只有名称
                     return String(t);
                   }
                 });
-                return formatted.join('; ');
-              } catch (e) {
-                // 如果解析失败，返回原始字符串
-                return typeof item.toppings === 'string' ? item.toppings : String(item.toppings);
+                toppingsText = formatted.join('; ');
               }
-            })().replace(/"/g, '""')}"`,
-            (item.product_price || 0).toFixed(2),
-            (item.subtotal || 0).toFixed(2),
-            (order.total_amount || 0).toFixed(2),
-            (order.discount_amount || 0).toFixed(2),
-            (order.final_amount || 0).toFixed(2),
-            `"${order.notes || ''}"`,
-            `"${order.created_at || ''}"`,
-            `"${order.updated_at || ''}"`,
-            `"${order.payment_image ? `${baseUrl}${order.payment_image}` : ''}"`
-          ];
-          csvRows.push(row.join(','));
+            } catch (e) {
+              toppingsText = typeof item.toppings === 'string' ? item.toppings : String(item.toppings);
+            }
+          }
+
+          // 格式化杯型
+          let sizeText = '';
+          if (item.size) {
+            sizeText = item.size;
+            if (item.size_price !== undefined && item.size_price !== null && item.size_price > 0) {
+              sizeText += ` (${item.size_price.toFixed(2)})`;
+            }
+          }
+
+          // 格式化订单状态
+          const statusText = order.status === 'pending' ? '待付款' : 
+                            order.status === 'paid' ? '已付款' : 
+                            order.status === 'completed' ? '已完成' : '已取消';
+
+          // 构建付款截图链接
+          const paymentLink = order.payment_image ? `${baseUrl}${order.payment_image}` : '';
+
+          // 添加行数据
+          const row = worksheet.addRow([
+            order.order_number || '',
+            order.customer_name || '',
+            order.customer_phone || '',
+            statusText,
+            item.product_name || '',
+            item.quantity || 0,
+            sizeText,
+            item.sugar_level || '',
+            item.ice_level ? (iceLabels[item.ice_level] || item.ice_level) : '',
+            toppingsText,
+            item.product_price || 0,
+            item.subtotal || 0,
+            order.total_amount || 0,
+            order.discount_amount || 0,
+            order.final_amount || 0,
+            order.notes || '',
+            order.created_at || '',
+            order.updated_at || '',
+            paymentLink
+          ]);
+
+          // 设置数据行样式
+          row.alignment = { vertical: 'middle', horizontal: 'left' };
+          row.height = 20;
+
+          // 设置数字列格式
+          row.getCell(11).numFmt = '0.00'; // 单价
+          row.getCell(12).numFmt = '0.00'; // 小计
+          row.getCell(13).numFmt = '0.00'; // 订单总金额
+          row.getCell(14).numFmt = '0.00'; // 折扣金额
+          row.getCell(15).numFmt = '0.00'; // 实付金额
+
+          // 设置付款截图链接为超链接
+          if (paymentLink) {
+            const linkCell = row.getCell(19);
+            linkCell.value = { text: paymentLink, hyperlink: paymentLink };
+            linkCell.font = { color: { argb: 'FF0000FF' }, underline: true };
+          }
+
+          // 根据订单状态设置行颜色
+          if (order.status === 'pending') {
+            // 待付款：浅黄色背景
+            row.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFFFF9C4' } // 浅黄色
+            };
+          } else if (order.status === 'paid') {
+            // 已付款：浅绿色背景
+            row.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFC8E6C9' } // 浅绿色
+            };
+          } else {
+            // 其他状态：交替行颜色
+            if (rowIndex % 2 === 0) {
+              row.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFF2F2F2' } // 浅灰色
+              };
+            }
+          }
+
+          rowIndex++;
         }
       } else {
         // 如果没有商品详情，至少输出订单基本信息
-        const row = [
-          `"${order.order_number || ''}"`,
-          `"${order.customer_name || ''}"`,
-          `"${order.customer_phone || ''}"`,
-          `"${order.status === 'pending' ? '待付款' : order.status === 'paid' ? '已付款' : order.status === 'completed' ? '已完成' : '已取消'}"`,
-          '""',
-          '0',
-          '""',
-          '""',
-          '""',
-          '""',
-          '0.00',
-          '0.00',
-          (order.total_amount || 0).toFixed(2),
-          (order.discount_amount || 0).toFixed(2),
-          (order.final_amount || 0).toFixed(2),
-          `"${order.notes || ''}"`,
-          `"${order.created_at || ''}"`,
-          `"${order.updated_at || ''}"`,
-          `"${order.payment_image ? `${baseUrl}${order.payment_image}` : ''}"`
-        ];
-        csvRows.push(row.join(','));
+        const statusText = order.status === 'pending' ? '待付款' : 
+                          order.status === 'paid' ? '已付款' : 
+                          order.status === 'completed' ? '已完成' : '已取消';
+        const paymentLink = order.payment_image ? `${baseUrl}${order.payment_image}` : '';
+
+        const row = worksheet.addRow([
+          order.order_number || '',
+          order.customer_name || '',
+          order.customer_phone || '',
+          statusText,
+          '',
+          0,
+          '',
+          '',
+          '',
+          '',
+          0,
+          0,
+          order.total_amount || 0,
+          order.discount_amount || 0,
+          order.final_amount || 0,
+          order.notes || '',
+          order.created_at || '',
+          order.updated_at || '',
+          paymentLink
+        ]);
+
+        row.alignment = { vertical: 'middle', horizontal: 'left' };
+        row.height = 20;
+
+        // 设置数字列格式
+        row.getCell(13).numFmt = '0.00';
+        row.getCell(14).numFmt = '0.00';
+        row.getCell(15).numFmt = '0.00';
+
+        // 设置付款截图链接为超链接
+        if (paymentLink) {
+          const linkCell = row.getCell(19);
+          linkCell.value = { text: paymentLink, hyperlink: paymentLink };
+          linkCell.font = { color: { argb: 'FF0000FF' }, underline: true };
+        }
+
+        // 根据订单状态设置行颜色
+        if (order.status === 'pending') {
+          // 待付款：浅黄色背景
+          row.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFF9C4' } // 浅黄色
+          };
+        } else if (order.status === 'paid') {
+          // 已付款：浅绿色背景
+          row.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFC8E6C9' } // 浅绿色
+          };
+        } else {
+          // 其他状态：交替行颜色
+          if (rowIndex % 2 === 0) {
+            row.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFF2F2F2' }
+            };
+          }
+        }
+
+        rowIndex++;
       }
     }
 
-    const csvContent = csvRows.join('\n');
-    const filename = `订单导出_${new Date().toISOString().slice(0, 10)}.csv`;
+    // 冻结首行
+    worksheet.views = [
+      { state: 'frozen', ySplit: 1 }
+    ];
 
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    // 设置文件名
+    const filename = `订单导出_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    // 设置响应头
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-    res.send('\ufeff' + csvContent); // 添加BOM以支持Excel正确显示中文
+
+    // 写入响应
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (error) {
     logger.error('导出订单失败', { error: error.message });
     res.status(500).json({ success: false, message: '导出订单失败' });
@@ -2014,11 +2173,315 @@ router.get('/orders/statistics', async (req, res) => {
   }
 });
 
+// 生成周期订单Excel文件并保存到磁盘
+async function generateCycleExcelFile(cycleId, baseUrl) {
+  try {
+    // 获取周期信息
+    const cycle = await getAsync('SELECT * FROM ordering_cycles WHERE id = ?', [cycleId]);
+    if (!cycle) {
+      throw new Error('周期不存在');
+    }
+
+    let endTime = cycle.end_time;
+    if (!endTime) {
+      const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
+      endTime = nowResult.now;
+    }
+
+    // 获取周期内的所有订单
+    const orders = await allAsync(
+      'SELECT * FROM orders WHERE created_at >= ? AND created_at <= ? ORDER BY created_at DESC',
+      [cycle.start_time, endTime]
+    );
+
+    // 获取订单详情
+    for (const order of orders) {
+      order.items = await allAsync(
+        'SELECT * FROM order_items WHERE order_id = ?',
+        [order.id]
+      );
+    }
+
+    // 创建Excel工作簿
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('订单导出');
+
+    // 定义列标题
+    const headers = [
+      '订单编号',
+      '客户姓名',
+      '客户电话',
+      '订单状态',
+      '商品名称',
+      '商品数量',
+      '杯型',
+      '甜度',
+      '冰度',
+      '加料',
+      '单价',
+      '小计',
+      '订单总金额',
+      '折扣金额',
+      '实付金额',
+      '订单备注',
+      '创建时间',
+      '更新时间',
+      '付款截图链接'
+    ];
+
+    // 设置列标题
+    worksheet.columns = headers.map(header => ({ header, key: header }));
+
+    // 设置标题行样式
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4472C4' }
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 25;
+
+    // 设置列宽（与导出路由相同）
+    worksheet.columns.forEach((column, index) => {
+      if (index === 0) column.width = 15;
+      else if (index === 1) column.width = 12;
+      else if (index === 2) column.width = 15;
+      else if (index === 3) column.width = 12;
+      else if (index === 4) column.width = 20;
+      else if (index === 5) column.width = 10;
+      else if (index === 6) column.width = 12;
+      else if (index === 7) column.width = 10;
+      else if (index === 8) column.width = 12;
+      else if (index === 9) column.width = 25;
+      else if (index === 10) column.width = 12;
+      else if (index === 11) column.width = 12;
+      else if (index === 12) column.width = 12;
+      else if (index === 13) column.width = 12;
+      else if (index === 14) column.width = 12;
+      else if (index === 15) column.width = 20;
+      else if (index === 16) column.width = 20;
+      else if (index === 17) column.width = 20;
+      else if (index === 18) column.width = 40;
+    });
+
+    // 冰度标签映射
+    const iceLabels = {
+      'normal': 'Normal Ice',
+      'less': 'Less Ice',
+      'no': 'No Ice',
+      'room': 'Room Temperature',
+      'hot': 'Hot'
+    };
+
+    // 添加数据行
+    let rowIndex = 2;
+    for (const order of orders) {
+      if (order.items && order.items.length > 0) {
+        for (const item of order.items) {
+          // 格式化加料
+          let toppingsText = '';
+          if (item.toppings) {
+            try {
+              let toppings = typeof item.toppings === 'string' ? JSON.parse(item.toppings) : item.toppings;
+              if (Array.isArray(toppings)) {
+                const formatted = toppings.map(t => {
+                  if (typeof t === 'object' && t !== null && t.name) {
+                    return t.price && t.price > 0 ? `${t.name} (${t.price.toFixed(2)})` : t.name;
+                  } else {
+                    return String(t);
+                  }
+                });
+                toppingsText = formatted.join('; ');
+              }
+            } catch (e) {
+              toppingsText = typeof item.toppings === 'string' ? item.toppings : String(item.toppings);
+            }
+          }
+
+          // 格式化杯型
+          let sizeText = '';
+          if (item.size) {
+            sizeText = item.size;
+            if (item.size_price !== undefined && item.size_price !== null && item.size_price > 0) {
+              sizeText += ` (${item.size_price.toFixed(2)})`;
+            }
+          }
+
+          // 格式化订单状态
+          const statusText = order.status === 'pending' ? '待付款' : 
+                            order.status === 'paid' ? '已付款' : 
+                            order.status === 'completed' ? '已完成' : '已取消';
+
+          // 构建付款截图链接
+          const paymentLink = order.payment_image ? `${baseUrl}${order.payment_image}` : '';
+
+          // 添加行数据
+          const row = worksheet.addRow([
+            order.order_number || '',
+            order.customer_name || '',
+            order.customer_phone || '',
+            statusText,
+            item.product_name || '',
+            item.quantity || 0,
+            sizeText,
+            item.sugar_level || '',
+            item.ice_level ? (iceLabels[item.ice_level] || item.ice_level) : '',
+            toppingsText,
+            item.product_price || 0,
+            item.subtotal || 0,
+            order.total_amount || 0,
+            order.discount_amount || 0,
+            order.final_amount || 0,
+            order.notes || '',
+            order.created_at || '',
+            order.updated_at || '',
+            paymentLink
+          ]);
+
+          // 设置数据行样式
+          row.alignment = { vertical: 'middle', horizontal: 'left' };
+          row.height = 20;
+
+          // 设置数字列格式
+          row.getCell(11).numFmt = '0.00';
+          row.getCell(12).numFmt = '0.00';
+          row.getCell(13).numFmt = '0.00';
+          row.getCell(14).numFmt = '0.00';
+          row.getCell(15).numFmt = '0.00';
+
+          // 设置付款截图链接为超链接
+          if (paymentLink) {
+            const linkCell = row.getCell(19);
+            linkCell.value = { text: paymentLink, hyperlink: paymentLink };
+            linkCell.font = { color: { argb: 'FF0000FF' }, underline: true };
+          }
+
+          // 根据订单状态设置行颜色
+          if (order.status === 'pending') {
+            row.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFFFF9C4' }
+            };
+          } else if (order.status === 'paid') {
+            row.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFC8E6C9' }
+            };
+          } else {
+            if (rowIndex % 2 === 0) {
+              row.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFF2F2F2' }
+              };
+            }
+          }
+
+          rowIndex++;
+        }
+      } else {
+        // 如果没有商品详情，至少输出订单基本信息
+        const statusText = order.status === 'pending' ? '待付款' : 
+                          order.status === 'paid' ? '已付款' : 
+                          order.status === 'completed' ? '已完成' : '已取消';
+        const paymentLink = order.payment_image ? `${baseUrl}${order.payment_image}` : '';
+
+        const row = worksheet.addRow([
+          order.order_number || '',
+          order.customer_name || '',
+          order.customer_phone || '',
+          statusText,
+          '',
+          0,
+          '',
+          '',
+          '',
+          '',
+          0,
+          0,
+          order.total_amount || 0,
+          order.discount_amount || 0,
+          order.final_amount || 0,
+          order.notes || '',
+          order.created_at || '',
+          order.updated_at || '',
+          paymentLink
+        ]);
+
+        row.alignment = { vertical: 'middle', horizontal: 'left' };
+        row.height = 20;
+
+        row.getCell(13).numFmt = '0.00';
+        row.getCell(14).numFmt = '0.00';
+        row.getCell(15).numFmt = '0.00';
+
+        if (paymentLink) {
+          const linkCell = row.getCell(19);
+          linkCell.value = { text: paymentLink, hyperlink: paymentLink };
+          linkCell.font = { color: { argb: 'FF0000FF' }, underline: true };
+        }
+
+        if (order.status === 'pending') {
+          row.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFF9C4' }
+          };
+        } else if (order.status === 'paid') {
+          row.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFC8E6C9' }
+          };
+        } else {
+          if (rowIndex % 2 === 0) {
+            row.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFF2F2F2' }
+            };
+          }
+        }
+
+        rowIndex++;
+      }
+    }
+
+    // 冻结首行
+    worksheet.views = [
+      { state: 'frozen', ySplit: 1 }
+    ];
+
+    // 确保导出目录存在
+    const exportDir = path.join(DATA_DIR, 'logs', 'export');
+    if (!fs.existsSync(exportDir)) {
+      fs.mkdirSync(exportDir, { recursive: true });
+    }
+
+    // 生成文件名
+    const filename = `订单导出_周期${cycleId}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const filePath = path.join(exportDir, filename);
+
+    // 保存文件
+    await workbook.xlsx.writeFile(filePath);
+
+    return filePath;
+  } catch (error) {
+    logger.error('生成周期Excel文件失败', { error: error.message, cycleId });
+    throw error;
+  }
+}
+
 // 确认周期（计算折扣并结束周期）
 router.post('/cycles/:id/confirm', async (req, res) => {
   try {
     const { id } = req.params;
     const { beginTransaction, commit, rollback } = require('../db/database');
+    const baseUrl = getBaseUrl(req);
     
     await beginTransaction();
     
@@ -2077,6 +2540,24 @@ router.post('/cycles/:id/confirm', async (req, res) => {
       await commit();
       await logAction(req.session.adminId, 'UPDATE', 'ordering_cycle', id, { discountRate, orderCount: orders.length }, req);
       
+      // 生成Excel文件并发送邮件（异步执行，不阻塞响应）
+      (async () => {
+        try {
+          const excelFilePath = await generateCycleExcelFile(id, baseUrl);
+          logger.info('周期订单Excel文件已生成', { cycleId: id, filePath: excelFilePath });
+          
+          // 发送邮件
+          const emailResult = await sendCycleExportEmail(id, excelFilePath);
+          if (emailResult.success) {
+            logger.info('周期订单导出邮件已发送', { cycleId: id });
+          } else {
+            logger.warn('周期订单导出邮件发送失败', { cycleId: id, message: emailResult.message });
+          }
+        } catch (error) {
+          logger.error('生成Excel或发送邮件失败', { error: error.message, cycleId: id });
+        }
+      })();
+      
       res.json({ 
         success: true, 
         message: '周期确认成功',
@@ -2090,6 +2571,17 @@ router.post('/cycles/:id/confirm', async (req, res) => {
   } catch (error) {
     logger.error('确认周期失败', { error: error.message });
     res.status(500).json({ success: false, message: '确认周期失败' });
+  }
+});
+
+// 测试邮件配置
+router.post('/email/test', async (req, res) => {
+  try {
+    const result = await testEmailConfig();
+    res.json(result);
+  } catch (error) {
+    logger.error('测试邮件失败', { error: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

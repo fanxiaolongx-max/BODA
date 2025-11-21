@@ -152,13 +152,33 @@ function formatPriceDecimal(price) {
 
 // 根据价格生成颜色（相同价格相同颜色）
 const priceColorCache = new Map(); // 缓存价格到颜色的映射
+// 使用高对比度的颜色，确保不同价格有明显区别
+// 按色相分组，避免相似颜色相邻
 const priceColors = [
-  'text-red-500', 'text-blue-500', 'text-green-500', 'text-purple-500', 'text-pink-500',
-  'text-yellow-500', 'text-indigo-500', 'text-orange-500', 'text-teal-500', 'text-cyan-500',
-  'text-red-600', 'text-blue-600', 'text-green-600', 'text-purple-600', 'text-pink-600',
-  'text-yellow-600', 'text-indigo-600', 'text-orange-600', 'text-teal-600', 'text-cyan-600',
-  'text-red-700', 'text-blue-700', 'text-green-700', 'text-purple-700', 'text-pink-700',
-  'text-yellow-700', 'text-indigo-700', 'text-orange-700', 'text-teal-700', 'text-cyan-700'
+  'text-red-600',      // 红色 - 高对比度
+  'text-blue-600',     // 蓝色 - 高对比度
+  'text-green-600',    // 绿色 - 高对比度
+  'text-purple-600',   // 紫色 - 高对比度
+  'text-orange-600',   // 橙色 - 高对比度
+  'text-pink-600',     // 粉色 - 高对比度
+  'text-indigo-600',   // 靛蓝 - 高对比度
+  'text-teal-600',     // 青绿 - 高对比度
+  'text-red-700',      // 深红
+  'text-blue-700',     // 深蓝
+  'text-green-700',    // 深绿
+  'text-purple-700',   // 深紫
+  'text-orange-700',   // 深橙
+  'text-pink-700',     // 深粉
+  'text-indigo-700',   // 深靛
+  'text-teal-700',     // 深青
+  'text-red-500',      // 亮红
+  'text-blue-500',     // 亮蓝
+  'text-green-500',    // 亮绿
+  'text-purple-500',   // 亮紫
+  'text-orange-500',   // 亮橙
+  'text-pink-500',     // 亮粉
+  'text-indigo-500',   // 亮靛
+  'text-teal-500'      // 亮青
 ];
 
 function getPriceColor(price) {
@@ -166,11 +186,12 @@ function getPriceColor(price) {
   const priceKey = Math.round(parseFloat(price) || 0);
   
   if (!priceColorCache.has(priceKey)) {
-    // 使用更好的哈希函数确保不同价格映射到不同颜色
-    // 使用多个质数来获得更好的分布
+    // 改进的哈希函数：使用更大的质数确保更好的分布
+    // 并确保相邻价格值映射到明显不同的颜色
     let hash = priceKey;
-    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
-    hash = ((hash >> 16) ^ hash) * 0x45d9f3b;
+    // 使用多个质数进行混合，确保更好的分布
+    hash = ((hash >> 16) ^ hash) * 0x85ebca6b;
+    hash = ((hash >> 16) ^ hash) * 0xc2b2ae35;
     hash = (hash >> 16) ^ hash;
     const index = Math.abs(hash) % priceColors.length;
     const color = priceColors[index];
@@ -2497,6 +2518,109 @@ async function loadSettingsPage() {
               </div>
               
               <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Email Settings</h3>
+                
+                <div class="mb-4">
+                  <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="emailEnabled" 
+                           class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                           ${settings.email_enabled === 'true' ? 'checked' : ''}>
+                    <span class="text-sm font-medium text-gray-700">Enable Email Notifications</span>
+                  </label>
+                  <p class="text-xs text-gray-500 mt-1 ml-6">When enabled, system will automatically send order export emails when confirming cycles</p>
+                </div>
+                
+                <div id="emailConfigSection" class="space-y-4 ${settings.email_enabled === 'true' ? '' : 'hidden'}">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">SMTP Host *</label>
+                      <input type="text" id="emailSmtpHost" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="smtp.gmail.com"
+                             value="${settings.email_smtp_host || ''}">
+                      <p class="text-xs text-gray-500 mt-1">SMTP server hostname</p>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">SMTP Port *</label>
+                      <input type="number" id="emailSmtpPort" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="587"
+                             value="${settings.email_smtp_port || '587'}"
+                             min="1"
+                             max="65535">
+                      <p class="text-xs text-gray-500 mt-1">SMTP server port (587 for TLS, 465 for SSL)</p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label class="flex items-center space-x-2">
+                      <input type="checkbox" id="emailSmtpSecure" 
+                             class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                             ${settings.email_smtp_secure === 'true' ? 'checked' : ''}>
+                      <span class="text-sm font-medium text-gray-700">Use SSL/TLS</span>
+                    </label>
+                    <p class="text-xs text-gray-500 mt-1 ml-6">Enable for port 465 (SSL), disable for port 587 (TLS)</p>
+                  </div>
+                  
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">SMTP Username *</label>
+                      <input type="text" id="emailSmtpUser" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="your-email@gmail.com"
+                             value="${settings.email_smtp_user || ''}">
+                      <p class="text-xs text-gray-500 mt-1">SMTP authentication username (usually your email address)</p>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">SMTP Password *</label>
+                      <input type="password" id="emailSmtpPassword" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="Your SMTP password or app password"
+                             value="${settings.email_smtp_password || ''}">
+                      <p class="text-xs text-gray-500 mt-1">SMTP authentication password (for Gmail, use App Password)</p>
+                    </div>
+                  </div>
+                  
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">From Email Address *</label>
+                      <input type="email" id="emailFrom" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="noreply@example.com"
+                             value="${settings.email_from || ''}">
+                      <p class="text-xs text-gray-500 mt-1">Sender email address (usually same as SMTP username)</p>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">To Email Address *</label>
+                      <input type="email" id="emailTo" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="recipient@example.com"
+                             value="${settings.email_to || ''}">
+                      <p class="text-xs text-gray-500 mt-1">Recipient email address for order export notifications</p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <button type="button" onclick="testEmail()" 
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
+                      Test Email
+                    </button>
+                    <p class="text-xs text-gray-500 mt-1">Send a test email to verify configuration</p>
+                  </div>
+                  
+                  <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p class="text-xs text-blue-800">
+                      <strong>Note:</strong> For Gmail, you need to use an App Password instead of your regular password. 
+                      Go to Google Account → Security → 2-Step Verification → App passwords to generate one.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">Logging Settings</h3>
                 
                 <div class="mb-4">
@@ -2679,6 +2803,18 @@ async function loadSettingsPage() {
         }
       });
       
+      // Email启用/禁用切换
+      document.getElementById('emailEnabled')?.addEventListener('change', (e) => {
+        const emailSection = document.getElementById('emailConfigSection');
+        if (emailSection) {
+          if (e.target.checked) {
+            emailSection.classList.remove('hidden');
+          } else {
+            emailSection.classList.add('hidden');
+          }
+        }
+      });
+      
       // 等待 DOM 渲染完成后再加载远程备份配置
       setTimeout(() => {
         loadRemoteBackupConfigs();
@@ -2705,6 +2841,7 @@ async function saveSettings(e) {
   }
   
   const smsEnabled = document.getElementById('smsEnabled')?.checked || false;
+  const emailEnabled = document.getElementById('emailEnabled')?.checked || false;
   const debugLoggingEnabled = document.getElementById('debugLoggingEnabled')?.checked || false;
   
   // 获取session过期时间配置
@@ -2735,6 +2872,14 @@ async function saveSettings(e) {
     twilio_auth_token: document.getElementById('twilioAuthToken')?.value.trim() || '',
     twilio_phone_number: document.getElementById('twilioPhoneNumber')?.value.trim() || '',
     twilio_verify_service_sid: document.getElementById('twilioVerifyServiceSid')?.value.trim() || '',
+    email_enabled: emailEnabled ? 'true' : 'false',
+    email_smtp_host: document.getElementById('emailSmtpHost')?.value.trim() || '',
+    email_smtp_port: document.getElementById('emailSmtpPort')?.value.trim() || '587',
+    email_smtp_secure: document.getElementById('emailSmtpSecure')?.checked ? 'true' : 'false',
+    email_smtp_user: document.getElementById('emailSmtpUser')?.value.trim() || '',
+    email_smtp_password: document.getElementById('emailSmtpPassword')?.value.trim() || '',
+    email_from: document.getElementById('emailFrom')?.value.trim() || '',
+    email_to: document.getElementById('emailTo')?.value.trim() || '',
     debug_logging_enabled: debugLoggingEnabled ? 'true' : 'false'
   };
   
@@ -2915,6 +3060,33 @@ async function testSMS() {
     hideGlobalLoading();
     console.error('Test SMS failed:', error);
     showToast('Failed to send test SMS', 'error');
+  }
+}
+
+// 测试邮件发送
+async function testEmail() {
+  try {
+    showGlobalLoading('Sending test email...');
+    
+    const response = await fetch(`${API_BASE}/admin/email/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    hideGlobalLoading();
+    
+    if (data.success) {
+      showToast('Test email sent successfully! Please check your inbox.', 'success');
+    } else {
+      showToast(data.message || 'Failed to send test email', 'error');
+    }
+  } catch (error) {
+    hideGlobalLoading();
+    console.error('Failed to send test email:', error);
+    showToast('Failed to send test email', 'error');
   }
 }
 
