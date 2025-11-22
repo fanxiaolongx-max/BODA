@@ -1,4 +1,8 @@
 /**
+ * @jest-environment jsdom
+ */
+
+/**
  * 前端UI组件测试
  * 测试Toast、确认对话框、按钮加载状态等功能
  * 

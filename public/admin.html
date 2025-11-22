@@ -551,10 +551,10 @@
               <!-- 测试日志显示区域 -->
               <div id="testLogsContainer" class="mt-4 hidden">
                 <div class="flex items-center justify-between mb-2">
-                  <span class="text-xs font-semibold text-gray-700">测试日志</span>
-                  <button onclick="toggleTestLogs()" id="toggleLogsBtn" class="text-xs text-blue-600 hover:text-blue-800">展开</button>
+                  <span class="text-sm font-semibold text-gray-700">测试日志</span>
+                  <button onclick="toggleTestLogs()" id="toggleLogsBtn" class="text-xs text-blue-600 hover:text-blue-800">收起</button>
                 </div>
-                <div id="testLogsContent" class="hidden bg-gray-900 text-gray-100 font-mono text-xs p-3 rounded-lg max-h-64 overflow-y-auto" style="font-size: 11px; line-height: 1.4;">
+                <div id="testLogsContent" class="bg-gray-900 text-gray-100 font-mono text-xs p-3 rounded-lg overflow-y-auto" style="font-size: 11px; line-height: 1.6; min-height: 400px; max-height: 600px;">
                   <div id="testLogsText" class="whitespace-pre-wrap"></div>
                 </div>
               </div>
@@ -597,8 +597,8 @@
                   style="width: 100%; height: 100%; border: none; flex: 1; min-height: 0;"
                   title="Test Report"
                 ></iframe>
-                <div id="testReportPlaceholder" class="text-center text-gray-500 py-12" style="display: block;">
-                  <p class="text-sm">请选择测试套件并运行测试</p>
+                <div id="testReportPlaceholder" class="text-center text-gray-500 py-12" style="display: block; height: 100%; min-height: 500px; overflow: hidden;">
+                  <p class="text-sm mb-4">请选择测试套件并运行测试</p>
                 </div>
               </div>
             </div>

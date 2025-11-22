@@ -146,16 +146,40 @@ app.use(session(sessionConfig));
 // 性能监控中间件（放在session之后，路由之前）
 app.use(monitoringMiddleware);
 
-// 限流配置（放宽限制）
-const apiLimiter = rateLimit({
+// 限流配置
+// 为管理员API创建单独的、更宽松的限流器（因为测试轮询和管理界面需要频繁操作）
+const adminApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分钟
-  max: 500, // 限制500个请求（从100增加到500）
+  max: 10000, // 管理员API限制10000个请求（非常宽松，适合测试轮询和频繁操作）
   message: { success: false, message: '请求过于频繁，请稍后再试' },
   standardHeaders: true,
   legacyHeaders: false,
-  // 跳过下载接口的速率限制
+  // 跳过下载接口和测试接口的速率限制
   skip: (req) => {
     // 跳过备份文件下载和菜单备份下载
+    if (req.path.includes('/backup/download') || req.path.includes('/menu/backup/download') || req.path.includes('/developer/files/download')) {
+      return true;
+    }
+    // 跳过测试相关的API（测试需要频繁轮询，不应该被限流）
+    if (req.path.includes('/admin/developer/test-progress') || 
+        req.path.includes('/admin/developer/run-tests') || 
+        req.path.includes('/admin/developer/stop-tests') || 
+        req.path.includes('/admin/developer/test-report')) {
+      return true;
+    }
+    return false;
+  }
+});
+
+// 普通API限流器（用于用户API等）
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15分钟
+  max: 500, // 普通API限制500个请求
+  message: { success: false, message: '请求过于频繁，请稍后再试' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // 跳过下载接口
+  skip: (req) => {
     return req.path.includes('/backup/download') || req.path.includes('/menu/backup/download') || req.path.includes('/developer/files/download');
   }
 });
@@ -273,7 +297,7 @@ const publicRoutes = require('./routes/public');
 
 // 注册路由
 app.use('/api/auth', loginLimiter, authRoutes);
-app.use('/api/admin', apiLimiter, adminRoutes);
+app.use('/api/admin', adminApiLimiter, adminRoutes); // 使用更宽松的管理员API限流器
 app.use('/api/user', apiLimiter, userRoutes);
 app.use('/api/public', publicRoutes);
 

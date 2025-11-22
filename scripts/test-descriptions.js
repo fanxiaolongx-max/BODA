@@ -24,6 +24,7 @@ module.exports = {
       'should create product with sizes, toppings, and ice_options': '创建带选项的产品 - 验证可以创建包含杯型、加料、冰度等选项的产品',
       'should create product with image upload': '创建带图片的产品 - 验证可以上传产品图片并创建产品',
       'should update product with new image': '更新产品图片 - 验证可以替换现有产品的图片',
+      'should reject invalid file type for product image': '拒绝无效文件类型 - 验证上传非图片文件时系统会拒绝并返回错误',
       'should batch update products': '批量更新产品 - 验证可以同时更新多个产品的状态和排序',
       'should batch update products with price actions': '批量更新产品价格 - 验证可以批量调整产品价格（设置、增加、乘以）',
       'should delete product': '删除产品 - 验证管理员可以删除产品',
@@ -46,6 +47,7 @@ module.exports = {
       'should get order statistics': '获取订单统计 - 验证可以获取订单的统计数据',
       'should export orders to XLSX': '导出订单到Excel - 验证可以将订单导出为XLSX格式',
       'should update order status': '更新订单状态 - 验证管理员可以修改订单状态',
+      'should return 400 for invalid status': '无效订单状态 - 验证使用无效订单状态时返回400错误',
       'should confirm cycle and calculate discount': '确认周期并计算折扣 - 验证可以确认点单周期并自动计算折扣'
     },
     'Cycles': {
@@ -63,6 +65,17 @@ module.exports = {
     'Logs': {
       'should get logs': '获取日志 - 验证管理员可以查看系统操作日志',
       'should get filter options': '获取过滤选项 - 验证可以获取日志过滤的可用选项'
+    },
+    'Developer Tools': {
+      'should get tables list when super_admin': '获取表列表 - 验证超级管理员可以查看数据库表列表',
+      'should get table schema when super_admin': '获取表结构 - 验证超级管理员可以查看数据库表结构',
+      'should reject invalid table name in table schema': '拒绝无效表名（表结构） - 验证系统会拒绝包含SQL注入攻击的表名请求',
+      'should get table data with pagination when super_admin': '获取表数据（分页） - 验证超级管理员可以分页查看数据库表数据',
+      'should reject invalid table name in table data': '拒绝无效表名（表数据） - 验证系统会拒绝包含SQL注入攻击的表名请求',
+      'should update table data when super_admin': '更新表数据 - 验证超级管理员可以通过开发者工具更新数据库表数据',
+      'should reject invalid table name in update table data': '拒绝无效表名（更新数据） - 验证系统会拒绝包含SQL注入攻击的表名请求',
+      'should reject dangerous SQL keywords': '拒绝危险SQL关键字 - 验证系统会拒绝包含危险SQL关键字（如DROP、DELETE等）的请求',
+      'should reject non-allowed SQL statement types': '拒绝不允许的SQL语句类型 - 验证系统只允许SELECT、UPDATE等安全操作，拒绝其他危险操作'
     }
   },
   

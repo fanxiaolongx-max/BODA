@@ -1,4 +1,8 @@
 /**
+ * @jest-environment jsdom
+ */
+
+/**
  * API工具测试
  * 测试统一的API请求封装函数
  */

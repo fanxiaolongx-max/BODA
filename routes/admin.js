@@ -5185,8 +5185,35 @@ let testRunState = {
   process: null,
   progress: { current: 0, total: 0, currentTest: '' },
   completed: false,
-  logs: [] // 存储测试日志
+  logs: [], // 存储测试日志（带时间戳）
+  selectedSuites: [] // 存储选中的测试套件，用于生成报告
 };
+
+// 获取时间戳格式化函数（统一使用）
+function getLogTimestamp() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+  return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+}
+
+// 添加带时间戳的日志（辅助函数）
+function addTimestampedLog(message, level = 'INFO') {
+  const timestamp = getLogTimestamp();
+  if (level === 'ERROR') {
+    testRunState.logs.push(`[${timestamp}] [ERROR] ${message}`);
+  } else if (level === 'WARN') {
+    testRunState.logs.push(`[${timestamp}] [WARN] ${message}`);
+  } else {
+    testRunState.logs.push(`[${timestamp}] [INFO] ${message}`);
+  }
+  // 只保留最近1000行日志
+  if (testRunState.logs.length > 1000) {
+    testRunState.logs = testRunState.logs.slice(-1000);
+  }
+}
 
 // 获取测试套件列表
 router.get('/developer/test-suites', requireSuperAdmin, async (req, res) => {
@@ -5196,14 +5223,30 @@ router.get('/developer/test-suites', requireSuperAdmin, async (req, res) => {
     
     // 扫描测试文件
     const testFiles = [
+      // Routes 测试
       { name: 'routes/admin.test.js', displayName: '管理员接口测试', path: 'tests/routes/admin.test.js' },
       { name: 'routes/auth.test.js', displayName: '认证接口测试', path: 'tests/routes/auth.test.js' },
       { name: 'routes/user.test.js', displayName: '用户接口测试', path: 'tests/routes/user.test.js' },
       { name: 'routes/public.test.js', displayName: '公开接口测试', path: 'tests/routes/public.test.js' },
+      // Middleware 测试
       { name: 'middleware/auth.test.js', displayName: '认证中间件测试', path: 'tests/middleware/auth.test.js' },
       { name: 'middleware/monitoring.test.js', displayName: '监控中间件测试', path: 'tests/middleware/monitoring.test.js' },
+      { name: 'middleware/validation.test.js', displayName: '验证中间件测试', path: 'tests/middleware/validation.test.js' },
+      // Utils 测试
       { name: 'utils/order-helper.test.js', displayName: '订单辅助函数测试', path: 'tests/utils/order-helper.test.js' },
-      { name: 'integration/order-discount-cycle.test.js', displayName: '订单折扣周期集成测试', path: 'tests/integration/order-discount-cycle.test.js' }
+      { name: 'utils/cache.test.js', displayName: '缓存系统测试', path: 'tests/utils/cache.test.js' },
+      { name: 'utils/cycle-helper.test.js', displayName: '周期辅助函数测试', path: 'tests/utils/cycle-helper.test.js' },
+      { name: 'utils/health-check.test.js', displayName: '健康检查测试', path: 'tests/utils/health-check.test.js' },
+      { name: 'utils/logger.test.js', displayName: '日志工具测试', path: 'tests/utils/logger.test.js' },
+      // Database 测试
+      { name: 'db/database.test.js', displayName: '数据库操作测试', path: 'tests/db/database.test.js' },
+      // Integration 测试
+      { name: 'integration/order-discount-cycle.test.js', displayName: '订单折扣周期集成测试', path: 'tests/integration/order-discount-cycle.test.js' },
+      // Frontend 测试
+      { name: 'frontend/ui.test.js', displayName: '前端UI组件测试', path: 'tests/frontend/ui.test.js' },
+      { name: 'frontend/api.test.js', displayName: '前端API工具测试', path: 'tests/frontend/api.test.js' },
+      { name: 'frontend/validation.test.js', displayName: '前端验证工具测试', path: 'tests/frontend/validation.test.js' },
+      { name: 'frontend/error-handler.test.js', displayName: '前端错误处理测试', path: 'tests/frontend/error-handler.test.js' }
     ];
     
     // 统计每个测试文件的测试数量（简化版，实际可以从Jest获取）
@@ -5252,24 +5295,42 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
     });
     
     // 使用jest直接运行，而不是npm test，以便更好地控制参数
+    // 注意：--json会抑制大部分输出，所以我们不使用它，改用--verbose来获取实时输出
+    // 测试完成后，我们会单独运行一次来生成JSON报告
     const jestArgs = [
       '--coverage',
-      '--json',
-      '--outputFile=reports/test-results.json',
-      '--forceExit' // 确保Jest在测试完成后退出
+      // 不使用--json，因为它会抑制实时输出
+      // '--json',
+      // '--outputFile=reports/test-results.json',
+      '--forceExit', // 确保Jest在测试完成后退出
+      '--verbose', // 启用详细输出，确保所有日志都被实时输出
+      '--no-cache', // 禁用缓存，确保每次都是全新运行
+      '--colors=false' // 禁用颜色输出，避免ANSI码干扰日志解析
     ];
+    
+    // 如果包含前端测试，需要移除默认配置中的testPathIgnorePatterns限制
+    // 通过使用自定义配置或覆盖选项来实现
+    const hasFrontendTests = suites.some(s => s.includes('frontend/'));
+    if (hasFrontendTests) {
+      // 使用前端配置运行所有测试（前端配置应该也能运行后端测试）
+      // 或者分别运行，但为了简化，我们先尝试使用前端配置
+      // 注意：前端配置使用jsdom环境，可能不适合后端测试
+      // 更好的方法是修改默认配置，移除对前端测试的排除
+      // 这里我们暂时注释掉，需要修改jest.config.js
+    }
     
     // 构建Jest命令 - 使用单个testPathPattern，用正则表达式匹配多个文件
     // 格式: (pattern1|pattern2|pattern3)
     if (testPatterns.length > 0) {
       const combinedPattern = '(' + testPatterns.join('|') + ')';
-      jestArgs.push('--testPathPattern=' + combinedPattern);
+      jestArgs.push('--testPathPattern', combinedPattern);
     }
     
     // 启动测试进程
     testRunState.running = true;
     testRunState.completed = false;
     testRunState.logs = []; // 清空之前的日志
+    testRunState.selectedSuites = suites; // 保存选中的测试套件，用于生成报告
     testRunState.progress = { 
       current: 0, 
       total: 0, 
@@ -5279,7 +5340,15 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
     
     // 添加启动日志
     testRunState.logs.push(`[INFO] 开始运行测试套件: ${suites.join(', ')}`);
-    testRunState.logs.push(`[INFO] Jest命令: npx jest ${jestArgs.join(' ')}`);
+    // 构建显示用的命令字符串（用于日志）
+    const commandStr = 'npx jest ' + jestArgs.map(arg => {
+      // 如果参数包含空格或特殊字符，用引号包裹
+      if (arg.includes(' ') || arg.includes('(') || arg.includes(')') || arg.includes('|')) {
+        return `"${arg}"`;
+      }
+      return arg;
+    }).join(' ');
+    addTimestampedLog(`Jest命令: ${commandStr}`);
     
     logger.info('启动测试', { 
       suites, 
@@ -5288,10 +5357,16 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
       args: jestArgs 
     });
     
+    // 不使用shell: true，直接传递参数数组，避免shell解析特殊字符
+    // 设置环境变量确保Jest实时输出（不缓冲）
     const jestProcess = spawn('npx', ['jest', ...jestArgs], {
       cwd: projectRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: true
+      env: {
+        ...process.env,
+        FORCE_COLOR: '0', // 禁用颜色输出，避免ANSI码干扰
+        CI: 'true' // 设置为CI模式，确保实时输出
+      }
     });
     
     testRunState.process = jestProcess;
@@ -5310,8 +5385,26 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
       stdout += output;
       
       // 存储日志（限制日志数量，避免内存溢出）
-      const logLines = output.split('\n').filter(line => line.trim());
-      testRunState.logs.push(...logLines);
+      // 在服务器端添加时间戳，确保每条日志都有准确的时间
+      // 注意：保留所有非空行，包括格式化的输出
+      const lines = output.split('\n');
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        // 保留所有有内容的行（包括只有空格的行，可能是格式化的输出）
+        if (trimmed || line.length > 0) {
+          const timestamp = getLogTimestamp();
+          // 如果日志已经包含 [INFO] 或 [ERROR] 等前缀，在时间戳后添加
+          if (trimmed.startsWith('[')) {
+            testRunState.logs.push(`[${timestamp}] ${trimmed}`);
+          } else if (trimmed) {
+            testRunState.logs.push(`[${timestamp}] ${trimmed}`);
+          } else {
+            // 空行也记录，但使用时间戳
+            testRunState.logs.push(`[${timestamp}]`);
+          }
+        }
+      });
+      
       // 只保留最近1000行日志
       if (testRunState.logs.length > 1000) {
         testRunState.logs = testRunState.logs.slice(-1000);
@@ -5322,7 +5415,7 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
       // PASS tests/routes/admin.test.js
       //   Admin Routes
       //     ✓ should get all categories (123 ms)
-      const lines = output.split('\n');
+      // 注意：lines已经在上面定义过了，直接使用
       for (const line of lines) {
         const trimmed = line.trim();
         
@@ -5362,16 +5455,20 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
         }
         
         // 检测测试总数（Tests: X passed, Y total）
-        const testMatch = trimmed.match(/Tests:\s+(\d+)\s+(passed|failed|skipped).*?(\d+)\s+total/);
+        // 匹配格式: "Tests:       124 passed, 124 total"
+        const testMatch = trimmed.match(/Tests:\s+(\d+)\s+(passed|failed|skipped).*?(\d+)\s+total/i);
         if (testMatch) {
-          totalTests = parseInt(testMatch[3]) || totalTests;
-          // 立即更新进度
-          testRunState.progress = {
-            current: completedTests,
-            total: totalTests,
-            currentTest: currentTestName || 'Running tests...',
-            currentSuite: testRunState.progress.currentSuite || ''
-          };
+          const newTotalTests = parseInt(testMatch[3]) || totalTests;
+          if (newTotalTests > totalTests) {
+            totalTests = newTotalTests;
+            // 立即更新进度
+            testRunState.progress = {
+              current: completedTests,
+              total: totalTests,
+              currentTest: currentTestName || 'Running tests...',
+              currentSuite: testRunState.progress.currentSuite || ''
+            };
+          }
         }
         
         // 也尝试从JSON输出中解析（如果Jest输出了JSON行）
@@ -5418,9 +5515,14 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
       const errorOutput = data.toString();
       stderr += errorOutput;
       
-      // 存储错误日志
+      // 存储错误日志，在服务器端添加时间戳
       const errorLines = errorOutput.split('\n').filter(line => line.trim());
-      testRunState.logs.push(...errorLines.map(line => `[ERROR] ${line}`));
+      errorLines.forEach(line => {
+        if (line) {
+          const timestamp = getLogTimestamp();
+          testRunState.logs.push(`[${timestamp}] [ERROR] ${line}`);
+        }
+      });
       // 只保留最近1000行日志
       if (testRunState.logs.length > 1000) {
         testRunState.logs = testRunState.logs.slice(-1000);
@@ -5429,20 +5531,42 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
     
     jestProcess.on('close', async (code) => {
       testRunState.running = false;
-      testRunState.completed = true;
       testRunState.process = null;
       
-      // 最终更新进度 - 只有在有实际测试数据时才更新
-      // 如果 totalTests 为 0 且 completedTests 也为 0，说明测试可能没有运行或立即失败
-      if (totalTests > 0 || completedTests > 0) {
+      // 尝试从JSON输出文件中读取准确的测试总数
+      let finalTotalTests = totalTests;
+      let finalCompletedTests = completedTests;
+      
+      try {
+        const testResultsPath = path.join(projectRoot, 'reports', 'test-results.json');
+        if (fs.existsSync(testResultsPath)) {
+          const testResults = JSON.parse(fs.readFileSync(testResultsPath, 'utf8'));
+          if (testResults && testResults.numTotalTests) {
+            finalTotalTests = testResults.numTotalTests;
+            finalCompletedTests = testResults.numPassedTests + testResults.numFailedTests + (testResults.numPendingTests || 0);
+            addTimestampedLog(`从JSON文件读取: 总测试数=${finalTotalTests}, 已完成=${finalCompletedTests}`);
+          }
+        }
+      } catch (e) {
+        addTimestampedLog(`无法读取测试结果JSON: ${e.message}`, 'WARN');
+      }
+      
+      // 只有在有实际测试运行时才标记为完成
+      // 如果没有任何测试运行（totalTests和completedTests都为0），说明测试可能没有启动或立即失败
+      const hasTestsRun = finalTotalTests > 0 || finalCompletedTests > 0;
+      
+      if (hasTestsRun) {
+        testRunState.completed = true;
+        // 最终更新进度
         testRunState.progress = {
-          current: totalTests || completedTests,
-          total: totalTests || completedTests,
+          current: finalCompletedTests,
+          total: finalTotalTests,
           currentTest: code === 0 ? 'All tests completed' : 'Tests completed with errors',
           currentSuite: testRunState.progress.currentSuite || ''
         };
       } else {
-        // 测试可能没有运行，保持当前进度或设置为初始状态
+        // 测试可能没有运行，不标记为完成，保持运行状态以便用户看到错误
+        testRunState.completed = false;
         testRunState.progress = {
           current: 0,
           total: 0,
@@ -5452,19 +5576,58 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
       }
       
       // 添加完成日志
-      testRunState.logs.push(`[INFO] 测试完成，退出代码: ${code}`);
-      testRunState.logs.push(`[INFO] 总测试数: ${totalTests || completedTests}, 已完成: ${completedTests}`);
+      addTimestampedLog(`测试完成，退出代码: ${code}`);
+      addTimestampedLog(`总测试数: ${finalTotalTests}, 已完成: ${finalCompletedTests}`);
       
-      // 生成测试报告
-      try {
-        testRunState.logs.push('[INFO] 正在生成测试报告...');
-        const { execSync } = require('child_process');
-        execSync('node scripts/generate-test-report.js', { cwd: projectRoot, stdio: 'ignore' });
-        testRunState.logs.push('[INFO] 测试报告生成成功');
-        logger.info('测试报告生成成功', { code, totalTests, completedTests });
-      } catch (e) {
-        testRunState.logs.push(`[ERROR] 生成测试报告失败: ${e.message}`);
-        logger.error('生成测试报告失败', { error: e.message });
+      // 只有在测试真正完成时才生成报告
+      if (hasTestsRun) {
+        // 生成测试报告
+        try {
+          addTimestampedLog('正在生成测试报告...');
+          const { execSync } = require('child_process');
+          
+          // 先运行一次Jest来生成JSON结果文件（使用相同的测试模式）
+          // 注意：由于suites在外层作用域，我们需要从req.body中获取
+          const reportJestArgs = [
+            '--coverage',
+            '--json',
+            '--outputFile=reports/test-results.json',
+            '--forceExit'
+          ];
+          
+          // 使用保存的测试套件信息（从testRunState中获取）
+          const reportSuites = testRunState.selectedSuites || [];
+          if (reportSuites.length > 0) {
+            const reportPatterns = reportSuites.map(suite => {
+              const pattern = suite.replace(/^tests\//, '').replace(/\.test\.js$/, '');
+              return pattern;
+            });
+            if (reportPatterns.length > 0) {
+              const combinedPattern = '(' + reportPatterns.join('|') + ')';
+              reportJestArgs.push('--testPathPattern', combinedPattern);
+            }
+          }
+          
+          // 静默运行，只生成JSON文件
+          const reportCommand = ['npx', 'jest', ...reportJestArgs];
+          execSync(reportCommand.join(' '), { 
+            cwd: projectRoot, 
+            stdio: 'ignore',
+            env: {
+              ...process.env,
+              FORCE_COLOR: '0',
+              CI: 'true'
+            }
+          });
+          
+          // 然后生成HTML报告
+          execSync('node scripts/generate-test-report.js', { cwd: projectRoot, stdio: 'ignore' });
+          addTimestampedLog('测试报告生成成功');
+          logger.info('测试报告生成成功', { code, totalTests: finalTotalTests, completedTests: finalCompletedTests });
+        } catch (e) {
+          addTimestampedLog(`生成测试报告失败: ${e.message}`, 'ERROR');
+          logger.error('生成测试报告失败', { error: e.message });
+        }
       }
     });
     
@@ -5483,7 +5646,7 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
     testRunState.running = false;
     testRunState.completed = false;
     testRunState.logs = testRunState.logs || [];
-    testRunState.logs.push(`[ERROR] 启动测试失败: ${error.message}`);
+    addTimestampedLog(`启动测试失败: ${error.message}`, 'ERROR');
     res.status(500).json({ 
       success: false, 
       message: 'Failed to run tests',

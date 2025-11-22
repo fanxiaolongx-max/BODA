@@ -1,8 +1,9 @@
 module.exports = {
   testEnvironment: 'node',
   testMatch: ['**/tests/**/*.test.js'],
-  // 排除前端测试（前端测试使用单独的配置）
-  testPathIgnorePatterns: ['/node_modules/', '/tests/frontend/'],
+  // 不再排除前端测试，允许在运行全部测试时包含前端测试
+  // 前端测试文件会通过 @jest-environment jsdom 注释指定环境
+  testPathIgnorePatterns: ['/node_modules/'],
   collectCoverageFrom: [
     'routes/**/*.js',
     'middleware/**/*.js',

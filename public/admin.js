@@ -6619,6 +6619,8 @@ let testSuites = [];
 let selectedTestSuites = new Set();
 let testRunning = false;
 let testProgressInterval = null;
+let testLogsCache = [];
+let lastLogCount = 0; // 跟踪已处理的日志数量
 
 // 加载测试套件列表
 async function loadTestSuites() {
@@ -6723,16 +6725,54 @@ async function runSelectedTests() {
   
   // 清空日志缓存
   testLogsCache = [];
+  lastLogCount = 0; // 重置已处理的日志数量
   const logsText = document.getElementById('testLogsText');
-  if (logsText) logsText.innerHTML = '';
+  const logsContainer = document.getElementById('testLogsContainer');
+  const logsContent = document.getElementById('testLogsContent');
+  const toggleBtn = document.getElementById('toggleLogsBtn');
+  
+  if (logsText) logsText.textContent = '';
+  if (logsContainer) logsContainer.classList.add('hidden');
+  if (logsContent) logsContent.classList.add('hidden');
+  if (toggleBtn) toggleBtn.textContent = '展开';
   
   if (stopBtn) stopBtn.classList.remove('hidden');
-  if (progressPanel) progressPanel.classList.remove('hidden');
+  // 隐藏进度面板，直接显示日志
+  if (progressPanel) progressPanel.classList.add('hidden');
+  // 显示日志容器并默认展开
+  if (logsContainer) {
+    logsContainer.classList.remove('hidden');
+  }
+  if (logsContent) {
+    logsContent.classList.remove('hidden');
+  }
+  if (toggleBtn) {
+    toggleBtn.textContent = '收起';
+  }
   if (reportPanel) {
       const placeholder = document.getElementById('testReportPlaceholder');
       const iframe = document.getElementById('testReportIframe');
       if (placeholder) {
-        placeholder.innerHTML = '<div class="text-center py-8"><div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div><p class="mt-2 text-sm text-gray-600">Running tests...</p></div>';
+        // 在占位符中显示日志容器
+        placeholder.innerHTML = `
+          <div class="w-full h-full flex flex-col" style="height: 100%; min-height: 500px;">
+            <div class="flex items-center justify-between mb-2 px-2 flex-shrink-0">
+              <span class="text-sm font-semibold text-gray-700">测试日志</span>
+              <div class="flex items-center space-x-2">
+                <div class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <span class="text-xs text-gray-500">运行中...</span>
+              </div>
+            </div>
+            <div id="testLogsContentPlaceholder" class="bg-gray-900 text-gray-100 font-mono text-xs p-3 rounded-lg overflow-y-auto text-left flex-1" style="font-size: 11px; line-height: 1.6; min-height: 0; flex: 1 1 auto;">
+              <div id="testLogsTextPlaceholder" class="whitespace-pre-wrap text-left"></div>
+            </div>
+            <div id="testReportButton" class="mt-4 text-center px-2 pb-4 hidden flex-shrink-0">
+              <button onclick="loadTestReport()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition shadow-md">
+                📊 在新窗口打开测试报告
+              </button>
+            </div>
+          </div>
+        `;
         placeholder.style.display = 'block';
       }
       if (iframe) {
@@ -6754,7 +6794,8 @@ async function runSelectedTests() {
       throw new Error('Failed to start tests');
     }
     
-    // 轮询测试进度（更频繁的更新以获得实时进度）
+    // 轮询测试进度和日志（使用更频繁的轮询以获得实时日志）
+    // 业界最佳实践：100-200ms 轮询间隔，确保实时性
     testProgressInterval = setInterval(async () => {
       try {
         const progressResponse = await fetch(`${API_BASE}/admin/developer/test-progress?t=${Date.now()}`, {
@@ -6764,89 +6805,52 @@ async function runSelectedTests() {
         if (progressResponse.ok) {
           const progressData = await progressResponse.json();
           if (progressData.success) {
-            updateTestProgress(progressData);
-            // 更新测试日志
-            if (progressData.logs && progressData.logs.length > 0) {
+            // 不再更新进度条，只更新日志
+            // updateTestProgress(progressData);
+            // 更新测试日志（服务器端已经添加了时间戳）
+            if (progressData.logs && Array.isArray(progressData.logs)) {
               updateTestLogs(progressData.logs);
             }
             
-            // 检查测试是否完成
+            // 如果测试已完成，停止轮询并更新占位符
             if (progressData.completed) {
               clearInterval(testProgressInterval);
               testProgressInterval = null;
+              testRunning = false;
+              const stopBtn = document.getElementById('stopTestsBtn');
+              if (stopBtn) stopBtn.classList.add('hidden');
               
-              // 更新最终进度显示
-              if (progressData.progress) {
-                updateTestProgress(progressData);
-                const currentTest = document.getElementById('testCurrentTest');
-                if (currentTest) {
-                  currentTest.textContent = 'Tests completed! Generating report...';
-                }
-              }
-              
-              // 等待报告生成（最多等待5秒）
-              let waitCount = 0;
-              const checkReport = setInterval(async () => {
-                waitCount++;
-                try {
-                  const reportResponse = await fetch(`${API_BASE}/admin/developer/test-report`, {
-                    credentials: 'include'
-                  });
-                  if (reportResponse.ok) {
-                    const html = await reportResponse.text();
-                    // 检查是否是有效的HTML报告
-                    if (html.length > 1000 && (html.includes('测试报告') || html.includes('test-report') || html.includes('Test Suites'))) {
-                      clearInterval(checkReport);
-                      await loadTestReport();
-                      testRunning = false;
-                      if (stopBtn) stopBtn.classList.add('hidden');
-                      // 更新进度为100%
-                      if (progressData.progress) {
-                        updateTestProgress({ progress: { ...progressData.progress, current: progressData.progress.total, currentTest: 'All tests completed' } });
-                      }
-                      showToast('Tests completed', 'success');
-                      return;
-                    }
+              // 更新占位符，显示完成状态和下载按钮
+              const placeholder = document.getElementById('testReportPlaceholder');
+              if (placeholder) {
+                const statusDiv = placeholder.querySelector('.flex.items-center.justify-between');
+                if (statusDiv) {
+                  const statusText = statusDiv.querySelector('.text-xs.text-gray-500');
+                  if (statusText) {
+                    statusText.innerHTML = '<span class="text-green-500">✓ 测试完成</span>';
                   }
-                } catch (e) {
-                  // 忽略错误，继续等待
+                  const pulseDiv = statusDiv.querySelector('.animate-pulse');
+                  if (pulseDiv) {
+                    pulseDiv.classList.remove('animate-pulse', 'bg-blue-500');
+                    pulseDiv.classList.add('bg-green-500');
+                  }
                 }
                 
-                // 最多等待10次（5秒）
-                if (waitCount >= 10) {
-                  clearInterval(checkReport);
-                  await loadTestReport();
-                  testRunning = false;
-                  if (stopBtn) stopBtn.classList.add('hidden');
-                  showToast('Tests completed (report may still be generating)', 'info');
+                // 显示报告下载按钮（按钮已经在HTML结构中，只需要显示）
+                const reportButton = placeholder.querySelector('#testReportButton');
+                if (reportButton) {
+                  reportButton.classList.remove('hidden');
                 }
-              }, 500);
-            } else if (!progressData.running && progressData.progress && progressData.progress.current > 0) {
-              // 测试可能已完成但状态未更新，等待一下再检查
-              setTimeout(() => {
-                if (!testRunning) return;
-                fetch(`${API_BASE}/admin/developer/test-progress`, { credentials: 'include' })
-                  .then(r => r.json())
-                  .then(data => {
-                    if (data.success && data.completed) {
-                      clearInterval(testProgressInterval);
-                      testProgressInterval = null;
-                      loadTestReport().then(() => {
-                        testRunning = false;
-                        if (stopBtn) stopBtn.classList.add('hidden');
-                        showToast('Tests completed', 'success');
-                      });
-                    }
-                  })
-                  .catch(e => console.error('Check progress failed:', e));
-              }, 2000);
+              }
             }
+            
+            // 检查测试是否完成（已在上面处理）
           }
         }
       } catch (e) {
         console.error('Get test progress failed:', e);
       }
-    }, 500); // 每500ms轮询一次，获得更实时的进度更新
+    }, 150); // 每150ms轮询一次，获得更实时的日志更新（业界最佳实践）
     
   } catch (error) {
     console.error('Run tests failed:', error);
@@ -6985,45 +6989,141 @@ function updateTestProgress(data) {
   }
 }
 
+// 更新测试日志（简化版本，服务器端已经添加了时间戳）
+function updateTestLogs(logs) {
+  if (!logs || !Array.isArray(logs)) {
+    return;
+  }
+  
+  // 只处理新日志（从上次处理的位置开始）
+  const newLogs = logs.slice(lastLogCount);
+  if (newLogs.length === 0) {
+    return; // 没有新日志
+  }
+  
+  // 更新已处理的日志数量
+  lastLogCount = logs.length;
+  
+  // 直接将新日志添加到缓存（服务器端已经添加了时间戳）
+  newLogs.forEach(log => {
+    if (typeof log === 'string' && log.trim()) {
+      testLogsCache.push(log);
+    } else if (log && typeof log === 'object') {
+      // 处理对象格式的日志
+      const logMessage = log.message || log.text || String(log);
+      if (logMessage) {
+        testLogsCache.push(logMessage);
+      }
+    }
+  });
+  
+  // 限制日志缓存大小（保留最后1000行）
+  if (testLogsCache.length > 1000) {
+    testLogsCache = testLogsCache.slice(-1000);
+  }
+  
+  // 更新日志显示 - 优先显示在占位符中
+  const logsTextPlaceholder = document.getElementById('testLogsTextPlaceholder');
+  const logsContentPlaceholder = document.getElementById('testLogsContentPlaceholder');
+  
+  // 如果占位符存在，显示在占位符中
+  if (logsTextPlaceholder) {
+    logsTextPlaceholder.textContent = testLogsCache.join('\n');
+    // 自动滚动到底部
+    if (logsContentPlaceholder) {
+      // 使用 requestAnimationFrame 确保 DOM 更新后再滚动
+      requestAnimationFrame(() => {
+        logsContentPlaceholder.scrollTop = logsContentPlaceholder.scrollHeight;
+      });
+    }
+  } else {
+    // 如果占位符不存在，使用原来的日志容器
+    const logsText = document.getElementById('testLogsText');
+    const logsContainer = document.getElementById('testLogsContainer');
+    const logsContent = document.getElementById('testLogsContent');
+    
+    if (logsText) {
+      logsText.textContent = testLogsCache.join('\n');
+      // 自动滚动到底部
+      if (logsContent && !logsContent.classList.contains('hidden')) {
+        // 使用 requestAnimationFrame 确保 DOM 更新后再滚动
+        requestAnimationFrame(() => {
+          logsContent.scrollTop = logsContent.scrollHeight;
+        });
+      }
+    }
+    
+    // 确保日志容器可见
+    if (logsContainer) {
+      logsContainer.classList.remove('hidden');
+    }
+    if (logsContent) {
+      logsContent.classList.remove('hidden');
+    }
+  }
+}
+
+// 切换测试日志显示/隐藏
+function toggleTestLogs() {
+  const logsContent = document.getElementById('testLogsContent');
+  const toggleBtn = document.getElementById('toggleLogsBtn');
+  
+  if (!logsContent || !toggleBtn) {
+    return;
+  }
+  
+  const isHidden = logsContent.classList.contains('hidden');
+  
+  if (isHidden) {
+    logsContent.classList.remove('hidden');
+    toggleBtn.textContent = '收起';
+    // 滚动到底部
+    setTimeout(() => {
+      logsContent.scrollTop = logsContent.scrollHeight;
+    }, 100);
+  } else {
+    logsContent.classList.add('hidden');
+    toggleBtn.textContent = '展开';
+  }
+}
+
 // 停止测试
 async function stopTests() {
-  if (!testRunning) return;
+  if (!testRunning) {
+    showToast('没有正在运行的测试', 'warning');
+    return;
+  }
   
   try {
-    await fetch(`${API_BASE}/admin/developer/stop-tests`, {
+    const response = await fetch(`${API_BASE}/admin/developer/stop-tests`, {
       method: 'POST',
       credentials: 'include'
     });
-    testRunning = false;
-    const stopBtn = document.getElementById('stopTestsBtn');
-    if (stopBtn) stopBtn.classList.add('hidden');
-    if (testProgressInterval) {
-      clearInterval(testProgressInterval);
-      testProgressInterval = null;
+    
+    const data = await response.json();
+    if (data.success) {
+      testRunning = false;
+      const stopBtn = document.getElementById('stopTestsBtn');
+      if (stopBtn) stopBtn.classList.add('hidden');
+      if (testProgressInterval) {
+        clearInterval(testProgressInterval);
+        testProgressInterval = null;
+      }
+      showToast('测试已停止', 'success');
+      // 添加停止日志
+      updateTestLogs(['[INFO] 测试已手动停止']);
+    } else {
+      showToast('停止测试失败: ' + (data.message || '未知错误'), 'error');
     }
-    showToast('Tests stopped', 'info');
   } catch (error) {
     console.error('Stop tests failed:', error);
+    showToast('停止测试失败: ' + error.message, 'error');
   }
 }
 
 // 加载测试报告
 async function loadTestReport() {
   try {
-    const iframe = document.getElementById('testReportIframe');
-    const placeholder = document.getElementById('testReportPlaceholder');
-    
-    if (!iframe) {
-      console.error('testReportIframe not found');
-      return;
-    }
-    
-    // 隐藏占位符，显示iframe
-    if (placeholder) {
-      placeholder.style.display = 'none';
-    }
-    iframe.style.display = 'block';
-    
     // 等待报告生成（最多等待10秒）
     let retries = 0;
     const maxRetries = 20;
@@ -7038,20 +7138,20 @@ async function loadTestReport() {
           const html = await response.text();
           // 检查是否是有效的HTML报告
           if (html.length > 1000 && (html.includes('测试报告') || html.includes('test-report') || html.includes('Test Suites') || html.includes('测试结果') || html.includes('<!DOCTYPE html'))) {
-            // 直接使用服务器URL，而不是blob URL，避免CSP问题
+            // 在新窗口中打开测试报告
             // 添加时间戳确保获取最新内容
             const reportUrl = `${API_BASE}/admin/developer/test-report?t=${Date.now()}`;
-            iframe.src = reportUrl;
+            const newWindow = window.open(reportUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
             
-            // 监听iframe加载完成
-            iframe.onload = function() {
-              console.log('Test report loaded successfully in iframe');
-            };
-            
-            iframe.onerror = function() {
-              console.error('Failed to load test report in iframe');
-              showReportError('Failed to load test report in iframe');
-            };
+            if (newWindow) {
+              console.log('Test report opened in new window');
+              showToast('测试报告已在新窗口中打开', 'success');
+            } else {
+              // 如果弹窗被阻止，提示用户
+              showToast('无法打开新窗口，请检查浏览器弹窗设置', 'warning');
+              // 作为备选方案，在当前窗口打开
+              window.location.href = reportUrl;
+            }
             
             return;
           }
@@ -7067,33 +7167,16 @@ async function loadTestReport() {
     }
     
     // 如果重试后仍然失败，显示错误
-    showReportError('Report not ready yet. Please wait a moment and try again.');
+    showToast('测试报告尚未生成，请稍候再试', 'warning');
     
   } catch (error) {
     console.error('Load test report failed:', error);
-    showReportError('Failed to load test report: ' + error.message);
+    showToast('加载测试报告失败: ' + error.message, 'error');
   }
 }
 
-// 显示报告错误
+// 显示报告错误（已废弃，现在使用toast提示）
 function showReportError(message) {
-  const iframe = document.getElementById('testReportIframe');
-  const placeholder = document.getElementById('testReportPlaceholder');
-  
-  if (iframe) {
-    iframe.style.display = 'none';
-    iframe.src = 'about:blank'; // 清空iframe
-  }
-  
-  if (placeholder) {
-    placeholder.innerHTML = `
-      <div class="text-center py-8">
-        <p class="text-red-500 mb-2">${message}</p>
-        <button onclick="loadTestReport()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition mt-4">
-          🔄 Retry
-        </button>
-      </div>
-    `;
-    placeholder.style.display = 'block';
-  }
+  // 不再使用iframe显示错误，直接使用toast提示
+  showToast(message, 'error');
 }
