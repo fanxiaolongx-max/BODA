@@ -206,11 +206,216 @@ document.addEventListener('DOMContentLoaded', async () => {
     await login();
   });
   
+  // 初始化PIN输入框
+  initPinInputs();
+  
+  // 手机号输入验证和检查PIN状态
+  const phoneInput = document.getElementById('phone');
+  const phoneError = document.getElementById('phoneError');
+  
+  if (phoneInput) {
+    let phoneCheckTimeout = null;
+    
+    // 记录上一次的手机号值，用于检测变化
+    let lastPhoneValue = '';
+    
+    // 限制只能输入数字，且必须以0开头
+    phoneInput.addEventListener('input', (e) => {
+      let phone = phoneInput.value.replace(/\D/g, ''); // 只保留数字
+      
+      // 如果第一个字符不是0，清空或设置为0
+      if (phone.length > 0 && phone[0] !== '0') {
+        phone = '0' + phone.replace(/^0+/, ''); // 如果输入的不是0开头，强制以0开头
+      }
+      
+      // 限制最多11位
+      if (phone.length > 11) {
+        phone = phone.substring(0, 11);
+      }
+      
+      phoneInput.value = phone;
+      
+      // 检测手机号是否发生变化（长度或数字变化）
+      const phoneChanged = phone !== lastPhoneValue;
+      lastPhoneValue = phone;
+      
+      // 如果手机号发生变化，立即隐藏PIN区域
+      if (phoneChanged) {
+        // 立即隐藏PIN区域
+        const pinSection = document.getElementById('pinSection');
+        if (pinSection) {
+          pinSection.classList.add('hidden');
+        }
+        const pinConfirmSection = document.getElementById('pinConfirmSection');
+        if (pinConfirmSection) {
+          pinConfirmSection.classList.add('hidden');
+        }
+        
+        // 清除PIN输入和状态
+        clearPinInputs('both');
+        loginState.pin = '';
+        loginState.pinConfirm = '';
+        loginState.checkedPhone = '';
+        loginState.requiresPinSetup = false;
+      }
+      
+      // 清除之前的错误提示
+      if (phoneError) {
+        phoneError.classList.add('hidden');
+        phoneError.textContent = '';
+      }
+      phoneInput.classList.remove('border-red-500');
+      
+      // 清除之前的检查定时器
+      clearTimeout(phoneCheckTimeout);
+      
+      // 只有当输入完整的11位0开头数字时，才检查PIN状态
+      if (phone.length === 11 && phone.startsWith('0')) {
+        phoneCheckTimeout = setTimeout(async () => {
+          // 再次验证手机号是否还是11位0开头（防止在延迟期间被修改）
+          const currentPhone = phoneInput.value.trim();
+          if (currentPhone.length === 11 && currentPhone.startsWith('0') && currentPhone === phone) {
+            // 如果手机号改变了，需要重新检查PIN状态
+            if (loginState.checkedPhone !== phone) {
+              // 生成新的请求ID
+              const requestId = ++checkPinStatusRequestId;
+              await checkPinStatus(phone, requestId);
+            }
+          }
+        }, 300);
+      }
+    });
+    
+    // 失去焦点时验证手机号格式
+    phoneInput.addEventListener('blur', () => {
+      const phone = phoneInput.value.trim();
+      
+      if (phone) {
+        // 验证手机号必须是11位
+        if (phone.length !== 11) {
+          if (phoneError) {
+            phoneError.textContent = t('phone_length_error');
+            phoneError.classList.remove('hidden');
+          }
+          phoneInput.classList.add('border-red-500');
+          // 确保PIN区域已隐藏
+          const pinSection = document.getElementById('pinSection');
+          if (pinSection) {
+            pinSection.classList.add('hidden');
+          }
+          return;
+        }
+        
+        // 验证手机号必须以0开头
+        if (!phone.startsWith('0')) {
+          if (phoneError) {
+            phoneError.textContent = t('phone_invalid_format');
+            phoneError.classList.remove('hidden');
+          }
+          phoneInput.classList.add('border-red-500');
+          // 确保PIN区域已隐藏
+          const pinSection = document.getElementById('pinSection');
+          if (pinSection) {
+            pinSection.classList.add('hidden');
+          }
+          return;
+        }
+        
+        // 验证手机号格式（只允许数字）
+        if (!/^\d{11}$/.test(phone)) {
+          if (phoneError) {
+            phoneError.textContent = t('phone_format_error');
+            phoneError.classList.remove('hidden');
+          }
+          phoneInput.classList.add('border-red-500');
+          // 确保PIN区域已隐藏
+          const pinSection = document.getElementById('pinSection');
+          if (pinSection) {
+            pinSection.classList.add('hidden');
+          }
+          return;
+        }
+        
+        // 格式正确，清除错误提示
+        if (phoneError) {
+          phoneError.classList.add('hidden');
+        }
+        phoneInput.classList.remove('border-red-500');
+        
+        // 如果手机号完整且正确，检查PIN状态
+        if (phone.length === 11 && phone.startsWith('0')) {
+          clearTimeout(phoneCheckTimeout);
+          phoneCheckTimeout = setTimeout(async () => {
+            // 再次验证手机号是否还是11位0开头（防止在延迟期间被修改）
+            const currentPhone = phoneInput.value.trim();
+            if (currentPhone.length === 11 && currentPhone.startsWith('0') && currentPhone === phone) {
+              // 如果手机号改变了，需要重新检查PIN状态
+              if (loginState.checkedPhone !== phone) {
+                // 生成新的请求ID
+                const requestId = ++checkPinStatusRequestId;
+                await checkPinStatus(phone, requestId);
+              }
+            }
+          }, 300);
+        }
+      } else {
+        // 手机号为空，确保PIN区域已隐藏
+        const pinSection = document.getElementById('pinSection');
+        if (pinSection) {
+          pinSection.classList.add('hidden');
+        }
+      }
+    });
+    
+    // 获得焦点时清除错误提示
+    phoneInput.addEventListener('focus', () => {
+      if (phoneError) {
+        phoneError.classList.add('hidden');
+      }
+      phoneInput.classList.remove('border-red-500');
+    });
+  }
+  
+  // 关闭登录模态框时重置状态
+  const loginModal = document.getElementById('loginModal');
+  if (loginModal) {
+    // 监听模态框关闭
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          const isHidden = loginModal.classList.contains('hidden') || !loginModal.classList.contains('active');
+          if (isHidden) {
+            resetLoginState();
+          }
+        }
+      });
+    });
+    observer.observe(loginModal, { attributes: true });
+  }
+  
   // 付款表单提交
   document.getElementById('paymentForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     await uploadPayment();
   });
+  
+  // 文件选择状态提示
+  const paymentImageInput = document.getElementById('paymentImage');
+  const paymentFileStatus = document.getElementById('paymentFileStatus');
+  if (paymentImageInput && paymentFileStatus) {
+    paymentImageInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        paymentFileStatus.textContent = t('file_selected') + ': ' + file.name;
+        paymentFileStatus.classList.remove('text-gray-500');
+        paymentFileStatus.classList.add('text-green-600');
+      } else {
+        paymentFileStatus.textContent = t('no_file_selected');
+        paymentFileStatus.classList.remove('text-green-600');
+        paymentFileStatus.classList.add('text-gray-500');
+      }
+    });
+  }
 });
 
 // 应用翻译
@@ -465,13 +670,307 @@ function stopUserSessionRefresh() {
   }
 }
 
+// 登录流程状态
+let loginState = {
+  step: 'phone', // phone -> pin -> confirm (if new user)
+  phone: '',
+  name: '',
+  code: '',
+  pin: '',
+  pinConfirm: '',
+  requiresPinSetup: false,
+  checkedPhone: '' // 记录已检查PIN状态的手机号
+};
+
+// 请求ID计数器，用于防止竞态条件（必须在全局作用域）
+let checkPinStatusRequestId = 0;
+
+// 初始化PIN输入框
+function initPinInputs() {
+  // PIN输入框自动跳转
+  for (let i = 1; i <= 4; i++) {
+    const pinInput = document.getElementById(`pin${i}`);
+    const pinConfirmInput = document.getElementById(`pinConfirm${i}`);
+    
+    if (pinInput) {
+      pinInput.addEventListener('input', (e) => {
+        handlePinInput(e, i, 'pin');
+      });
+      pinInput.addEventListener('keydown', (e) => {
+        handlePinKeydown(e, i, 'pin');
+      });
+      pinInput.addEventListener('paste', (e) => {
+        handlePinPaste(e, 'pin');
+      });
+    }
+    
+    if (pinConfirmInput) {
+      pinConfirmInput.addEventListener('input', (e) => {
+        handlePinInput(e, i, 'pinConfirm');
+      });
+      pinConfirmInput.addEventListener('keydown', (e) => {
+        handlePinKeydown(e, i, 'pinConfirm');
+      });
+      pinConfirmInput.addEventListener('paste', (e) => {
+        handlePinPaste(e, 'pinConfirm');
+      });
+    }
+  }
+}
+
+// 处理PIN输入
+function handlePinInput(e, index, type) {
+  const input = e.target;
+  const value = input.value.replace(/\D/g, ''); // 只保留数字
+  
+  if (value) {
+    input.value = value.charAt(0);
+    input.classList.add('filled');
+    
+    // 自动跳转到下一个输入框
+    if (index < 4) {
+      const nextInput = document.getElementById(`${type}${index + 1}`);
+      if (nextInput) {
+        nextInput.focus();
+      }
+    } else {
+      // 最后一个输入框
+      if (type === 'pin' && loginState.requiresPinSetup) {
+        // 如果是设置PIN模式，输入完成后自动跳转到Confirm PIN的第一个输入框
+        const pinConfirm1 = document.getElementById('pinConfirm1');
+        if (pinConfirm1) {
+          setTimeout(() => {
+            pinConfirm1.focus();
+          }, 100);
+        }
+      } else {
+        // 其他情况，失去焦点
+        input.blur();
+      }
+    }
+  } else {
+    input.classList.remove('filled');
+  }
+  
+  updatePinValue(type);
+}
+
+// 处理PIN退格键
+function handlePinKeydown(e, index, type) {
+  if (e.key === 'Backspace' && !e.target.value && index > 1) {
+    const prevInput = document.getElementById(`${type}${index - 1}`);
+    if (prevInput) {
+      prevInput.focus();
+      prevInput.value = '';
+      prevInput.classList.remove('filled');
+      updatePinValue(type);
+    }
+  }
+}
+
+// 处理PIN粘贴
+function handlePinPaste(e, type) {
+  e.preventDefault();
+  const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').substring(0, 4);
+  
+  for (let i = 0; i < 4; i++) {
+    const input = document.getElementById(`${type}${i + 1}`);
+    if (input) {
+      if (i < pastedData.length) {
+        input.value = pastedData[i];
+        input.classList.add('filled');
+      } else {
+        input.value = '';
+        input.classList.remove('filled');
+      }
+    }
+  }
+  
+  if (pastedData.length === 4) {
+    const lastInput = document.getElementById(`${type}4`);
+    if (lastInput) {
+      lastInput.focus();
+    }
+  } else if (pastedData.length > 0) {
+    const nextInput = document.getElementById(`${type}${pastedData.length + 1}`);
+    if (nextInput) {
+      nextInput.focus();
+    }
+  }
+  
+  updatePinValue(type);
+}
+
+// 更新PIN值
+function updatePinValue(type) {
+  let pin = '';
+  for (let i = 1; i <= 4; i++) {
+    const input = document.getElementById(`${type}${i}`);
+    if (input && input.value) {
+      pin += input.value;
+    }
+  }
+  
+  if (type === 'pin') {
+    loginState.pin = pin;
+    
+    // 如果PIN输入完成（4位）且是验证模式（不是设置模式），自动登录
+    // 但需要验证手机号是否已检查完成且未改变
+    if (pin.length === 4 && !loginState.requiresPinSetup) {
+      const currentPhone = document.getElementById('phone').value.trim();
+      // 确保手机号是完整的11位0开头，且已经检查过PIN状态
+      if (currentPhone.length === 11 && currentPhone.startsWith('0') && 
+          currentPhone === loginState.checkedPhone) {
+        // 延迟一小段时间，确保UI更新完成
+        setTimeout(async () => {
+          // 再次验证手机号未改变
+          const verifyPhone = document.getElementById('phone').value.trim();
+          if (verifyPhone === loginState.checkedPhone && verifyPhone.length === 11 && verifyPhone.startsWith('0')) {
+            await login();
+          }
+        }, 300);
+      }
+    }
+  } else {
+    loginState.pinConfirm = pin;
+    
+    // 如果是设置PIN模式，且确认PIN输入完成（4位），自动登录
+    // 但需要验证手机号是否已检查完成且未改变
+    if (pin.length === 4 && loginState.requiresPinSetup && loginState.pin.length === 4) {
+      const currentPhone = document.getElementById('phone').value.trim();
+      // 确保手机号是完整的11位0开头，且已经检查过PIN状态
+      if (currentPhone.length === 11 && currentPhone.startsWith('0') && 
+          currentPhone === loginState.checkedPhone) {
+        // 延迟一小段时间，确保UI更新完成
+        setTimeout(async () => {
+          // 再次验证手机号未改变
+          const verifyPhone = document.getElementById('phone').value.trim();
+          if (verifyPhone === loginState.checkedPhone && verifyPhone.length === 11 && verifyPhone.startsWith('0')) {
+            await login();
+          }
+        }, 300);
+      }
+    }
+  }
+}
+
+// 清除PIN输入框
+function clearPinInputs(type = 'both') {
+  if (type === 'both' || type === 'pin') {
+    for (let i = 1; i <= 4; i++) {
+      const input = document.getElementById(`pin${i}`);
+      if (input) {
+        input.value = '';
+        input.classList.remove('filled', 'error');
+      }
+    }
+    loginState.pin = '';
+  }
+  
+  if (type === 'both' || type === 'pinConfirm') {
+    for (let i = 1; i <= 4; i++) {
+      const input = document.getElementById(`pinConfirm${i}`);
+      if (input) {
+        input.value = '';
+        input.classList.remove('filled', 'error');
+      }
+    }
+    loginState.pinConfirm = '';
+    const errorMsg = document.getElementById('pinMismatchError');
+    if (errorMsg) {
+      errorMsg.classList.add('hidden');
+    }
+  }
+}
+
+// 显示PIN错误
+function showPinError(type) {
+  for (let i = 1; i <= 4; i++) {
+    const input = document.getElementById(`${type}${i}`);
+    if (input) {
+      input.classList.add('error');
+      setTimeout(() => {
+        input.classList.remove('error');
+      }, 500);
+    }
+  }
+}
+
 // 登录
 async function login() {
   const phone = document.getElementById('phone').value.trim();
   const name = document.getElementById('name').value.trim();
   const codeSection = document.getElementById('verificationCodeSection');
+  const pinSection = document.getElementById('pinSection');
   const isCodeVisible = codeSection && !codeSection.classList.contains('hidden');
+  const isPinVisible = pinSection && !pinSection.classList.contains('hidden');
   const code = isCodeVisible ? document.getElementById('verificationCode').value.trim() : '';
+  const pin = loginState.pin;
+  const pinConfirm = loginState.pinConfirm;
+
+  // 强制要求PIN：如果PIN区域不可见，需要先检查PIN状态
+  if (!isPinVisible) {
+    // PIN区域不可见，需要先检查PIN状态
+    // 验证手机号必须是11位0开头
+    const phoneValid = phone && phone.length === 11 && phone.startsWith('0') && /^\d{11}$/.test(phone);
+    if (phoneValid) {
+      // 生成新的请求ID
+      const requestId = ++checkPinStatusRequestId;
+      const pinStatus = await checkPinStatus(phone, requestId);
+      if (pinStatus) {
+        // 需要PIN，但用户还没有输入，提示用户
+        showToast(t('pin_required'), 'info');
+        return;
+      }
+    } else {
+      // 手机号格式不正确
+      if (!phone) {
+        showToast(t('please_enter_phone'), 'error');
+      } else if (phone.length !== 11) {
+        showToast(t('phone_length_error'), 'error');
+      } else if (!phone.startsWith('0')) {
+        showToast(t('phone_invalid_format'), 'error');
+      } else {
+        showToast(t('phone_format_error'), 'error');
+      }
+      return;
+    }
+  }
+  
+  // 如果PIN区域可见，说明需要PIN
+  if (isPinVisible) {
+    if (pin.length !== 4) {
+      showToast(t('pin_4_digits'), 'error');
+      showPinError('pin');
+      return;
+    }
+    
+    // 如果是设置PIN模式，需要确认PIN
+    const pinConfirmSection = document.getElementById('pinConfirmSection');
+    if (pinConfirmSection && !pinConfirmSection.classList.contains('hidden')) {
+      if (pinConfirm.length !== 4) {
+        showToast(t('pin_4_digits'), 'error');
+        showPinError('pinConfirm');
+        return;
+      }
+      
+      if (pin !== pinConfirm) {
+        showToast(t('pin_mismatch'), 'error');
+        document.getElementById('pinMismatchError').classList.remove('hidden');
+        showPinError('pinConfirm');
+        clearPinInputs('pinConfirm');
+        return;
+      }
+    }
+  } else {
+    // PIN区域不可见，但可能用户没有PIN，需要强制要求PIN
+    // 这种情况不应该发生，因为checkPinStatus应该已经显示了PIN区域
+    // 但为了安全，我们仍然要求PIN
+    if (!pin || pin.length !== 4) {
+      showToast(t('pin_required'), 'error');
+      return;
+    }
+  }
 
   // 验证手机号（只验证长度，不限制格式）
   if (!phone) {
@@ -506,15 +1005,15 @@ async function login() {
     }
     
     // 使用验证码登录
-    await loginWithCode(phone, code, name);
+    await loginWithCode(phone, code, name, pin);
   } else {
     // 使用传统登录
-    await loginWithoutCode(phone, name);
+    await loginWithoutCode(phone, name, pin);
   }
 }
 
 // 验证码登录
-async function loginWithCode(phone, code, name) {
+async function loginWithCode(phone, code, name, pin) {
   const loginBtn = document.getElementById('loginSubmitBtn');
   setButtonLoading(loginBtn, true);
 
@@ -526,7 +1025,8 @@ async function loginWithCode(phone, code, name) {
       body: JSON.stringify({ 
         phone, 
         code,
-        name: name || undefined
+        name: name || undefined,
+        pin: pin || undefined
       })
     });
 
@@ -535,23 +1035,51 @@ async function loginWithCode(phone, code, name) {
     if (data.success) {
       currentUser = data.user;
       closeLoginModal();
+      resetLoginState();
       updateLoginStatus();
       showToast(t('login_success'), 'success');
       
       // 启动session检查
       startUserSessionCheck();
       
-      // If cart has items, submit order directly
-      if (cart.length > 0) {
-        submitOrder();
+      // 加载用户余额
+      await loadUserBalance();
+      
+      // 检查是否有待处理的 Checkout 请求
+      const pendingCheckout = sessionStorage.getItem('pendingCheckout');
+      if (pendingCheckout === 'true') {
+        // 清除标记
+        sessionStorage.removeItem('pendingCheckout');
+        // 如果购物车有商品，显示购物车让用户确认后提交
+        if (cart.length > 0) {
+          // 显示购物车，让用户再次点击提交
+          await showCart();
+          showToast(t('please_confirm_checkout') || 'Please confirm your order and click Submit Order', 'info');
+        }
       } else {
+        // 如果没有待处理的 Checkout，按原来的逻辑处理
         // If currently on orders page, refresh order list
         if (!document.getElementById('ordersTab').classList.contains('hidden')) {
           loadOrders();
         }
       }
     } else {
-      showToast(data.message || t('login_failed'), 'error');
+      // 处理需要PIN的情况
+      if (data.requiresPin || data.requiresPinSetup) {
+        showPinSection(data.requiresPinSetup);
+        if (data.requiresPinSetup) {
+          showToast(t('pin_setup_required'), 'info');
+        } else {
+          showToast(t('pin_required'), 'info');
+        }
+      } else {
+        showToast(data.message || t('login_failed'), 'error');
+        if (data.message && data.message.includes('PIN')) {
+          clearPinInputs('pin');
+          const pin1 = document.getElementById('pin1');
+          if (pin1) pin1.focus();
+        }
+      }
     }
   } catch (error) {
     console.error('Login failed:', error);
@@ -562,7 +1090,7 @@ async function loginWithCode(phone, code, name) {
 }
 
 // 传统登录（无验证码）
-async function loginWithoutCode(phone, name) {
+async function loginWithoutCode(phone, name, pin) {
   const loginBtn = document.getElementById('loginSubmitBtn');
   setButtonLoading(loginBtn, true);
 
@@ -573,7 +1101,8 @@ async function loginWithoutCode(phone, name) {
       credentials: 'include',
       body: JSON.stringify({ 
         phone, 
-        name: name || undefined
+        name: name || undefined,
+        pin: pin || undefined
       })
     });
 
@@ -582,24 +1111,45 @@ async function loginWithoutCode(phone, name) {
     if (data.success) {
       currentUser = data.user;
       closeLoginModal();
+      resetLoginState();
       updateLoginStatus();
       showToast(t('login_success'), 'success');
       
       // 启动session检查
       startUserSessionCheck();
       
-      // If cart has items, submit order directly
-      if (cart.length > 0) {
-        submitOrder();
+      // 加载用户余额
+      await loadUserBalance();
+      
+      // 检查是否有待处理的 Checkout 请求
+      const pendingCheckout = sessionStorage.getItem('pendingCheckout');
+      if (pendingCheckout === 'true') {
+        // 清除标记
+        sessionStorage.removeItem('pendingCheckout');
+        // 如果购物车有商品，显示购物车让用户确认后提交
+        if (cart.length > 0) {
+          // 显示购物车，让用户再次点击提交
+          await showCart();
+          showToast(t('please_confirm_checkout') || 'Please confirm your order and click Submit Order', 'info');
+        }
       } else {
+        // 如果没有待处理的 Checkout，按原来的逻辑处理
         // If currently on orders page, refresh order list
         if (!document.getElementById('ordersTab').classList.contains('hidden')) {
           loadOrders();
         }
       }
     } else {
-      // 如果返回requiresCode，显示验证码输入框
-      if (data.requiresCode) {
+      // 处理需要PIN的情况
+      if (data.requiresPin || data.requiresPinSetup) {
+        showPinSection(data.requiresPinSetup);
+        if (data.requiresPinSetup) {
+          showToast(t('pin_setup_required'), 'info');
+        } else {
+          showToast(t('pin_required'), 'info');
+        }
+      } else if (data.requiresCode) {
+        // 如果返回requiresCode，显示验证码输入框
         showToast(t('sms_verification_required'), 'info');
         const codeSection = document.getElementById('verificationCodeSection');
         if (codeSection) {
@@ -609,6 +1159,11 @@ async function loginWithoutCode(phone, name) {
         await sendVerificationCode();
       } else {
         showToast(data.message || t('login_failed'), 'error');
+        if (data.message && data.message.includes('PIN')) {
+          clearPinInputs('pin');
+          const pin1 = document.getElementById('pin1');
+          if (pin1) pin1.focus();
+        }
       }
     }
   } catch (error) {
@@ -649,7 +1204,29 @@ async function logout() {
 
 // 显示登录模态框
 function showLoginModal() {
-  document.getElementById('loginModal').classList.add('active');
+  const loginModal = document.getElementById('loginModal');
+  loginModal.classList.add('active');
+  
+  // 给body添加modal-open类，阻止页面其他元素交互
+  document.body.classList.add('modal-open');
+  
+  // 阻止模态框背景点击事件传播
+  loginModal.addEventListener('click', handleModalBackgroundClick);
+  
+  resetLoginState();
+  
+  // 重置标题为默认的"登录以继续"
+  const loginModalTitle = document.getElementById('loginModalTitle');
+  if (loginModalTitle) {
+    loginModalTitle.textContent = t('login_to_continue');
+    loginModalTitle.setAttribute('data-i18n', 'login_to_continue');
+  }
+  
+  // 重置Name输入框为显示状态（默认显示，等检查PIN状态后再决定是否隐藏）
+  const nameSection = document.getElementById('nameSection');
+  if (nameSection) {
+    nameSection.classList.remove('hidden');
+  }
   
   // 根据设置显示/隐藏验证码输入框
   const smsEnabled = currentSettings.sms_enabled === 'true';
@@ -663,10 +1240,200 @@ function showLoginModal() {
   }
 }
 
+// 处理模态框背景点击
+function handleModalBackgroundClick(e) {
+  // 如果点击的是模态框背景（不是内容区域），阻止事件
+  if (e.target.id === 'loginModal') {
+    e.preventDefault();
+    e.stopPropagation();
+    // 可以选择关闭模态框，但通常登录模态框不应该通过点击背景关闭
+    // 所以这里只阻止事件，不关闭模态框
+  }
+}
+
+// 处理模态框背景点击
+function handleModalBackgroundClick(e) {
+  // 如果点击的是模态框背景（不是内容区域），阻止事件
+  if (e.target.id === 'loginModal') {
+    e.preventDefault();
+    e.stopPropagation();
+    // 可以选择关闭模态框，但通常登录模态框不应该通过点击背景关闭
+    // 所以这里只阻止事件，不关闭模态框
+  }
+}
+
+// 显示PIN输入区域
+function showPinSection(requiresSetup = false) {
+  const pinSection = document.getElementById('pinSection');
+  const pinConfirmSection = document.getElementById('pinConfirmSection');
+  const pinLabel = document.getElementById('pinLabel');
+  
+  if (pinSection) {
+    pinSection.classList.remove('hidden');
+    
+    if (requiresSetup) {
+      // 首次设置PIN，需要确认
+      loginState.requiresPinSetup = true;
+      if (pinConfirmSection) {
+        pinConfirmSection.classList.remove('hidden');
+      }
+      if (pinLabel) {
+        pinLabel.textContent = t('set_pin');
+      }
+    } else {
+      // 已有PIN，只需输入
+      loginState.requiresPinSetup = false;
+      if (pinConfirmSection) {
+        pinConfirmSection.classList.add('hidden');
+      }
+      if (pinLabel) {
+        pinLabel.textContent = t('enter_pin');
+      }
+    }
+    
+    // 聚焦第一个PIN输入框
+    setTimeout(() => {
+      const pin1 = document.getElementById('pin1');
+      if (pin1) {
+        pin1.focus();
+      }
+    }, 100);
+  }
+}
+
+// 重置登录状态
+function resetLoginState() {
+  loginState = {
+    step: 'phone',
+    phone: '',
+    name: '',
+    code: '',
+    pin: '',
+    pinConfirm: '',
+    requiresPinSetup: false,
+    checkedPhone: ''
+  };
+  
+  // 隐藏PIN区域
+  const pinSection = document.getElementById('pinSection');
+  if (pinSection) {
+    pinSection.classList.add('hidden');
+  }
+  const pinConfirmSection = document.getElementById('pinConfirmSection');
+  if (pinConfirmSection) {
+    pinConfirmSection.classList.add('hidden');
+  }
+  
+  clearPinInputs('both');
+}
+
+// 检查PIN状态（在输入手机号后调用）
+// requestId: 请求ID，用于防止竞态条件，只处理最新请求的结果
+async function checkPinStatus(phone, requestId = null) {
+  try {
+    // 如果没有提供requestId，生成一个新的（向后兼容）
+    if (requestId === null) {
+      requestId = ++checkPinStatusRequestId;
+    }
+    
+    const response = await fetch(`${API_BASE}/auth/user/check-pin-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ phone })
+    });
+    
+    const data = await response.json();
+    
+    // 检查这个请求是否还是最新的（防止竞态条件）
+    // 如果requestId不等于最新的请求ID，说明有更新的请求，忽略这个结果
+    if (requestId !== checkPinStatusRequestId) {
+      console.log('忽略过期的PIN状态检查请求', { requestId, currentRequestId: checkPinStatusRequestId, phone });
+      return false;
+    }
+    
+    // 再次验证手机号是否还是当前输入的值（防止在请求期间手机号被修改）
+    const currentPhone = document.getElementById('phone').value.trim();
+    if (currentPhone !== phone || currentPhone.length !== 11 || !currentPhone.startsWith('0')) {
+      console.log('手机号已改变，忽略PIN状态检查结果', { requestedPhone: phone, currentPhone });
+      return false;
+    }
+    
+    if (data.success) {
+      const loginModalTitle = document.getElementById('loginModalTitle');
+      
+      const nameSection = document.getElementById('nameSection');
+      
+      // 最后一次验证：确保手机号还是当前值（防止在数据处理期间被修改）
+      const verifyPhone = document.getElementById('phone').value.trim();
+      if (verifyPhone !== phone) {
+        console.log('手机号在处理期间被修改，忽略结果', { requestedPhone: phone, verifyPhone });
+        return false;
+      }
+      
+      // 记录当前检查的手机号
+      loginState.checkedPhone = phone;
+      
+      if (data.requiresPinSetup || !data.hasPin) {
+        // 需要设置PIN（新用户）
+        // 如果之前是验证模式，需要清除PIN输入
+        if (!loginState.requiresPinSetup) {
+          clearPinInputs('both');
+          loginState.pin = '';
+          loginState.pinConfirm = '';
+        }
+        showPinSection(true);
+        // 更新标题为注册
+        if (loginModalTitle) {
+          loginModalTitle.textContent = t('register_new_account');
+          loginModalTitle.setAttribute('data-i18n', 'register_new_account');
+        }
+        // 显示Name输入框（新用户需要）
+        if (nameSection) {
+          nameSection.classList.remove('hidden');
+        }
+        return true;
+      } else {
+        // 需要输入PIN（现有用户）- 已有PIN，不能重新设置
+        // 如果之前是设置模式，需要清除PIN输入并切换到验证模式
+        if (loginState.requiresPinSetup) {
+          clearPinInputs('both');
+          loginState.pin = '';
+          loginState.pinConfirm = '';
+          loginState.requiresPinSetup = false;
+        }
+        showPinSection(false);
+        // 更新标题为登录
+        if (loginModalTitle) {
+          loginModalTitle.textContent = t('login_to_continue');
+          loginModalTitle.setAttribute('data-i18n', 'login_to_continue');
+        }
+        // 隐藏Name输入框（现有用户不需要）
+        if (nameSection) {
+          nameSection.classList.add('hidden');
+        }
+        return true;
+      }
+    }
+  } catch (error) {
+    console.error('Check PIN status failed:', error);
+  }
+  return false;
+}
+
 // 关闭登录模态框
 function closeLoginModal() {
-  document.getElementById('loginModal').classList.remove('active');
+  const loginModal = document.getElementById('loginModal');
+  loginModal.classList.remove('active');
+  
+  // 移除body的modal-open类，恢复页面交互
+  document.body.classList.remove('modal-open');
+  
+  // 移除模态框背景点击事件监听
+  loginModal.removeEventListener('click', handleModalBackgroundClick);
+  
   document.getElementById('loginForm').reset();
+  resetLoginState();
   // 重置验证码相关UI
   const codeSection = document.getElementById('verificationCodeSection');
   if (codeSection) {
@@ -811,7 +1578,7 @@ function updateStoreName() {
 }
 
 // 更新货币符号显示（重新渲染所有价格）
-function updateCurrencyDisplay() {
+async function updateCurrencyDisplay() {
   // 重新加载产品列表和订单列表以更新价格显示
   if (products.length > 0) {
     renderProducts(products);
@@ -819,7 +1586,7 @@ function updateCurrencyDisplay() {
   // 更新购物车显示（只在购物车已经打开的情况下）
   const cartModal = document.getElementById('cartModal');
   if (cartModal && cartModal.classList.contains('active') && cart.length > 0) {
-    showCart();
+    await showCart();
   }
   // 更新订单显示
   if (document.getElementById('ordersList') && currentUser) {
@@ -887,7 +1654,7 @@ async function loadSettings() {
         currencySymbol = data.settings.currency_symbol;
       }
       updateStoreName();
-      updateCurrencyDisplay();
+      await updateCurrencyDisplay();
       // 显示系统公告
       updateSystemNotice();
     }
@@ -1796,7 +2563,7 @@ let touchStartY = 0;
 let touchStartTime = 0;
 
 // 显示购物车
-function showCart(event) {
+async function showCart(event) {
   // 如果是滚动过程中，忽略点击
   if (isScrolling) {
     if (event) {
@@ -1872,11 +2639,14 @@ function showCart(event) {
   `).join('');
   
   updateCartTotal();
+  // 异步加载余额（使用缓存，避免频繁请求）
+  await loadUserBalance(false); // 不强制刷新，使用缓存
+  updateCartBalanceDisplay(); // 更新余额显示
   document.getElementById('cartModal').classList.add('active');
 }
 
 // 更新购物车商品数量
-function updateCartItemQuantity(index, delta) {
+async function updateCartItemQuantity(index, delta) {
   cart[index].quantity += delta;
   if (cart[index].quantity <= 0) {
     cart.splice(index, 1);
@@ -1888,7 +2658,7 @@ function updateCartItemQuantity(index, delta) {
     // 只有在购物车已经打开的情况下才更新显示
     const cartModal = document.getElementById('cartModal');
     if (cartModal && cartModal.classList.contains('active')) {
-      showCart();
+      await showCart();
     }
   }
   
@@ -1896,7 +2666,7 @@ function updateCartItemQuantity(index, delta) {
 }
 
 // 从购物车移除
-function removeFromCart(index) {
+async function removeFromCart(index) {
   cart.splice(index, 1);
   
   if (cart.length === 0) {
@@ -1905,7 +2675,7 @@ function removeFromCart(index) {
     // 只有在购物车已经打开的情况下才更新显示
     const cartModal = document.getElementById('cartModal');
     if (cartModal && cartModal.classList.contains('active')) {
-      showCart();
+      await showCart();
     }
   }
   
@@ -1915,11 +2685,23 @@ function removeFromCart(index) {
 // 更新购物车总计
 function updateCartTotal() {
   const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  document.getElementById('cartTotal').textContent = formatPrice(total);
+  const cartTotalEl = document.getElementById('cartTotal');
+  const useBalanceCheckbox = document.getElementById('useBalanceCheckbox');
+  
+  if (cartTotalEl) {
+    // 如果使用余额，显示剩余需要支付的金额
+    if (useBalanceCheckbox && useBalanceCheckbox.checked && userBalance > 0) {
+      const actualBalanceUsed = Math.min(userBalance, total);
+      const remainingToPay = Math.max(0, total - userBalance);
+      cartTotalEl.textContent = formatPrice(remainingToPay);
+    } else {
+      cartTotalEl.textContent = formatPrice(total);
+    }
+  }
 }
 
 // 去结算（显示购物车让用户检查订单）
-function goToCheckout(event) {
+async function goToCheckout(event) {
   // 如果是滚动过程中，忽略点击
   if (isScrolling) {
     if (event) {
@@ -1928,8 +2710,19 @@ function goToCheckout(event) {
     }
     return;
   }
-  // 显示购物车让用户检查订单内容
-  showCart(event);
+  
+  // 检查是否登录
+  if (!currentUser) {
+    // 未登录，提示用户登录
+    showToast(t('please_login_to_checkout') || 'Please login to checkout', 'info');
+    showLoginModal();
+    // 标记用户是因为 Checkout 而需要登录的
+    sessionStorage.setItem('pendingCheckout', 'true');
+    return;
+  }
+  
+  // 已登录，显示购物车让用户检查订单内容
+  await showCart(event);
 }
 
 // 关闭购物车
@@ -1968,6 +2761,19 @@ async function submitOrder() {
   
   try {
     const orderNotes = document.getElementById('orderNotes')?.value || '';
+    const useBalanceCheckbox = document.getElementById('useBalanceCheckbox');
+    const useBalance = useBalanceCheckbox && useBalanceCheckbox.checked;
+    
+    // 如果使用余额，先重新获取最新余额（确保从数据库实时读取）
+    if (useBalance) {
+      await loadUserBalance(true); // 强制刷新余额
+      // 检查余额是否大于0（允许部分使用，后端会处理）
+      if (userBalance <= 0) {
+        showToast(t('balance_insufficient'), 'warning');
+        setButtonLoading(submitBtn, false);
+        return;
+      }
+    }
     
     const orderData = {
       items: cart.map(item => ({
@@ -1996,7 +2802,8 @@ async function submitOrder() {
         ice_level: item.ice_level || null
       })),
       customer_name: currentUser.name || '',
-      notes: orderNotes
+      notes: orderNotes,
+      use_balance: useBalance
     };
     
     // 使用统一的 API 封装（有超时保护和错误处理）
@@ -2022,7 +2829,23 @@ async function submitOrder() {
     clearTimeout(timeoutId);
     
     if (data.success) {
-      showToast(t('order_submitted_success', { orderNumber: data.order.order_number }), 'success');
+      // 如果使用了余额，刷新余额
+      if (useBalance) {
+        // 先取消勾选，避免 updateBalanceUsageDisplay 检查余额时显示错误提示
+        const useBalanceCheckbox = document.getElementById('useBalanceCheckbox');
+        if (useBalanceCheckbox) {
+          useBalanceCheckbox.checked = false;
+        }
+        // 更新余额显示（清除余额使用信息，此时已取消勾选，不会检查余额）
+        updateBalanceUsageDisplay();
+        // 然后刷新余额
+        await loadUserBalance(true); // 强制刷新余额
+      }
+      
+      const message = data.order.status === 'paid' && data.order.balance_used > 0
+        ? t('balance_payment_success')
+        : t('order_submitted_success', { orderNumber: data.order.order_number });
+      showToast(message, 'success');
       cart = [];
       updateCartBadge();
       // 清空备注输入框
@@ -2379,6 +3202,10 @@ function closePaymentImageModal(event) {
 // 更新个人中心页面
 function updateProfilePage() {
   const profilePhone = document.getElementById('profilePhone');
+  const profileBalance = document.getElementById('profileBalance');
+  const balanceAmount = document.getElementById('balanceAmount');
+  const profileLogoutBtn = document.getElementById('profileLogoutBtn');
+  
   if (currentUser) {
     document.getElementById('profileName').textContent = currentUser.name || t('user_chinese');
     if (profilePhone) {
@@ -2387,6 +3214,15 @@ function updateProfilePage() {
       profilePhone.style.cursor = 'default';
       profilePhone.onclick = null;
       profilePhone.classList.remove('cursor-pointer', 'hover:text-blue-600', 'underline', 'transition');
+    }
+    // 显示余额
+    if (profileBalance) {
+      profileBalance.style.display = 'block';
+      loadUserBalance();
+    }
+    // 显示登出按钮
+    if (profileLogoutBtn) {
+      profileLogoutBtn.classList.remove('hidden');
     }
   } else {
     document.getElementById('profileName').textContent = t('guest_chinese');
@@ -2398,7 +3234,205 @@ function updateProfilePage() {
       profilePhone.classList.add('cursor-pointer', 'hover:text-blue-600', 'underline', 'transition');
       profilePhone.title = t('click_to_login') || t('click_login_chinese');
     }
+    // 隐藏余额
+    if (profileBalance) {
+      profileBalance.style.display = 'none';
+    }
+    // 隐藏登出按钮
+    if (profileLogoutBtn) {
+      profileLogoutBtn.classList.add('hidden');
+    }
   }
+}
+
+// 加载用户余额（带缓存和防抖）
+let userBalance = 0;
+let balanceLoading = false;
+let balanceLastLoad = 0;
+const BALANCE_CACHE_TIME = 5000; // 5秒缓存
+
+async function loadUserBalance(forceRefresh = false) {
+  if (!currentUser) return;
+  
+  // 如果正在加载且不是强制刷新，等待当前加载完成
+  if (balanceLoading && !forceRefresh) {
+    // 等待最多2秒
+    let waitCount = 0;
+    while (balanceLoading && waitCount < 20) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      waitCount++;
+    }
+    // 如果等待后仍然在加载，直接返回（使用当前缓存的余额）
+    if (balanceLoading) {
+      return;
+    }
+  }
+  
+  // 如果缓存有效且不是强制刷新，直接返回
+  const now = Date.now();
+  if (!forceRefresh && (now - balanceLastLoad) < BALANCE_CACHE_TIME && balanceLastLoad > 0) {
+    // 更新显示（使用缓存的余额）
+    const balanceAmountEl = document.getElementById('balanceAmount');
+    if (balanceAmountEl) {
+      balanceAmountEl.textContent = formatPrice(userBalance);
+    }
+    updateCartBalanceDisplay();
+    return;
+  }
+  
+  // 如果强制刷新，即使正在加载也要重新加载
+  if (balanceLoading && forceRefresh) {
+    // 等待当前加载完成，然后重新加载
+    let waitCount = 0;
+    while (balanceLoading && waitCount < 20) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      waitCount++;
+    }
+  }
+  
+  balanceLoading = true;
+  
+  try {
+    const response = await fetch(`${API_BASE}/user/balance`, {
+      credentials: 'include'
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        // 确保余额是数字类型
+        userBalance = parseFloat(data.balance) || 0;
+        balanceLastLoad = now;
+        const balanceAmountEl = document.getElementById('balanceAmount');
+        if (balanceAmountEl) {
+          balanceAmountEl.textContent = formatPrice(userBalance);
+        }
+        // 更新购物车中的余额显示（不触发新的API调用）
+        updateCartBalanceDisplay();
+      }
+    }
+  } catch (error) {
+    console.error('获取余额失败:', error);
+    // 如果是429错误，不更新缓存时间，允许稍后重试
+    if (error.status !== 429) {
+      balanceLastLoad = now;
+    }
+  } finally {
+    balanceLoading = false;
+  }
+}
+
+// 更新购物车中的余额显示（仅更新显示，不触发API调用）
+function updateCartBalanceDisplay() {
+  const availableBalanceEl = document.getElementById('availableBalance');
+  const balanceSection = document.getElementById('balanceSection');
+  
+  if (currentUser && balanceSection) {
+    balanceSection.classList.remove('hidden');
+    if (availableBalanceEl) {
+      availableBalanceEl.textContent = formatPrice(userBalance);
+    }
+    // 更新余额使用提示（不重新获取余额）
+    updateBalanceUsageDisplay();
+  } else if (balanceSection) {
+    balanceSection.classList.add('hidden');
+  }
+}
+
+// 更新购物车中的余额显示（兼容旧函数名）
+function updateCartBalance() {
+  updateCartBalanceDisplay();
+}
+
+// 更新余额使用显示（不触发API调用）
+function updateBalanceUsageDisplay() {
+  const useBalanceCheckbox = document.getElementById('useBalanceCheckbox');
+  const balanceWarning = document.getElementById('balanceWarning');
+  const balanceInfo = document.getElementById('balanceInfo');
+  const balanceUsedAmount = document.getElementById('balanceUsedAmount');
+  const remainingAmount = document.getElementById('remainingAmount');
+  const cartTotalEl = document.getElementById('cartTotal');
+  
+  if (!useBalanceCheckbox || !cartTotalEl) return;
+  
+  const useBalance = useBalanceCheckbox.checked;
+  const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  
+  if (useBalance) {
+    // 使用 parseFloat 确保数值比较正确
+    const currentBalance = parseFloat(userBalance) || 0;
+    const cartTotal = parseFloat(total) || 0;
+    
+    // 添加调试日志
+    console.log('余额检查:', { 
+      currentBalance, 
+      cartTotal, 
+      userBalance, 
+      total,
+      comparison: currentBalance >= cartTotal 
+    });
+    
+    // 检查余额是否大于0（允许部分使用余额）
+    if (currentBalance <= 0) {
+      // 余额为0或负数，不允许使用
+      useBalanceCheckbox.checked = false;
+      if (balanceWarning) {
+        balanceWarning.classList.remove('hidden');
+      }
+      if (balanceInfo) {
+        balanceInfo.classList.add('hidden');
+      }
+      showToast(t('balance_insufficient'), 'warning');
+      return;
+    }
+    
+    // 余额大于0，允许使用（支持部分使用）
+    if (balanceWarning) {
+      balanceWarning.classList.add('hidden');
+    }
+    if (balanceInfo) {
+      balanceInfo.classList.remove('hidden');
+    }
+    
+    // 计算实际使用的余额和剩余金额
+    const actualBalanceUsed = Math.min(currentBalance, cartTotal); // 使用余额和总价中的较小值
+    const remainingToPay = Math.max(0, cartTotal - currentBalance); // 剩余需要支付的金额
+    
+    if (balanceUsedAmount) {
+      balanceUsedAmount.textContent = formatPrice(actualBalanceUsed);
+    }
+    if (remainingAmount) {
+      remainingAmount.textContent = formatPrice(remainingToPay);
+    }
+    
+    // 更新购物车总价显示（显示剩余需要支付的金额）
+    updateCartTotal();
+  } else {
+    if (balanceWarning) {
+      balanceWarning.classList.add('hidden');
+    }
+    if (balanceInfo) {
+      balanceInfo.classList.add('hidden');
+    }
+    // 不使用余额时，恢复显示原始总价
+    updateCartTotal();
+  }
+}
+
+// 切换使用余额（带API刷新，仅在用户主动勾选时调用）
+async function toggleUseBalance() {
+  const useBalanceCheckbox = document.getElementById('useBalanceCheckbox');
+  if (!useBalanceCheckbox) return;
+  
+  // 如果用户勾选了使用余额，强制刷新余额以确保最新
+  if (useBalanceCheckbox.checked) {
+    await loadUserBalance(true); // 强制刷新
+    // 等待一小段时间确保 userBalance 已更新
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  // 更新显示
+  updateBalanceUsageDisplay();
 }
 
 // 切换标签页（保留兼容）
@@ -2407,66 +3441,75 @@ function showTab(tabName) {
 }
 
 // 加载我的订单
+// 订单加载状态管理（防止重复请求）
+let ordersLoading = false;
+let ordersLoadTimeout = null;
+
 async function loadOrders() {
   const container = document.getElementById('ordersList');
   
-  try {
-    // 先检查是否登录
-    if (!currentUser) {
-      container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 mb-4">${t('please_login_view_orders')}</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">${t('login')}</button></div>`;
-      return;
-    }
-    
-    // 使用统一的API封装
-    try {
-      // 先尝试按手机号查询
-      let data = await apiGet('/user/orders/by-phone', { showError: false });
-      
-      if (data && data.success) {
-        if (data.orders && data.orders.length > 0) {
-          renderOrders(data.orders);
-        } else {
-          container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('you_have_no_orders')}</div>`;
-        }
-        return;
-      }
-    } catch (error) {
-      // 如果按手机号查询失败，尝试普通查询
-      if (error.status === 401) {
-        currentUser = null;
-        updateLoginStatus();
-        container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 mb-4">${t('login_expired_please_login')}</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">${t('login')}</button></div>`;
-        return;
-      }
-    }
-    
-    // 尝试普通订单查询接口
-    try {
-      const data = await apiGet('/user/orders', { showError: false });
-      
-      if (data && data.success) {
-        if (data.orders && data.orders.length > 0) {
-          renderOrders(data.orders);
-        } else {
-          container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('you_have_no_orders')}</div>`;
-        }
-      } else {
-        container.innerHTML = `<div class="text-center py-12 text-red-500">${data?.message || t('failed_load_orders_refresh')}</div>`;
-      }
-    } catch (error) {
-      if (error.status === 401) {
-        currentUser = null;
-        updateLoginStatus();
-        container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 mb-4">${t('login_expired_please_login')}</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">${t('login')}</button></div>`;
-      } else {
-        console.error('加载订单失败:', error);
-        container.innerHTML = `<div class="text-center py-12 text-red-500">${t('failed_load_orders_error', { error: error.message || t('network_error') })}</div>`;
-      }
-    }
-  } catch (error) {
-    console.error('加载订单失败:', error);
-    container.innerHTML = '<div class="text-center py-12 text-red-500">Failed to load orders: ' + (error.message || 'Network error') + '</div>';
+  // 防抖：如果正在加载，取消之前的请求
+  if (ordersLoading) {
+    return; // 如果正在加载，直接返回，避免重复请求
   }
+  
+  // 清除之前的防抖定时器
+  if (ordersLoadTimeout) {
+    clearTimeout(ordersLoadTimeout);
+  }
+  
+  // 设置防抖延迟（300ms）
+  return new Promise((resolve) => {
+    ordersLoadTimeout = setTimeout(async () => {
+      try {
+        // 先检查是否登录
+        if (!currentUser) {
+          container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 mb-4">${t('please_login_view_orders')}</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">${t('login')}</button></div>`;
+          ordersLoading = false;
+          resolve();
+          return;
+        }
+        
+        ordersLoading = true;
+        
+        // 使用统一的API封装，只尝试一个接口（优先使用 /user/orders）
+        try {
+          const data = await apiGet('/user/orders', { showError: false });
+          
+          if (data && data.success) {
+            if (data.orders && data.orders.length > 0) {
+              renderOrders(data.orders);
+            } else {
+              container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('you_have_no_orders')}</div>`;
+            }
+          } else {
+            container.innerHTML = `<div class="text-center py-12 text-red-500">${data?.message || t('failed_load_orders_refresh')}</div>`;
+          }
+        } catch (error) {
+          if (error.status === 401) {
+            currentUser = null;
+            updateLoginStatus();
+            container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 mb-4">${t('login_expired_please_login')}</p><button onclick="showLoginModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg">${t('login')}</button></div>`;
+          } else if (error.status === 429) {
+            // 429错误：请求过于频繁，显示友好提示
+            container.innerHTML = `<div class="text-center py-12 text-yellow-600">
+              <p class="mb-2">${t('request_too_frequent') || '请求过于频繁，请稍后再试'}</p>
+              <button onclick="setTimeout(() => loadOrders(), 2000)" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm mt-2">${t('retry') || '重试'}</button>
+            </div>`;
+          } else {
+            console.error('加载订单失败:', error);
+            container.innerHTML = `<div class="text-center py-12 text-red-500">${t('failed_load_orders_error', { error: error.message || t('network_error') })}</div>`;
+          }
+        }
+      } catch (error) {
+        console.error('加载订单失败:', error);
+        container.innerHTML = '<div class="text-center py-12 text-red-500">Failed to load orders: ' + (error.message || 'Network error') + '</div>';
+      } finally {
+        ordersLoading = false;
+        resolve();
+      }
+    }, 300); // 300ms防抖延迟
+  });
 }
 
 // 渲染订单列表
@@ -2656,6 +3699,12 @@ function renderOrders(orders) {
           <div class="flex justify-between items-center text-lg font-bold pt-2 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-300'}">
             <span class="${expiredClass || inactiveClass}">${t('final_amount_label')}</span>
             <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} text-xl">${formatPrice(order.final_amount)}</span>
+          ${order.balance_used && order.balance_used > 0 ? `
+            <div class="flex justify-between items-center text-sm mt-2 pt-2 border-t border-gray-200">
+              <span class="${expiredClass || inactiveClass || 'text-gray-600'}" data-i18n="balance_used">Balance Used</span>
+              <span class="${expiredClass || inactiveClass || 'text-green-600'} font-semibold">${formatPrice(order.balance_used)}</span>
+            </div>
+          ` : ''}
           </div>
           ${order.notes ? `
             <div class="mt-3 pt-3 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'}">
@@ -2744,9 +3793,11 @@ function showPaymentModal(orderId) {
       if (data.success) {
         const order = data.order;
         document.getElementById('paymentOrderInfo').innerHTML = `
-          <p class="font-semibold">订单号: ${order.order_number}</p>
-          <p class="text-2xl font-bold text-blue-600 mt-2">应付: ${formatPriceDecimal(order.final_amount)}</p>
+          <p class="font-semibold"><span data-i18n="order_number_label">Order Number</span>: ${order.order_number}</p>
+          <p class="text-2xl font-bold text-blue-600 mt-2"><span data-i18n="amount_due">Amount Due</span>: ${formatPriceDecimal(order.final_amount)}</p>
         `;
+        // 应用翻译到动态生成的内容
+        applyTranslations();
         document.getElementById('paymentModal').classList.add('active');
       }
     });
@@ -2757,6 +3808,14 @@ function closePayment() {
   document.getElementById('paymentModal').classList.remove('active');
   currentPaymentOrderId = null;
   document.getElementById('paymentForm').reset();
+  
+  // 重置文件选择状态提示
+  const paymentFileStatus = document.getElementById('paymentFileStatus');
+  if (paymentFileStatus) {
+    paymentFileStatus.textContent = t('no_file_selected');
+    paymentFileStatus.classList.remove('text-green-600');
+    paymentFileStatus.classList.add('text-gray-500');
+  }
 }
 
 // 上传付款截图

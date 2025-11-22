@@ -13,13 +13,13 @@ function validate(req, res, next) {
   next();
 }
 
-// 手机号验证规则（兼容国际手机号）
+// 手机号验证规则（11位0开头）
 const phoneValidation = body('phone')
   .trim()
-  .isLength({ min: 8, max: 15 })
-  .withMessage('手机号长度应在8-15位之间')
-  .matches(/^[+\d]+$/)
-  .withMessage('手机号只能包含数字和+号');
+  .isLength({ min: 11, max: 11 })
+  .withMessage('手机号必须为11位数字')
+  .matches(/^0\d{10}$/)
+  .withMessage('手机号必须以0开头，且必须为11位数字');
 
 // 登录验证
 const loginValidation = [

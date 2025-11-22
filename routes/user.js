@@ -47,6 +47,26 @@ const upload = multer({
   }
 });
 
+// ==================== 余额管理 ====================
+
+/**
+ * GET /api/user/balance
+ * Get current user balance
+ * @returns {Object} Balance information
+ */
+router.get('/balance', async (req, res) => {
+  try {
+    const user = await getAsync('SELECT balance FROM users WHERE id = ?', [req.session.userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    res.json({ success: true, balance: user.balance || 0 });
+  } catch (error) {
+    logger.error('获取用户余额失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取余额失败' });
+  }
+});
+
 // ==================== 订单管理 ====================
 
 /**
@@ -59,7 +79,7 @@ const upload = multer({
  */
 router.post('/orders', async (req, res) => {
   try {
-    const { items, customer_name, notes } = req.body;
+    const { items, customer_name, notes, use_balance } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: '订单不能为空' });
@@ -140,6 +160,67 @@ router.post('/orders', async (req, res) => {
         });
       }
 
+      // 计算最终金额（先不考虑折扣，折扣在周期确认时计算）
+      let finalAmount = roundAmount(totalAmount);
+      let balanceUsed = 0;
+      let orderStatus = 'pending';
+
+      // 处理余额抵扣
+      if (use_balance === true) {
+        const user = await getAsync('SELECT balance FROM users WHERE id = ?', [req.session.userId]);
+        if (!user) {
+          throw new Error('用户不存在');
+        }
+        const userBalance = user.balance || 0;
+        
+        // 检查余额是否大于0
+        if (userBalance <= 0) {
+          await rollback();
+          return res.status(400).json({ 
+            success: false, 
+            message: '余额不足，无法使用余额支付'
+          });
+        }
+        
+        // 计算实际使用的余额（取余额和订单金额中的较小值）
+        balanceUsed = Math.min(userBalance, finalAmount);
+        
+        // 使用余额后，最终金额需要减去已使用的余额
+        finalAmount = roundAmount(finalAmount - balanceUsed);
+        
+        // 如果余额完全覆盖订单，订单状态为已支付
+        if (balanceUsed >= roundAmount(totalAmount)) {
+          orderStatus = 'paid';
+        } else {
+          // 余额部分覆盖，订单状态仍为待支付
+          orderStatus = 'pending';
+        }
+        
+        // 扣除余额
+        const balanceBefore = userBalance;
+        const balanceAfter = roundAmount(balanceBefore - balanceUsed);
+        
+        await runAsync(
+          'UPDATE users SET balance = ? WHERE id = ?',
+          [balanceAfter, req.session.userId]
+        );
+        
+        // 记录余额变动（订单ID稍后更新）
+        await runAsync(
+          `INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, order_id, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+          [
+            req.session.userId,
+            'use',
+            -balanceUsed, // 负数表示减少
+            balanceBefore,
+            balanceAfter,
+            null, // 订单ID稍后更新
+            balanceUsed >= finalAmount ? '订单使用余额全额支付' : `订单使用余额部分支付（${balanceUsed.toFixed(2)} LE）`
+          ]
+        );
+      }
+
       // 创建订单
       const orderId = uuidv4();
       
@@ -157,6 +238,30 @@ router.post('/orders', async (req, res) => {
         attempts++;
         
         try {
+          // 检查orders表是否有balance_used字段
+          const ordersTableInfo = await allAsync("PRAGMA table_info(orders)");
+          const ordersColumns = ordersTableInfo.map(col => col.name);
+          
+          if (ordersColumns.includes('balance_used')) {
+            await runAsync(
+              `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+               total_amount, discount_amount, final_amount, balance_used, status, notes, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+              [
+                orderId,
+                orderNumber,
+                req.session.userId,
+                customer_name || req.session.userName || '',
+                req.session.userPhone,
+                roundAmount(totalAmount),
+                0,
+                finalAmount,
+                balanceUsed,
+                orderStatus,
+                notes || null
+              ]
+            );
+          } else {
           await runAsync(
             `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
              total_amount, discount_amount, final_amount, status, notes, created_at)
@@ -167,13 +272,14 @@ router.post('/orders', async (req, res) => {
               req.session.userId,
               customer_name || req.session.userName || '',
               req.session.userPhone,
-              roundAmount(totalAmount),
+                roundAmount(totalAmount),
               0,
-              roundAmount(totalAmount),
-              'pending',
+                finalAmount,
+                orderStatus,
               notes || null
             ]
           );
+          }
           break; // 成功插入，退出循环
         } catch (error) {
           // 如果是 UNIQUE 约束冲突且还有重试次数，则重试
@@ -186,6 +292,21 @@ router.post('/orders', async (req, res) => {
           throw error;
         }
       } while (attempts < maxAttempts);
+      
+      // 如果使用了余额，更新余额变动记录中的订单ID
+      if (balanceUsed > 0) {
+        // SQLite 不支持 UPDATE ... ORDER BY ... LIMIT，需要使用子查询
+        await runAsync(
+          `UPDATE balance_transactions 
+           SET order_id = ? 
+           WHERE id = (
+             SELECT id FROM balance_transactions 
+             WHERE user_id = ? AND order_id IS NULL AND type = ? 
+             ORDER BY id DESC LIMIT 1
+           )`,
+          [orderId, req.session.userId, 'use']
+        );
+      }
       
       if (!orderNumber) {
         throw new Error('生成订单号失败，请重试');
@@ -261,16 +382,21 @@ router.post('/orders', async (req, res) => {
         orderId, 
         orderNumber, 
         userId: req.session.userId,
-        totalAmount 
+        totalAmount,
+        balanceUsed,
+        orderStatus
       });
 
       res.json({ 
         success: true, 
-        message: '订单创建成功', 
+        message: orderStatus === 'paid' ? '订单创建成功，已使用余额支付' : '订单创建成功', 
         order: {
           id: orderId,
           order_number: orderNumber,
-          total_amount: totalAmount,
+          total_amount: roundAmount(totalAmount),
+          final_amount: finalAmount,
+          balance_used: balanceUsed,
+          status: orderStatus,
           notes: notes || null,
           items: orderItems
         }
@@ -482,6 +608,52 @@ router.delete('/orders/:id', async (req, res) => {
     // 删除订单详情和订单
     await beginTransaction();
     try {
+      // 如果订单使用了余额，需要退还余额
+      const ordersTableInfo = await allAsync("PRAGMA table_info(orders)");
+      const ordersColumns = ordersTableInfo.map(col => col.name);
+      const balanceUsed = ordersColumns.includes('balance_used') && order.balance_used ? (order.balance_used || 0) : 0;
+      
+      if (balanceUsed > 0) {
+        // 获取用户当前余额
+        const user = await getAsync('SELECT balance FROM users WHERE id = ?', [req.session.userId]);
+        if (user) {
+          const balanceBefore = user.balance || 0;
+          const balanceAfter = roundAmount(balanceBefore + balanceUsed);
+          
+          // 退还余额
+          await runAsync(
+            'UPDATE users SET balance = ? WHERE id = ?',
+            [balanceAfter, req.session.userId]
+          );
+          
+          // 记录余额变动
+          await runAsync(
+            `INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, order_id, notes, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+            [
+              req.session.userId,
+              'refund',
+              balanceUsed, // 正数表示增加
+              balanceBefore,
+              balanceAfter,
+              order.id,
+              '订单取消，退还余额'
+            ]
+          );
+        }
+      }
+
+      // 从周期总金额中减去订单金额
+      if (order.cycle_id) {
+        const cycle = await getAsync('SELECT * FROM ordering_cycles WHERE id = ?', [order.cycle_id]);
+        if (cycle) {
+          await runAsync(
+            "UPDATE ordering_cycles SET total_amount = total_amount - ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+            [order.total_amount, order.cycle_id]
+          );
+        }
+      }
+
       await runAsync('DELETE FROM order_items WHERE order_id = ?', [id]);
       await runAsync('DELETE FROM orders WHERE id = ?', [id]);
       await commit();

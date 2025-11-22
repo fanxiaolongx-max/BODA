@@ -19,7 +19,7 @@ const {
 const { logAction, logger } = require('../utils/logger');
 const { body } = require('express-validator');
 const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = require('../utils/cycle-helper');
-const { batchGetOrderItems } = require('../utils/order-helper');
+const { batchGetOrderItems, roundAmount } = require('../utils/order-helper');
 const cache = require('../utils/cache');
 const { backupDatabase, backupFull, getBackupList, restoreDatabase, deleteBackup } = require('../utils/backup');
 const archiver = require('archiver');
@@ -1748,7 +1748,7 @@ router.get('/orders/export', async (req, res) => {
     // 创建Excel工作簿
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('订单导出');
-
+    
     // 定义列标题
     const headers = [
       '订单编号',
@@ -1810,14 +1810,14 @@ router.get('/orders/export', async (req, res) => {
     });
 
     // 冰度标签映射
-    const iceLabels = {
-      'normal': 'Normal Ice',
-      'less': 'Less Ice',
-      'no': 'No Ice',
-      'room': 'Room Temperature',
-      'hot': 'Hot'
-    };
-
+          const iceLabels = {
+            'normal': 'Normal Ice',
+            'less': 'Less Ice',
+            'no': 'No Ice',
+            'room': 'Room Temperature',
+            'hot': 'Hot'
+          };
+          
     // 添加数据行并跟踪订单行范围（用于合并单元格）
     let rowIndex = 2; // 从第2行开始（第1行是标题）
     const orderRowRanges = []; // 存储每个订单的行范围 {orderId, firstRow, lastRow}
@@ -1831,7 +1831,7 @@ router.get('/orders/export', async (req, res) => {
           let toppingsText = '';
           if (item.toppings) {
             try {
-              let toppings = typeof item.toppings === 'string' ? JSON.parse(item.toppings) : item.toppings;
+                let toppings = typeof item.toppings === 'string' ? JSON.parse(item.toppings) : item.toppings;
               if (Array.isArray(toppings)) {
                 const formatted = toppings.map(t => {
                   if (typeof t === 'object' && t !== null && t.name) {
@@ -1842,9 +1842,9 @@ router.get('/orders/export', async (req, res) => {
                 });
                 toppingsText = formatted.join('; ');
               }
-            } catch (e) {
+              } catch (e) {
               toppingsText = typeof item.toppings === 'string' ? item.toppings : String(item.toppings);
-            }
+              }
           }
 
           // 格式化杯型
@@ -2592,10 +2592,10 @@ router.post('/cycles/:id/confirm', async (req, res) => {
           cancelledCount++;
         } else {
           // 已付款的订单只更新折扣
-          await runAsync(
-            "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-            [discountAmount, finalAmount, order.id]
-          );
+        await runAsync(
+          "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+          [discountAmount, finalAmount, order.id]
+        );
         }
       }
       
@@ -2687,7 +2687,694 @@ router.put('/orders/:id/status', async (req, res) => {
   }
 });
 
+// ==================== 余额管理 ====================
+
+/**
+ * GET /api/admin/users/balance
+ * Get all users' balance information
+ * @returns {Object} List of users with balance
+ */
+router.get('/users/balance', async (req, res) => {
+  try {
+    const users = await allAsync(`
+      SELECT 
+        u.id,
+        u.phone,
+        u.name,
+        u.balance,
+        COALESCE(MAX(bt.created_at), u.created_at) as last_transaction_time
+      FROM users u
+      LEFT JOIN balance_transactions bt ON u.id = bt.user_id
+      GROUP BY u.id, u.phone, u.name, u.balance, u.created_at
+      ORDER BY u.id DESC
+    `);
+    
+    res.json({ success: true, users });
+  } catch (error) {
+    logger.error('获取用户余额列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取用户余额列表失败' });
+  }
+});
+
+/**
+ * POST /api/admin/users/:userId/balance/recharge
+ * Recharge user balance
+ * @param {number} userId - User ID
+ * @body {number} amount - Recharge amount
+ * @body {string} [notes] - Notes
+ * @returns {Object} Success message
+ */
+router.post('/users/:userId/balance/recharge', [
+  body('amount').isFloat({ min: 0.01 }).withMessage('充值金额必须大于0'),
+  body('notes').optional().trim().isLength({ max: 500 }).withMessage('备注长度不能超过500个字符'),
+  validate
+], async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { amount, notes } = req.body;
+
+    const user = await getAsync('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+
+    await beginTransaction();
+
+    try {
+      const balanceBefore = user.balance || 0;
+      const balanceAfter = roundAmount(balanceBefore + parseFloat(amount));
+
+      // 更新用户余额
+      await runAsync(
+        'UPDATE users SET balance = ? WHERE id = ?',
+        [balanceAfter, userId]
+      );
+
+      // 记录余额变动
+      await runAsync(
+        `INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, admin_id, notes, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [
+          userId,
+          'recharge',
+          parseFloat(amount),
+          balanceBefore,
+          balanceAfter,
+          req.session.adminId,
+          notes || '管理员充值'
+        ]
+      );
+
+      await commit();
+
+      await logAction(req.session.adminId, 'RECHARGE_BALANCE', 'user', userId, {
+        amount: parseFloat(amount),
+        balanceBefore,
+        balanceAfter,
+        notes: notes || '管理员充值'
+      }, req);
+
+      res.json({
+        success: true,
+        message: '充值成功',
+        balance: balanceAfter
+      });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('充值余额失败', { error: error.message });
+    res.status(500).json({ success: false, message: error.message || '充值余额失败' });
+  }
+});
+
+/**
+ * POST /api/admin/users/:userId/balance/deduct
+ * Deduct user balance
+ * @param {number} userId - User ID
+ * @body {number} amount - Deduct amount
+ * @body {string} [notes] - Notes
+ * @returns {Object} Success message
+ */
+router.post('/users/:userId/balance/deduct', [
+  body('amount').isFloat({ min: 0.01 }).withMessage('扣减金额必须大于0'),
+  body('notes').optional().trim().isLength({ max: 500 }).withMessage('备注长度不能超过500个字符'),
+  validate
+], async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { amount, notes } = req.body;
+
+    const user = await getAsync('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+
+    const balanceBefore = user.balance || 0;
+    const deductAmount = parseFloat(amount);
+
+    if (balanceBefore < deductAmount) {
+      return res.status(400).json({
+        success: false,
+        message: `余额不足，当前余额：${balanceBefore.toFixed(2)}，扣减金额：${deductAmount.toFixed(2)}`
+      });
+    }
+
+    await beginTransaction();
+
+    try {
+      const balanceAfter = roundAmount(balanceBefore - deductAmount);
+
+      // 更新用户余额
+      await runAsync(
+        'UPDATE users SET balance = ? WHERE id = ?',
+        [balanceAfter, userId]
+      );
+
+      // 记录余额变动
+      await runAsync(
+        `INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, admin_id, notes, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [
+          userId,
+          'deduct',
+          -deductAmount, // 负数表示减少
+          balanceBefore,
+          balanceAfter,
+          req.session.adminId,
+          notes || '管理员扣减'
+        ]
+      );
+
+      await commit();
+
+      await logAction(req.session.adminId, 'DEDUCT_BALANCE', 'user', userId, {
+        amount: deductAmount,
+        balanceBefore,
+        balanceAfter,
+        notes: notes || '管理员扣减'
+      }, req);
+
+      res.json({
+        success: true,
+        message: '扣减成功',
+        balance: balanceAfter
+      });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('扣减余额失败', { error: error.message });
+    res.status(500).json({ success: false, message: error.message || '扣减余额失败' });
+  }
+});
+
+/**
+ * GET /api/admin/users/:userId/balance/transactions
+ * Get user's balance transaction history
+ * @param {number} userId - User ID
+ * @query {number} [page=1] - Page number
+ * @query {number} [limit=30] - Items per page
+ * @returns {Object} Transaction history with pagination
+ */
+router.get('/users/:userId/balance/transactions', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 30;
+    const offset = (page - 1) * limit;
+
+    // 检查用户是否存在
+    const user = await getAsync('SELECT id, phone, name FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+
+    // 获取总数
+    const totalResult = await getAsync(
+      'SELECT COUNT(*) as total FROM balance_transactions WHERE user_id = ?',
+      [userId]
+    );
+    const total = totalResult.total || 0;
+
+    // 获取交易记录
+    const transactions = await allAsync(
+      `SELECT 
+        bt.*,
+        a.username as admin_username,
+        a.name as admin_name,
+        o.order_number
+       FROM balance_transactions bt
+       LEFT JOIN admins a ON bt.admin_id = a.id
+       LEFT JOIN orders o ON bt.order_id = o.id
+       WHERE bt.user_id = ?
+       ORDER BY bt.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [userId, limit, offset]
+    );
+
+    res.json({
+      success: true,
+      transactions,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      },
+      user: {
+        id: user.id,
+        phone: user.phone,
+        name: user.name
+      }
+    });
+  } catch (error) {
+    logger.error('获取余额变动历史失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取余额变动历史失败' });
+  }
+});
+
+/**
+ * GET /api/admin/balance/transactions
+ * Get all balance transactions with filters
+ * @query {number} [page=1] - Page number
+ * @query {number} [limit=30] - Items per page
+ * @query {number} [userId] - Filter by user ID
+ * @query {string} [type] - Filter by type (recharge/deduct/use/refund)
+ * @query {string} [startDate] - Start date (YYYY-MM-DD)
+ * @query {string} [endDate] - End date (YYYY-MM-DD)
+ * @returns {Object} Transaction history with pagination
+ */
+router.get('/balance/transactions', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 30;
+    const offset = (page - 1) * limit;
+    const { userId, type, startDate, endDate } = req.query;
+
+    // 构建查询条件
+    let whereConditions = [];
+    let queryParams = [];
+
+    if (userId) {
+      whereConditions.push('bt.user_id = ?');
+      queryParams.push(userId);
+    }
+
+    if (type) {
+      whereConditions.push('bt.type = ?');
+      queryParams.push(type);
+    }
+
+    if (startDate) {
+      whereConditions.push("DATE(bt.created_at) >= ?");
+      queryParams.push(startDate);
+    }
+
+    if (endDate) {
+      whereConditions.push("DATE(bt.created_at) <= ?");
+      queryParams.push(endDate);
+    }
+
+    const whereClause = whereConditions.length > 0 
+      ? 'WHERE ' + whereConditions.join(' AND ')
+      : '';
+
+    // 获取总数
+    const totalResult = await getAsync(
+      `SELECT COUNT(*) as total FROM balance_transactions bt ${whereClause}`,
+      queryParams
+    );
+    const total = totalResult.total || 0;
+
+    // 获取交易记录
+    const transactions = await allAsync(
+      `SELECT 
+        bt.*,
+        u.phone as user_phone,
+        u.name as user_name,
+        a.username as admin_username,
+        a.name as admin_name,
+        o.order_number
+       FROM balance_transactions bt
+       LEFT JOIN users u ON bt.user_id = u.id
+       LEFT JOIN admins a ON bt.admin_id = a.id
+       LEFT JOIN orders o ON bt.order_id = o.id
+       ${whereClause}
+       ORDER BY bt.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...queryParams, limit, offset]
+    );
+
+    res.json({
+      success: true,
+      transactions,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    logger.error('获取余额变动历史失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取余额变动历史失败' });
+  }
+});
+
+/**
+ * POST /api/admin/users/balance/batch-recharge
+ * Batch recharge user balance
+ * @body {Array} users - Array of {userId, amount, notes}
+ * @returns {Object} Success message with results
+ */
+router.post('/users/balance/batch-recharge', [
+  body('users').isArray().withMessage('用户列表必须是数组'),
+  body('users.*.userId').isInt().withMessage('用户ID必须是整数'),
+  body('users.*.amount').isFloat({ min: 0.01 }).withMessage('充值金额必须大于0'),
+  body('users.*.notes').optional().trim().isLength({ max: 500 }).withMessage('备注长度不能超过500个字符'),
+  validate
+], async (req, res) => {
+  const { users } = req.body;
+  
+  try {
+    await beginTransaction();
+    
+    const results = [];
+    const errors = [];
+    
+    for (const userData of users) {
+      try {
+        const { userId, amount, notes } = userData;
+        
+        // 检查用户是否存在
+        const user = await getAsync('SELECT id, balance FROM users WHERE id = ?', [userId]);
+        if (!user) {
+          errors.push({ userId, error: '用户不存在' });
+          continue;
+        }
+        
+        const balanceBefore = user.balance || 0;
+        const balanceAfter = roundAmount(balanceBefore + parseFloat(amount));
+        
+        // 更新用户余额
+        await runAsync(
+          'UPDATE users SET balance = ? WHERE id = ?',
+          [balanceAfter, userId]
+        );
+        
+        // 记录余额变动
+        await runAsync(
+          `INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, admin_id, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+          [
+            userId,
+            'recharge',
+            parseFloat(amount),
+            balanceBefore,
+            balanceAfter,
+            req.session.adminId,
+            notes || '批量充值'
+          ]
+        );
+        
+        // 记录操作日志
+        await logAction(req.session.adminId, 'BATCH_RECHARGE_BALANCE', 'user', userId, {
+          amount: parseFloat(amount),
+          balanceBefore,
+          balanceAfter,
+          notes: notes || '批量充值'
+        }, req);
+        
+        results.push({ userId, success: true, balanceAfter });
+      } catch (error) {
+        errors.push({ userId: userData.userId, error: error.message });
+      }
+    }
+    
+    await commit();
+    
+    res.json({
+      success: true,
+      message: `批量充值完成：成功 ${results.length} 个，失败 ${errors.length} 个`,
+      results,
+      errors
+    });
+  } catch (error) {
+    await rollback();
+    logger.error('批量充值余额失败', { error: error.message });
+    res.status(500).json({ success: false, message: error.message || '批量充值余额失败' });
+  }
+});
+
+/**
+ * POST /api/admin/cycles/:cycleId/balance/recharge-paid-users
+ * Recharge balance to all paid users in a specific cycle
+ * @param {number} cycleId - Cycle ID
+ * @body {number} amount - Recharge amount per user
+ * @body {string} [notes] - Notes
+ * @returns {Object} Success message with results
+ */
+router.post('/cycles/:cycleId/balance/recharge-paid-users', [
+  body('amount').isFloat({ min: 0.01 }).withMessage('充值金额必须大于0'),
+  body('notes').optional().trim().isLength({ max: 500 }).withMessage('备注长度不能超过500个字符'),
+  validate
+], async (req, res) => {
+  const { cycleId } = req.params;
+  const { amount, notes } = req.body;
+  
+  try {
+    // 获取周期信息
+    const cycle = await getAsync('SELECT * FROM ordering_cycles WHERE id = ?', [cycleId]);
+    if (!cycle) {
+      return res.status(404).json({ success: false, message: '周期不存在' });
+    }
+    
+    // 获取周期内所有已付款订单的用户（去重）
+    const paidUsers = await allAsync(`
+      SELECT DISTINCT o.user_id, u.balance
+      FROM orders o
+      JOIN users u ON o.user_id = u.id
+      WHERE o.created_at >= ? AND o.created_at <= ? AND o.status IN ('paid', 'completed')
+    `, [cycle.start_time, cycle.end_time || cycle.updated_at]);
+    
+    if (paidUsers.length === 0) {
+      return res.json({
+        success: true,
+        message: '该周期内没有已付款订单',
+        results: [],
+        errors: []
+      });
+    }
+    
+    await beginTransaction();
+    
+    const results = [];
+    const errors = [];
+    
+    for (const userData of paidUsers) {
+      try {
+        const userId = userData.user_id;
+        const balanceBefore = userData.balance || 0;
+        const balanceAfter = roundAmount(balanceBefore + parseFloat(amount));
+        
+        // 更新用户余额
+        await runAsync(
+          'UPDATE users SET balance = ? WHERE id = ?',
+          [balanceAfter, userId]
+        );
+        
+        // 记录余额变动
+        await runAsync(
+          `INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, admin_id, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+          [
+            userId,
+            'recharge',
+            parseFloat(amount),
+            balanceBefore,
+            balanceAfter,
+            req.session.adminId,
+            notes || `周期 ${cycle.cycle_number} 已付款用户批量充值`
+          ]
+        );
+        
+        // 记录操作日志
+        await logAction(req.session.adminId, 'CYCLE_BATCH_RECHARGE_BALANCE', 'user', userId, {
+          cycleId,
+          cycleNumber: cycle.cycle_number,
+          amount: parseFloat(amount),
+          balanceBefore,
+          balanceAfter,
+          notes: notes || `周期 ${cycle.cycle_number} 已付款用户批量充值`
+        }, req);
+        
+        results.push({ userId, success: true, balanceAfter });
+      } catch (error) {
+        errors.push({ userId: userData.user_id, error: error.message });
+      }
+    }
+    
+    await commit();
+    
+    res.json({
+      success: true,
+      message: `批量充值完成：成功 ${results.length} 个，失败 ${errors.length} 个`,
+      results,
+      errors
+    });
+  } catch (error) {
+    await rollback();
+    logger.error('周期批量充值余额失败', { error: error.message, cycleId });
+    res.status(500).json({ success: false, message: error.message || '周期批量充值余额失败' });
+  }
+});
+
 // ==================== 用户管理 ====================
+
+/**
+ * PUT /api/admin/users/:userId
+ * Update user information
+ * @param {number} userId - User ID
+ * @body {string} [name] - User name
+ * @body {string} [phone] - User phone (must be unique)
+ * @returns {Object} Success message
+ */
+router.put('/users/:userId', [
+  body('name').optional().trim().isLength({ max: 100 }).withMessage('姓名长度不能超过100个字符'),
+  body('phone').optional().trim().matches(/^0\d{10}$/).withMessage('手机号格式不正确（必须是11位数字，以0开头）'),
+  validate
+], async (req, res) => {
+  const { userId } = req.params;
+  const { name, phone } = req.body;
+  
+  try {
+    // 检查用户是否存在
+    const user = await getAsync('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+    
+    // 如果更新手机号，检查是否重复
+    if (phone && phone !== user.phone) {
+      const existingUser = await getAsync('SELECT id FROM users WHERE phone = ? AND id != ?', [phone, userId]);
+      if (existingUser) {
+        return res.status(400).json({ success: false, message: '手机号已被使用' });
+      }
+    }
+    
+    await beginTransaction();
+    
+    // 构建更新字段
+    const updates = [];
+    const params = [];
+    
+    if (name !== undefined) {
+      updates.push('name = ?');
+      params.push(name || null);
+    }
+    
+    if (phone !== undefined) {
+      updates.push('phone = ?');
+      params.push(phone);
+    }
+    
+    if (updates.length === 0) {
+      await rollback();
+      return res.status(400).json({ success: false, message: '没有需要更新的字段' });
+    }
+    
+    params.push(userId);
+    
+    await runAsync(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+    
+    // 记录操作日志
+    await logAction(req.session.adminId, 'UPDATE_USER', 'user', userId, {
+      name: name !== undefined ? name : user.name,
+      phone: phone !== undefined ? phone : user.phone
+    }, req);
+    
+    await commit();
+    
+    res.json({ success: true, message: '用户信息更新成功' });
+  } catch (error) {
+    await rollback();
+    logger.error('更新用户信息失败', { error: error.message, userId });
+    res.status(500).json({ success: false, message: error.message || '更新用户信息失败' });
+  }
+});
+
+/**
+ * DELETE /api/admin/users/:userId
+ * Delete a user
+ * @param {number} userId - User ID
+ * @returns {Object} Success message
+ */
+router.delete('/users/:userId', async (req, res) => {
+  const { userId } = req.params;
+  
+  try {
+    // 检查用户是否存在
+    const user = await getAsync('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+    
+    // 检查用户是否有未完成的订单
+    const pendingOrders = await getAsync(
+      'SELECT COUNT(*) as count FROM orders WHERE user_id = ? AND status IN (?, ?)',
+      [userId, 'pending', 'paid']
+    );
+    
+    if (pendingOrders.count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `无法删除用户：该用户还有 ${pendingOrders.count} 个未完成的订单`
+      });
+    }
+    
+    await beginTransaction();
+    
+    // 删除用户（外键约束会自动删除相关的订单、余额变动记录等）
+    await runAsync('DELETE FROM users WHERE id = ?', [userId]);
+    
+    // 记录操作日志
+    await logAction(req.session.adminId, 'DELETE_USER', 'user', userId, {
+      phone: user.phone,
+      name: user.name
+    }, req);
+    
+    await commit();
+    
+    res.json({ success: true, message: '用户删除成功' });
+  } catch (error) {
+    await rollback();
+    logger.error('删除用户失败', { error: error.message, userId });
+    res.status(500).json({ success: false, message: error.message || '删除用户失败' });
+  }
+});
+
+/**
+ * POST /api/admin/users/:userId/reset-pin
+ * Reset (clear) user PIN
+ * @param {number} userId - User ID
+ * @returns {Object} Success message
+ */
+router.post('/users/:userId/reset-pin', async (req, res) => {
+  const { userId } = req.params;
+  
+  try {
+    // 检查用户是否存在
+    const user = await getAsync('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+    
+    await beginTransaction();
+    
+    // 清空用户 PIN
+    await runAsync('UPDATE users SET pin = NULL WHERE id = ?', [userId]);
+    
+    // 记录操作日志
+    await logAction(req.session.adminId, 'RESET_USER_PIN', 'user', userId, {
+      phone: user.phone,
+      name: user.name
+    }, req);
+    
+    await commit();
+    
+    res.json({ success: true, message: '用户PIN已重置，用户下次登录时需要重新设置PIN' });
+  } catch (error) {
+    await rollback();
+    logger.error('重置用户PIN失败', { error: error.message, userId });
+    res.status(500).json({ success: false, message: error.message || '重置用户PIN失败' });
+  }
+});
 
 // 获取所有用户
 router.get('/users', async (req, res) => {

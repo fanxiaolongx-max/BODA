@@ -139,6 +139,7 @@ async function initDatabase() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         phone TEXT UNIQUE NOT NULL,
         name TEXT,
+        balance REAL DEFAULT 0,
         created_at DATETIME DEFAULT (datetime('now', 'localtime')),
         last_login DATETIME
       )
@@ -288,6 +289,24 @@ async function initDatabase() {
       )
     `);
 
+    // 余额变动历史表
+    await runAsync(`
+      CREATE TABLE IF NOT EXISTS balance_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        balance_before REAL NOT NULL,
+        balance_after REAL NOT NULL,
+        order_id TEXT,
+        admin_id INTEGER,
+        notes TEXT,
+        created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE SET NULL
+      )
+    `);
+
     // 创建索引
     await runAsync('CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(customer_phone)');
     await runAsync('CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)');
@@ -403,6 +422,80 @@ async function migrateDatabaseSchema() {
     if (!ordersColumns.includes('cycle_id')) {
       console.log('自动迁移: 添加 orders.cycle_id 字段...');
       await runAsync('ALTER TABLE orders ADD COLUMN cycle_id INTEGER');
+    }
+    
+    if (!ordersColumns.includes('balance_used')) {
+      console.log('自动迁移: 添加 orders.balance_used 字段...');
+      await runAsync('ALTER TABLE orders ADD COLUMN balance_used REAL DEFAULT 0');
+    }
+
+    // 检查 users 表的字段
+    const usersInfo = await getTableInfo('users');
+    const usersColumns = usersInfo.map(col => col.name);
+    
+    if (!usersColumns.includes('balance')) {
+      console.log('自动迁移: 添加 users.balance 字段...');
+      await runAsync('ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0');
+    }
+    
+    if (!usersColumns.includes('pin')) {
+      console.log('自动迁移: 添加 users.pin 字段...');
+      await runAsync('ALTER TABLE users ADD COLUMN pin TEXT');
+    }
+
+    // 检查 balance_transactions 表是否存在
+    const tablesInfo = await allAsync("SELECT name FROM sqlite_master WHERE type='table' AND name='balance_transactions'");
+    if (tablesInfo.length === 0) {
+      console.log('自动迁移: 创建 balance_transactions 表...');
+      await runAsync(`
+        CREATE TABLE IF NOT EXISTS balance_transactions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          type TEXT NOT NULL,
+          amount REAL NOT NULL,
+          balance_before REAL NOT NULL,
+          balance_after REAL NOT NULL,
+          order_id TEXT,
+          admin_id INTEGER,
+          notes TEXT,
+          created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE SET NULL
+        )
+      `);
+      await runAsync('CREATE INDEX IF NOT EXISTS idx_balance_transactions_user ON balance_transactions(user_id)');
+      await runAsync('CREATE INDEX IF NOT EXISTS idx_balance_transactions_order ON balance_transactions(order_id)');
+      await runAsync('CREATE INDEX IF NOT EXISTS idx_balance_transactions_created ON balance_transactions(created_at)');
+    } else {
+      // 检查 balance_transactions 表是否有所有必要的列
+      const balanceTransactionsInfo = await allAsync("PRAGMA table_info(balance_transactions)");
+      const balanceTransactionsColumns = balanceTransactionsInfo.map(col => col.name);
+      
+      // 检查并添加缺失的列（按顺序检查，确保依赖列先添加）
+      if (!balanceTransactionsColumns.includes('balance_before')) {
+        console.log('自动迁移: 添加 balance_transactions.balance_before 字段...');
+        await runAsync('ALTER TABLE balance_transactions ADD COLUMN balance_before REAL NOT NULL DEFAULT 0');
+      }
+      
+      if (!balanceTransactionsColumns.includes('balance_after')) {
+        console.log('自动迁移: 添加 balance_transactions.balance_after 字段...');
+        await runAsync('ALTER TABLE balance_transactions ADD COLUMN balance_after REAL NOT NULL DEFAULT 0');
+      }
+      
+      if (!balanceTransactionsColumns.includes('admin_id')) {
+        console.log('自动迁移: 添加 balance_transactions.admin_id 字段...');
+        await runAsync('ALTER TABLE balance_transactions ADD COLUMN admin_id INTEGER');
+      }
+      
+      if (!balanceTransactionsColumns.includes('order_id')) {
+        console.log('自动迁移: 添加 balance_transactions.order_id 字段...');
+        await runAsync('ALTER TABLE balance_transactions ADD COLUMN order_id TEXT');
+      }
+      
+      if (!balanceTransactionsColumns.includes('notes')) {
+        console.log('自动迁移: 添加 balance_transactions.notes 字段...');
+        await runAsync('ALTER TABLE balance_transactions ADD COLUMN notes TEXT');
+      }
     }
 
     console.log('数据库架构迁移完成');

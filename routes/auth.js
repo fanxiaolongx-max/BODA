@@ -164,10 +164,11 @@ router.get('/admin/me', async (req, res) => {
 router.post('/user/login', [
   phoneValidation,
   body('name').optional({ checkFalsy: true }).trim().isLength({ max: 50 }).withMessage('姓名长度不能超过50个字符'),
+  body('pin').optional().trim().isLength({ min: 4, max: 4 }).withMessage('PIN must be 4 digits'),
   validate
 ], async (req, res) => {
   try {
-    const { phone, name } = req.body;
+    const { phone, name, pin } = req.body;
 
     // 检查短信验证码是否启用
     const smsEnabled = await getAsync("SELECT value FROM settings WHERE key = 'sms_enabled'");
@@ -182,21 +183,82 @@ router.post('/user/login', [
 
     // 查找或创建用户
     let user = await getAsync('SELECT * FROM users WHERE phone = ?', [phone]);
+    const isNewUser = !user;
 
     if (!user) {
+      // 新用户需要设置PIN，不能直接登录
+      if (!pin) {
+        return res.status(400).json({
+          success: false,
+          message: 'New user must set PIN',
+          requiresPinSetup: true
+        });
+      }
+      
+      // 验证PIN格式（4位数字）
+      if (!/^\d{4}$/.test(pin)) {
+        return res.status(400).json({
+          success: false,
+          message: 'PIN must be 4 digits'
+        });
+      }
+      
+      // 创建用户并设置PIN
+      const hashedPin = await bcrypt.hash(pin, 10);
       const result = await runAsync(
-        "INSERT INTO users (phone, name, last_login) VALUES (?, ?, datetime('now', 'localtime'))",
-        [phone, name || '']
+        "INSERT INTO users (phone, name, pin, last_login) VALUES (?, ?, ?, datetime('now', 'localtime'))",
+        [phone, name || '', hashedPin]
       );
       user = await getAsync('SELECT * FROM users WHERE id = ?', [result.id]);
-      logger.info('新用户注册', { phone, userId: user.id });
+      logger.info('新用户注册（PIN）', { phone, userId: user.id });
     } else {
-      // 更新最后登录时间和姓名
-      await runAsync(
-        "UPDATE users SET last_login = datetime('now', 'localtime'), name = ? WHERE id = ?",
-        [name || user.name, user.id]
-      );
-      user.name = name || user.name;
+      // 现有用户需要验证PIN
+      if (!pin) {
+        return res.status(400).json({
+          success: false,
+          message: 'PIN is required',
+          requiresPin: !user.pin, // 如果没有PIN，需要设置
+          requiresPinSetup: !user.pin
+        });
+      }
+      
+      // 检查用户是否已设置PIN
+      if (!user.pin) {
+        // 用户未设置PIN，需要设置（和新用户一样，输入两次确认）
+        if (!/^\d{4}$/.test(pin)) {
+          return res.status(400).json({
+            success: false,
+            message: 'PIN must be 4 digits'
+          });
+        }
+        
+        // 设置PIN
+        const hashedPin = await bcrypt.hash(pin, 10);
+        await runAsync(
+          "UPDATE users SET pin = ?, last_login = datetime('now', 'localtime'), name = ? WHERE id = ?",
+          [hashedPin, name || user.name, user.id]
+        );
+        user.pin = hashedPin;
+        user.name = name || user.name;
+        logger.info('用户设置PIN', { phone, userId: user.id });
+      } else {
+        // 验证PIN
+        const isValidPin = await bcrypt.compare(pin, user.pin);
+        if (!isValidPin) {
+          logger.warn('用户登录失败：PIN错误', { phone, userId: user.id });
+          return res.status(401).json({
+            success: false,
+            message: 'Incorrect PIN'
+          });
+        }
+        
+        // 更新最后登录时间和姓名
+        await runAsync(
+          "UPDATE users SET last_login = datetime('now', 'localtime'), name = ? WHERE id = ?",
+          [name || user.name, user.id]
+        );
+        user.name = name || user.name;
+      }
     }
 
     // 获取用户session过期时间
@@ -214,13 +276,13 @@ router.post('/user/login', [
     // 记录用户登录日志（使用 null 表示系统自动记录，因为外键约束不允许不存在的 admin_id）
     const { logAction: logUserAction } = require('../utils/logger');
     await logUserAction(null, 'USER_LOGIN', 'user', user.id, JSON.stringify({
-      action: '用户登录',
+      action: '用户登录（PIN）',
       phone: user.phone,
       name: user.name || '未设置',
-      isNewUser: !user.last_login
+      isNewUser: isNewUser
     }), req);
 
-    logger.info('用户登录成功', { phone, userId: user.id });
+    logger.info('用户登录成功（PIN）', { phone, userId: user.id });
 
     res.json({
       success: true,
@@ -352,10 +414,11 @@ router.post('/user/login-with-code', [
   phoneValidation,
   codeValidation,
   body('name').optional({ checkFalsy: true }).trim().isLength({ max: 50 }).withMessage('姓名长度不能超过50个字符'),
+  body('pin').optional().trim().isLength({ min: 4, max: 4 }).withMessage('PIN must be 4 digits'),
   validate
 ], async (req, res) => {
   try {
-    const { phone, code, name } = req.body;
+    const { phone, code, name, pin } = req.body;
 
     // 验证验证码
     const verifyResult = await verifyCode(phone, code, 'login');
@@ -368,21 +431,90 @@ router.post('/user/login-with-code', [
 
     // 查找或创建用户
     let user = await getAsync('SELECT * FROM users WHERE phone = ?', [phone]);
+    const isNewUser = !user;
 
     if (!user) {
+      // 新用户需要设置PIN，不能直接登录
+      if (!pin) {
+        return res.status(400).json({
+          success: false,
+          message: 'New user must set PIN',
+          requiresPinSetup: true
+        });
+      }
+      
+      // 验证PIN格式（4位数字）
+      if (!/^\d{4}$/.test(pin)) {
+        return res.status(400).json({
+          success: false,
+          message: 'PIN must be 4 digits'
+        });
+      }
+      
+      // 创建用户并设置PIN
+      const hashedPin = await bcrypt.hash(pin, 10);
       const result = await runAsync(
-        "INSERT INTO users (phone, name, last_login) VALUES (?, ?, datetime('now', 'localtime'))",
-        [phone, name || '']
+        "INSERT INTO users (phone, name, pin, last_login) VALUES (?, ?, ?, datetime('now', 'localtime'))",
+        [phone, name || '', hashedPin]
       );
       user = await getAsync('SELECT * FROM users WHERE id = ?', [result.id]);
-      logger.info('新用户注册（验证码登录）', { phone, userId: user.id });
+      logger.info('新用户注册（验证码+PIN）', { phone, userId: user.id });
     } else {
-      // 更新最后登录时间和姓名
-      await runAsync(
-        "UPDATE users SET last_login = datetime('now', 'localtime'), name = ? WHERE id = ?",
-        [name || user.name, user.id]
-      );
-      user.name = name || user.name;
+      // 检查用户是否已设置PIN
+      if (!user.pin) {
+        // 用户未设置PIN，需要设置（和新用户一样，输入两次确认）
+        if (!pin) {
+          return res.status(400).json({
+            success: false,
+            message: 'PIN setup required',
+            requiresPinSetup: true
+          });
+        }
+        
+        // 验证PIN格式（4位数字）
+        if (!/^\d{4}$/.test(pin)) {
+          return res.status(400).json({
+            success: false,
+            message: 'PIN must be 4 digits'
+          });
+        }
+        
+        // 设置PIN
+        const hashedPin = await bcrypt.hash(pin, 10);
+        await runAsync(
+          "UPDATE users SET pin = ?, last_login = datetime('now', 'localtime'), name = ? WHERE id = ?",
+          [hashedPin, name || user.name, user.id]
+        );
+        user.pin = hashedPin;
+        user.name = name || user.name;
+        logger.info('用户设置PIN（验证码登录）', { phone, userId: user.id });
+      } else {
+        // 现有用户需要验证PIN
+        if (!pin) {
+          return res.status(400).json({
+            success: false,
+            message: 'PIN is required',
+            requiresPin: true
+          });
+        }
+        
+        // 验证PIN
+        const isValidPin = await bcrypt.compare(pin, user.pin);
+        if (!isValidPin) {
+          logger.warn('用户登录失败：PIN错误（验证码登录）', { phone, userId: user.id });
+          return res.status(401).json({
+            success: false,
+            message: 'Incorrect PIN'
+          });
+        }
+        
+        // 更新最后登录时间和姓名
+        await runAsync(
+          "UPDATE users SET last_login = datetime('now', 'localtime'), name = ? WHERE id = ?",
+          [name || user.name, user.id]
+        );
+        user.name = name || user.name;
+      }
     }
 
     // 获取用户session过期时间
@@ -400,14 +532,14 @@ router.post('/user/login-with-code', [
     // 记录用户登录日志（使用 null 表示系统自动记录，因为外键约束不允许不存在的 admin_id）
     const { logAction: logUserAction } = require('../utils/logger');
     await logUserAction(null, 'USER_LOGIN', 'user', user.id, JSON.stringify({
-      action: '用户登录（验证码）',
+      action: '用户登录（验证码+PIN）',
       phone: user.phone,
       name: user.name || '未设置',
-      isNewUser: !user.last_login,
+      isNewUser: isNewUser,
       loginMethod: 'sms_code'
     }), req);
 
-    logger.info('用户登录成功（验证码）', { phone, userId: user.id });
+    logger.info('用户登录成功（验证码+PIN）', { phone, userId: user.id });
 
     res.json({
       success: true,
@@ -421,6 +553,41 @@ router.post('/user/login-with-code', [
   } catch (error) {
     logger.error('验证码登录错误', { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: '登录失败', error: process.env.NODE_ENV !== 'production' ? error.message : undefined });
+  }
+});
+
+/**
+ * POST /api/auth/user/check-pin-status
+ * Check if user needs to set PIN
+ * @body {string} phone - User phone number
+ * @returns {Object} Status indicating if PIN setup is required
+ */
+router.post('/user/check-pin-status', [
+  phoneValidation,
+  validate
+], async (req, res) => {
+  try {
+    const { phone } = req.body;
+    
+    const user = await getAsync('SELECT id, pin FROM users WHERE phone = ?', [phone]);
+    
+    if (!user) {
+      // 新用户需要设置PIN
+      return res.json({
+        success: true,
+        requiresPinSetup: true,
+        hasPin: false
+      });
+    }
+    
+    return res.json({
+      success: true,
+      requiresPinSetup: !user.pin,
+      hasPin: !!user.pin
+    });
+  } catch (error) {
+    logger.error('检查PIN状态错误', { error: error.message });
+    res.status(500).json({ success: false, message: '检查失败' });
   }
 });
 

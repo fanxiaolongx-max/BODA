@@ -174,7 +174,7 @@ const adminApiLimiter = rateLimit({
 // 普通API限流器（用于用户API等）
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分钟
-  max: 500, // 普通API限制500个请求
+  max: 2000, // 普通API限制2000个请求（提高限制，避免正常使用被限流）
   message: { success: false, message: '请求过于频繁，请稍后再试' },
   standardHeaders: true,
   legacyHeaders: false,

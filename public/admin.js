@@ -15,15 +15,25 @@ async function adminApiRequest(url, options = {}) {
     if (response.status === 401) {
       stopSessionCheck();
       stopSessionRefresh();
+      const wasLoggedIn = currentAdmin !== null; // 记录是否之前已登录
       currentAdmin = null;
-      showToast('Session expired, please login again', 'error');
-      setTimeout(() => {
+      
+      // 只有在已经登录的情况下才显示提示（避免首次打开页面时显示）
+      if (wasLoggedIn) {
+        showToast('Session expired, please login again', 'error');
+        setTimeout(() => {
+          showLoginPage();
+        }, 1000);
+      } else {
+        // 首次访问或未登录，直接跳转但不显示提示
         showLoginPage();
-      }, 1000);
+      }
       throw new Error('Unauthorized. Please login again.');
     }
     
-    return response;
+    // 解析JSON响应
+    const data = await response.json();
+    return data;
   } catch (error) {
     // 如果是401错误，已经处理过了，直接抛出
     if (error.message && error.message.includes('Unauthorized')) {
@@ -352,7 +362,7 @@ function startSessionCheck() {
   // 清除旧的定时器
   stopSessionCheck();
   
-  // 每30秒检查一次session状态
+  // 每30秒检查一次session状态（平衡服务器压力和及时性）
   sessionCheckInterval = setInterval(async () => {
     try {
       const response = await adminApiRequest(`${API_BASE}/auth/session/info`, {
@@ -362,8 +372,11 @@ function startSessionCheck() {
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.session) {
-          // 检查管理员session是否即将过期（剩余时间少于1分钟）或已过期
-          if (data.session.admin && (data.session.admin.isExpired || data.session.admin.remainingMs <= 60000)) {
+          // 检查管理员session是否即将过期（剩余时间少于5秒）或已过期
+          // 使用5秒阈值，配合30秒检查间隔，既能减少服务器压力，又能确保在过期前退出
+          // 最坏情况：剩余时间在5-35秒之间时，会在下次检查（30秒后）时退出，此时剩余时间可能还有5-35秒
+          // 但这样避免了每5秒检查一次带来的服务器压力
+          if (data.session.admin && (data.session.admin.isExpired || data.session.admin.remainingMs <= 5000)) {
             stopSessionCheck();
             stopSessionRefresh();
             showToast('Session expired, please login again', 'error');
@@ -386,7 +399,7 @@ function startSessionCheck() {
     } catch (error) {
       console.error('Session check failed:', error);
     }
-  }, 30000); // 每30秒检查一次
+  }, 30000); // 每30秒检查一次，减少服务器压力
 }
 
 // 停止session过期检查
@@ -535,6 +548,9 @@ function switchTab(tabName) {
       break;
     case 'users':
       loadUsers();
+      break;
+    case 'balance':
+      loadBalanceManagement();
       break;
     case 'admins':
       loadAdmins();
@@ -1255,6 +1271,9 @@ function renderOrders(orders) {
               <div class="${expiredClass || inactiveClass || 'text-gray-600'}">Discount: <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'}">-${formatPrice(order.discount_amount)}</span></div>
             ` : ''}
             <div class="font-bold ${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'}">Final: ${formatPrice(order.final_amount)}</div>
+            ${order.balance_used && order.balance_used > 0 ? `
+              <div class="${expiredClass || inactiveClass || 'text-gray-600'} text-xs mt-1">Balance Used: <span class="${expiredClass || inactiveClass || 'text-green-600'} font-semibold">${formatPrice(order.balance_used)}</span></div>
+            ` : ''}
           </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
@@ -3130,24 +3149,39 @@ async function loadUsers() {
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Orders</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Spent</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registered</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Login</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                   ${users.length === 0 ? 
-                    '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No users</td></tr>' :
+                    '<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">No users</td></tr>' :
                     users.map(user => `
                       <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.id}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.phone}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.name || 'Not set'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${(user.balance || 0) > 0 ? 'text-green-600' : 'text-gray-500'}">
+                          ${formatPriceDecimal(user.balance || 0)}
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.order_count || 0}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatPriceDecimal(user.total_spent || 0)}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.created_at ? new Date(user.created_at).toLocaleString('en-US') : '-'}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.last_login ? new Date(user.last_login).toLocaleString('en-US') : '-'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                          <div class="flex space-x-2">
+                            <button onclick="showEditUserModal(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}')" 
+                                    class="text-blue-600 hover:text-blue-800">Edit</button>
+                            <button onclick="resetUserPin(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
+                                    class="text-yellow-600 hover:text-yellow-800">Reset PIN</button>
+                            <button onclick="deleteUser(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
+                                    class="text-red-600 hover:text-red-800">Delete</button>
+                          </div>
+                        </td>
                       </tr>
                     `).join('')
                   }
@@ -3164,6 +3198,404 @@ async function loadUsers() {
     console.error('加载用户列表失败:', error);
     container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
   }
+}
+
+// 显示编辑用户模态框
+function showEditUserModal(userId, phone, name) {
+  const newPhone = prompt(`Edit phone number for user ${phone}:`, phone);
+  if (newPhone === null) return; // 用户取消
+  
+  const newName = prompt(`Edit name for user ${phone}:`, name || '');
+  if (newName === null) return; // 用户取消
+  
+  (async () => {
+    try {
+      const response = await adminApiRequest(`${API_BASE}/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: newPhone,
+          name: newName || null
+        })
+      });
+      
+      if (response && response.success) {
+        showToast('User updated successfully', 'success');
+        await loadUsers();
+      }
+    } catch (error) {
+      console.error('更新用户失败:', error);
+      showToast('Failed to update user', 'error');
+    }
+  })();
+}
+
+// 重置用户 PIN
+async function resetUserPin(userId, phone) {
+  if (!confirm(`Are you sure you want to reset PIN for user ${phone}? The user will need to set a new PIN on next login.`)) {
+    return;
+  }
+  
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/users/${userId}/reset-pin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (response && response.success) {
+      showToast('User PIN reset successfully', 'success');
+      await loadUsers();
+    }
+  } catch (error) {
+    console.error('重置用户PIN失败:', error);
+    showToast('Failed to reset user PIN', 'error');
+  }
+}
+
+// 删除用户
+async function deleteUser(userId, phone) {
+  if (!confirm(`Are you sure you want to delete user ${phone}? This action cannot be undone. Note: Users with pending or paid orders cannot be deleted.`)) {
+    return;
+  }
+  
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/users/${userId}`, {
+      method: 'DELETE'
+    });
+    
+    if (response && response.success) {
+      showToast('User deleted successfully', 'success');
+      await loadUsers();
+    }
+  } catch (error) {
+    console.error('删除用户失败:', error);
+    showToast('Failed to delete user', 'error');
+  }
+}
+
+// 加载余额管理
+async function loadBalanceManagement() {
+  await loadUserBalanceList();
+  await loadBalanceTransactions();
+  await loadCyclesForRecharge();
+}
+
+// 加载用户余额列表
+async function loadUserBalanceList() {
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/users/balance`, {
+      method: 'GET'
+    });
+    
+    if (!response) {
+      throw new Error('No response from server');
+    }
+    
+    if (response.success) {
+      const users = response.users || [];
+      const tbody = document.getElementById('userBalanceTableBody');
+      
+      if (tbody) {
+        tbody.innerHTML = users.length === 0
+          ? '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No users</td></tr>'
+          : users.map(user => `
+            <tr class="hover:bg-gray-50">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <input type="checkbox" class="user-balance-checkbox" data-user-id="${user.id}" onchange="updateSelectedUsers()">
+                ${user.id}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.phone || '-'}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.name || 'Not set'}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${(user.balance || 0) > 0 ? 'text-green-600' : 'text-gray-500'}">
+                ${formatPriceDecimal(user.balance || 0)}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                ${user.last_transaction_time ? new Date(user.last_transaction_time).toLocaleString('en-US') : '-'}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <button onclick="showRechargeModal(${user.id}, '${user.phone || ''}', '${(user.name || '').replace(/'/g, "\\'")}')" 
+                        class="text-blue-600 hover:text-blue-800 mr-2">Recharge</button>
+                <button onclick="showDeductModal(${user.id}, '${user.phone || ''}', '${(user.name || '').replace(/'/g, "\\'")}')" 
+                        class="text-red-600 hover:text-red-800 mr-2">Deduct</button>
+                <button onclick="showBalanceTransactions(${user.id})" 
+                        class="text-gray-600 hover:text-gray-800">History</button>
+              </td>
+            </tr>
+          `).join('');
+      }
+    }
+  } catch (error) {
+    console.error('加载用户余额列表失败:', error);
+    const tbody = document.getElementById('userBalanceTableBody');
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">Load failed</td></tr>';
+    }
+  }
+}
+
+// 加载余额变动历史
+let balanceTransactionsPage = 1;
+async function loadBalanceTransactions() {
+  try {
+    const typeFilter = document.getElementById('balanceTransactionTypeFilter')?.value || '';
+    const startDate = document.getElementById('balanceStartDate')?.value || '';
+    const endDate = document.getElementById('balanceEndDate')?.value || '';
+    
+    let url = `${API_BASE}/admin/balance/transactions?page=${balanceTransactionsPage}&limit=30`;
+    if (typeFilter) url += `&type=${typeFilter}`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    
+    const response = await adminApiRequest(url, { method: 'GET' });
+    
+    if (!response) {
+      throw new Error('No response from server');
+    }
+    
+    if (response.success) {
+      const transactions = response.transactions || [];
+      const total = response.total || 0;
+      const totalPages = Math.ceil(total / 30);
+      
+      const tbody = document.getElementById('balanceTransactionsTableBody');
+      if (tbody) {
+        tbody.innerHTML = transactions.length === 0
+          ? '<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">No transactions</td></tr>'
+          : transactions.map(t => `
+            <tr class="hover:bg-gray-50">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                ${t.created_at ? new Date(t.created_at).toLocaleString('en-US') : '-'}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                ${t.user_phone || '-'} ${t.user_name ? `(${t.user_name})` : ''}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <span class="px-2 py-1 rounded text-xs ${
+                  t.type === 'recharge' ? 'bg-green-100 text-green-800' :
+                  t.type === 'deduct' ? 'bg-red-100 text-red-800' :
+                  t.type === 'use' ? 'bg-blue-100 text-blue-800' :
+                  'bg-gray-100 text-gray-800'
+                }">${t.type || '-'}</span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${
+                (t.amount || 0) > 0 ? 'text-green-600' : 'text-red-600'
+              }">
+                ${(t.amount || 0) > 0 ? '+' : ''}${formatPriceDecimal(t.amount || 0)}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatPriceDecimal(t.balance_before || 0)}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">${formatPriceDecimal(t.balance_after || 0)}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                ${t.order_number ? `<a href="#" onclick="switchTab('orders'); return false;" class="text-blue-600 hover:text-blue-800">${t.order_number}</a>` : '-'}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${t.admin_name || '-'}</td>
+              <td class="px-6 py-4 text-sm text-gray-500">${t.notes || '-'}</td>
+            </tr>
+          `).join('');
+      }
+      
+      // 更新分页
+      const pagination = document.getElementById('balanceTransactionsPagination');
+      if (pagination) {
+        pagination.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="text-sm text-gray-700">
+              Page ${balanceTransactionsPage} of ${totalPages} (Total: ${total})
+            </div>
+            <div class="flex space-x-2">
+              <button onclick="balanceTransactionsPage = Math.max(1, balanceTransactionsPage - 1); loadBalanceTransactions();" 
+                      ${balanceTransactionsPage <= 1 ? 'disabled' : ''} 
+                      class="px-3 py-1 border border-gray-300 rounded-lg text-sm ${balanceTransactionsPage <= 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}">
+                Previous
+              </button>
+              <button onclick="balanceTransactionsPage = Math.min(${totalPages}, balanceTransactionsPage + 1); loadBalanceTransactions();" 
+                      ${balanceTransactionsPage >= totalPages ? 'disabled' : ''} 
+                      class="px-3 py-1 border border-gray-300 rounded-lg text-sm ${balanceTransactionsPage >= totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}">
+                Next
+              </button>
+            </div>
+          </div>
+        `;
+      }
+    }
+  } catch (error) {
+    console.error('加载余额变动历史失败:', error);
+    const tbody = document.getElementById('balanceTransactionsTableBody');
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-4 text-center text-red-500">Load failed: ${error.message || 'Unknown error'}</td></tr>`;
+    }
+    const pagination = document.getElementById('balanceTransactionsPagination');
+    if (pagination) {
+      pagination.innerHTML = '';
+    }
+  }
+}
+
+// 加载周期列表（用于批量充值）
+async function loadCyclesForRecharge() {
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/cycles`, { method: 'GET' });
+    
+    if (response.success) {
+      const cycles = response.cycles || [];
+      const select = document.getElementById('cycleRechargeCycle');
+      
+      if (select) {
+        select.innerHTML = '<option value="">Select Cycle</option>' + cycles.map(cycle => `
+          <option value="${cycle.id}">${cycle.cycle_number} (${cycle.status})</option>
+        `).join('');
+      }
+    }
+  } catch (error) {
+    console.error('加载周期列表失败:', error);
+  }
+}
+
+// 批量充值选中的用户
+async function batchRechargeSelected() {
+  const checkboxes = document.querySelectorAll('.user-balance-checkbox:checked');
+  if (checkboxes.length === 0) {
+    showToast('Please select at least one user', 'warning');
+    return;
+  }
+  
+  const amount = parseFloat(document.getElementById('batchRechargeAmount')?.value);
+  if (!amount || amount <= 0) {
+    showToast('Please enter a valid amount', 'warning');
+    return;
+  }
+  
+  const notes = document.getElementById('batchRechargeNotes')?.value || '批量充值';
+  
+  const users = Array.from(checkboxes).map(cb => ({
+    userId: parseInt(cb.dataset.userId),
+    amount: amount,
+    notes: notes
+  }));
+  
+  if (!confirm(`Are you sure you want to recharge ${amount} to ${users.length} user(s)?`)) {
+    return;
+  }
+  
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/users/balance/batch-recharge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users })
+    });
+    
+    if (response.success) {
+      showToast(response.message, 'success');
+      await loadUserBalanceList();
+      // 清空选中状态
+      checkboxes.forEach(cb => cb.checked = false);
+      document.getElementById('batchRechargeAmount').value = '';
+      document.getElementById('batchRechargeNotes').value = '';
+    }
+  } catch (error) {
+    console.error('批量充值失败:', error);
+  }
+}
+
+// 根据周期批量充值已付款用户
+async function rechargeCyclePaidUsers() {
+  const cycleId = document.getElementById('cycleRechargeCycle')?.value;
+  if (!cycleId) {
+    showToast('Please select a cycle', 'warning');
+    return;
+  }
+  
+  const amount = parseFloat(document.getElementById('cycleRechargeAmount')?.value);
+  if (!amount || amount <= 0) {
+    showToast('Please enter a valid amount', 'warning');
+    return;
+  }
+  
+  const notes = document.getElementById('cycleRechargeNotes')?.value || '';
+  
+  if (!confirm(`Are you sure you want to recharge ${amount} to all paid users in this cycle?`)) {
+    return;
+  }
+  
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/cycles/${cycleId}/balance/recharge-paid-users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount, notes })
+    });
+    
+    if (response.success) {
+      showToast(response.message, 'success');
+      await loadUserBalanceList();
+      document.getElementById('cycleRechargeAmount').value = '';
+      document.getElementById('cycleRechargeNotes').value = '';
+    }
+  } catch (error) {
+    console.error('周期批量充值失败:', error);
+  }
+}
+
+// 更新选中的用户数量
+function updateSelectedUsers() {
+  const checked = document.querySelectorAll('.user-balance-checkbox:checked').length;
+  // 可以在这里显示选中数量提示
+}
+
+// 显示充值模态框
+function showRechargeModal(userId, phone, name) {
+  const amount = prompt(`Recharge amount for user ${phone} (${name}):`);
+  if (!amount || parseFloat(amount) <= 0) return;
+  
+  const notes = prompt('Notes (optional):') || '';
+  
+  (async () => {
+    try {
+      const response = await adminApiRequest(`${API_BASE}/admin/users/${userId}/balance/recharge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: parseFloat(amount), notes })
+      });
+      
+      if (response.success) {
+        showToast('Recharge successful', 'success');
+        await loadUserBalanceList();
+      }
+    } catch (error) {
+      console.error('充值失败:', error);
+    }
+  })();
+}
+
+// 显示扣减模态框
+function showDeductModal(userId, phone, name) {
+  const amount = prompt(`Deduct amount for user ${phone} (${name}):`);
+  if (!amount || parseFloat(amount) <= 0) return;
+  
+  const notes = prompt('Notes (optional):') || '';
+  
+  (async () => {
+    try {
+      const response = await adminApiRequest(`${API_BASE}/admin/users/${userId}/balance/deduct`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: parseFloat(amount), notes })
+      });
+      
+      if (response.success) {
+        showToast('Deduct successful', 'success');
+        await loadUserBalanceList();
+      }
+    } catch (error) {
+      console.error('扣减失败:', error);
+    }
+  })();
+}
+
+// 显示余额变动历史
+function showBalanceTransactions(userId) {
+  // 可以打开一个模态框显示该用户的余额变动历史
+  // 这里简化处理，直接跳转到余额管理页面并过滤
+  switchTab('balance');
+  // 可以添加过滤逻辑
 }
 
 // 加载管理员管理
