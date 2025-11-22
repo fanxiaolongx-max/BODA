@@ -170,7 +170,7 @@
             <button id="languageBtn" onclick="toggleLanguage()" class="px-3 py-2 text-gray-700 hover:text-blue-600 transition text-sm font-semibold" title="Switch Language">
               <span id="languageDisplay">EN</span>
             </button>
-            <button id="loginBtn" onclick="showLoginModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm" data-i18n="login">Login</button>
+            <button id="loginBtn" onclick="showLoginModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"><span data-i18n="login">Login</span></button>
             <button id="logoutBtn" onclick="logout()" class="hidden px-3 py-2 text-gray-700 hover:text-red-600 transition text-sm" data-i18n="logout">Logout</button>
           </div>
         </div>
@@ -278,7 +278,7 @@
           </div>
           <div>
             <p class="font-bold text-lg" id="profileName">Guest</p>
-            <p class="text-sm opacity-90" id="profilePhone"></p>
+            <p class="text-sm opacity-90" id="profilePhone" style="cursor: pointer;" onclick="showLoginModal()"></p>
           </div>
         </div>
       </div>

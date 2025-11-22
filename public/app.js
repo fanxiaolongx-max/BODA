@@ -222,7 +222,16 @@ function applyTranslations() {
       if (key === 'app_name') {
         return;
       }
-      el.textContent = t(key);
+      // 如果元素是button且内部有span，更新span的文本
+      if (el.tagName === 'BUTTON' && el.querySelector('span[data-i18n]')) {
+        const span = el.querySelector('span[data-i18n]');
+        if (span) {
+          span.textContent = t(key);
+        }
+      } else {
+        // 否则直接更新元素文本
+        el.textContent = t(key);
+      }
     }
   });
   
@@ -236,6 +245,29 @@ function applyTranslations() {
   
   // Update language display button
   updateLanguageButton();
+  
+  // 确保Login按钮文本更新（如果按钮可见且没有隐藏）
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn && !loginBtn.classList.contains('hidden')) {
+    const loginSpan = loginBtn.querySelector('span[data-i18n="login"]');
+    if (loginSpan && typeof t === 'function') {
+      loginSpan.textContent = t('login');
+    } else if (typeof t === 'function') {
+      // 如果按钮本身有data-i18n属性，直接更新
+      if (loginBtn.getAttribute('data-i18n') === 'login') {
+        loginBtn.textContent = t('login');
+      }
+    }
+  }
+  
+  // 确保登录模态框中的提交按钮文本更新
+  const loginSubmitBtn = document.getElementById('loginSubmitBtn');
+  if (loginSubmitBtn && typeof t === 'function') {
+    const loginSubmitSpan = loginSubmitBtn.querySelector('span[data-i18n="login"]');
+    if (loginSubmitSpan) {
+      loginSubmitSpan.textContent = t('login');
+    }
+  }
 }
 
 // 更新语言切换按钮显示
@@ -802,13 +834,23 @@ function updateLoginStatus() {
   const userName = document.getElementById('userName');
   
   if (currentUser) {
-    loginBtn.classList.add('hidden');
-    logoutBtn.classList.remove('hidden');
-    userName.textContent = currentUser.name || currentUser.phone;
+    if (loginBtn) loginBtn.classList.add('hidden');
+    if (logoutBtn) logoutBtn.classList.remove('hidden');
+    if (userName) userName.textContent = currentUser.name || currentUser.phone;
   } else {
-    loginBtn.classList.remove('hidden');
-    logoutBtn.classList.add('hidden');
-    userName.textContent = t('guest');
+    if (loginBtn) {
+      loginBtn.classList.remove('hidden');
+      // 确保Login按钮文本使用当前语言
+      const loginSpan = loginBtn.querySelector('span[data-i18n="login"]');
+      if (loginSpan && typeof t === 'function') {
+        loginSpan.textContent = t('login');
+      } else if (typeof t === 'function') {
+        // 如果按钮本身有data-i18n属性，直接更新按钮文本
+        loginBtn.textContent = t('login');
+      }
+    }
+    if (logoutBtn) logoutBtn.classList.add('hidden');
+    if (userName) userName.textContent = t('guest');
   }
   
   // 同时更新 profile 页面（确保登录状态同步）
@@ -2336,12 +2378,26 @@ function closePaymentImageModal(event) {
 
 // 更新个人中心页面
 function updateProfilePage() {
+  const profilePhone = document.getElementById('profilePhone');
   if (currentUser) {
     document.getElementById('profileName').textContent = currentUser.name || t('user_chinese');
-    document.getElementById('profilePhone').textContent = currentUser.phone;
+    if (profilePhone) {
+      profilePhone.textContent = currentUser.phone;
+      // 移除点击事件（已登录用户不需要）
+      profilePhone.style.cursor = 'default';
+      profilePhone.onclick = null;
+      profilePhone.classList.remove('cursor-pointer', 'hover:text-blue-600', 'underline', 'transition');
+    }
   } else {
     document.getElementById('profileName').textContent = t('guest_chinese');
-    document.getElementById('profilePhone').textContent = t('click_login_chinese');
+    if (profilePhone) {
+      profilePhone.textContent = t('click_login_chinese');
+      // 添加点击事件，点击后显示登录模态框
+      profilePhone.style.cursor = 'pointer';
+      profilePhone.onclick = showLoginModal;
+      profilePhone.classList.add('cursor-pointer', 'hover:text-blue-600', 'underline', 'transition');
+      profilePhone.title = t('click_to_login') || t('click_login_chinese');
+    }
   }
 }
 
@@ -2840,7 +2896,8 @@ function setButtonLoading(button, loading) {
 
   if (loading) {
     button.disabled = true;
-    button.dataset.originalText = button.textContent;
+    // 保存原始HTML结构（包括span元素），而不仅仅是textContent
+    button.dataset.originalHTML = button.innerHTML;
     button.innerHTML = `
       <span class="inline-flex items-center">
         <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -2852,9 +2909,18 @@ function setButtonLoading(button, loading) {
     `;
   } else {
     button.disabled = false;
-    if (button.dataset.originalText) {
-      button.textContent = button.dataset.originalText;
-      delete button.dataset.originalText;
+    if (button.dataset.originalHTML) {
+      // 恢复原始HTML结构（包括span元素）
+      button.innerHTML = button.dataset.originalHTML;
+      delete button.dataset.originalHTML;
+      // 恢复后，如果按钮有data-i18n的span，确保文本使用当前语言
+      const i18nSpan = button.querySelector('span[data-i18n]');
+      if (i18nSpan && typeof t === 'function') {
+        const key = i18nSpan.getAttribute('data-i18n');
+        if (key) {
+          i18nSpan.textContent = t(key);
+        }
+      }
     }
   }
 }

@@ -5609,19 +5609,46 @@ router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
           }
           
           // 静默运行，只生成JSON文件
-          const reportCommand = ['npx', 'jest', ...reportJestArgs];
-          execSync(reportCommand.join(' '), { 
-            cwd: projectRoot, 
-            stdio: 'ignore',
+          // 使用 spawn 而不是 execSync，避免 shell 解析特殊字符的问题
+          const { spawnSync } = require('child_process');
+          const reportResult = spawnSync('npx', ['jest', ...reportJestArgs], {
+            cwd: projectRoot,
+            stdio: 'pipe', // 捕获输出以便记录错误
             env: {
               ...process.env,
               FORCE_COLOR: '0',
               CI: 'true'
-            }
+            },
+            encoding: 'utf8'
           });
           
+          if (reportResult.error) {
+            throw new Error(`生成JSON报告失败: ${reportResult.error.message}`);
+          }
+          
+          if (reportResult.status !== 0) {
+            const errorOutput = reportResult.stderr || reportResult.stdout || 'Unknown error';
+            throw new Error(`生成JSON报告失败 (退出代码: ${reportResult.status}): ${errorOutput.toString().substring(0, 500)}`);
+          }
+          
+          addTimestampedLog('JSON测试结果文件生成成功');
+          
           // 然后生成HTML报告
-          execSync('node scripts/generate-test-report.js', { cwd: projectRoot, stdio: 'ignore' });
+          const reportGenResult = spawnSync('node', ['scripts/generate-test-report.js'], {
+            cwd: projectRoot,
+            stdio: 'pipe',
+            encoding: 'utf8'
+          });
+          
+          if (reportGenResult.error) {
+            throw new Error(`生成HTML报告失败: ${reportGenResult.error.message}`);
+          }
+          
+          if (reportGenResult.status !== 0) {
+            const errorOutput = reportGenResult.stderr || reportGenResult.stdout || 'Unknown error';
+            throw new Error(`生成HTML报告失败 (退出代码: ${reportGenResult.status}): ${errorOutput.toString().substring(0, 500)}`);
+          }
+          
           addTimestampedLog('测试报告生成成功');
           logger.info('测试报告生成成功', { code, totalTests: finalTotalTests, completedTests: finalCompletedTests });
         } catch (e) {

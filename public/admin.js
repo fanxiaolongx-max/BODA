@@ -3,6 +3,37 @@ if (typeof API_BASE === 'undefined') {
   var API_BASE = '/api';
 }
 
+// 统一的API请求处理函数（处理401自动跳转）
+async function adminApiRequest(url, options = {}) {
+  try {
+    const response = await fetch(url, {
+      ...options,
+      credentials: 'include'
+    });
+    
+    // 处理401未授权 - 自动跳转到登录页
+    if (response.status === 401) {
+      stopSessionCheck();
+      stopSessionRefresh();
+      currentAdmin = null;
+      showToast('Session expired, please login again', 'error');
+      setTimeout(() => {
+        showLoginPage();
+      }, 1000);
+      throw new Error('Unauthorized. Please login again.');
+    }
+    
+    return response;
+  } catch (error) {
+    // 如果是401错误，已经处理过了，直接抛出
+    if (error.message && error.message.includes('Unauthorized')) {
+      throw error;
+    }
+    // 其他错误继续抛出
+    throw error;
+  }
+}
+
 // Toast 通知系统
 function showToast(message, type = 'success') {
   // 确保 Toast 容器存在
@@ -232,8 +263,8 @@ let sessionRefreshInterval = null;
 
 async function checkAuth() {
   try {
-    const response = await fetch(`${API_BASE}/auth/admin/me`, {
-      credentials: 'include'
+    const response = await adminApiRequest(`${API_BASE}/auth/admin/me`, {
+      method: 'GET'
     });
     
     if (response.ok) {
@@ -263,12 +294,14 @@ async function checkAuth() {
 // 刷新session时间（rolling session）
 async function refreshSession() {
   try {
-    await fetch(`${API_BASE}/auth/session/refresh`, {
-      method: 'POST',
-      credentials: 'include'
+    await adminApiRequest(`${API_BASE}/auth/session/refresh`, {
+      method: 'POST'
     });
   } catch (error) {
-    console.error('Session refresh failed:', error);
+    // 401错误已经在adminApiRequest中处理了，这里只记录其他错误
+    if (!error.message || !error.message.includes('Unauthorized')) {
+      console.error('Session refresh failed:', error);
+    }
   }
 }
 
@@ -322,8 +355,8 @@ function startSessionCheck() {
   // 每30秒检查一次session状态
   sessionCheckInterval = setInterval(async () => {
     try {
-      const response = await fetch(`${API_BASE}/auth/session/info`, {
-        credentials: 'include'
+      const response = await adminApiRequest(`${API_BASE}/auth/session/info`, {
+        method: 'GET'
       });
       
       if (response.ok) {
@@ -335,17 +368,19 @@ function startSessionCheck() {
             stopSessionRefresh();
             showToast('Session expired, please login again', 'error');
             setTimeout(() => {
-              logout(); // 自动登出并跳转到登录页
+              currentAdmin = null;
+              showLoginPage(); // 直接跳转到登录页
             }, 1000);
           }
         }
       } else if (response.status === 401) {
-        // Session已过期
+        // Session已过期 - 直接跳转到登录页
         stopSessionCheck();
         stopSessionRefresh();
+        currentAdmin = null;
         showToast('Session expired, please login again', 'error');
         setTimeout(() => {
-          logout();
+          showLoginPage();
         }, 1000);
       }
     } catch (error) {
@@ -416,9 +451,8 @@ async function logout() {
     stopSessionCheck();
     stopSessionRefresh();
     
-    await fetch(`${API_BASE}/auth/admin/logout`, {
-      method: 'POST',
-      credentials: 'include'
+    await adminApiRequest(`${API_BASE}/auth/admin/logout`, {
+      method: 'POST'
     });
     currentAdmin = null;
     showLoginPage();
@@ -6621,6 +6655,7 @@ let testRunning = false;
 let testProgressInterval = null;
 let testLogsCache = [];
 let lastLogCount = 0; // 跟踪已处理的日志数量
+let logsFullscreenMode = false; // 全屏模式状态
 
 // 加载测试套件列表
 async function loadTestSuites() {
@@ -6754,25 +6789,31 @@ async function runSelectedTests() {
       const iframe = document.getElementById('testReportIframe');
       if (placeholder) {
         // 在占位符中显示日志容器
-        placeholder.innerHTML = `
-          <div class="w-full h-full flex flex-col" style="height: 100%; min-height: 500px;">
-            <div class="flex items-center justify-between mb-2 px-2 flex-shrink-0">
-              <span class="text-sm font-semibold text-gray-700">测试日志</span>
-              <div class="flex items-center space-x-2">
-                <div class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                <span class="text-xs text-gray-500">运行中...</span>
-              </div>
-            </div>
-            <div id="testLogsContentPlaceholder" class="bg-gray-900 text-gray-100 font-mono text-xs p-3 rounded-lg overflow-y-auto text-left flex-1" style="font-size: 11px; line-height: 1.6; min-height: 0; flex: 1 1 auto;">
-              <div id="testLogsTextPlaceholder" class="whitespace-pre-wrap text-left"></div>
-            </div>
-            <div id="testReportButton" class="mt-4 text-center px-2 pb-4 hidden flex-shrink-0">
-              <button onclick="loadTestReport()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition shadow-md">
-                📊 在新窗口打开测试报告
-              </button>
-            </div>
-          </div>
-        `;
+         placeholder.innerHTML = `
+           <div class="w-full h-full flex flex-col" style="height: 100%; min-height: 500px;">
+             <!-- 报告按钮区域（在日志上方） -->
+             <div id="testReportButton" class="mb-3 text-center px-2 hidden flex-shrink-0">
+               <button onclick="loadTestReport()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition shadow-md">
+                 📊 在新窗口打开测试报告
+               </button>
+             </div>
+             <!-- 日志头部 -->
+             <div class="flex items-center justify-between mb-2 px-2 flex-shrink-0">
+               <span class="text-sm font-semibold text-gray-700">测试日志</span>
+               <div class="flex items-center space-x-2">
+                 <button onclick="toggleTestLogsFullscreen()" id="fullscreenLogsBtn" class="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 border border-blue-300 rounded hover:bg-blue-50 transition" title="全屏显示日志">
+                   ⛶ 全屏
+                 </button>
+                 <div class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                 <span class="text-xs text-gray-500">运行中...</span>
+               </div>
+             </div>
+             <!-- 日志内容区域 -->
+             <div id="testLogsContentPlaceholder" class="bg-gray-900 text-gray-100 font-mono text-xs p-3 rounded-lg overflow-y-auto text-left flex-1 relative" style="font-size: 11px; line-height: 1.6; min-height: 0; flex: 1 1 auto;">
+               <div id="testLogsTextPlaceholder" class="whitespace-pre-wrap text-left"></div>
+             </div>
+           </div>
+         `;
         placeholder.style.display = 'block';
       }
       if (iframe) {
@@ -6836,11 +6877,27 @@ async function runSelectedTests() {
                   }
                 }
                 
-                // 显示报告下载按钮（按钮已经在HTML结构中，只需要显示）
-                const reportButton = placeholder.querySelector('#testReportButton');
-                if (reportButton) {
-                  reportButton.classList.remove('hidden');
-                }
+                 // 显示报告按钮（在日志上方）
+                 const reportButton = placeholder.querySelector('#testReportButton');
+                 if (reportButton) {
+                   reportButton.classList.remove('hidden');
+                   // 确保按钮在日志上方（通过调整顺序）
+                   const logsHeader = placeholder.querySelector('.flex.items-center.justify-between');
+                   if (logsHeader && reportButton.parentNode) {
+                     reportButton.parentNode.insertBefore(reportButton, logsHeader);
+                   }
+                 }
+                 
+                 // 更新状态指示器
+                 const statusText = statusDiv.querySelector('.text-xs.text-gray-500');
+                 if (statusText) {
+                   statusText.innerHTML = '<span class="text-green-500">✓ 测试完成</span>';
+                 }
+                 const pulseDiv = statusDiv.querySelector('.animate-pulse');
+                 if (pulseDiv) {
+                   pulseDiv.classList.remove('animate-pulse', 'bg-blue-500');
+                   pulseDiv.classList.add('bg-green-500');
+                 }
               }
             }
             
@@ -6989,6 +7046,16 @@ function updateTestProgress(data) {
   }
 }
 
+// 保存原始更新函数（用于全屏模式）
+if (typeof window.originalUpdateLogs === 'undefined') {
+  window.originalUpdateLogs = null;
+}
+
+// 保存原始更新函数（用于全屏模式）
+if (typeof window.originalUpdateLogs === 'undefined') {
+  window.originalUpdateLogs = null;
+}
+
 // 更新测试日志（简化版本，服务器端已经添加了时间戳）
 function updateTestLogs(logs) {
   if (!logs || !Array.isArray(logs)) {
@@ -7035,6 +7102,21 @@ function updateTestLogs(logs) {
       requestAnimationFrame(() => {
         logsContentPlaceholder.scrollTop = logsContentPlaceholder.scrollHeight;
       });
+    }
+    
+    // 如果全屏模式开启，同步更新全屏视图
+    if (typeof logsFullscreenMode !== 'undefined' && logsFullscreenMode) {
+      const fullscreenLogsText = document.getElementById('testLogsTextFullscreen');
+      const fullscreenContainer = document.getElementById('testLogsFullscreenContainer');
+      const fullscreenContent = fullscreenContainer?.querySelector('.flex-1.overflow-y-auto');
+      if (fullscreenLogsText) {
+        fullscreenLogsText.textContent = testLogsCache.join('\n');
+        if (fullscreenContent) {
+          requestAnimationFrame(() => {
+            fullscreenContent.scrollTop = fullscreenContent.scrollHeight;
+          });
+        }
+      }
     }
   } else {
     // 如果占位符不存在，使用原来的日志容器
@@ -7179,4 +7261,86 @@ async function loadTestReport() {
 function showReportError(message) {
   // 不再使用iframe显示错误，直接使用toast提示
   showToast(message, 'error');
+}
+
+// 切换日志全屏显示
+function toggleTestLogsFullscreen() {
+  const logsContentPlaceholder = document.getElementById('testLogsContentPlaceholder');
+  const placeholder = document.getElementById('testReportPlaceholder');
+  const fullscreenBtn = document.getElementById('fullscreenLogsBtn');
+  
+  if (!logsContentPlaceholder || !placeholder) {
+    return;
+  }
+  
+  if (!logsFullscreenMode) {
+    // 进入全屏模式
+    logsFullscreenMode = true;
+    
+    // 创建全屏容器
+    const fullscreenContainer = document.createElement('div');
+    fullscreenContainer.id = 'testLogsFullscreenContainer';
+    fullscreenContainer.className = 'fixed inset-0 z-50 bg-gray-900 flex flex-col';
+    fullscreenContainer.style.cssText = 'top: 0; left: 0; right: 0; bottom: 0;';
+    
+    // 创建全屏头部
+    const fullscreenHeader = document.createElement('div');
+    fullscreenHeader.className = 'bg-gray-800 text-white p-4 flex items-center justify-between flex-shrink-0 border-b border-gray-700';
+    fullscreenHeader.innerHTML = `
+      <div class="flex items-center space-x-3">
+        <span class="text-lg font-semibold">测试日志（全屏模式）</span>
+        <span id="fullscreenLogsStatus" class="text-sm text-gray-400"></span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button onclick="toggleTestLogsFullscreen()" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
+          ✕ 退出全屏
+        </button>
+      </div>
+    `;
+    
+    // 创建全屏内容区域
+    const fullscreenContent = document.createElement('div');
+    fullscreenContent.className = 'flex-1 overflow-y-auto bg-gray-900 text-gray-100 font-mono text-xs p-4';
+    fullscreenContent.style.cssText = 'font-size: 13px; line-height: 1.6;';
+    
+    // 复制日志内容
+    const logsTextPlaceholder = document.getElementById('testLogsTextPlaceholder');
+    if (logsTextPlaceholder) {
+      const fullscreenLogsText = document.createElement('div');
+      fullscreenLogsText.className = 'whitespace-pre-wrap text-left';
+      fullscreenLogsText.id = 'testLogsTextFullscreen';
+      fullscreenLogsText.textContent = logsTextPlaceholder.textContent || testLogsCache.join('\n');
+      fullscreenContent.appendChild(fullscreenLogsText);
+    }
+    
+    // 组装全屏容器
+    fullscreenContainer.appendChild(fullscreenHeader);
+    fullscreenContainer.appendChild(fullscreenContent);
+    
+    // 添加到body
+    document.body.appendChild(fullscreenContainer);
+    
+    // 更新按钮文本
+    if (fullscreenBtn) {
+      fullscreenBtn.textContent = '退出全屏';
+    }
+    
+    // 滚动到底部
+    setTimeout(() => {
+      fullscreenContent.scrollTop = fullscreenContent.scrollHeight;
+    }, 100);
+    
+  } else {
+    // 退出全屏模式
+    logsFullscreenMode = false;
+    const fullscreenContainer = document.getElementById('testLogsFullscreenContainer');
+    if (fullscreenContainer) {
+      fullscreenContainer.remove();
+    }
+    
+    // 更新按钮文本
+    if (fullscreenBtn) {
+      fullscreenBtn.textContent = '⛶ 全屏';
+    }
+  }
 }
