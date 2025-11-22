@@ -13,7 +13,29 @@ function createTestDatabase() {
   return new Promise((resolve, reject) => {
     // 如果测试数据库已存在，先删除
     if (fs.existsSync(TEST_DB_PATH)) {
-      fs.unlinkSync(TEST_DB_PATH);
+      try {
+        // 尝试关闭可能存在的连接
+        if (testDb) {
+          testDb.close((err) => {
+            // 忽略关闭错误，继续删除文件
+            try {
+              fs.unlinkSync(TEST_DB_PATH);
+            } catch (unlinkErr) {
+              // 忽略删除错误，继续创建新数据库
+            }
+          });
+        } else {
+          fs.unlinkSync(TEST_DB_PATH);
+        }
+      } catch (err) {
+        // 忽略删除错误，继续创建新数据库
+      }
+    }
+
+    // 确保目录存在
+    const dbDir = path.dirname(TEST_DB_PATH);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
     }
 
     testDb = new sqlite3.Database(TEST_DB_PATH, (err) => {
@@ -161,9 +183,11 @@ function initTestDatabase() {
           quantity INTEGER NOT NULL,
           subtotal REAL NOT NULL,
           size TEXT,
+          size_price REAL,
           sugar_level TEXT,
           ice_level TEXT,
           toppings TEXT,
+          notes TEXT,
           unit_price REAL,
           FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
           FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
@@ -199,6 +223,19 @@ function initTestDatabase() {
           confirmed_at DATETIME,
           created_at DATETIME DEFAULT (datetime('now', 'localtime')),
           updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+        )
+      `);
+
+      // 验证码表
+      testDb.run(`
+        CREATE TABLE IF NOT EXISTS verification_codes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          phone TEXT NOT NULL,
+          code TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'login',
+          expires_at DATETIME NOT NULL,
+          used INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT (datetime('now', 'localtime'))
         )
       `, (err) => {
         if (err) {

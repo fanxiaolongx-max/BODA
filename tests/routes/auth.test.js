@@ -49,6 +49,9 @@ describe('Auth Routes', () => {
     // 清理数据
     await runAsync('DELETE FROM users');
     await runAsync('DELETE FROM admins');
+    await runAsync('DELETE FROM verification_codes');
+    await runAsync("DELETE FROM settings WHERE key = 'sms_enabled'");
+    await runAsync("DELETE FROM settings WHERE key = 'twilio_verify_service_sid'");
   });
 
   describe('POST /api/auth/admin/login', () => {
@@ -337,6 +340,262 @@ describe('Auth Routes', () => {
       const user = await getAsync('SELECT * FROM users WHERE phone = ?', ['13900139000']);
       expect(user).toBeDefined();
       expect(user.name).toBe('');
+    });
+  });
+
+  describe('POST /api/auth/sms/send', () => {
+    beforeEach(async () => {
+      await runAsync("DELETE FROM settings WHERE key = 'sms_enabled'");
+      await runAsync("DELETE FROM settings WHERE key = 'twilio_verify_service_sid'");
+      await runAsync('DELETE FROM verification_codes');
+    });
+
+    it('should send verification code when SMS is enabled', async () => {
+      await runAsync("INSERT INTO settings (key, value) VALUES ('sms_enabled', 'true')");
+
+      const response = await request(app)
+        .post('/api/auth/sms/send')
+        .send({
+          phone: '13800138000',
+          type: 'login'
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBeDefined();
+      // 开发环境应该返回验证码
+      if (response.body.code) {
+        expect(response.body.code).toMatch(/^\d{6}$/);
+      }
+    });
+
+    it('should return error when SMS is not enabled (non-admin)', async () => {
+      await runAsync("INSERT INTO settings (key, value) VALUES ('sms_enabled', 'false')");
+
+      const response = await request(app)
+        .post('/api/auth/sms/send')
+        .send({
+          phone: '13800138000',
+          type: 'login'
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should allow admin to send code even when SMS is disabled', async () => {
+      await runAsync("INSERT INTO settings (key, value) VALUES ('sms_enabled', 'false')");
+      
+      const adminData = await createAdminWithPassword(mockAdmin);
+      await runAsync(
+        'INSERT INTO admins (username, password, name, email, role, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [adminData.username, adminData.password, adminData.name, adminData.email, adminData.role, adminData.status]
+      );
+
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      const response = await agent
+        .post('/api/auth/sms/send')
+        .send({
+          phone: '13800138000',
+          type: 'login'
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+    });
+
+    it('should validate phone number format', async () => {
+      await runAsync("INSERT INTO settings (key, value) VALUES ('sms_enabled', 'true')");
+
+      const response = await request(app)
+        .post('/api/auth/sms/send')
+        .send({
+          phone: 'invalid',
+          type: 'login'
+        });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('POST /api/auth/user/login-with-code', () => {
+    beforeEach(async () => {
+      await runAsync("DELETE FROM settings WHERE key = 'sms_enabled'");
+      await runAsync("DELETE FROM settings WHERE key = 'twilio_verify_service_sid'");
+      await runAsync('DELETE FROM verification_codes');
+      await runAsync("INSERT INTO settings (key, value) VALUES ('sms_enabled', 'true')");
+    });
+
+    it('should login user with valid verification code', async () => {
+      // 先发送验证码
+      const sendResponse = await request(app)
+        .post('/api/auth/sms/send')
+        .send({
+          phone: '13800138000',
+          type: 'login'
+        });
+
+      expect(sendResponse.status).toBe(200);
+      const code = sendResponse.body.code;
+
+      // 使用验证码登录
+      const loginResponse = await request(app)
+        .post('/api/auth/user/login-with-code')
+        .send({
+          phone: '13800138000',
+          code: code,
+          name: 'Test User'
+        });
+
+      expect(loginResponse.status).toBe(200);
+      expect(loginResponse.body.success).toBe(true);
+      expect(loginResponse.body.user).toBeDefined();
+      expect(loginResponse.body.user.phone).toBe('13800138000');
+    });
+
+    it('should return error with invalid verification code', async () => {
+      const response = await request(app)
+        .post('/api/auth/user/login-with-code')
+        .send({
+          phone: '13800138000',
+          code: '000000',
+          name: 'Test User'
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should create new user if not exists', async () => {
+      const sendResponse = await request(app)
+        .post('/api/auth/sms/send')
+        .send({
+          phone: '13900139000',
+          type: 'login'
+        });
+
+      const code = sendResponse.body.code;
+
+      const loginResponse = await request(app)
+        .post('/api/auth/user/login-with-code')
+        .send({
+          phone: '13900139000',
+          code: code,
+          name: 'New User'
+        });
+
+      expect(loginResponse.status).toBe(200);
+      expect(loginResponse.body.user).toBeDefined();
+      
+      const user = await getAsync('SELECT * FROM users WHERE phone = ?', ['13900139000']);
+      expect(user).toBeDefined();
+      expect(user.name).toBe('New User');
+    });
+  });
+
+  describe('GET /api/auth/session/info', () => {
+    it('should return session info for guest', async () => {
+      const response = await request(app)
+        .get('/api/auth/session/info');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.session).toBeDefined();
+      expect(response.body.session.isLoggedIn).toBe(false);
+      expect(response.body.session.userType).toBe('guest');
+    });
+
+    it('should return session info for logged in admin', async () => {
+      const adminData = await createAdminWithPassword(mockAdmin);
+      await runAsync(
+        'INSERT INTO admins (username, password, name, email, role, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [adminData.username, adminData.password, adminData.name, adminData.email, adminData.role, adminData.status]
+      );
+
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      const response = await agent.get('/api/auth/session/info');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.session.isLoggedIn).toBe(true);
+      expect(response.body.session.userType).toBe('admin');
+      expect(response.body.session.adminId).toBeDefined();
+      expect(response.body.session.admin).toBeDefined();
+      expect(response.body.session.admin.expiresAt).toBeDefined();
+    });
+
+    it('should return session info for logged in user', async () => {
+      await runAsync(
+        "INSERT INTO users (phone, name) VALUES (?, ?)",
+        [mockUser.phone, mockUser.name]
+      );
+
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/user/login')
+        .send({ phone: mockUser.phone, name: mockUser.name });
+
+      const response = await agent.get('/api/auth/session/info');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.session.isLoggedIn).toBe(true);
+      expect(response.body.session.userType).toBe('user');
+      expect(response.body.session.userId).toBeDefined();
+      expect(response.body.session.user).toBeDefined();
+      expect(response.body.session.user.expiresAt).toBeDefined();
+    });
+  });
+
+  describe('POST /api/auth/session/refresh', () => {
+    it('should return 401 if no session', async () => {
+      const response = await request(app)
+        .post('/api/auth/session/refresh');
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should refresh admin session', async () => {
+      const adminData = await createAdminWithPassword(mockAdmin);
+      await runAsync(
+        'INSERT INTO admins (username, password, name, email, role, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [adminData.username, adminData.password, adminData.name, adminData.email, adminData.role, adminData.status]
+      );
+
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      const response = await agent.post('/api/auth/session/refresh');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+    });
+
+    it('should refresh user session', async () => {
+      await runAsync(
+        "INSERT INTO users (phone, name) VALUES (?, ?)",
+        [mockUser.phone, mockUser.name]
+      );
+
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/user/login')
+        .send({ phone: mockUser.phone, name: mockUser.name });
+
+      const response = await agent.post('/api/auth/session/refresh');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
     });
   });
 

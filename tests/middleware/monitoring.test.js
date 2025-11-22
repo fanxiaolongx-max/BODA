@@ -9,6 +9,11 @@ jest.mock('../../utils/logger', () => ({
   }
 }));
 
+// Mock shouldLogPerformance to always return true
+jest.mock('../../utils/log-helper', () => ({
+  shouldLogPerformance: jest.fn().mockResolvedValue(true)
+}));
+
 describe('Monitoring Middleware', () => {
   let req, res, next;
 
@@ -44,7 +49,8 @@ describe('Monitoring Middleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it('should log performance metrics when response finishes', () => {
+  it('should log performance metrics when response finishes', async () => {
+    req.path = req.url; // 添加path属性
     monitoringMiddleware(req, res, next);
 
     // 获取finish回调
@@ -52,10 +58,14 @@ describe('Monitoring Middleware', () => {
     expect(finishCall).toBeDefined();
     const finishCallback = finishCall[1];
 
-    // 模拟响应完成
+    // 使用真实定时器来等待异步操作
+    jest.useRealTimers();
+    
+    // 模拟响应完成（异步）
     finishCallback();
 
-    jest.advanceTimersByTime(100);
+    // 等待异步操作完成（shouldLogPerformance 是异步的）
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(logger.info).toHaveBeenCalledWith(
       'Request Performance',
@@ -70,15 +80,30 @@ describe('Monitoring Middleware', () => {
     );
   });
 
-  it('should log warning for slow requests (>1 second)', () => {
+  it('should log warning for slow requests (>1 second)', async () => {
+    req.path = req.url; // 添加path属性
+    const startTime = Date.now();
+    
+    // 使用真实定时器来模拟慢请求
+    jest.useRealTimers();
+    
     monitoringMiddleware(req, res, next);
 
     const finishCall = res.on.mock.calls.find(call => call[0] === 'finish');
     const finishCallback = finishCall[1];
     
-    // 快进时间超过1秒
-    jest.advanceTimersByTime(1500);
+    // 模拟慢请求：等待超过1秒
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    
+    // 手动设置 duration（因为 Date.now() 在真实定时器下会真实流逝）
+    // 我们需要 mock Date.now 来模拟慢请求
+    const originalDateNow = Date.now;
+    Date.now = jest.fn(() => startTime + 1500);
+    
     finishCallback();
+
+    // 等待异步操作完成
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(logger.warn).toHaveBeenCalledWith(
       'Slow Request Detected',
@@ -88,6 +113,8 @@ describe('Monitoring Middleware', () => {
         duration: expect.stringContaining('ms')
       })
     );
+    
+    Date.now = originalDateNow;
   });
 
   it('should not log warning for fast requests (<1 second)', () => {
@@ -103,17 +130,20 @@ describe('Monitoring Middleware', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it('should handle missing IP address', () => {
+  it('should handle missing IP address', async () => {
+    req.path = req.url; // 添加path属性
     req.ip = undefined;
     req.connection = { remoteAddress: '192.168.1.1' };
 
+    jest.useRealTimers();
     monitoringMiddleware(req, res, next);
 
     const finishCall = res.on.mock.calls.find(call => call[0] === 'finish');
     const finishCallback = finishCall[1];
     finishCallback();
 
-    jest.advanceTimersByTime(100);
+    // 等待异步操作完成
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(logger.info).toHaveBeenCalledWith(
       'Request Performance',
@@ -123,7 +153,8 @@ describe('Monitoring Middleware', () => {
     );
   });
 
-  it('should calculate memory delta correctly', () => {
+  it('should calculate memory delta correctly', async () => {
+    req.path = req.url; // 添加path属性
     const originalMemoryUsage = process.memoryUsage;
     let callCount = 0;
     
@@ -136,13 +167,15 @@ describe('Monitoring Middleware', () => {
       }
     });
 
+    jest.useRealTimers();
     monitoringMiddleware(req, res, next);
 
     const finishCall = res.on.mock.calls.find(call => call[0] === 'finish');
     const finishCallback = finishCall[1];
     finishCallback();
 
-    jest.advanceTimersByTime(100);
+    // 等待异步操作完成
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(logger.info).toHaveBeenCalledWith(
       'Request Performance',
@@ -154,17 +187,20 @@ describe('Monitoring Middleware', () => {
     process.memoryUsage = originalMemoryUsage;
   });
 
-  it('should handle different HTTP methods', () => {
+  it('should handle different HTTP methods', async () => {
     req.method = 'POST';
     req.url = '/api/admin/products';
+    req.path = req.url; // 添加path属性
 
+    jest.useRealTimers();
     monitoringMiddleware(req, res, next);
 
     const finishCall = res.on.mock.calls.find(call => call[0] === 'finish');
     const finishCallback = finishCall[1];
     finishCallback();
 
-    jest.advanceTimersByTime(100);
+    // 等待异步操作完成
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(logger.info).toHaveBeenCalledWith(
       'Request Performance',
@@ -175,16 +211,19 @@ describe('Monitoring Middleware', () => {
     );
   });
 
-  it('should handle different status codes', () => {
+  it('should handle different status codes', async () => {
+    req.path = req.url; // 添加path属性
     res.statusCode = 404;
 
+    jest.useRealTimers();
     monitoringMiddleware(req, res, next);
 
     const finishCall = res.on.mock.calls.find(call => call[0] === 'finish');
     const finishCallback = finishCall[1];
     finishCallback();
 
-    jest.advanceTimersByTime(100);
+    // 等待异步操作完成
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(logger.info).toHaveBeenCalledWith(
       'Request Performance',

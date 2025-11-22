@@ -115,6 +115,11 @@ describe('User Routes', () => {
     });
 
     it('should create order when logged in and ordering is open', async () => {
+      // 设置点单为开放状态
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+      );
+
       // 创建活跃周期
       await runAsync(
         `INSERT INTO ordering_cycles (cycle_number, start_time, status, total_amount, discount_rate)
@@ -133,6 +138,10 @@ describe('User Routes', () => {
           items: [{ product_id: productId, quantity: 1 }]
         });
 
+      if (response.status !== 200) {
+        console.error('Order creation failed:', response.body);
+      }
+
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.order).toBeDefined();
@@ -140,6 +149,11 @@ describe('User Routes', () => {
     });
 
     it('should create order with sizes, toppings, ice_level, and notes', async () => {
+      // 设置点单为开放状态
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+      );
+
       // 创建活跃周期
       await runAsync(
         `INSERT INTO ordering_cycles (cycle_number, start_time, status, total_amount, discount_rate)
@@ -188,6 +202,11 @@ describe('User Routes', () => {
     });
 
     it('should calculate price correctly with sizes and toppings', async () => {
+      // 设置点单为开放状态
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+      );
+
       // 创建活跃周期
       await runAsync(
         `INSERT INTO ordering_cycles (cycle_number, start_time, status, total_amount, discount_rate)
@@ -807,6 +826,11 @@ describe('User Routes', () => {
 
   describe('Error Handling', () => {
     it('should handle transaction rollback on order creation failure', async () => {
+      // 确保点单开放
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+      );
+
       const agent = request.agent(app);
       await agent
         .post('/api/auth/user/login')
@@ -1031,14 +1055,22 @@ describe('User Routes', () => {
     });
 
     it('should prevent XSS in order notes', async () => {
+      // 确保点单开放
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+      );
+
+      // 创建活跃周期
+      await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, status, total_amount, discount_rate)
+         VALUES (?, datetime('now', 'localtime'), 'active', 0, 0)`,
+        ['CYCLE' + Date.now()]
+      );
+
       const agent = request.agent(app);
       await agent
         .post('/api/auth/user/login')
         .send({ phone: mockUser.phone, name: mockUser.name });
-
-      // 确保点单开放
-      await runAsync("DELETE FROM settings WHERE key = 'ordering_open'");
-      await runAsync("INSERT INTO settings (key, value) VALUES ('ordering_open', 'true')");
 
       const xssPayload = "<script>alert('xss')</script>";
       const response = await agent
@@ -1134,6 +1166,11 @@ describe('User Routes', () => {
 
     describe('正常下单功能验证', () => {
       it('should create order successfully with cycle total amount update', async () => {
+        // 确保点单开放
+        await runAsync(
+          "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+        );
+
         const agent = request.agent(app);
         await agent
           .post('/api/auth/user/login')
@@ -1149,6 +1186,10 @@ describe('User Routes', () => {
           .send({
             items: [{ product_id: productId, quantity: 2 }]
           });
+
+        if (response.status !== 200) {
+          console.error('Order creation failed:', response.body);
+        }
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -1169,6 +1210,11 @@ describe('User Routes', () => {
       });
 
       it('should generate unique order numbers', async () => {
+        // 确保点单开放
+        await runAsync(
+          "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+        );
+
         const agent = request.agent(app);
         await agent
           .post('/api/auth/user/login')
@@ -1200,6 +1246,11 @@ describe('User Routes', () => {
 
     describe('并发下单测试', () => {
       it('should handle concurrent order creation without errors', async () => {
+        // 确保点单开放
+        await runAsync(
+          "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+        );
+
         const agent = request.agent(app);
         await agent
           .post('/api/auth/user/login')
@@ -1360,6 +1411,11 @@ describe('User Routes', () => {
       });
 
       it('should handle extreme concurrent order creation (30+ orders)', async () => {
+        // 确保点单开放
+        await runAsync(
+          "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+        );
+
         const agent = request.agent(app);
         await agent
           .post('/api/auth/user/login')
@@ -1458,6 +1514,11 @@ describe('User Routes', () => {
 
     describe('补偿更新记录测试', () => {
       it('should verify cycle total amount is updated correctly after compensation', async () => {
+        // 确保点单开放
+        await runAsync(
+          "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+        );
+
         const agent = request.agent(app);
         await agent
           .post('/api/auth/user/login')
@@ -1509,6 +1570,11 @@ describe('User Routes', () => {
       });
 
       it('should verify logger is called for compensation updates', async () => {
+        // 确保点单开放
+        await runAsync(
+          "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+        );
+
         const { logger } = require('../../utils/logger');
         
         // 清空之前的日志调用
@@ -1545,6 +1611,11 @@ describe('User Routes', () => {
 
     describe('订单号冲突重试测试', () => {
       it('should handle order number conflicts with retry mechanism', async () => {
+        // 确保点单开放
+        await runAsync(
+          "INSERT INTO settings (key, value) VALUES ('ordering_open', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'"
+        );
+
         const agent = request.agent(app);
         await agent
           .post('/api/auth/user/login')

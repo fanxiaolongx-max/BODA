@@ -4164,42 +4164,105 @@ const tableDescriptions = {
 
 // 加载开发者页面
 async function loadDeveloperPage() {
-  // 默认显示数据库表标签
-  switchDeveloperTab('db');
-  await loadTablesList();
+  // 检查当前激活的Developer子标签
+  const dbTab = document.getElementById('developerDbTab');
+  const fileTab = document.getElementById('developerFileTab');
+  const testTab = document.getElementById('developerTestTab');
+  
+  // 检查哪个子标签是激活的（通过样式判断）
+  let activeSubTab = 'db';
+  if (testTab && testTab.classList.contains('bg-blue-600')) {
+    activeSubTab = 'tests';
+  } else if (fileTab && fileTab.classList.contains('bg-blue-600')) {
+    activeSubTab = 'files';
+  }
+  
+  // 如果已经有激活的子标签，保持当前状态
+  if (activeSubTab === 'tests') {
+    // 确保测试内容可见
+    const testContent = document.getElementById('developerTestContent');
+    if (testContent) {
+      testContent.classList.remove('hidden');
+    }
+    if (!window.testSuitesLoaded) {
+      loadTestSuites();
+      window.testSuitesLoaded = true;
+    }
+  } else if (activeSubTab === 'files') {
+    // 确保文件内容可见
+    const fileContent = document.getElementById('developerFileContent');
+    if (fileContent) {
+      fileContent.classList.remove('hidden');
+    }
+    if (currentFileManagerPath === '') {
+      loadFileManager('/');
+    }
+  } else {
+    // 默认显示数据库表标签
+    switchDeveloperTab('db');
+    // 确保db内容可见
+    const dbContent = document.getElementById('developerDbContent');
+    if (dbContent) {
+      dbContent.classList.remove('hidden');
+    }
+    await loadTablesList();
+  }
 }
 
 // 加载数据库表列表
 async function loadTablesList() {
   try {
+    const container = document.getElementById('tablesList');
+    if (!container) {
+      console.error('tablesList container not found');
+      return;
+    }
+    
+    // 显示加载状态
+    container.innerHTML = '<div class="text-center py-4 text-gray-500 text-xs">Loading tables...</div>';
+    
     const response = await fetch(`${API_BASE}/admin/developer/tables`, {
       credentials: 'include'
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
     const data = await response.json();
     
-    if (data.success) {
-      const container = document.getElementById('tablesList');
-      container.innerHTML = data.tables.map(table => {
-        const description = tableDescriptions[table.name] || 'Database table';
-        return `
-        <div class="mb-0.5">
-          <div 
-            class="table-item px-2 py-1 rounded cursor-pointer hover:bg-gray-100 transition"
-            ondblclick="loadTableData('${table.name}')"
-            onclick="toggleTableItem(this)"
-          >
-            <div class="flex items-center justify-between mb-0.5">
-              <span class="text-xs font-medium text-gray-700">${table.name}</span>
-              <span class="text-xs text-gray-500">${table.rowCount}</span>
+    if (data.success && data.tables) {
+      if (data.tables.length === 0) {
+        container.innerHTML = '<div class="text-center py-4 text-gray-500 text-xs">No tables found</div>';
+      } else {
+        container.innerHTML = data.tables.map(table => {
+          const description = tableDescriptions[table.name] || 'Database table';
+          return `
+          <div class="mb-0.5">
+            <div 
+              class="table-item px-2 py-1 rounded cursor-pointer hover:bg-gray-100 transition"
+              ondblclick="loadTableData('${table.name}')"
+              onclick="toggleTableItem(this)"
+            >
+              <div class="flex items-center justify-between mb-0.5">
+                <span class="text-xs font-medium text-gray-700">${table.name}</span>
+                <span class="text-xs text-gray-500">${table.rowCount}</span>
+              </div>
+              <div class="text-xs text-gray-400 leading-tight">${description}</div>
             </div>
-            <div class="text-xs text-gray-400 leading-tight">${description}</div>
           </div>
-        </div>
-      `;
-      }).join('');
+        `;
+        }).join('');
+      }
+    } else {
+      container.innerHTML = '<div class="text-center py-4 text-red-500 text-xs">Failed to load tables: ' + (data.message || 'Unknown error') + '</div>';
     }
   } catch (error) {
     console.error('加载表列表失败:', error);
+    const container = document.getElementById('tablesList');
+    if (container) {
+      container.innerHTML = '<div class="text-center py-4 text-red-500 text-xs">Error loading tables: ' + error.message + '</div>';
+    }
   }
 }
 
@@ -5495,27 +5558,62 @@ let selectedFiles = new Set(); // 存储选中的文件路径
 function switchDeveloperTab(tab) {
   const dbTab = document.getElementById('developerDbTab');
   const fileTab = document.getElementById('developerFileTab');
+  const testTab = document.getElementById('developerTestTab');
   const dbContent = document.getElementById('developerDbContent');
   const fileContent = document.getElementById('developerFileContent');
+  const testContent = document.getElementById('developerTestContent');
   
+  // 重置所有标签样式
+  [dbTab, fileTab, testTab].forEach(t => {
+    if (t) {
+      t.classList.remove('bg-blue-600', 'text-white');
+      t.classList.add('bg-gray-200', 'text-gray-700');
+    }
+  });
+  
+  // 隐藏所有内容
+  [dbContent, fileContent, testContent].forEach(c => {
+    if (c) c.classList.add('hidden');
+  });
+  
+  // 显示选中的标签和内容
   if (tab === 'db') {
-    dbTab.classList.remove('bg-gray-200', 'text-gray-700');
-    dbTab.classList.add('bg-blue-600', 'text-white');
-    fileTab.classList.remove('bg-blue-600', 'text-white');
-    fileTab.classList.add('bg-gray-200', 'text-gray-700');
-    dbContent.classList.remove('hidden');
-    fileContent.classList.add('hidden');
-  } else {
-    fileTab.classList.remove('bg-gray-200', 'text-gray-700');
-    fileTab.classList.add('bg-blue-600', 'text-white');
-    dbTab.classList.remove('bg-blue-600', 'text-white');
-    dbTab.classList.add('bg-gray-200', 'text-gray-700');
-    fileContent.classList.remove('hidden');
-    dbContent.classList.add('hidden');
+    if (dbTab) {
+      dbTab.classList.remove('bg-gray-200', 'text-gray-700');
+      dbTab.classList.add('bg-blue-600', 'text-white');
+    }
+    if (dbContent) {
+      dbContent.classList.remove('hidden');
+    }
+    // 确保加载表列表
+    if (!window.tablesListLoaded) {
+      loadTablesList();
+      window.tablesListLoaded = true;
+    }
+  } else if (tab === 'files') {
+    if (fileTab) {
+      fileTab.classList.remove('bg-gray-200', 'text-gray-700');
+      fileTab.classList.add('bg-blue-600', 'text-white');
+    }
+    if (fileContent) {
+      fileContent.classList.remove('hidden');
+    }
     
     // 加载文件列表
     if (currentFileManagerPath === '') {
       loadFileManager('/');
+    }
+  } else if (tab === 'tests') {
+    if (testTab) {
+      testTab.classList.remove('bg-gray-200', 'text-gray-700');
+      testTab.classList.add('bg-blue-600', 'text-white');
+    }
+    if (testContent) {
+      testContent.classList.remove('hidden');
+    }
+    if (!window.testSuitesLoaded) {
+      loadTestSuites();
+      window.testSuitesLoaded = true;
     }
   }
 }
@@ -6512,5 +6610,490 @@ async function confirmImportMenu(event) {
     showToast('Import failed', 'error');
   } finally {
     window._pendingImportFile = null;
+  }
+}
+
+// ==================== 业务测试用例管理 ====================
+
+let testSuites = [];
+let selectedTestSuites = new Set();
+let testRunning = false;
+let testProgressInterval = null;
+
+// 加载测试套件列表
+async function loadTestSuites() {
+  try {
+    const response = await fetch(`${API_BASE}/admin/developer/test-suites`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      testSuites = data.suites || [];
+      renderTestSuites();
+    } else {
+      showToast('Failed to load test suites', 'error');
+    }
+  } catch (error) {
+    console.error('Load test suites failed:', error);
+    showToast('Failed to load test suites', 'error');
+  }
+}
+
+// 渲染测试套件列表
+function renderTestSuites() {
+  const container = document.getElementById('testSuitesList');
+  if (!container) return;
+  
+  container.innerHTML = testSuites.map(suite => `
+    <label class="flex items-center space-x-2 p-2 bg-white rounded border border-gray-200 hover:bg-gray-50 cursor-pointer">
+      <input 
+        type="checkbox" 
+        value="${suite.name}" 
+        onchange="toggleTestSuite('${suite.name}')"
+        class="test-suite-checkbox rounded"
+        ${selectedTestSuites.has(suite.name) ? 'checked' : ''}
+      >
+      <div class="flex-1">
+        <div class="text-sm font-medium text-gray-900">${escapeHtml(suite.displayName || suite.name)}</div>
+        <div class="text-xs text-gray-500">${suite.testCount || 0} tests</div>
+      </div>
+    </label>
+  `).join('');
+  
+  updateSelectedCount();
+}
+
+// 切换测试套件选择
+function toggleTestSuite(suiteName) {
+  if (selectedTestSuites.has(suiteName)) {
+    selectedTestSuites.delete(suiteName);
+  } else {
+    selectedTestSuites.add(suiteName);
+  }
+  updateSelectedCount();
+}
+
+// 全选/取消全选
+function toggleAllTestSuites() {
+  const selectAll = document.getElementById('selectAllTestSuites');
+  if (selectAll.checked) {
+    testSuites.forEach(suite => selectedTestSuites.add(suite.name));
+  } else {
+    selectedTestSuites.clear();
+  }
+  renderTestSuites();
+}
+
+// 更新选中数量
+function updateSelectedCount() {
+  const countEl = document.getElementById('selectedTestSuitesCount');
+  if (countEl) {
+    countEl.textContent = `已选择: ${selectedTestSuites.size}`;
+  }
+  const selectAll = document.getElementById('selectAllTestSuites');
+  if (selectAll) {
+    selectAll.checked = selectedTestSuites.size === testSuites.length && testSuites.length > 0;
+  }
+}
+
+// 运行全部测试
+async function runAllTests() {
+  selectedTestSuites.clear();
+  testSuites.forEach(suite => selectedTestSuites.add(suite.name));
+  await runSelectedTests();
+}
+
+// 运行选中测试
+async function runSelectedTests() {
+  if (selectedTestSuites.size === 0) {
+    showToast('Please select at least one test suite', 'warning');
+    return;
+  }
+  
+  if (testRunning) {
+    showToast('Tests are already running', 'warning');
+    return;
+  }
+  
+  testRunning = true;
+  const stopBtn = document.getElementById('stopTestsBtn');
+  const progressPanel = document.getElementById('testProgressPanel');
+  const reportPanel = document.getElementById('testReportContent');
+  
+  // 清空日志缓存
+  testLogsCache = [];
+  const logsText = document.getElementById('testLogsText');
+  if (logsText) logsText.innerHTML = '';
+  
+  if (stopBtn) stopBtn.classList.remove('hidden');
+  if (progressPanel) progressPanel.classList.remove('hidden');
+  if (reportPanel) {
+      const placeholder = document.getElementById('testReportPlaceholder');
+      const iframe = document.getElementById('testReportIframe');
+      if (placeholder) {
+        placeholder.innerHTML = '<div class="text-center py-8"><div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div><p class="mt-2 text-sm text-gray-600">Running tests...</p></div>';
+        placeholder.style.display = 'block';
+      }
+      if (iframe) {
+        iframe.style.display = 'none';
+      }
+    }
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/developer/run-tests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        suites: Array.from(selectedTestSuites)
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to start tests');
+    }
+    
+    // 轮询测试进度（更频繁的更新以获得实时进度）
+    testProgressInterval = setInterval(async () => {
+      try {
+        const progressResponse = await fetch(`${API_BASE}/admin/developer/test-progress?t=${Date.now()}`, {
+          credentials: 'include',
+          cache: 'no-cache'
+        });
+        if (progressResponse.ok) {
+          const progressData = await progressResponse.json();
+          if (progressData.success) {
+            updateTestProgress(progressData);
+            // 更新测试日志
+            if (progressData.logs && progressData.logs.length > 0) {
+              updateTestLogs(progressData.logs);
+            }
+            
+            // 检查测试是否完成
+            if (progressData.completed) {
+              clearInterval(testProgressInterval);
+              testProgressInterval = null;
+              
+              // 更新最终进度显示
+              if (progressData.progress) {
+                updateTestProgress(progressData);
+                const currentTest = document.getElementById('testCurrentTest');
+                if (currentTest) {
+                  currentTest.textContent = 'Tests completed! Generating report...';
+                }
+              }
+              
+              // 等待报告生成（最多等待5秒）
+              let waitCount = 0;
+              const checkReport = setInterval(async () => {
+                waitCount++;
+                try {
+                  const reportResponse = await fetch(`${API_BASE}/admin/developer/test-report`, {
+                    credentials: 'include'
+                  });
+                  if (reportResponse.ok) {
+                    const html = await reportResponse.text();
+                    // 检查是否是有效的HTML报告
+                    if (html.length > 1000 && (html.includes('测试报告') || html.includes('test-report') || html.includes('Test Suites'))) {
+                      clearInterval(checkReport);
+                      await loadTestReport();
+                      testRunning = false;
+                      if (stopBtn) stopBtn.classList.add('hidden');
+                      // 更新进度为100%
+                      if (progressData.progress) {
+                        updateTestProgress({ progress: { ...progressData.progress, current: progressData.progress.total, currentTest: 'All tests completed' } });
+                      }
+                      showToast('Tests completed', 'success');
+                      return;
+                    }
+                  }
+                } catch (e) {
+                  // 忽略错误，继续等待
+                }
+                
+                // 最多等待10次（5秒）
+                if (waitCount >= 10) {
+                  clearInterval(checkReport);
+                  await loadTestReport();
+                  testRunning = false;
+                  if (stopBtn) stopBtn.classList.add('hidden');
+                  showToast('Tests completed (report may still be generating)', 'info');
+                }
+              }, 500);
+            } else if (!progressData.running && progressData.progress && progressData.progress.current > 0) {
+              // 测试可能已完成但状态未更新，等待一下再检查
+              setTimeout(() => {
+                if (!testRunning) return;
+                fetch(`${API_BASE}/admin/developer/test-progress`, { credentials: 'include' })
+                  .then(r => r.json())
+                  .then(data => {
+                    if (data.success && data.completed) {
+                      clearInterval(testProgressInterval);
+                      testProgressInterval = null;
+                      loadTestReport().then(() => {
+                        testRunning = false;
+                        if (stopBtn) stopBtn.classList.add('hidden');
+                        showToast('Tests completed', 'success');
+                      });
+                    }
+                  })
+                  .catch(e => console.error('Check progress failed:', e));
+              }, 2000);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Get test progress failed:', e);
+      }
+    }, 500); // 每500ms轮询一次，获得更实时的进度更新
+    
+  } catch (error) {
+    console.error('Run tests failed:', error);
+    showToast('Failed to run tests', 'error');
+    if (reportPanel) {
+      const placeholder = document.getElementById('testReportPlaceholder');
+      const iframe = document.getElementById('testReportIframe');
+      if (placeholder) {
+        placeholder.innerHTML = '<div class="text-center py-8 text-red-500">Failed to run tests</div>';
+        placeholder.style.display = 'block';
+      }
+      if (iframe) {
+        iframe.style.display = 'none';
+      }
+    }
+    testRunning = false;
+    if (stopBtn) stopBtn.classList.add('hidden');
+    if (testProgressInterval) {
+      clearInterval(testProgressInterval);
+      testProgressInterval = null;
+    }
+  }
+}
+
+// 更新测试进度
+function updateTestProgress(data) {
+  const progressBar = document.getElementById('testProgressBar');
+  const progressText = document.getElementById('testProgressText');
+  const progressPercentage = document.getElementById('testProgressPercentage');
+  const progressBarLabel = document.getElementById('testProgressBarLabel');
+  const progressBarPercentage = document.getElementById('testProgressBarPercentage');
+  const currentTestName = document.getElementById('testCurrentTestName');
+  const currentSuite = document.getElementById('testCurrentSuite');
+  
+  if (data.progress) {
+    const { current, total, currentTest: testName, currentSuite: suiteName } = data.progress;
+    // 如果 total 为 0，说明测试还没开始或总数未知，显示 0%
+    const safeTotal = Math.max(total || 0, 0);
+    const safeCurrent = Math.max(current || 0, 0);
+    let percentage = 0;
+    let percentageText = '0.0';
+    
+    if (safeTotal > 0) {
+      percentage = Math.min((safeCurrent / safeTotal) * 100, 100);
+      percentageText = percentage.toFixed(1);
+    } else if (safeCurrent > 0) {
+      // 如果总数未知但已有完成的测试，显示一个小的进度（表示正在运行）
+      percentage = Math.min(safeCurrent * 2, 10); // 最多显示10%
+      percentageText = percentage.toFixed(1);
+    }
+    
+    // 更新进度条
+    if (progressBar) {
+      progressBar.style.width = `${percentage}%`;
+      // 如果进度条足够宽，在进度条上显示百分比
+      if (progressBarLabel && progressBarPercentage) {
+        if (percentage > 15) {
+          progressBarLabel.style.display = 'flex';
+          progressBarPercentage.textContent = `${percentageText}%`;
+        } else {
+          progressBarLabel.style.display = 'none';
+        }
+      }
+    }
+    
+    // 更新进度文本
+    if (progressText) {
+      progressText.textContent = `${safeCurrent} / ${safeTotal}`;
+    }
+    
+    // 更新百分比显示
+    if (progressPercentage) {
+      progressPercentage.textContent = `${percentageText}%`;
+      // 根据进度改变颜色
+      if (percentage >= 100) {
+        progressPercentage.classList.remove('text-blue-600');
+        progressPercentage.classList.add('text-green-600');
+      } else if (percentage >= 75) {
+        progressPercentage.classList.remove('text-blue-600', 'text-green-600');
+        progressPercentage.classList.add('text-indigo-600');
+      } else {
+        progressPercentage.classList.remove('text-indigo-600', 'text-green-600');
+        progressPercentage.classList.add('text-blue-600');
+      }
+    }
+    
+    // 更新当前测试信息
+    if (currentTestName) {
+      if (testName && testName !== 'Running tests...' && testName !== 'Starting tests...' && testName !== 'All tests completed') {
+        // 显示测试名称，如果太长则截断
+        const displayName = testName.length > 80 ? testName.substring(0, 77) + '...' : testName;
+        currentTestName.textContent = `正在运行: ${displayName}`;
+        currentTestName.classList.remove('text-gray-500');
+        currentTestName.classList.add('text-gray-700');
+      } else if (safeCurrent > 0 && safeCurrent < safeTotal) {
+        currentTestName.textContent = `正在运行测试... (${safeCurrent}/${safeTotal})`;
+        currentTestName.classList.remove('text-gray-500');
+        currentTestName.classList.add('text-gray-700');
+      } else if (safeCurrent >= safeTotal) {
+        currentTestName.textContent = '✅ 所有测试已完成';
+        currentTestName.classList.remove('text-gray-700');
+        currentTestName.classList.add('text-green-600', 'font-semibold');
+      } else {
+        currentTestName.textContent = '准备开始测试...';
+        currentTestName.classList.remove('text-green-600', 'font-semibold');
+        currentTestName.classList.add('text-gray-500');
+      }
+    }
+    
+    // 更新当前测试套件信息
+    if (currentSuite) {
+      if (suiteName) {
+        currentSuite.textContent = `测试套件: ${suiteName}`;
+      } else if (safeCurrent > 0) {
+        currentSuite.textContent = `已完成 ${safeCurrent} 个测试`;
+      } else {
+        currentSuite.textContent = '正在初始化测试环境...';
+      }
+    }
+  } else if (data.running) {
+    // 如果正在运行但没有进度信息，显示运行中
+    if (currentTestName) {
+      currentTestName.textContent = '正在启动测试...';
+      currentTestName.classList.remove('text-green-600', 'font-semibold');
+      currentTestName.classList.add('text-gray-500');
+    }
+    if (currentSuite) {
+      currentSuite.textContent = '正在加载测试套件...';
+    }
+    if (progressBar) {
+      progressBar.style.width = '5%'; // 显示一个小的进度指示
+    }
+    if (progressPercentage) {
+      progressPercentage.textContent = '0%';
+    }
+  }
+}
+
+// 停止测试
+async function stopTests() {
+  if (!testRunning) return;
+  
+  try {
+    await fetch(`${API_BASE}/admin/developer/stop-tests`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    testRunning = false;
+    const stopBtn = document.getElementById('stopTestsBtn');
+    if (stopBtn) stopBtn.classList.add('hidden');
+    if (testProgressInterval) {
+      clearInterval(testProgressInterval);
+      testProgressInterval = null;
+    }
+    showToast('Tests stopped', 'info');
+  } catch (error) {
+    console.error('Stop tests failed:', error);
+  }
+}
+
+// 加载测试报告
+async function loadTestReport() {
+  try {
+    const iframe = document.getElementById('testReportIframe');
+    const placeholder = document.getElementById('testReportPlaceholder');
+    
+    if (!iframe) {
+      console.error('testReportIframe not found');
+      return;
+    }
+    
+    // 隐藏占位符，显示iframe
+    if (placeholder) {
+      placeholder.style.display = 'none';
+    }
+    iframe.style.display = 'block';
+    
+    // 等待报告生成（最多等待10秒）
+    let retries = 0;
+    const maxRetries = 20;
+    
+    while (retries < maxRetries) {
+      try {
+        const response = await fetch(`${API_BASE}/admin/developer/test-report`, {
+          credentials: 'include'
+        });
+        
+        if (response.ok) {
+          const html = await response.text();
+          // 检查是否是有效的HTML报告
+          if (html.length > 1000 && (html.includes('测试报告') || html.includes('test-report') || html.includes('Test Suites') || html.includes('测试结果') || html.includes('<!DOCTYPE html'))) {
+            // 直接使用服务器URL，而不是blob URL，避免CSP问题
+            // 添加时间戳确保获取最新内容
+            const reportUrl = `${API_BASE}/admin/developer/test-report?t=${Date.now()}`;
+            iframe.src = reportUrl;
+            
+            // 监听iframe加载完成
+            iframe.onload = function() {
+              console.log('Test report loaded successfully in iframe');
+            };
+            
+            iframe.onerror = function() {
+              console.error('Failed to load test report in iframe');
+              showReportError('Failed to load test report in iframe');
+            };
+            
+            return;
+          }
+        }
+      } catch (fetchError) {
+        console.error('Fetch error:', fetchError);
+        // 继续重试
+      }
+      
+      // 等待500ms后重试
+      await new Promise(resolve => setTimeout(resolve, 500));
+      retries++;
+    }
+    
+    // 如果重试后仍然失败，显示错误
+    showReportError('Report not ready yet. Please wait a moment and try again.');
+    
+  } catch (error) {
+    console.error('Load test report failed:', error);
+    showReportError('Failed to load test report: ' + error.message);
+  }
+}
+
+// 显示报告错误
+function showReportError(message) {
+  const iframe = document.getElementById('testReportIframe');
+  const placeholder = document.getElementById('testReportPlaceholder');
+  
+  if (iframe) {
+    iframe.style.display = 'none';
+    iframe.src = 'about:blank'; // 清空iframe
+  }
+  
+  if (placeholder) {
+    placeholder.innerHTML = `
+      <div class="text-center py-8">
+        <p class="text-red-500 mb-2">${message}</p>
+        <button onclick="loadTestReport()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition mt-4">
+          🔄 Retry
+        </button>
+      </div>
+    `;
+    placeholder.style.display = 'block';
   }
 }

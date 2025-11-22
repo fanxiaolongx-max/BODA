@@ -229,6 +229,13 @@ describe('Public Routes', () => {
   });
 
   describe('POST /api/public/calculate-discount', () => {
+    beforeEach(async () => {
+      // 清理订单数据
+      await runAsync('DELETE FROM order_items');
+      await runAsync('DELETE FROM orders');
+      await runAsync('DELETE FROM users');
+    });
+
     it('should return message when ordering is open', async () => {
       // 确保点单是开放的
       await runAsync(
@@ -241,6 +248,7 @@ describe('Public Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.discount_applied).toBe(false);
+      expect(response.body.message).toContain('点单时间未关闭');
     });
 
     it('should calculate discount when ordering is closed', async () => {
@@ -286,6 +294,487 @@ describe('Public Routes', () => {
       const updatedOrder = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
       expect(updatedOrder.discount_amount).toBe(10);
       expect(updatedOrder.final_amount).toBe(90);
+    });
+
+    it('should handle no pending orders', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [50, null, 10, '10% discount', 'active']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.discount_applied).toBe(true);
+      expect(response.body.discount_rate).toBe(0);
+      expect(response.body.total_amount).toBe(0);
+    });
+
+    it('should handle no discount rules (discountRate = 0)', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 确保没有折扣规则
+      await runAsync('DELETE FROM discount_rules');
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建待付款订单
+      const orderId = 'test-order-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.discount_applied).toBe(true);
+      expect(response.body.discount_rate).toBe(0);
+
+      // 验证订单折扣为0
+      const updatedOrder = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(updatedOrder.discount_amount).toBe(0);
+      expect(updatedOrder.final_amount).toBe(100);
+    });
+
+    it('should match single discount rule correctly', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建单条折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 15, '15% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建待付款订单（总金额 >= min_amount）
+      const orderId = 'test-order-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 150, 0, 150, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.discount_rate).toBe(0.15);
+
+      // 验证折扣计算（使用roundAmount）
+      const updatedOrder = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(updatedOrder.discount_amount).toBe(22.5); // 150 * 0.15
+      expect(updatedOrder.final_amount).toBe(127.5); // 150 - 22.5
+    });
+
+    it('should select highest discount from multiple rules (sorted by min_amount DESC)', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建多条折扣规则（按min_amount DESC排序，应该选择第一个匹配的）
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [200, null, 20, '20% discount for 200+', 'active']
+      );
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 10, '10% discount for 100+', 'active']
+      );
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [50, null, 5, '5% discount for 50+', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建待付款订单（总金额 = 250，应该匹配20%的规则）
+      const orderId = 'test-order-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 250, 0, 250, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      // 应该选择最高折扣（20%），因为按min_amount DESC排序，第一个匹配的是200+
+      expect(response.body.discount_rate).toBe(0.2);
+
+      const updatedOrder = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(updatedOrder.discount_amount).toBe(50); // 250 * 0.2
+      expect(updatedOrder.final_amount).toBe(200); // 250 - 50
+    });
+
+    it('should handle discount rule with max_amount boundary', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建有max_amount限制的折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, 200, 10, '10% discount for 100-200', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 测试1: 总金额刚好等于min_amount
+      const orderId1 = 'test-order-1-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId1, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending']
+      );
+
+      // 测试2: 总金额刚好等于max_amount
+      const orderId2 = 'test-order-2-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId2, 'BO' + (Date.now() + 1).toString().slice(-8), userResult.id, 'Test User', '13800138001', 200, 0, 200, 'pending']
+      );
+
+      // 测试3: 总金额超过max_amount
+      const orderId3 = 'test-order-3-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId3, 'BO' + (Date.now() + 2).toString().slice(-8), userResult.id, 'Test User', '13800138002', 250, 0, 250, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      
+      // 总金额是100+200+250=550，规则是100-200（max_amount=200）
+      // 代码逻辑：totalAmount < rule.max_amount，所以550 < 200为false，不匹配
+      // 因此 discount_rate 应该是 0
+      expect(response.body.discount_rate).toBe(0);
+      expect(response.body.total_amount).toBe(550);
+
+      // 验证所有订单都没有折扣（因为总金额550超过了max_amount 200）
+      const order1 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId1]);
+      expect(order1.discount_amount).toBe(0);
+      expect(order1.final_amount).toBe(100);
+
+      const order2 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId2]);
+      expect(order2.discount_amount).toBe(0);
+      expect(order2.final_amount).toBe(200);
+
+      const order3 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId3]);
+      expect(order3.discount_amount).toBe(0);
+      expect(order3.final_amount).toBe(250);
+    });
+
+    it('should handle total amount less than all rules min_amount', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建折扣规则（min_amount较大）
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [500, null, 10, '10% discount for 500+', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建待付款订单（总金额 < min_amount）
+      const orderId = 'test-order-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.discount_rate).toBe(0); // 没有匹配的规则
+
+      const updatedOrder = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(updatedOrder.discount_amount).toBe(0);
+      expect(updatedOrder.final_amount).toBe(100);
+    });
+
+    it('should use roundAmount for discount calculation (floating point precision)', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [50, null, 10, '10% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建待付款订单（金额有小数，测试精度处理）
+      const orderId = 'test-order-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 99.99, 0, 99.99, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+
+      const updatedOrder = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      // 99.99 * 0.1 = 9.999，使用roundAmount后应该是10.00
+      expect(updatedOrder.discount_amount).toBe(10);
+      // 99.99 - 10 = 89.99
+      expect(updatedOrder.final_amount).toBe(89.99);
+    });
+
+    it('should handle multiple orders discount calculation', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 10, '10% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建多个待付款订单
+      const orderId1 = 'test-order-1-' + Date.now();
+      const orderId2 = 'test-order-2-' + Date.now();
+      const orderId3 = 'test-order-3-' + Date.now();
+
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId1, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 50, 0, 50, 'pending']
+      );
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId2, 'BO' + (Date.now() + 1).toString().slice(-8), userResult.id, 'Test User', '13800138001', 30, 0, 30, 'pending']
+      );
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId3, 'BO' + (Date.now() + 2).toString().slice(-8), userResult.id, 'Test User', '13800138002', 20, 0, 20, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      // 总金额 = 50 + 30 + 20 = 100，应该匹配规则
+      expect(response.body.discount_rate).toBe(0.1);
+      expect(response.body.total_amount).toBe(100);
+
+      // 验证所有订单的折扣都已更新
+      const order1 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId1]);
+      expect(order1.discount_amount).toBe(5); // 50 * 0.1
+      expect(order1.final_amount).toBe(45); // 50 - 5
+
+      const order2 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId2]);
+      expect(order2.discount_amount).toBe(3); // 30 * 0.1
+      expect(order2.final_amount).toBe(27); // 30 - 3
+
+      const order3 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId3]);
+      expect(order3.discount_amount).toBe(2); // 20 * 0.1
+      expect(order3.final_amount).toBe(18); // 20 - 2
+    });
+
+    it('should handle zero total amount', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 10, '10% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建总金额为0的订单
+      const orderId = 'test-order-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 0, 0, 0, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.total_amount).toBe(0);
+      expect(response.body.discount_rate).toBe(0);
+
+      const updatedOrder = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(updatedOrder.discount_amount).toBe(0);
+      expect(updatedOrder.final_amount).toBe(0);
+    });
+
+    it('should handle 100% discount rate (free)', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建100%折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [50, null, 100, '100% discount (free)', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建待付款订单
+      const orderId = 'test-order-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.discount_rate).toBe(1); // 100% = 1.0
+
+      const updatedOrder = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(updatedOrder.discount_amount).toBe(100); // 100 * 1.0
+      expect(updatedOrder.final_amount).toBe(0); // 100 - 100
+    });
+
+    it('should handle 0% discount rate (no discount)', async () => {
+      // 关闭点单
+      await runAsync(
+        "INSERT INTO settings (key, value) VALUES ('ordering_open', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'"
+      );
+
+      // 创建0%折扣规则（虽然不常见，但应该支持）
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [50, null, 0, '0% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建待付款订单
+      const orderId = 'test-order-' + Date.now();
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending']
+      );
+
+      const response = await request(app)
+        .post('/api/public/calculate-discount');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.discount_rate).toBe(0);
+
+      const updatedOrder = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(updatedOrder.discount_amount).toBe(0);
+      expect(updatedOrder.final_amount).toBe(100);
     });
   });
 

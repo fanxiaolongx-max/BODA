@@ -32,7 +32,7 @@ app.use(helmet({
       fontSrc: ["'self'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
+      frameSrc: ["'self'", "blob:"], // 允许同源iframe和blob URL（用于测试报告）
       baseUri: ["'self'"],
       formAction: ["'self'"],
       upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
@@ -47,9 +47,9 @@ app.use(helmet({
     includeSubDomains: true,
     preload: true
   },
-  // 防止点击劫持
+  // 防止点击劫持（但允许同源iframe用于测试报告）
   frameguard: {
-    action: 'deny'
+    action: 'sameorigin' // 允许同源iframe，阻止跨域iframe
   },
   // 禁用X-Powered-By头
   hidePoweredBy: true,

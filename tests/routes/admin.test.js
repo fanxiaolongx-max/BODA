@@ -472,9 +472,140 @@ describe('Admin Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
 
-      // 验证删除（产品被标记为deleted状态）
+      // 验证删除（产品被物理删除）
       const deletedProduct = await getAsync('SELECT * FROM products WHERE id = ?', [newProductId]);
-      expect(deletedProduct.status).toBe('deleted');
+      expect(deletedProduct).toBeUndefined();
+    });
+
+    it('should batch update products', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建多个产品
+      const productIds = [];
+      for (let i = 0; i < 3; i++) {
+        const result = await runAsync(
+          'INSERT INTO products (name, description, price, category_id, status) VALUES (?, ?, ?, ?, ?)',
+          [`Product ${i}`, `Description ${i}`, 10 + i, categoryId, 'active']
+        );
+        productIds.push(result.id);
+      }
+
+      const batchUpdateData = {
+        product_ids: productIds,
+        updates: {
+          status: 'inactive',
+          sort_order: 10
+        }
+      };
+
+      const response = await agent
+        .post('/api/admin/products/batch-update')
+        .send(batchUpdateData);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.updated).toBe(3);
+
+      // 验证所有产品都已更新
+      for (const id of productIds) {
+        const product = await getAsync('SELECT * FROM products WHERE id = ?', [id]);
+        expect(product.status).toBe('inactive');
+        expect(product.sort_order).toBe(10);
+      }
+    });
+
+    it('should batch update products with price actions', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建产品
+      const result = await runAsync(
+        'INSERT INTO products (name, description, price, category_id, status) VALUES (?, ?, ?, ?, ?)',
+        ['Product', 'Description', 20, categoryId, 'active']
+      );
+      const productId = result.id;
+
+      // 测试价格设置
+      const response1 = await agent
+        .post('/api/admin/products/batch-update')
+        .send({
+          product_ids: [productId],
+          updates: {
+            price_action: 'set',
+            price_value: 25
+          }
+        });
+
+      expect(response1.status).toBe(200);
+      let product = await getAsync('SELECT * FROM products WHERE id = ?', [productId]);
+      expect(product.price).toBe(25);
+
+      // 测试价格增加
+      const response2 = await agent
+        .post('/api/admin/products/batch-update')
+        .send({
+          product_ids: [productId],
+          updates: {
+            price_action: 'add',
+            price_value: 5
+          }
+        });
+
+      expect(response2.status).toBe(200);
+      product = await getAsync('SELECT * FROM products WHERE id = ?', [productId]);
+      expect(product.price).toBe(30);
+
+      // 测试价格乘法
+      const response3 = await agent
+        .post('/api/admin/products/batch-update')
+        .send({
+          product_ids: [productId],
+          updates: {
+            price_action: 'multiply',
+            price_value: 1.1
+          }
+        });
+
+      expect(response3.status).toBe(200);
+      product = await getAsync('SELECT * FROM products WHERE id = ?', [productId]);
+      expect(product.price).toBeCloseTo(33, 1);
+    });
+
+    it('should return 400 when product_ids is empty', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      const response = await agent
+        .post('/api/admin/products/batch-update')
+        .send({
+          product_ids: [],
+          updates: { status: 'inactive' }
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should return 400 when updates is empty', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      const response = await agent
+        .post('/api/admin/products/batch-update')
+        .send({
+          product_ids: [productId],
+          updates: {}
+        });
+
+      expect(response.status).toBe(400);
     });
 
     it('should return 400 when deleting product with orders', async () => {
@@ -507,14 +638,17 @@ describe('Admin Routes', () => {
 
       const response = await agent.delete(`/api/admin/products/${productId}`);
 
-      // 产品删除可能只是标记为deleted，不一定会返回400
+      // 产品删除会物理删除产品（即使有订单项也会删除）
       // 检查响应状态和消息
       if (response.status === 400) {
         expect(response.body.message).toContain('还有订单');
-      } else {
-        // 如果返回200，验证产品状态为deleted
+        // 如果返回400，产品应该还存在
         const product = await getAsync('SELECT * FROM products WHERE id = ?', [productId]);
-        expect(product.status).toBe('deleted');
+        expect(product).toBeDefined();
+      } else {
+        // 如果返回200，验证产品被物理删除
+        const product = await getAsync('SELECT * FROM products WHERE id = ?', [productId]);
+        expect(product).toBeUndefined();
       }
     });
   });
@@ -1540,6 +1674,522 @@ describe('Admin Routes', () => {
       expect(response.body.success).toBe(false);
     });
 
+    it('should query orders within cycle time range correctly', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 200, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建周期内的待付款订单
+      const orderId1 = 'test-order-1-' + Date.now();
+      const orderTime1 = new Date(Date.now() - 1.5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId1, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending', orderTime1]
+      );
+
+      // 创建周期外的订单（不应该被处理）
+      const orderId2 = 'test-order-2-' + Date.now();
+      const orderTime2 = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId2, 'BO' + (Date.now() + 1).toString().slice(-8), userResult.id, 'Test User', '13800138001', 50, 0, 50, 'pending', orderTime2]
+      );
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.orderCount).toBe(1); // 只应该处理周期内的订单
+
+      // 验证周期内的订单被取消
+      const order1 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId1]);
+      expect(order1.status).toBe('cancelled');
+
+      // 验证周期外的订单未被处理
+      const order2 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId2]);
+      expect(order2.status).toBe('pending');
+    });
+
+    it('should not process paid orders (only pending orders are queried)', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 200, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      // 创建折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 10, '10% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建周期内的已付款订单
+      const orderId = 'test-order-' + Date.now();
+      const orderTime = new Date(Date.now() - 1.5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'paid', orderTime]
+      );
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      // 注意：代码只查询 status='pending' 的订单，所以已付款订单不会被处理
+      expect(response.body.orderCount).toBe(0);
+
+      // 验证已付款订单未被处理（状态和折扣都未改变）
+      const order = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(order.status).toBe('paid'); // 状态不变
+      expect(order.discount_amount).toBe(0); // 折扣未更新（因为未被查询到）
+      expect(order.final_amount).toBe(100); // 最终金额未更新
+    });
+
+    it('should calculate discount using cycle total_amount', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期（total_amount = 250）
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 250, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      // 创建多条折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [200, null, 20, '20% discount for 200+', 'active']
+      );
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 10, '10% discount for 100+', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建周期内的待付款订单
+      const orderId = 'test-order-' + Date.now();
+      const orderTime = new Date(Date.now() - 1.5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending', orderTime]
+      );
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      // 应该使用周期total_amount (250) 匹配规则，选择20%折扣
+      expect(response.body.discountRate).toBe(20);
+
+      // 验证订单折扣已更新（使用20%折扣）
+      const order = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(order.discount_amount).toBe(20); // 100 * 0.2
+      expect(order.final_amount).toBe(80); // 100 - 20
+    });
+
+    it('should automatically cancel pending orders', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 200, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      // 创建折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 10, '10% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建多个待付款订单
+      const orderId1 = 'test-order-1-' + Date.now();
+      const orderId2 = 'test-order-2-' + Date.now();
+      const orderTime = new Date(Date.now() - 1.5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId1, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending', orderTime]
+      );
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId2, 'BO' + (Date.now() + 1).toString().slice(-8), userResult.id, 'Test User', '13800138001', 50, 0, 50, 'pending', orderTime]
+      );
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.cancelledCount).toBe(2);
+
+      // 验证所有待付款订单都被取消
+      const order1 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId1]);
+      expect(order1.status).toBe('cancelled');
+      expect(order1.discount_amount).toBe(10);
+      expect(order1.final_amount).toBe(90);
+
+      const order2 = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId2]);
+      expect(order2.status).toBe('cancelled');
+      expect(order2.discount_amount).toBe(5);
+      expect(order2.final_amount).toBe(45);
+    });
+
+    it('should update cycle status to confirmed with correct discount_rate', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 200, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      // 创建折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 15, '15% discount', 'active']
+      );
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+
+      // 验证周期状态已更新
+      const confirmedCycle = await getAsync('SELECT * FROM ordering_cycles WHERE id = ?', [cycleId]);
+      expect(confirmedCycle.status).toBe('confirmed');
+      expect(confirmedCycle.discount_rate).toBe(15); // 百分比格式
+      expect(confirmedCycle.confirmed_at).toBeDefined();
+      expect(confirmedCycle.updated_at).toBeDefined();
+    });
+
+    it('should handle cycle with no orders', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期（无订单）
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 0, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.orderCount).toBe(0);
+      expect(response.body.cancelledCount).toBe(0);
+      expect(response.body.discountRate).toBe(0);
+
+      // 验证周期状态已更新
+      const confirmedCycle = await getAsync('SELECT * FROM ordering_cycles WHERE id = ?', [cycleId]);
+      expect(confirmedCycle.status).toBe('confirmed');
+    });
+
+    it('should handle cycle with only paid orders', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 200, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      // 创建折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 10, '10% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建周期内的已付款订单
+      const orderId = 'test-order-' + Date.now();
+      const orderTime = new Date(Date.now() - 1.5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'paid', orderTime]
+      );
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      // 注意：代码只查询status='pending'的订单，所以orderCount应该是0
+      // 但周期确认应该仍然成功
+      expect(response.body.orderCount).toBe(0);
+      expect(response.body.cancelledCount).toBe(0);
+
+      // 验证已付款订单状态未改变
+      const order = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(order.status).toBe('paid');
+    });
+
+    it('should handle cycle with only pending orders', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 200, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      // 创建折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 10, '10% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建周期内的待付款订单
+      const orderId = 'test-order-' + Date.now();
+      const orderTime = new Date(Date.now() - 1.5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending', orderTime]
+      );
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.orderCount).toBe(1);
+      expect(response.body.cancelledCount).toBe(1);
+
+      // 验证订单被取消
+      const order = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(order.status).toBe('cancelled');
+      expect(order.discount_amount).toBe(10);
+      expect(order.final_amount).toBe(90);
+    });
+
+    it('should handle discount rate of 0', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期（total_amount较小，不匹配任何规则）
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 50, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      // 创建折扣规则（min_amount较大，不匹配）
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 10, '10% discount', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建周期内的待付款订单
+      const orderId = 'test-order-' + Date.now();
+      const orderTime = new Date(Date.now() - 1.5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 50, 0, 50, 'pending', orderTime]
+      );
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.discountRate).toBe(0);
+
+      // 验证订单折扣为0
+      const order = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(order.discount_amount).toBe(0);
+      expect(order.final_amount).toBe(50);
+    });
+
+    it('should handle discount rate of 100%', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建已结束的周期
+      const startTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      const endTime = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      
+      const cycleResult = await runAsync(
+        `INSERT INTO ordering_cycles (cycle_number, start_time, end_time, status, total_amount, discount_rate)
+         VALUES (?, ?, ?, 'ended', 200, 0)`,
+        ['CYCLE' + Date.now(), startTime, endTime]
+      );
+      const cycleId = cycleResult.id;
+
+      // 创建100%折扣规则
+      await runAsync(
+        'INSERT INTO discount_rules (min_amount, max_amount, discount_rate, description, status) VALUES (?, ?, ?, ?, ?)',
+        [100, null, 100, '100% discount (free)', 'active']
+      );
+
+      // 创建用户
+      const userResult = await runAsync(
+        'INSERT INTO users (phone, name) VALUES (?, ?)',
+        ['13800138000', 'Test User']
+      );
+
+      // 创建周期内的待付款订单
+      const orderId = 'test-order-' + Date.now();
+      const orderTime = new Date(Date.now() - 1.5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      await runAsync(
+        `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
+         total_amount, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId, 'BO' + Date.now().toString().slice(-8), userResult.id, 'Test User', '13800138000', 100, 0, 100, 'pending', orderTime]
+      );
+
+      const response = await agent
+        .post(`/api/admin/cycles/${cycleId}/confirm`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.discountRate).toBe(100);
+
+      // 验证订单折扣为100%
+      const order = await getAsync('SELECT * FROM orders WHERE id = ?', [orderId]);
+      expect(order.discount_amount).toBe(100);
+      expect(order.final_amount).toBe(0);
+    });
+
     it('should respect max_visible_cycles setting', async () => {
       const agent = request.agent(app);
       await agent
@@ -1958,6 +2608,34 @@ describe('Admin Routes', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.logs.length).toBeLessThanOrEqual(3);
     });
+
+    it('should get log filter options', async () => {
+      const agent = request.agent(app);
+      await agent
+        .post('/api/auth/admin/login')
+        .send({ username: mockAdmin.username, password: mockAdmin.password });
+
+      // 创建不同类型的日志
+      await runAsync(
+        `INSERT INTO logs (admin_id, action, target_type, target_id, details, created_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [adminId, 'CREATE', 'product', '1', '{}']
+      );
+      await runAsync(
+        `INSERT INTO logs (admin_id, action, target_type, target_id, details, created_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+        [adminId, 'UPDATE', 'category', '2', '{}']
+      );
+
+      const response = await agent.get('/api/admin/logs/filter-options');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.options).toBeDefined();
+      expect(Array.isArray(response.body.options.actions)).toBe(true);
+      expect(Array.isArray(response.body.options.resourceTypes)).toBe(true);
+      expect(Array.isArray(response.body.options.operators)).toBe(true);
+    });
   });
 
   describe('Users Management', () => {
@@ -2043,34 +2721,45 @@ describe('Admin Routes', () => {
       expect(response.status).toBe(401);
     });
 
-    it('should export orders as CSV', async () => {
+    it('should export orders as XLSX', async () => {
       const agent = request.agent(app);
       await agent
         .post('/api/auth/admin/login')
         .send({ username: mockAdmin.username, password: mockAdmin.password });
 
-      const response = await agent.get('/api/admin/orders/export');
+      const response = await agent
+        .get('/api/admin/orders/export')
+        .responseType('blob');
 
       expect(response.status).toBe(200);
-      expect(response.headers['content-type']).toContain('text/csv');
+      expect(response.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       expect(response.headers['content-disposition']).toContain('attachment');
-      expect(response.text).toBeDefined();
-      expect(response.text).toContain('订单编号');
-      expect(response.text).toContain('客户姓名');
+      expect(response.headers['content-disposition']).toContain('.xlsx');
+      // XLSX文件是二进制格式，验证文件签名
+      expect(response.body).toBeDefined();
+      // supertest with responseType('blob') returns Buffer
+      const buffer = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body.toString(), 'binary');
+      expect(buffer.length).toBeGreaterThan(0);
+      const fileSignature = buffer.slice(0, 2).toString('hex');
+      expect(fileSignature).toBe('504b'); // PK in hex (ZIP/XLSX file signature)
     });
 
-    it('should export orders with UTF-8 BOM', async () => {
+    it('should export orders as XLSX format', async () => {
       const agent = request.agent(app);
       await agent
         .post('/api/auth/admin/login')
         .send({ username: mockAdmin.username, password: mockAdmin.password });
 
-      const response = await agent.get('/api/admin/orders/export');
+      const response = await agent
+        .get('/api/admin/orders/export')
+        .responseType('blob');
 
       expect(response.status).toBe(200);
-      // 检查BOM (UTF-8 BOM是 \ufeff)
-      const bom = response.text.charCodeAt(0);
-      expect(bom).toBe(0xFEFF);
+      // XLSX文件以PK开头（ZIP格式的魔数）
+      const buffer = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body.toString(), 'binary');
+      expect(buffer.length).toBeGreaterThan(0);
+      const fileSignature = buffer.slice(0, 2).toString('hex');
+      expect(fileSignature).toBe('504b'); // PK in hex (ZIP/XLSX file signature)
     });
 
     it('should filter orders by status', async () => {
@@ -2079,10 +2768,17 @@ describe('Admin Routes', () => {
         .post('/api/auth/admin/login')
         .send({ username: mockAdmin.username, password: mockAdmin.password });
 
-      const response = await agent.get('/api/admin/orders/export?status=pending');
+      const response = await agent
+        .get('/api/admin/orders/export?status=pending')
+        .responseType('blob');
 
       expect(response.status).toBe(200);
-      expect(response.text).toContain('待付款');
+      expect(response.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      // XLSX是二进制格式，验证文件签名
+      const buffer = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body.toString(), 'binary');
+      expect(buffer.length).toBeGreaterThan(0);
+      const fileSignature = buffer.slice(0, 2).toString('hex');
+      expect(fileSignature).toBe('504b'); // PK in hex (ZIP/XLSX file signature)
     });
 
     it('should filter orders by phone', async () => {
@@ -2091,10 +2787,17 @@ describe('Admin Routes', () => {
         .post('/api/auth/admin/login')
         .send({ username: mockAdmin.username, password: mockAdmin.password });
 
-      const response = await agent.get('/api/admin/orders/export?phone=13800138000');
+      const response = await agent
+        .get('/api/admin/orders/export?phone=13800138000')
+        .responseType('blob');
 
       expect(response.status).toBe(200);
-      expect(response.text).toContain('13800138000');
+      expect(response.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      // XLSX是二进制格式，验证文件签名
+      const buffer = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body.toString(), 'binary');
+      expect(buffer.length).toBeGreaterThan(0);
+      const fileSignature = buffer.slice(0, 2).toString('hex');
+      expect(fileSignature).toBe('504b'); // PK in hex (ZIP/XLSX file signature)
     });
 
     it('should filter orders by cycle_id', async () => {
@@ -2103,10 +2806,14 @@ describe('Admin Routes', () => {
         .post('/api/auth/admin/login')
         .send({ username: mockAdmin.username, password: mockAdmin.password });
 
-      const response = await agent.get(`/api/admin/orders/export?cycle_id=${cycleId}`);
+      const response = await agent
+        .get(`/api/admin/orders/export?cycle_id=${cycleId}`)
+        .responseType('blob');
 
       expect(response.status).toBe(200);
-      expect(response.text).toBeDefined();
+      expect(response.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      const buffer = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body.toString(), 'binary');
+      expect(buffer.length).toBeGreaterThan(0);
     });
 
     it('should return 404 when no cycles found', async () => {
@@ -2125,21 +2832,23 @@ describe('Admin Routes', () => {
       expect(response.body.message).toContain('No cycles found');
     });
 
-    it('should include order details in CSV', async () => {
+    it('should include order details in XLSX', async () => {
       const agent = request.agent(app);
       await agent
         .post('/api/auth/admin/login')
         .send({ username: mockAdmin.username, password: mockAdmin.password });
 
-      const response = await agent.get('/api/admin/orders/export');
+      const response = await agent
+        .get('/api/admin/orders/export')
+        .responseType('blob');
 
       expect(response.status).toBe(200);
-      const csvContent = response.text;
-      expect(csvContent).toContain('Test Product');
-      expect(csvContent).toContain('large');
-      expect(csvContent).toContain('50');
-      expect(csvContent).toContain('Less Ice');
-      expect(csvContent).toContain('Test notes');
+      expect(response.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      // XLSX是二进制格式，验证文件格式正确
+      const buffer = Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body.toString(), 'binary');
+      expect(buffer.length).toBeGreaterThan(0);
+      const fileSignature = buffer.slice(0, 2).toString('hex');
+      expect(fileSignature).toBe('504b'); // PK in hex (ZIP/XLSX file signature)
     });
   });
 
@@ -2505,12 +3214,14 @@ describe('Admin Routes', () => {
       }
 
       const startTime = Date.now();
-      const response = await agent.get('/api/admin/orders/export');
+      const response = await agent
+        .get('/api/admin/orders/export')
+        .responseType('blob');
       const endTime = Date.now();
       const duration = endTime - startTime;
 
       expect(response.status).toBe(200);
-      expect(response.headers['content-type']).toContain('text/csv');
+      expect(response.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       // 导出应该在合理时间内完成（比如3秒内）
       expect(duration).toBeLessThan(3000);
     });

@@ -5175,5 +5175,458 @@ router.post('/remote-backup/received/:id/restore', async (req, res) => {
   }
 });
 
+// ==================== 业务测试用例 API ====================
+
+const { spawn } = require('child_process');
+
+// 测试运行状态
+let testRunState = {
+  running: false,
+  process: null,
+  progress: { current: 0, total: 0, currentTest: '' },
+  completed: false,
+  logs: [] // 存储测试日志
+};
+
+// 获取测试套件列表
+router.get('/developer/test-suites', requireSuperAdmin, async (req, res) => {
+  try {
+    const testDir = path.join(__dirname, '..', 'tests');
+    const suites = [];
+    
+    // 扫描测试文件
+    const testFiles = [
+      { name: 'routes/admin.test.js', displayName: '管理员接口测试', path: 'tests/routes/admin.test.js' },
+      { name: 'routes/auth.test.js', displayName: '认证接口测试', path: 'tests/routes/auth.test.js' },
+      { name: 'routes/user.test.js', displayName: '用户接口测试', path: 'tests/routes/user.test.js' },
+      { name: 'routes/public.test.js', displayName: '公开接口测试', path: 'tests/routes/public.test.js' },
+      { name: 'middleware/auth.test.js', displayName: '认证中间件测试', path: 'tests/middleware/auth.test.js' },
+      { name: 'middleware/monitoring.test.js', displayName: '监控中间件测试', path: 'tests/middleware/monitoring.test.js' },
+      { name: 'utils/order-helper.test.js', displayName: '订单辅助函数测试', path: 'tests/utils/order-helper.test.js' },
+      { name: 'integration/order-discount-cycle.test.js', displayName: '订单折扣周期集成测试', path: 'tests/integration/order-discount-cycle.test.js' }
+    ];
+    
+    // 统计每个测试文件的测试数量（简化版，实际可以从Jest获取）
+    for (const file of testFiles) {
+      const filePath = path.join(__dirname, '..', file.path);
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const testCount = (content.match(/it\(|test\(/g) || []).length;
+        suites.push({
+          name: file.name,
+          displayName: file.displayName,
+          path: file.path,
+          testCount: testCount
+        });
+      }
+    }
+    
+    res.json({ success: true, suites });
+  } catch (error) {
+    logger.error('获取测试套件列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to get test suites' });
+  }
+});
+
+// 运行测试
+router.post('/developer/run-tests', requireSuperAdmin, async (req, res) => {
+  try {
+    if (testRunState.running) {
+      return res.status(400).json({ success: false, message: 'Tests are already running' });
+    }
+    
+    const { suites } = req.body;
+    if (!suites || !Array.isArray(suites) || suites.length === 0) {
+      return res.status(400).json({ success: false, message: 'Test suites are required' });
+    }
+    
+    // 构建Jest命令
+    const projectRoot = path.join(__dirname, '..');
+    
+    // 构建测试路径参数 - 使用testPathPattern匹配测试文件
+    const testPatterns = suites.map(suite => {
+      // 将 routes/admin.test.js 转换为 routes/admin 或 admin
+      // 保持路径结构，例如：routes/admin.test.js -> routes/admin
+      const pattern = suite.replace(/^tests\//, '').replace(/\.test\.js$/, '');
+      return pattern;
+    });
+    
+    // 使用jest直接运行，而不是npm test，以便更好地控制参数
+    const jestArgs = [
+      '--coverage',
+      '--json',
+      '--outputFile=reports/test-results.json',
+      '--forceExit' // 确保Jest在测试完成后退出
+    ];
+    
+    // 构建Jest命令 - 使用单个testPathPattern，用正则表达式匹配多个文件
+    // 格式: (pattern1|pattern2|pattern3)
+    if (testPatterns.length > 0) {
+      const combinedPattern = '(' + testPatterns.join('|') + ')';
+      jestArgs.push('--testPathPattern=' + combinedPattern);
+    }
+    
+    // 启动测试进程
+    testRunState.running = true;
+    testRunState.completed = false;
+    testRunState.logs = []; // 清空之前的日志
+    testRunState.progress = { 
+      current: 0, 
+      total: 0, 
+      currentTest: 'Starting tests...',
+      currentSuite: ''
+    };
+    
+    // 添加启动日志
+    testRunState.logs.push(`[INFO] 开始运行测试套件: ${suites.join(', ')}`);
+    testRunState.logs.push(`[INFO] Jest命令: npx jest ${jestArgs.join(' ')}`);
+    
+    logger.info('启动测试', { 
+      suites, 
+      patterns: testPatterns, 
+      combinedPattern: testPatterns.length > 0 ? '(' + testPatterns.join('|') + ')' : 'all',
+      args: jestArgs 
+    });
+    
+    const jestProcess = spawn('npx', ['jest', ...jestArgs], {
+      cwd: projectRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: true
+    });
+    
+    testRunState.process = jestProcess;
+    
+    let stdout = '';
+    let stderr = '';
+    
+    // 解析Jest输出以获取进度
+    let totalTests = 0;
+    let completedTests = 0;
+    let currentTestName = '';
+    let lastProgressUpdate = Date.now();
+    
+    jestProcess.stdout.on('data', (data) => {
+      const output = data.toString();
+      stdout += output;
+      
+      // 存储日志（限制日志数量，避免内存溢出）
+      const logLines = output.split('\n').filter(line => line.trim());
+      testRunState.logs.push(...logLines);
+      // 只保留最近1000行日志
+      if (testRunState.logs.length > 1000) {
+        testRunState.logs = testRunState.logs.slice(-1000);
+      }
+      
+      // 从文本输出中解析进度（Jest的--json输出在最后，我们需要从文本中解析）
+      // Jest文本输出示例：
+      // PASS tests/routes/admin.test.js
+      //   Admin Routes
+      //     ✓ should get all categories (123 ms)
+      const lines = output.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        
+        // 检测测试用例完成（以✓或✗开头）
+        if (trimmed.match(/^[✓✗○]\s+/)) {
+          completedTests++;
+          // 提取测试名称
+          const match = trimmed.match(/^[✓✗○]\s+(.+?)\s*\(/);
+          if (match) {
+            currentTestName = match[1];
+          }
+          // 立即更新进度（不等待300ms）
+          // 只有在知道总数或已完成测试数大于0时才更新，避免初始状态显示100%
+          if (totalTests > 0 || completedTests > 0) {
+            testRunState.progress = {
+              current: completedTests,
+              total: totalTests || Math.max(completedTests * 3, 50), // 更保守的估算
+              currentTest: currentTestName || 'Running tests...',
+              currentSuite: testRunState.progress.currentSuite || ''
+            };
+          }
+        }
+        
+        // 检测测试套件名称（PASS/FAIL后面的文件路径）
+        const suiteMatch = trimmed.match(/^(PASS|FAIL)\s+(.+?\.test\.js)/);
+        if (suiteMatch) {
+          // 提取测试套件名称（去掉路径，只保留文件名）
+          const suitePath = suiteMatch[2];
+          const suiteName = suitePath.split('/').pop().replace('.test.js', '');
+          testRunState.progress.currentSuite = suiteName;
+        }
+        
+        // 检测最终统计（Test Suites: X passed, Y total）
+        const suiteStatsMatch = trimmed.match(/Test Suites:\s+(\d+)\s+(passed|failed)/);
+        if (suiteStatsMatch) {
+          // 可以用于验证
+        }
+        
+        // 检测测试总数（Tests: X passed, Y total）
+        const testMatch = trimmed.match(/Tests:\s+(\d+)\s+(passed|failed|skipped).*?(\d+)\s+total/);
+        if (testMatch) {
+          totalTests = parseInt(testMatch[3]) || totalTests;
+          // 立即更新进度
+          testRunState.progress = {
+            current: completedTests,
+            total: totalTests,
+            currentTest: currentTestName || 'Running tests...',
+            currentSuite: testRunState.progress.currentSuite || ''
+          };
+        }
+        
+        // 也尝试从JSON输出中解析（如果Jest输出了JSON行）
+        try {
+          const jsonMatch = trimmed.match(/\{"numTotalTests":(\d+)/);
+          if (jsonMatch) {
+            totalTests = parseInt(jsonMatch[1]);
+            // 立即更新进度
+            testRunState.progress = {
+              current: completedTests,
+              total: totalTests,
+              currentTest: currentTestName || 'Running tests...',
+              currentSuite: testRunState.progress.currentSuite || ''
+            };
+          }
+        } catch (e) {
+          // 忽略JSON解析错误
+        }
+      }
+      
+      // 定期更新进度（即使没有新测试完成，也更新当前状态）
+      const now = Date.now();
+      if (now - lastProgressUpdate > 200 || completedTests === 0) { // 每200ms更新一次，或首次更新
+        // 如果检测到测试套件完成，可以估算总数
+        if (completedTests > 0 && totalTests === 0) {
+          // 估算：已完成测试数 * 3（更保守的估计，避免过早显示高百分比）
+          totalTests = Math.max(completedTests * 3, 50);
+        }
+        
+        // 只有在有实际进度时才更新
+        if (completedTests > 0 || totalTests > 0) {
+          testRunState.progress = {
+            current: completedTests,
+            total: totalTests || Math.max(completedTests * 3, 50), // 更保守的估算
+            currentTest: currentTestName || 'Running tests...',
+            currentSuite: testRunState.progress.currentSuite || ''
+          };
+        }
+        lastProgressUpdate = now;
+      }
+    });
+    
+    jestProcess.stderr.on('data', (data) => {
+      const errorOutput = data.toString();
+      stderr += errorOutput;
+      
+      // 存储错误日志
+      const errorLines = errorOutput.split('\n').filter(line => line.trim());
+      testRunState.logs.push(...errorLines.map(line => `[ERROR] ${line}`));
+      // 只保留最近1000行日志
+      if (testRunState.logs.length > 1000) {
+        testRunState.logs = testRunState.logs.slice(-1000);
+      }
+    });
+    
+    jestProcess.on('close', async (code) => {
+      testRunState.running = false;
+      testRunState.completed = true;
+      testRunState.process = null;
+      
+      // 最终更新进度 - 只有在有实际测试数据时才更新
+      // 如果 totalTests 为 0 且 completedTests 也为 0，说明测试可能没有运行或立即失败
+      if (totalTests > 0 || completedTests > 0) {
+        testRunState.progress = {
+          current: totalTests || completedTests,
+          total: totalTests || completedTests,
+          currentTest: code === 0 ? 'All tests completed' : 'Tests completed with errors',
+          currentSuite: testRunState.progress.currentSuite || ''
+        };
+      } else {
+        // 测试可能没有运行，保持当前进度或设置为初始状态
+        testRunState.progress = {
+          current: 0,
+          total: 0,
+          currentTest: code === 0 ? 'Tests completed (no tests found)' : 'Tests failed to run',
+          currentSuite: testRunState.progress.currentSuite || ''
+        };
+      }
+      
+      // 添加完成日志
+      testRunState.logs.push(`[INFO] 测试完成，退出代码: ${code}`);
+      testRunState.logs.push(`[INFO] 总测试数: ${totalTests || completedTests}, 已完成: ${completedTests}`);
+      
+      // 生成测试报告
+      try {
+        testRunState.logs.push('[INFO] 正在生成测试报告...');
+        const { execSync } = require('child_process');
+        execSync('node scripts/generate-test-report.js', { cwd: projectRoot, stdio: 'ignore' });
+        testRunState.logs.push('[INFO] 测试报告生成成功');
+        logger.info('测试报告生成成功', { code, totalTests, completedTests });
+      } catch (e) {
+        testRunState.logs.push(`[ERROR] 生成测试报告失败: ${e.message}`);
+        logger.error('生成测试报告失败', { error: e.message });
+      }
+    });
+    
+    jestProcess.on('error', (error) => {
+      logger.error('测试进程启动失败', { error: error.message, stack: error.stack });
+      testRunState.running = false;
+      testRunState.completed = true;
+      testRunState.process = null;
+      testRunState.logs = testRunState.logs || [];
+      testRunState.logs.push(`[ERROR] 测试进程启动失败: ${error.message}`);
+    });
+    
+    res.json({ success: true, message: 'Tests started' });
+  } catch (error) {
+    logger.error('运行测试失败', { error: error.message, stack: error.stack });
+    testRunState.running = false;
+    testRunState.completed = false;
+    testRunState.logs = testRunState.logs || [];
+    testRunState.logs.push(`[ERROR] 启动测试失败: ${error.message}`);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to run tests',
+      error: error.message 
+    });
+  }
+});
+
+// 获取测试进度
+router.get('/developer/test-progress', requireSuperAdmin, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      running: testRunState.running,
+      completed: testRunState.completed,
+      progress: testRunState.progress,
+      logs: testRunState.logs || [] // 返回测试日志
+    });
+  } catch (error) {
+    logger.error('获取测试进度失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to get test progress' });
+  }
+});
+
+// 停止测试
+router.post('/developer/stop-tests', requireSuperAdmin, async (req, res) => {
+  try {
+    if (testRunState.running && testRunState.process) {
+      testRunState.process.kill();
+      testRunState.running = false;
+      testRunState.process = null;
+      res.json({ success: true, message: 'Tests stopped' });
+    } else {
+      res.json({ success: false, message: 'No tests running' });
+    }
+  } catch (error) {
+    logger.error('停止测试失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to stop tests' });
+  }
+});
+
+// 获取测试报告
+router.get('/developer/test-report', requireSuperAdmin, async (req, res) => {
+  try {
+    const reportPath = path.join(__dirname, '..', 'reports', 'test-report.html');
+    
+    if (!fs.existsSync(reportPath)) {
+      // 返回一个简单的占位页面，而不是404
+      const placeholder = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Test Report - Not Ready</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              display: flex; 
+              align-items: center; 
+              justify-content: center; 
+              height: 100vh; 
+              margin: 0;
+              background: #f5f5f5;
+            }
+            .container {
+              text-align: center;
+              padding: 40px;
+              background: white;
+              border-radius: 8px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .spinner {
+              border: 4px solid #f3f3f3;
+              border-top: 4px solid #3498db;
+              border-radius: 50%;
+              width: 40px;
+              height: 40px;
+              animation: spin 1s linear infinite;
+              margin: 0 auto 20px;
+            }
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="spinner"></div>
+            <h2>Test Report Not Ready</h2>
+            <p>The test report is still being generated. Please wait...</p>
+          </div>
+        </body>
+        </html>
+      `;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(placeholder);
+    }
+    
+    const html = fs.readFileSync(reportPath, 'utf8');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.send(html);
+  } catch (error) {
+    logger.error('获取测试报告失败', { error: error.message });
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Error</title>
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0;
+            background: #f5f5f5;
+          }
+          .container {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            color: #e74c3c;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h2>Error Loading Test Report</h2>
+          <p>${error.message}</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+});
+
 module.exports = router;
 

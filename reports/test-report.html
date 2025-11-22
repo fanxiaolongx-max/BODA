@@ -1,0 +1,1960 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>测试报告 - 2025/11/22 13:32:51</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+    .header .timestamp {
+      opacity: 0.9;
+      font-size: 1.1em;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      padding: 30px;
+      background: #f9f9f9;
+    }
+    .summary-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .summary-card h3 {
+      font-size: 0.9em;
+      color: #666;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .summary-card .value {
+      font-size: 2.5em;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .summary-card.passed .value { color: #10b981; }
+    .summary-card.failed .value { color: #ef4444; }
+    .summary-card.skipped .value { color: #f59e0b; }
+    .summary-card.total .value { color: #3b82f6; }
+    .summary-card .percentage {
+      font-size: 0.9em;
+      color: #666;
+    }
+    .section {
+      padding: 30px;
+      border-top: 1px solid #e5e5e5;
+    }
+    .section h2 {
+      font-size: 1.8em;
+      margin-bottom: 20px;
+      color: #333;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 10px;
+    }
+    .test-suite {
+      margin-bottom: 30px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .test-suite-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #ddd;
+    }
+    .test-suite-name {
+      font-size: 1.3em;
+      font-weight: bold;
+      color: #333;
+    }
+    .test-suite-stats {
+      display: flex;
+      gap: 15px;
+      font-size: 0.9em;
+    }
+    .test-suite-stats span {
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .test-suite-stats .passed { background: #d1fae5; color: #065f46; }
+    .test-suite-stats .failed { background: #fee2e2; color: #991b1b; }
+    .test-suite-stats .skipped { background: #fef3c7; color: #92400e; }
+    .test-item {
+      padding: 12px;
+      margin: 8px 0;
+      background: white;
+      border-radius: 6px;
+      border-left: 4px solid #10b981;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .test-item.failed {
+      border-left-color: #ef4444;
+      background: #fef2f2;
+    }
+    .test-item.skipped {
+      border-left-color: #f59e0b;
+      background: #fffbeb;
+    }
+    .test-icon {
+      font-size: 1.2em;
+      font-weight: bold;
+    }
+    .test-item.passed .test-icon { color: #10b981; }
+    .test-item.failed .test-icon { color: #ef4444; }
+    .test-item.skipped .test-icon { color: #f59e0b; }
+    .test-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .test-name {
+      font-weight: 500;
+      color: #333;
+    }
+    .test-description {
+      font-size: 0.85em;
+      color: #666;
+      font-style: italic;
+      line-height: 1.4;
+    }
+    .test-duration {
+      color: #666;
+      font-size: 0.9em;
+      white-space: nowrap;
+    }
+    .error-details {
+      margin-top: 15px;
+      padding: 15px;
+      background: #fee2e2;
+      border-radius: 6px;
+      border-left: 4px solid #ef4444;
+    }
+    .error-message {
+      color: #991b1b;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .error-stack {
+      color: #7f1d1d;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      background: white;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .coverage-section {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .coverage-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .coverage-card h3 {
+      font-size: 1.1em;
+      margin-bottom: 15px;
+      color: #333;
+    }
+    .coverage-metric {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #e5e5e5;
+    }
+    .coverage-metric:last-child {
+      border-bottom: none;
+    }
+    .coverage-metric-name {
+      font-weight: 500;
+      color: #666;
+    }
+    .coverage-metric-value {
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+    .coverage-metric-value.high { color: #10b981; }
+    .coverage-metric-value.medium { color: #f59e0b; }
+    .coverage-metric-value.low { color: #ef4444; }
+    .file-coverage {
+      margin-top: 20px;
+    }
+    .file-coverage-item {
+      padding: 12px;
+      margin: 8px 0;
+      background: #f9f9f9;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .file-coverage-name {
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+      color: #333;
+    }
+    .file-coverage-bar {
+      flex: 1;
+      height: 8px;
+      background: #e5e5e5;
+      border-radius: 4px;
+      margin: 0 15px;
+      overflow: hidden;
+    }
+    .file-coverage-bar-fill {
+      height: 100%;
+      transition: width 0.3s;
+    }
+    .file-coverage-bar-fill.high { background: #10b981; }
+    .file-coverage-bar-fill.medium { background: #f59e0b; }
+    .file-coverage-bar-fill.low { background: #ef4444; }
+    .file-coverage-percentage {
+      font-weight: bold;
+      min-width: 60px;
+      text-align: right;
+    }
+    .no-data {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+      font-style: italic;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e5e5e5;
+    }
+    .tab {
+      padding: 12px 24px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1em;
+      color: #666;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.3s;
+    }
+    .tab:hover {
+      color: #667eea;
+    }
+    .tab.active {
+      color: #667eea;
+      border-bottom-color: #667eea;
+      font-weight: bold;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🧪 测试报告</h1>
+      <div class="timestamp">生成时间: 2025/11/22 13:32:51</div>
+    </div>
+
+    <div class="summary">
+      
+    <div class="summary-card passed">
+      <h3>通过</h3>
+      <div class="value">124</div>
+      <div class="percentage">100.0%</div>
+    </div>
+    <div class="summary-card failed">
+      <h3>失败</h3>
+      <div class="value">0</div>
+      <div class="percentage">0.0%</div>
+    </div>
+    <div class="summary-card skipped">
+      <h3>跳过</h3>
+      <div class="value">0</div>
+      <div class="percentage">0.0%</div>
+    </div>
+    <div class="summary-card total">
+      <h3>总计</h3>
+      <div class="value">124</div>
+      <div class="percentage">测试套件数: 1</div>
+    </div>
+  
+    </div>
+
+    <div class="section">
+      <div class="tabs">
+        <button class="tab active" onclick="showTab('tests', event)">测试结果</button>
+        <button class="tab" onclick="showTab('api', event)">API测试</button>
+        <button class="tab" onclick="showTab('coverage', event)">代码覆盖率</button>
+        <button class="tab" onclick="showTab('failures', event)">失败详情</button>
+      </div>
+
+      <div id="tests-tab" class="tab-content active">
+        
+      <div class="test-suite">
+        <div class="test-suite-header">
+          <div class="test-suite-name" title="/Volumes/512G/06-工具开发/BODA/tests/routes/admin.test.js">admin</div>
+          <div class="test-suite-stats">
+            <span class="passed">✓ 124</span>
+            
+            
+          </div>
+        </div>
+    
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get all categories</span>
+              <span class="test-description">获取所有分类 - 验证管理员可以查看系统中的所有产品分类</span>
+            </div>
+            <span class="test-duration">(236 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should create category</span>
+              <span class="test-description">创建分类 - 验证管理员可以创建新的产品分类</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle error when creating category fails</span>
+              <span class="test-description">处理创建分类错误 - 验证系统能正确处理分类创建失败的情况</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update category</span>
+              <span class="test-description">更新分类 - 验证管理员可以修改现有分类的信息</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should delete category</span>
+              <span class="test-description">删除分类 - 验证管理员可以删除没有关联产品的分类</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 404 when deleting non-existent category</span>
+              <span class="test-description">删除不存在的分类 - 验证删除不存在的分类时返回404错误</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 400 when deleting category with products</span>
+              <span class="test-description">删除有关联产品的分类 - 验证系统阻止删除包含产品的分类</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(160 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get all products when authenticated</span>
+              <span class="test-description">获取所有产品 - 验证管理员登录后可以查看所有产品</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter products by category_id</span>
+              <span class="test-description">按分类筛选产品 - 验证可以根据分类ID筛选产品</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter products by status</span>
+              <span class="test-description">按状态筛选产品 - 验证可以根据产品状态（激活/停用）筛选</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle error when getting products fails</span>
+              <span class="test-description">处理获取产品错误 - 验证系统能正确处理获取产品列表失败的情况</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get product by id when authenticated</span>
+              <span class="test-description">根据ID获取产品 - 验证管理员可以查看单个产品的详细信息</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should create product with sizes, toppings, and ice_options</span>
+              <span class="test-description">创建带选项的产品 - 验证可以创建包含杯型、加料、冰度等选项的产品</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should create product with image upload</span>
+              <span class="test-description">创建带图片的产品 - 验证可以上传产品图片并创建产品</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update product with new image</span>
+              <span class="test-description">更新产品图片 - 验证可以替换现有产品的图片</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should reject invalid file type for product image</span>
+              <span class="test-description">测试: should reject invalid file type for product image</span>
+            </div>
+            <span class="test-duration">(221 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update product with sizes, toppings, and ice_options</span>
+              <span class="test-description">测试: should update product with sizes, toppings, and ice_options</span>
+            </div>
+            <span class="test-duration">(218 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should delete product without orders</span>
+              <span class="test-description">测试: should delete product without orders</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should batch update products</span>
+              <span class="test-description">批量更新产品 - 验证可以同时更新多个产品的状态和排序</span>
+            </div>
+            <span class="test-duration">(210 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should batch update products with price actions</span>
+              <span class="test-description">批量更新产品价格 - 验证可以批量调整产品价格（设置、增加、乘以）</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 400 when product_ids is empty</span>
+              <span class="test-description">测试: should return 400 when product_ids is empty</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 400 when updates is empty</span>
+              <span class="test-description">测试: should return 400 when updates is empty</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 400 when deleting product with orders</span>
+              <span class="test-description">测试: should return 400 when deleting product with orders</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get all admins when super_admin is logged in</span>
+              <span class="test-description">测试: should get all admins when super_admin is logged in</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should create admin with all fields including name</span>
+              <span class="test-description">测试: should create admin with all fields including name</span>
+            </div>
+            <span class="test-duration">(262 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should create admin with empty name field</span>
+              <span class="test-description">测试: should create admin with empty name field</span>
+            </div>
+            <span class="test-duration">(265 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update admin name field</span>
+              <span class="test-description">测试: should update admin name field</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update admin name to empty string</span>
+              <span class="test-description">测试: should update admin name to empty string</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should delete admin</span>
+              <span class="test-description">删除管理员 - 验证超级管理员可以删除管理员</span>
+            </div>
+            <span class="test-duration">(279 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent deleting self</span>
+              <span class="test-description">测试: should prevent deleting self</span>
+            </div>
+            <span class="test-duration">(226 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 404 when deleting non-existent admin</span>
+              <span class="test-description">测试: should return 404 when deleting non-existent admin</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should validate admin creation data</span>
+              <span class="test-description">测试: should validate admin creation data</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent duplicate username</span>
+              <span class="test-description">测试: should prevent duplicate username</span>
+            </div>
+            <span class="test-duration">(214 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication for admin routes</span>
+              <span class="test-description">测试: should require authentication for admin routes</span>
+            </div>
+            <span class="test-duration">(183 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should allow super_admin to manage admins</span>
+              <span class="test-description">测试: should allow super_admin to manage admins</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent regular admin from creating admins</span>
+              <span class="test-description">测试: should prevent regular admin from creating admins</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent regular admin from updating admins</span>
+              <span class="test-description">测试: should prevent regular admin from updating admins</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent regular admin from deleting admins</span>
+              <span class="test-description">测试: should prevent regular admin from deleting admins</span>
+            </div>
+            <span class="test-duration">(268 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should allow regular admin to view admins list</span>
+              <span class="test-description">测试: should allow regular admin to view admins list</span>
+            </div>
+            <span class="test-duration">(209 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(157 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get settings when authenticated</span>
+              <span class="test-description">测试: should get settings when authenticated</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update settings when authenticated</span>
+              <span class="test-description">测试: should update settings when authenticated</span>
+            </div>
+            <span class="test-duration">(214 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should create new cycle when ordering changes from closed to open</span>
+              <span class="test-description">测试: should create new cycle when ordering changes from closed to open</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should end cycle and calculate discount when ordering changes from open to closed</span>
+              <span class="test-description">测试: should end cycle and calculate discount when ordering changes from open to closed</span>
+            </div>
+            <span class="test-duration">(214 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should not create duplicate cycle when ordering is already open</span>
+              <span class="test-description">测试: should not create duplicate cycle when ordering is already open</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(159 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return empty statistics when no cycles exist</span>
+              <span class="test-description">测试: should return empty statistics when no cycles exist</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return statistics for active cycle</span>
+              <span class="test-description">测试: should return statistics for active cycle</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return statistics for ended cycle when no active cycle</span>
+              <span class="test-description">测试: should return statistics for ended cycle when no active cycle</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should calculate discount rate for ended cycle</span>
+              <span class="test-description">测试: should calculate discount rate for ended cycle</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(163 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get all orders when authenticated</span>
+              <span class="test-description">测试: should get all orders when authenticated</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter orders by status</span>
+              <span class="test-description">测试: should filter orders by status</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter orders by phone</span>
+              <span class="test-description">测试: should filter orders by phone</span>
+            </div>
+            <span class="test-duration">(222 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter orders by cycle_id</span>
+              <span class="test-description">测试: should filter orders by cycle_id</span>
+            </div>
+            <span class="test-duration">(339 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should respect max_visible_cycles setting for orders</span>
+              <span class="test-description">测试: should respect max_visible_cycles setting for orders</span>
+            </div>
+            <span class="test-duration">(227 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should mark orders as expired correctly</span>
+              <span class="test-description">测试: should mark orders as expired correctly</span>
+            </div>
+            <span class="test-duration">(348 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update order status</span>
+              <span class="test-description">更新订单状态 - 验证管理员可以修改订单状态</span>
+            </div>
+            <span class="test-duration">(234 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 400 for invalid status</span>
+              <span class="test-description">测试: should return 400 for invalid status</span>
+            </div>
+            <span class="test-duration">(221 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(244 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get discount rules when authenticated</span>
+              <span class="test-description">测试: should get discount rules when authenticated</span>
+            </div>
+            <span class="test-duration">(263 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should batch update discount rules</span>
+              <span class="test-description">批量更新折扣规则 - 验证可以批量创建、更新、删除折扣规则</span>
+            </div>
+            <span class="test-duration">(326 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(177 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get cycles when authenticated</span>
+              <span class="test-description">测试: should get cycles when authenticated</span>
+            </div>
+            <span class="test-duration">(214 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should confirm cycle</span>
+              <span class="test-description">测试: should confirm cycle</span>
+            </div>
+            <span class="test-duration">(224 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 404 when confirming non-existent cycle</span>
+              <span class="test-description">测试: should return 404 when confirming non-existent cycle</span>
+            </div>
+            <span class="test-duration">(239 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 400 when confirming already confirmed cycle</span>
+              <span class="test-description">测试: should return 400 when confirming already confirmed cycle</span>
+            </div>
+            <span class="test-duration">(302 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should query orders within cycle time range correctly</span>
+              <span class="test-description">测试: should query orders within cycle time range correctly</span>
+            </div>
+            <span class="test-duration">(236 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should not process paid orders (only pending orders are queried)</span>
+              <span class="test-description">测试: should not process paid orders (only pending orders are queried)</span>
+            </div>
+            <span class="test-duration">(305 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should calculate discount using cycle total_amount</span>
+              <span class="test-description">测试: should calculate discount using cycle total_amount</span>
+            </div>
+            <span class="test-duration">(223 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should automatically cancel pending orders</span>
+              <span class="test-description">测试: should automatically cancel pending orders</span>
+            </div>
+            <span class="test-duration">(218 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update cycle status to confirmed with correct discount_rate</span>
+              <span class="test-description">测试: should update cycle status to confirmed with correct discount_rate</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle cycle with no orders</span>
+              <span class="test-description">测试: should handle cycle with no orders</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle cycle with only paid orders</span>
+              <span class="test-description">测试: should handle cycle with only paid orders</span>
+            </div>
+            <span class="test-duration">(219 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle cycle with only pending orders</span>
+              <span class="test-description">测试: should handle cycle with only pending orders</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle discount rate of 0</span>
+              <span class="test-description">测试: should handle discount rate of 0</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle discount rate of 100%</span>
+              <span class="test-description">测试: should handle discount rate of 100%</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should respect max_visible_cycles setting</span>
+              <span class="test-description">测试: should respect max_visible_cycles setting</span>
+            </div>
+            <span class="test-duration">(217 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(158 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should open ordering and create new cycle</span>
+              <span class="test-description">测试: should open ordering and create new cycle</span>
+            </div>
+            <span class="test-duration">(217 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should close ordering and calculate discount</span>
+              <span class="test-description">测试: should close ordering and calculate discount</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle closing ordering when already closed</span>
+              <span class="test-description">测试: should handle closing ordering when already closed</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle closing ordering when no active cycle exists</span>
+              <span class="test-description">测试: should handle closing ordering when no active cycle exists</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle opening ordering when already open</span>
+              <span class="test-description">测试: should handle opening ordering when already open</span>
+            </div>
+            <span class="test-duration">(226 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should complete full ordering cycle: open -&gt; create orders -&gt; close -&gt; calculate discount -&gt; confirm</span>
+              <span class="test-description">测试: should complete full ordering cycle: open -&gt; create orders -&gt; close -&gt; calculate discount -&gt; confirm</span>
+            </div>
+            <span class="test-duration">(218 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle transaction rollback when cycle creation fails</span>
+              <span class="test-description">测试: should handle transaction rollback when cycle creation fails</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle multiple orders in the same cycle correctly</span>
+              <span class="test-description">测试: should handle multiple orders in the same cycle correctly</span>
+            </div>
+            <span class="test-duration">(219 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle large number of orders efficiently</span>
+              <span class="test-description">测试: should handle large number of orders efficiently</span>
+            </div>
+            <span class="test-duration">(218 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(162 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get logs when authenticated</span>
+              <span class="test-description">测试: should get logs when authenticated</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should limit logs by limit parameter</span>
+              <span class="test-description">测试: should limit logs by limit parameter</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get log filter options</span>
+              <span class="test-description">测试: should get log filter options</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(162 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get users when authenticated</span>
+              <span class="test-description">测试: should get users when authenticated</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(162 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should export orders as XLSX</span>
+              <span class="test-description">测试: should export orders as XLSX</span>
+            </div>
+            <span class="test-duration">(225 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should export orders as XLSX format</span>
+              <span class="test-description">测试: should export orders as XLSX format</span>
+            </div>
+            <span class="test-duration">(349 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter orders by status</span>
+              <span class="test-description">测试: should filter orders by status</span>
+            </div>
+            <span class="test-duration">(233 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter orders by phone</span>
+              <span class="test-description">测试: should filter orders by phone</span>
+            </div>
+            <span class="test-duration">(308 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter orders by cycle_id</span>
+              <span class="test-description">测试: should filter orders by cycle_id</span>
+            </div>
+            <span class="test-duration">(227 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 404 when no cycles found</span>
+              <span class="test-description">测试: should return 404 when no cycles found</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should include order details in XLSX</span>
+              <span class="test-description">测试: should include order details in XLSX</span>
+            </div>
+            <span class="test-duration">(217 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require super_admin for all developer endpoints</span>
+              <span class="test-description">测试: should require super_admin for all developer endpoints</span>
+            </div>
+            <span class="test-duration">(217 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get tables list when super_admin</span>
+              <span class="test-description">测试: should get tables list when super_admin</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get table schema when super_admin</span>
+              <span class="test-description">测试: should get table schema when super_admin</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should reject invalid table name in table schema</span>
+              <span class="test-description">测试: should reject invalid table name in table schema</span>
+            </div>
+            <span class="test-duration">(214 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get table data with pagination when super_admin</span>
+              <span class="test-description">测试: should get table data with pagination when super_admin</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should reject invalid table name in table data</span>
+              <span class="test-description">测试: should reject invalid table name in table data</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update table data when super_admin</span>
+              <span class="test-description">测试: should update table data when super_admin</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should reject invalid table name in update table data</span>
+              <span class="test-description">测试: should reject invalid table name in update table data</span>
+            </div>
+            <span class="test-duration">(214 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should execute SELECT query when super_admin</span>
+              <span class="test-description">测试: should execute SELECT query when super_admin</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should reject dangerous SQL keywords</span>
+              <span class="test-description">测试: should reject dangerous SQL keywords</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should reject non-allowed SQL statement types</span>
+              <span class="test-description">测试: should reject non-allowed SQL statement types</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require SQL query parameter</span>
+              <span class="test-description">测试: should require SQL query parameter</span>
+            </div>
+            <span class="test-duration">(214 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent SQL injection in product ID parameter</span>
+              <span class="test-description">测试: should prevent SQL injection in product ID parameter</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent SQL injection in category ID parameter</span>
+              <span class="test-description">测试: should prevent SQL injection in category ID parameter</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent XSS in product name</span>
+              <span class="test-description">测试: should prevent XSS in product name</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent unauthorized access to admin endpoints</span>
+              <span class="test-description">测试: should prevent unauthorized access to admin endpoints</span>
+            </div>
+            <span class="test-duration">(161 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should prevent regular admin from accessing super_admin endpoints</span>
+              <span class="test-description">测试: should prevent regular admin from accessing super_admin endpoints</span>
+            </div>
+            <span class="test-duration">(216 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should validate and sanitize input in admin creation</span>
+              <span class="test-description">测试: should validate and sanitize input in admin creation</span>
+            </div>
+            <span class="test-duration">(266 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle querying many orders efficiently</span>
+              <span class="test-description">测试: should handle querying many orders efficiently</span>
+            </div>
+            <span class="test-duration">(214 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle export with many orders efficiently</span>
+              <span class="test-description">测试: should handle export with many orders efficiently</span>
+            </div>
+            <span class="test-duration">(234 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle statistics query efficiently</span>
+              <span class="test-description">测试: should handle statistics query efficiently</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="api-tab" class="tab-content">
+        <div class="api-test-summary">
+    <div class="api-summary-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
+      <div class="summary-card passed">
+        <h3>API测试通过</h3>
+        <div class="value">124</div>
+        <div class="percentage">100.0%</div>
+      </div>
+      <div class="summary-card failed">
+        <h3>API测试失败</h3>
+        <div class="value">0</div>
+        <div class="percentage">0.0%</div>
+      </div>
+      <div class="summary-card skipped">
+        <h3>API测试跳过</h3>
+        <div class="value">0</div>
+        <div class="percentage">0.0%</div>
+      </div>
+      <div class="summary-card total">
+        <h3>API测试总计</h3>
+        <div class="value">124</div>
+        <div class="percentage">测试套件数: 1</div>
+      </div>
+    </div>
+  <h3 style="margin-top: 30px; margin-bottom: 20px; color: #333;">API测试套件详情</h3>
+      <div class="test-suite" style="margin-bottom: 20px;">
+        <div class="test-suite-header">
+          <div class="test-suite-name passed" title="/Volumes/512G/06-工具开发/BODA/tests/routes/admin.test.js">
+            admin
+          </div>
+          <div class="test-suite-stats">
+            <span class="passed">✓ 124</span>
+            
+            
+            <span style="color: #666; margin-left: 10px;">总计: 124 个测试</span>
+          </div>
+        </div>
+    
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get all categories</span>
+              <span class="test-description">获取所有分类 - 验证管理员可以查看系统中的所有产品分类</span>
+            </div>
+            <span class="test-duration">(236 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should create category</span>
+              <span class="test-description">创建分类 - 验证管理员可以创建新的产品分类</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle error when creating category fails</span>
+              <span class="test-description">处理创建分类错误 - 验证系统能正确处理分类创建失败的情况</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update category</span>
+              <span class="test-description">更新分类 - 验证管理员可以修改现有分类的信息</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should delete category</span>
+              <span class="test-description">删除分类 - 验证管理员可以删除没有关联产品的分类</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 404 when deleting non-existent category</span>
+              <span class="test-description">删除不存在的分类 - 验证删除不存在的分类时返回404错误</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should return 400 when deleting category with products</span>
+              <span class="test-description">删除有关联产品的分类 - 验证系统阻止删除包含产品的分类</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should require authentication</span>
+              <span class="test-description">需要认证 - 验证产品管理接口需要管理员登录</span>
+            </div>
+            <span class="test-duration">(160 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get all products when authenticated</span>
+              <span class="test-description">获取所有产品 - 验证管理员登录后可以查看所有产品</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter products by category_id</span>
+              <span class="test-description">按分类筛选产品 - 验证可以根据分类ID筛选产品</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should filter products by status</span>
+              <span class="test-description">按状态筛选产品 - 验证可以根据产品状态（激活/停用）筛选</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should handle error when getting products fails</span>
+              <span class="test-description">处理获取产品错误 - 验证系统能正确处理获取产品列表失败的情况</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should get product by id when authenticated</span>
+              <span class="test-description">根据ID获取产品 - 验证管理员可以查看单个产品的详细信息</span>
+            </div>
+            <span class="test-duration">(212 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should create product with sizes, toppings, and ice_options</span>
+              <span class="test-description">创建带选项的产品 - 验证可以创建包含杯型、加料、冰度等选项的产品</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should create product with image upload</span>
+              <span class="test-description">创建带图片的产品 - 验证可以上传产品图片并创建产品</span>
+            </div>
+            <span class="test-duration">(215 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update product with new image</span>
+              <span class="test-description">更新产品图片 - 验证可以替换现有产品的图片</span>
+            </div>
+            <span class="test-duration">(213 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should reject invalid file type for product image</span>
+              <span class="test-description">测试: should reject invalid file type for product image</span>
+            </div>
+            <span class="test-duration">(221 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should update product with sizes, toppings, and ice_options</span>
+              <span class="test-description">测试: should update product with sizes, toppings, and ice_options</span>
+            </div>
+            <span class="test-duration">(218 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should delete product without orders</span>
+              <span class="test-description">测试: should delete product without orders</span>
+            </div>
+            <span class="test-duration">(211 毫秒)</span>
+          </div>
+        
+          <div class="test-item passed">
+            <span class="test-icon">✓</span>
+            <div class="test-info">
+              <span class="test-name">should batch update products</span>
+              <span class="test-description">批量更新产品 - 验证可以同时更新多个产品的状态和排序</span>
+            </div>
+            <span class="test-duration">(210 毫秒)</span>
+          </div>
+        <div style="padding: 10px; color: #666; font-style: italic;">... 还有 104 个测试用例（查看完整列表请切换到"测试结果"标签页）</div></div></div>
+      </div>
+
+      <div id="coverage-tab" class="tab-content">
+        <div class="coverage-section">
+      <div class="coverage-card">
+        <h3>语句覆盖率</h3>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">覆盖率</span>
+          <span class="coverage-metric-value low">31.48%</span>
+        </div>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">已覆盖</span>
+          <span>1268/4027</span>
+        </div>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">未覆盖</span>
+          <span>2759</span>
+        </div>
+      </div>
+    
+      <div class="coverage-card">
+        <h3>分支覆盖率</h3>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">覆盖率</span>
+          <span class="coverage-metric-value low">22.9%</span>
+        </div>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">已覆盖</span>
+          <span>599/2615</span>
+        </div>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">未覆盖</span>
+          <span>2016</span>
+        </div>
+      </div>
+    
+      <div class="coverage-card">
+        <h3>函数覆盖率</h3>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">覆盖率</span>
+          <span class="coverage-metric-value low">27.92%</span>
+        </div>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">已覆盖</span>
+          <span>86/308</span>
+        </div>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">未覆盖</span>
+          <span>222</span>
+        </div>
+      </div>
+    
+      <div class="coverage-card">
+        <h3>行覆盖率</h3>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">覆盖率</span>
+          <span class="coverage-metric-value low">30.71%</span>
+        </div>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">已覆盖</span>
+          <span>1206/3926</span>
+        </div>
+        <div class="coverage-metric">
+          <span class="coverage-metric-name">未覆盖</span>
+          <span>2720</span>
+        </div>
+      </div>
+    </div><div class="file-coverage"><h3>文件级覆盖率</h3>
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/middleware/monitoring.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 0%"></div>
+          </div>
+          <span class="file-coverage-percentage low">0.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/routes/public.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 0%"></div>
+          </div>
+          <span class="file-coverage-percentage low">0.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/routes/user.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 0%"></div>
+          </div>
+          <span class="file-coverage-percentage low">0.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/health-check.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 0%"></div>
+          </div>
+          <span class="file-coverage-percentage low">0.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/logger.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 0%"></div>
+          </div>
+          <span class="file-coverage-percentage low">0.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/scheduler.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 0%"></div>
+          </div>
+          <span class="file-coverage-percentage low">0.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/backup.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 4.27%"></div>
+          </div>
+          <span class="file-coverage-percentage low">4.3%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/cleanup.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 4.34%"></div>
+          </div>
+          <span class="file-coverage-percentage low">4.3%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/sms.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 5.81%"></div>
+          </div>
+          <span class="file-coverage-percentage low">5.8%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/verification.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 6.66%"></div>
+          </div>
+          <span class="file-coverage-percentage low">6.7%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/remote-backup.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 7.01%"></div>
+          </div>
+          <span class="file-coverage-percentage low">7.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/order-helper.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 14.04%"></div>
+          </div>
+          <span class="file-coverage-percentage low">14.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/routes/auth.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 15.12%"></div>
+          </div>
+          <span class="file-coverage-percentage low">15.1%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/middleware/remote-backup-auth.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 20%"></div>
+          </div>
+          <span class="file-coverage-percentage low">20.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/email.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 22.22%"></div>
+          </div>
+          <span class="file-coverage-percentage low">22.2%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/cache.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 39.39%"></div>
+          </div>
+          <span class="file-coverage-percentage low">39.4%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/middleware/auth.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 39.53%"></div>
+          </div>
+          <span class="file-coverage-percentage low">39.5%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/log-helper.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 40%"></div>
+          </div>
+          <span class="file-coverage-percentage low">40.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/routes/admin.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill low" style="width: 47.22%"></div>
+          </div>
+          <span class="file-coverage-percentage low">47.2%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/cycle-helper.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill medium" style="width: 66.66%"></div>
+          </div>
+          <span class="file-coverage-percentage medium">66.7%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/utils/session-config.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill medium" style="width: 68%"></div>
+          </div>
+          <span class="file-coverage-percentage medium">68.0%</span>
+        </div>
+      
+        <div class="file-coverage-item">
+          <span class="file-coverage-name">/Volumes/512G/06-工具开发/BODA/middleware/validation.js</span>
+          <div class="file-coverage-bar">
+            <div class="file-coverage-bar-fill high" style="width: 100%"></div>
+          </div>
+          <span class="file-coverage-percentage high">100.0%</span>
+        </div>
+      </div>
+      </div>
+
+      <div id="failures-tab" class="tab-content">
+        <div class="no-data">🎉 所有测试都通过了！没有失败的测试。</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showTab(tabName, event) {
+      // 隐藏所有标签内容
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      // 移除所有标签的active类
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      // 显示选中的标签内容
+      document.getElementById(tabName + '-tab').classList.add('active');
+      // 激活选中的标签
+      if (event && event.target) {
+        event.target.classList.add('active');
+      }
+    }
+  </script>
+</body>
+</html>

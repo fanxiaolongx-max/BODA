@@ -507,10 +507,12 @@ router.get('/session/info', async (req, res) => {
     cookieExpires = adminExpires;
   } else if (userExpires) {
     cookieExpires = userExpires;
-  } else if (cookie.expires) {
+  } else if (cookie && cookie.expires) {
     cookieExpires = new Date(cookie.expires);
   } else {
-    cookieExpires = new Date(now + maxAge);
+    // 默认使用24小时作为cookie过期时间
+    const defaultMaxAge = 24 * 60 * 60 * 1000; // 24小时
+    cookieExpires = new Date(now + defaultMaxAge);
   }
   
   const cookieRemainingMs = Math.max(0, cookieExpires.getTime() - now);
@@ -580,10 +582,10 @@ router.get('/session/info', async (req, res) => {
  * @returns {Object} Success message
  */
 router.post('/session/refresh', async (req, res) => {
-  if (!req.session) {
+  if (!req.session || (!req.session.adminId && !req.session.userId)) {
     return res.status(401).json({ 
       success: false, 
-      message: 'No session found' 
+      message: 'No active session found' 
     });
   }
 
