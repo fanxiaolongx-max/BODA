@@ -996,11 +996,18 @@ router.post('/settings', async (req, res) => {
             }
           }
           
+          // 检查orders表是否有balance_used字段
+          const ordersTableInfo = await allAsync("PRAGMA table_info(orders)");
+          const ordersColumns = ordersTableInfo.map(col => col.name);
+          const hasBalanceUsed = ordersColumns.includes('balance_used');
+          
           // 批量更新所有订单的折扣（已经在事务中，不需要再开启新事务）
           const { roundAmount } = require('../utils/order-helper');
           for (const order of orders) {
             const discountAmount = roundAmount(order.total_amount * discountRate);
-            const finalAmount = roundAmount(order.total_amount - discountAmount);
+            // 计算最终金额：原价 - 折扣 - 已使用的余额
+            const balanceUsed = hasBalanceUsed && order.balance_used ? (order.balance_used || 0) : 0;
+            const finalAmount = roundAmount(order.total_amount - discountAmount - balanceUsed);
             
             await runAsync(
               "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
@@ -1146,11 +1153,18 @@ router.post('/ordering/close', async (req, res) => {
             }
           }
           
+          // 检查orders表是否有balance_used字段
+          const ordersTableInfo2 = await allAsync("PRAGMA table_info(orders)");
+          const ordersColumns2 = ordersTableInfo2.map(col => col.name);
+          const hasBalanceUsed2 = ordersColumns2.includes('balance_used');
+          
           // 批量更新所有订单的折扣（已经在事务中，不需要再开启新事务）
           const { roundAmount } = require('../utils/order-helper');
           for (const order of orders) {
             const discountAmount = roundAmount(order.total_amount * discountRate);
-            const finalAmount = roundAmount(order.total_amount - discountAmount);
+            // 计算最终金额：原价 - 折扣 - 已使用的余额
+            const balanceUsed = hasBalanceUsed2 && order.balance_used ? (order.balance_used || 0) : 0;
+            const finalAmount = roundAmount(order.total_amount - discountAmount - balanceUsed);
             
             await runAsync(
               "UPDATE orders SET discount_amount = ?, final_amount = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
@@ -2577,11 +2591,19 @@ router.post('/cycles/:id/confirm', async (req, res) => {
         }
       }
       
+      // 检查orders表是否有balance_used字段
+      const ordersTableInfo = await allAsync("PRAGMA table_info(orders)");
+      const ordersColumns = ordersTableInfo.map(col => col.name);
+      const hasBalanceUsed = ordersColumns.includes('balance_used');
+      
       // 更新所有订单的折扣，并将待付款订单自动取消
       let cancelledCount = 0;
+      let refundedCount = 0;
       for (const order of orders) {
         const discountAmount = order.total_amount * discountRate;
-        const finalAmount = order.total_amount - discountAmount;
+        // 计算最终金额：原价 - 折扣 - 已使用的余额
+        const balanceUsed = hasBalanceUsed && order.balance_used ? (order.balance_used || 0) : 0;
+        const finalAmount = roundAmount(order.total_amount - discountAmount - balanceUsed);
         
         // 如果订单是待付款状态，自动取消
         if (order.status === 'pending') {
@@ -2590,6 +2612,44 @@ router.post('/cycles/:id/confirm', async (req, res) => {
             [discountAmount, finalAmount, order.id]
           );
           cancelledCount++;
+          
+          // 如果订单使用了余额，需要退还余额
+          if (hasBalanceUsed && balanceUsed > 0) {
+            // 获取用户当前余额
+            const user = await getAsync('SELECT balance FROM users WHERE id = ?', [order.user_id]);
+              if (user) {
+                const balanceBefore = user.balance || 0;
+                const balanceAfter = roundAmount(balanceBefore + balanceUsed);
+                
+                // 退还余额
+                await runAsync(
+                  'UPDATE users SET balance = ? WHERE id = ?',
+                  [balanceAfter, order.user_id]
+                );
+                
+                // 记录余额变动
+                await runAsync(
+                  `INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, order_id, notes, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+                  [
+                    order.user_id,
+                    'refund',
+                    balanceUsed, // 正数表示增加
+                    balanceBefore,
+                    balanceAfter,
+                    order.id,
+                    '周期确认，订单自动取消，退还余额'
+                  ]
+                );
+                
+                refundedCount++;
+                logger.info('订单取消，已退还余额', { 
+                  orderId: order.id, 
+                  userId: order.user_id, 
+                  balanceUsed 
+                });
+              }
+          }
         } else {
           // 已付款的订单只更新折扣
         await runAsync(
@@ -2610,6 +2670,7 @@ router.post('/cycles/:id/confirm', async (req, res) => {
       logger.info('周期确认完成，已自动取消待付款订单', { 
         cycleId: id, 
         cancelledCount, 
+        refundedCount,
         totalOrders: orders.length 
       });
       
@@ -2639,7 +2700,8 @@ router.post('/cycles/:id/confirm', async (req, res) => {
         message: '周期确认成功',
         discountRate: discountRate * 100,
         orderCount: orders.length,
-        cancelledCount: cancelledCount
+        cancelledCount: cancelledCount,
+        refundedCount: refundedCount
       });
     } catch (error) {
       await rollback();
@@ -3299,42 +3361,89 @@ router.delete('/users/:userId', async (req, res) => {
   const { userId } = req.params;
   
   try {
+    // 验证userId参数
+    if (!userId || isNaN(parseInt(userId))) {
+      logger.warn('删除用户：无效的userId参数', { userId, method: req.method, path: req.path });
+      return res.status(400).json({ success: false, message: '无效的用户ID' });
+    }
+    
     // 检查用户是否存在
     const user = await getAsync('SELECT * FROM users WHERE id = ?', [userId]);
     if (!user) {
+      logger.warn('删除用户：用户不存在', { userId });
       return res.status(404).json({ success: false, message: '用户不存在' });
-    }
-    
-    // 检查用户是否有未完成的订单
-    const pendingOrders = await getAsync(
-      'SELECT COUNT(*) as count FROM orders WHERE user_id = ? AND status IN (?, ?)',
-      [userId, 'pending', 'paid']
-    );
-    
-    if (pendingOrders.count > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `无法删除用户：该用户还有 ${pendingOrders.count} 个未完成的订单`
-      });
     }
     
     await beginTransaction();
     
-    // 删除用户（外键约束会自动删除相关的订单、余额变动记录等）
-    await runAsync('DELETE FROM users WHERE id = ?', [userId]);
-    
-    // 记录操作日志
-    await logAction(req.session.adminId, 'DELETE_USER', 'user', userId, {
-      phone: user.phone,
-      name: user.name
-    }, req);
-    
-    await commit();
-    
-    res.json({ success: true, message: '用户删除成功' });
+    try {
+      // 获取用户的所有订单ID（用于统计和日志）
+      const userOrders = await allAsync(
+        'SELECT id, order_number, status FROM orders WHERE user_id = ?',
+        [userId]
+      );
+      
+      // 获取用户的余额变动记录数量（用于统计和日志）
+      const balanceTransactions = await allAsync(
+        'SELECT COUNT(*) as count FROM balance_transactions WHERE user_id = ?',
+        [userId]
+      );
+      const transactionCount = balanceTransactions[0]?.count || 0;
+      
+      // 强制删除用户的所有订单（这会级联删除订单项，因为 order_items 有 ON DELETE CASCADE）
+      await runAsync(
+        'DELETE FROM orders WHERE user_id = ?',
+        [userId]
+      );
+      
+      // 删除余额变动记录（虽然外键约束是 ON DELETE CASCADE，但为了确保数据一致性，我们显式删除）
+      // 注意：如果外键约束正常工作，这行可能不会删除任何记录，但不会报错
+      await runAsync(
+        'DELETE FROM balance_transactions WHERE user_id = ?',
+        [userId]
+      );
+      
+      // 删除用户
+      await runAsync('DELETE FROM users WHERE id = ?', [userId]);
+      
+      // 记录操作日志
+      await logAction(req.session.adminId, 'DELETE_USER', 'user', userId, {
+        phone: user.phone,
+        name: user.name,
+        deletedOrdersCount: userOrders.length,
+        deletedTransactionsCount: transactionCount,
+        forceDelete: true
+      }, req);
+      
+      await commit();
+      
+      logger.info('用户强制删除成功', {
+        userId,
+        phone: user.phone,
+        deletedOrdersCount: userOrders.length,
+        deletedTransactionsCount: transactionCount
+      });
+      
+      res.json({ 
+        success: true, 
+        message: '用户删除成功',
+        deletedOrdersCount: userOrders.length,
+        deletedTransactionsCount: transactionCount
+      });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
   } catch (error) {
     await rollback();
-    logger.error('删除用户失败', { error: error.message, userId });
+    logger.error('删除用户失败', { 
+      error: error.message, 
+      userId,
+      stack: error.stack,
+      method: req.method,
+      path: req.path,
+      params: req.params
+    });
     res.status(500).json({ success: false, message: error.message || '删除用户失败' });
   }
 });

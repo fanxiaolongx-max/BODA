@@ -3672,11 +3672,11 @@ function renderOrders(orders) {
                 </div>
                 <div class="flex justify-between text-xs">
                   <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('unit_price')}</span>
-                  <span class="${expiredClass || inactiveClass} font-medium">${formatPrice(unitPrice)}</span>
+                  <span class="${expiredClass || inactiveClass} font-medium text-right">${formatPrice(unitPrice)}</span>
                 </div>
                 <div class="flex justify-between text-xs">
                   <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('subtotal')}</span>
-                  <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} font-bold">${formatPrice(item.subtotal)}</span>
+                  <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} font-bold text-right">${formatPrice(item.subtotal)}</span>
                 </div>
               </div>
             </div>
@@ -3688,23 +3688,29 @@ function renderOrders(orders) {
         <div class="space-y-2">
           <div class="flex justify-between items-center text-sm">
             <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('original_price')}</span>
-            <span class="${expiredClass || inactiveClass} font-medium">${formatPrice(order.total_amount)}</span>
+            <span class="${expiredClass || inactiveClass} font-medium text-right">${formatPrice(order.total_amount)}</span>
           </div>
           ${order.discount_amount > 0 ? `
             <div class="flex justify-between items-center text-sm">
               <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('discount_label')}</span>
-              <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'} font-medium">-${formatPrice(order.discount_amount)}</span>
+              <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'} font-medium text-right">-${formatPrice(order.discount_amount)}</span>
+            </div>
+          ` : ''}
+          ${order.balance_used && order.balance_used > 0 ? `
+            <div class="flex justify-between items-center text-sm">
+              <span class="${expiredClass || inactiveClass || 'text-gray-600'}" data-i18n="balance_used">Balance Used</span>
+              <span class="${expiredClass || inactiveClass || 'text-green-600'} font-medium text-right">-${formatPrice(order.balance_used)}</span>
+            </div>
+            <div class="flex justify-between items-center text-sm pt-1 border-t border-gray-200">
+              <span class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('subtotal')}</span>
+              <span class="${expiredClass || inactiveClass || 'text-gray-700'} font-medium text-right">
+                ${formatPrice(order.total_amount)}${order.discount_amount > 0 ? ` - ${formatPrice(order.discount_amount)}` : ''} - ${formatPrice(order.balance_used)} = <span class="font-bold">${formatPrice(order.final_amount)}</span>
+              </span>
             </div>
           ` : ''}
           <div class="flex justify-between items-center text-lg font-bold pt-2 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-300'}">
             <span class="${expiredClass || inactiveClass}">${t('final_amount_label')}</span>
-            <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} text-xl">${formatPrice(order.final_amount)}</span>
-          ${order.balance_used && order.balance_used > 0 ? `
-            <div class="flex justify-between items-center text-sm mt-2 pt-2 border-t border-gray-200">
-              <span class="${expiredClass || inactiveClass || 'text-gray-600'}" data-i18n="balance_used">Balance Used</span>
-              <span class="${expiredClass || inactiveClass || 'text-green-600'} font-semibold">${formatPrice(order.balance_used)}</span>
-            </div>
-          ` : ''}
+            <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'} text-xl text-right">${formatPrice(order.final_amount)}</span>
           </div>
           ${order.notes ? `
             <div class="mt-3 pt-3 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'}">

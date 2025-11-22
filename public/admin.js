@@ -33,11 +33,30 @@ async function adminApiRequest(url, options = {}) {
     
     // 解析JSON响应
     const data = await response.json();
+    
+    // 如果响应状态不是2xx，且响应包含错误信息，抛出错误
+    if (!response.ok && data && !data.success) {
+      const error = new Error(data.message || 'Request failed');
+      error.response = response;
+      error.data = data;
+      throw error;
+    }
+    
     return data;
   } catch (error) {
     // 如果是401错误，已经处理过了，直接抛出
     if (error.message && error.message.includes('Unauthorized')) {
       throw error;
+    }
+    // 如果是网络错误或JSON解析错误，尝试获取响应信息
+    if (error.response && !error.data) {
+      try {
+        const errorData = await error.response.clone().json();
+        error.data = errorData;
+      } catch (e) {
+        // 如果无法解析JSON，使用状态文本
+        error.data = { message: error.response.statusText || error.message };
+      }
     }
     // 其他错误继续抛出
     throw error;
@@ -3254,7 +3273,14 @@ async function resetUserPin(userId, phone) {
 
 // 删除用户
 async function deleteUser(userId, phone) {
-  if (!confirm(`Are you sure you want to delete user ${phone}? This action cannot be undone. Note: Users with pending or paid orders cannot be deleted.`)) {
+  const confirmed = await showConfirmDialog(
+    'Delete User',
+    `Are you sure you want to delete user ${phone}? This will permanently delete:\n\n- All orders and order items\n- All balance transaction records\n- User account and balance\n\nThis action cannot be undone!`,
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) {
     return;
   }
   
@@ -3264,12 +3290,28 @@ async function deleteUser(userId, phone) {
     });
     
     if (response && response.success) {
-      showToast('User deleted successfully', 'success');
+      const message = response.deletedOrdersCount > 0 || response.deletedTransactionsCount > 0
+        ? `User deleted successfully. Deleted ${response.deletedOrdersCount || 0} orders and ${response.deletedTransactionsCount || 0} balance transactions.`
+        : 'User deleted successfully';
+      showToast(message, 'success');
       await loadUsers();
     }
   } catch (error) {
     console.error('删除用户失败:', error);
-    showToast('Failed to delete user', 'error');
+    // 尝试从响应中获取错误信息
+    let errorMessage = 'Failed to delete user';
+    if (error.response) {
+      try {
+        const errorData = await error.response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch (e) {
+        // 如果响应不是JSON，使用状态文本
+        errorMessage = error.response.statusText || errorMessage;
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    showToast(errorMessage, 'error');
   }
 }
 
