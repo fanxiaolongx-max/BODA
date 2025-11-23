@@ -2547,7 +2547,7 @@ async function loadSettingsPage() {
                   
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Twilio Auth Token</label>
-                    <input type="password" id="twilioAuthToken" 
+                    <input type="password" id="twilioAuthToken" autocomplete="off"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                            placeholder="Your Twilio Auth Token"
                            value="${settings.twilio_auth_token || ''}">
@@ -2640,7 +2640,7 @@ async function loadSettingsPage() {
                     
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-2">SMTP Password *</label>
-                      <input type="password" id="emailSmtpPassword" 
+                      <input type="password" id="emailSmtpPassword" autocomplete="off"
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                              placeholder="Your SMTP password or app password"
                              value="${settings.email_smtp_password || ''}">
@@ -2798,7 +2798,7 @@ async function loadSettingsPage() {
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
                     <div class="flex items-center space-x-2">
-                      <input type="password" id="receiveApiToken" 
+                      <input type="password" id="receiveApiToken" autocomplete="off"
                              class="flex-1 px-4 py-2 border border-gray-300 rounded-lg"
                              placeholder="Enter API token (must match the token configured on the sending site)">
                       <button type="button" onclick="toggleReceiveApiTokenVisibility()" 
@@ -3738,7 +3738,7 @@ async function loadAdmins() {
               
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Password <span id="passwordLabel">*</span></label>
-                <input type="password" id="adminPassword" required 
+                <input type="password" id="adminPassword" required autocomplete="new-password"
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               

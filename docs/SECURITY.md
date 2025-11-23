@@ -28,11 +28,11 @@
 ### Content Security Policy (CSP)
 ```
 defaultSrc: 'self'
-styleSrc: 'self' 'unsafe-inline' https://cdn.tailwindcss.com
-scriptSrc: 'self' 'unsafe-inline' https://cdn.tailwindcss.com
+styleSrc: 'self' 'unsafe-inline'
+scriptSrc: 'self' 'unsafe-inline'
 imgSrc: 'self' data: blob:
 connectSrc: 'self'
-fontSrc: 'self' https://cdn.tailwindcss.com
+fontSrc: 'self'
 objectSrc: 'none'
 mediaSrc: 'self'
 frameSrc: 'none'
