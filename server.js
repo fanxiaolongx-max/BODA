@@ -389,14 +389,30 @@ async function startServer() {
     await initData();
     
     // 检查是否使用本地 HTTPS（仅本地开发环境）
-    // 如果证书文件存在，自动启用 HTTPS（除非明确禁用）
-    const certPath = path.join(__dirname, 'boba.local.pem');
-    const keyPath = path.join(__dirname, 'boba.local-key.pem');
-    const certFilesExist = fs.existsSync(certPath) && fs.existsSync(keyPath);
-    
-    const useLocalHttps = (process.env.USE_LOCAL_HTTPS === 'true' || process.env.USE_LOCAL_HTTPS === '1' || certFilesExist) 
-                          && process.env.USE_LOCAL_HTTPS !== 'false';
+    // 在 Fly.io 或其他生产环境上，FLY_APP_NAME 会被设置，跳过本地 HTTPS 检查
     const isLocalEnv = process.env.NODE_ENV !== 'production' && !process.env.FLY_APP_NAME;
+    
+    let certFilesExist = false;
+    let certPath = null;
+    let keyPath = null;
+    
+    // 只在本地环境检查证书文件（避免生产环境不必要的文件系统操作）
+    if (isLocalEnv) {
+      // 支持 boba.app.pem（Stripe 验证通过）或 boba.local.pem
+      certPath = fs.existsSync(path.join(__dirname, 'boba.app.pem')) 
+        ? path.join(__dirname, 'boba.app.pem')
+        : path.join(__dirname, 'boba.local.pem');
+      keyPath = fs.existsSync(path.join(__dirname, 'boba.app-key.pem'))
+        ? path.join(__dirname, 'boba.app-key.pem')
+        : path.join(__dirname, 'boba.local-key.pem');
+      certFilesExist = fs.existsSync(certPath) && fs.existsSync(keyPath);
+    }
+    
+    const useLocalHttps = isLocalEnv && (
+      process.env.USE_LOCAL_HTTPS === 'true' || 
+      process.env.USE_LOCAL_HTTPS === '1' || 
+      certFilesExist
+    ) && process.env.USE_LOCAL_HTTPS !== 'false';
     
     if (useLocalHttps && isLocalEnv) {
       // 本地环境：使用 mkcert 证书

@@ -27,12 +27,18 @@ mkcert -install
 在项目根目录运行：
 
 ```bash
+# 选项 1：生成 boba.app 证书（推荐，Stripe 域名验证可通过）
+mkcert boba.app
+
+# 选项 2：生成 boba.local 证书（仅本地测试）
 mkcert boba.local
 ```
 
 这会生成两个文件：
-- `boba.local.pem` - 证书文件
-- `boba.local-key.pem` - 私钥文件
+- `boba.app.pem` / `boba.local.pem` - 证书文件
+- `boba.app-key.pem` / `boba.local-key.pem` - 私钥文件
+
+**注意**：系统会优先使用 `boba.app.pem`（如果存在），否则使用 `boba.local.pem`
 
 ### 4. 配置环境变量
 
@@ -76,8 +82,12 @@ npm start
 
 ## 注意事项
 
-1. 证书文件路径：项目根目录下的 `boba.local.pem` 和 `boba.local-key.pem`
-2. 访问地址：`https://boba.local:3443` 或 `https://localhost:3443`
+1. 证书文件路径：
+   - 优先使用：`boba.app.pem` 和 `boba.app-key.pem`（Stripe 验证通过）
+   - 备选：`boba.local.pem` 和 `boba.local-key.pem`（仅本地测试）
+2. 访问地址：
+   - 使用 boba.app：`https://boba.app:3000` 或 `https://localhost:3000`
+   - 使用 boba.local：`https://boba.local:3000` 或 `https://localhost:3000`
 3. 如果证书文件不存在，服务器会自动使用 HTTP 启动
 4. 线上环境（Fly.io）会自动使用 Fly.io 的 HTTPS 证书，无需配置
 
