@@ -84,13 +84,28 @@ if (process.env.NODE_ENV !== 'production') {
 // 注意：winston-daily-rotate-file 会自动处理日志归档
 // 不需要手动设置 http 级别，使用 info 级别记录访问日志即可
 
+// 获取当前本地时间字符串（格式：YYYY-MM-DD HH:mm:ss）
+function getCurrentLocalTimeString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 // 操作日志记录（写入数据库）
 async function logAction(adminId, action, targetType, targetId, details, req) {
   const { runAsync } = require('../db/database');
   try {
+    // 使用 Node.js 获取当前本地时间，而不是依赖 SQLite 的 datetime('now', 'localtime')
+    // 这样可以确保时区正确
+    const currentTime = getCurrentLocalTimeString();
     await runAsync(
-      `INSERT INTO logs (admin_id, action, target_type, target_id, details, ip_address, user_agent)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO logs (admin_id, action, target_type, target_id, details, ip_address, user_agent, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         adminId,
         action,
@@ -98,7 +113,8 @@ async function logAction(adminId, action, targetType, targetId, details, req) {
         targetId,
         typeof details === 'object' ? JSON.stringify(details) : details,
         req ? (req.ip || req.connection.remoteAddress) : null,
-        req ? req.get('user-agent') : null
+        req ? req.get('user-agent') : null,
+        currentTime
       ]
     );
   } catch (error) {

@@ -292,12 +292,14 @@ let sessionRefreshInterval = null;
 
 async function checkAuth() {
   try {
-    const response = await adminApiRequest(`${API_BASE}/auth/admin/me`, {
+    // adminApiRequest 已经返回解析后的 JSON 数据，不是 response 对象
+    // 它返回的是 { success: true, admin: {...} } 或抛出错误
+    const data = await adminApiRequest(`${API_BASE}/auth/admin/me`, {
       method: 'GET'
     });
     
-    if (response.ok) {
-      const data = await response.json();
+    // 检查返回的数据是否成功
+    if (data && data.success && data.admin) {
       currentAdmin = data.admin;
       showMainPage();
       // 根据admin状态显示/隐藏Developer菜单
@@ -307,16 +309,23 @@ async function checkAuth() {
       startSessionCheck();
       startSessionRefresh();
     } else {
+      // 数据格式不正确，显示登录页
       showLoginPage();
       // 停止session检查和刷新
       stopSessionCheck();
       stopSessionRefresh();
     }
   } catch (error) {
-    console.error('认证检查失败:', error);
-    showLoginPage();
-    // 停止session检查
-    stopSessionCheck();
+    // 401错误已经在adminApiRequest中处理了（会跳转到登录页并显示提示）
+    // 这里只处理其他错误，避免重复跳转
+    if (!error.message || !error.message.includes('Unauthorized')) {
+      console.error('认证检查失败:', error);
+      // 只有非401错误才在这里显示登录页
+      showLoginPage();
+      stopSessionCheck();
+      stopSessionRefresh();
+    }
+    // 如果是401错误，adminApiRequest已经处理了跳转，这里不需要再处理
   }
 }
 
@@ -4340,6 +4349,39 @@ async function loadLogs() {
 }
 
 // 渲染日志行
+// 格式化时间显示（不进行时区转换，直接显示服务器时间）
+// 数据库返回的时间是服务器本地时间（datetime('now', 'localtime')）
+// 直接格式化显示，不进行时区转换
+function formatServerTime(timeString) {
+  if (!timeString) return '-';
+  try {
+    // 尝试匹配 YYYY-MM-DD HH:mm:ss 格式（SQLite datetime('now', 'localtime') 的格式）
+    const match = timeString.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+    if (match) {
+      // 直接格式化显示，不进行时区转换
+      const [, year, month, day, hour, minute, second] = match;
+      return `${month}/${day}/${year} ${hour}:${minute}:${second}`;
+    }
+    // 如果不是标准格式，尝试解析为Date对象
+    const date = new Date(timeString);
+    if (!isNaN(date.getTime())) {
+      // 使用原始时间字符串的日期部分，避免时区转换
+      // 如果timeString包含时区信息，直接提取日期时间部分
+      const dateStr = timeString.split('T')[0]; // 提取日期部分
+      const timeStr = timeString.split('T')[1]?.split('.')[0] || timeString.split(' ')[1] || '';
+      if (dateStr && timeStr) {
+        const [year, month, day] = dateStr.split('-');
+        return `${month}/${day}/${year} ${timeStr}`;
+      }
+      // 最后备选方案：使用Date对象，但显示原始值
+      return timeString;
+    }
+    return timeString;
+  } catch (e) {
+    return timeString;
+  }
+}
+
 function renderLogRow(log) {
   // 解析操作详情
   let detailsText = '-';
@@ -4397,7 +4439,7 @@ function renderLogRow(log) {
         data-details="${detailsText.toLowerCase()}"
         data-ip="${log.ip_address || ''}"
     >
-      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${log.created_at ? new Date(log.created_at).toLocaleString('en-US') : '-'}</td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatServerTime(log.created_at)}</td>
       <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${operatorName}</td>
       <td class="px-6 py-4 whitespace-nowrap text-sm">
         <span class="px-2 py-1 text-xs rounded-full ${actionInfo.class}">
