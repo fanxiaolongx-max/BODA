@@ -14,6 +14,12 @@ let currentPaymentOrderId = null;
 let storeName = 'BOBA TEA'; // 商店名称，从设置中加载
 let currencySymbol = 'LE'; // 货币符号，从设置中加载
 
+// Stripe 相关变量
+let stripe = null;
+let stripeElements = null;
+let stripePaymentElement = null; // 使用 Payment Element（支持 Apple Pay 和银行卡）
+let currentPaymentMethod = 'screenshot'; // 默认选择上传截图
+
 // 格式化价格显示（使用当前货币符号）
 function formatPrice(price) {
   return `${parseFloat(price).toFixed(0)} ${currencySymbol}`;
@@ -472,6 +478,12 @@ function applyTranslations() {
     if (loginSubmitSpan) {
       loginSubmitSpan.textContent = t('login');
     }
+  }
+  
+  // 更新"显示更多"按钮文本（如果存在）
+  const loadMoreBtn = document.querySelector('#loadMoreOrdersBtn button');
+  if (loadMoreBtn && typeof t === 'function') {
+    loadMoreBtn.textContent = t('load_more') || '显示更多';
   }
 }
 
@@ -1060,7 +1072,7 @@ async function loginWithCode(phone, code, name, pin) {
         // 如果没有待处理的 Checkout，按原来的逻辑处理
         // If currently on orders page, refresh order list
         if (!document.getElementById('ordersTab').classList.contains('hidden')) {
-          loadOrders();
+          loadOrders(false); // 保持分页状态，只刷新数据
         }
       }
     } else {
@@ -1136,7 +1148,7 @@ async function loginWithoutCode(phone, name, pin) {
         // 如果没有待处理的 Checkout，按原来的逻辑处理
         // If currently on orders page, refresh order list
         if (!document.getElementById('ordersTab').classList.contains('hidden')) {
-          loadOrders();
+          loadOrders(false); // 保持分页状态，只刷新数据
         }
       }
     } else {
@@ -1590,7 +1602,7 @@ async function updateCurrencyDisplay() {
   }
   // 更新订单显示
   if (document.getElementById('ordersList') && currentUser) {
-    loadOrders();
+    loadOrders(false); // 保持分页状态，只刷新数据
   }
 }
 
@@ -2858,7 +2870,7 @@ async function submitOrder() {
       
       // 延迟一下再加载订单，确保数据库已更新
       setTimeout(() => {
-        loadOrders();
+        loadOrders(false); // 保持分页状态，只刷新数据
       }, 500);
     } else {
       showToast(data.message || t('order_submission_failed'), 'error');
@@ -3444,8 +3456,11 @@ function showTab(tabName) {
 // 订单加载状态管理（防止重复请求）
 let ordersLoading = false;
 let ordersLoadTimeout = null;
+let ordersLoaded = 0; // 已加载的订单数量
+let ordersHasMore = false; // 是否还有更多订单
+let allOrders = []; // 存储所有已加载的订单
 
-async function loadOrders() {
+async function loadOrders(resetPagination = true) {
   const container = document.getElementById('ordersList');
   
   // 防抖：如果正在加载，取消之前的请求
@@ -3472,18 +3487,59 @@ async function loadOrders() {
         
         ordersLoading = true;
         
+        // 只有在明确要求重置分页时才重置（比如首次加载、切换标签页）
+        if (resetPagination) {
+          ordersLoaded = 0;
+          allOrders = [];
+        }
+        
         // 使用统一的API封装，只尝试一个接口（优先使用 /user/orders）
         try {
-          const data = await apiGet('/user/orders', { showError: false });
-          
-          if (data && data.success) {
-            if (data.orders && data.orders.length > 0) {
-              renderOrders(data.orders);
+          if (resetPagination) {
+            // 重置模式：请求前10条
+            const data = await apiGet('/user/orders?limit=10&offset=0', { showError: false });
+            
+            if (data && data.success) {
+              if (data.orders && data.orders.length > 0) {
+                allOrders = data.orders;
+                ordersLoaded = data.orders.length;
+                ordersHasMore = data.hasMore || false;
+                renderOrders(allOrders, true);
+              } else {
+                container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('you_have_no_orders')}</div>`;
+                ordersHasMore = false;
+              }
             } else {
-              container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('you_have_no_orders')}</div>`;
+              container.innerHTML = `<div class="text-center py-12 text-red-500">${data?.message || t('failed_load_orders_refresh')}</div>`;
+              ordersHasMore = false;
             }
           } else {
-            container.innerHTML = `<div class="text-center py-12 text-red-500">${data?.message || t('failed_load_orders_refresh')}</div>`;
+            // 刷新模式：请求所有已加载的订单，保持分页状态
+            // 如果还没有加载任何订单，就加载前10条
+            const limit = ordersLoaded > 0 ? ordersLoaded : 10;
+            const data = await apiGet(`/user/orders?limit=${limit}&offset=0`, { showError: false });
+            
+            if (data && data.success) {
+              if (data.orders && data.orders.length > 0) {
+                // 更新所有已加载订单的数据
+                allOrders = data.orders;
+                // 保持当前的ordersLoaded数量不变
+                // 更新hasMore状态（基于总数判断）
+                const total = data.total || data.orders.length;
+                ordersHasMore = ordersLoaded < total;
+                
+                // 重新渲染所有已加载的订单
+                const ordersToShow = allOrders.slice(0, ordersLoaded);
+                renderOrders(ordersToShow, true);
+              } else {
+                // 如果订单被删光了，清空显示
+                container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('you_have_no_orders')}</div>`;
+                ordersLoaded = 0;
+                allOrders = [];
+                ordersHasMore = false;
+              }
+            }
+            // 刷新模式下，如果请求失败，不改变当前显示
           }
         } catch (error) {
           if (error.status === 401) {
@@ -3513,12 +3569,17 @@ async function loadOrders() {
 }
 
 // 渲染订单列表
-function renderOrders(orders) {
+function renderOrders(orders, isInitial = false) {
   const container = document.getElementById('ordersList');
   
   if (orders.length === 0) {
     container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('no_orders_chinese')}</div>`;
     return;
+  }
+  
+  // 如果是初始加载，清空容器；否则追加
+  if (isInitial) {
+    container.innerHTML = '';
   }
   
   const statusColors = {
@@ -3553,7 +3614,7 @@ function renderOrders(orders) {
     'hot': t('ice_hot')
   };
   
-  container.innerHTML = orders.map(order => {
+  const ordersHTMLNew = orders.map(order => {
     const isExpired = order.isExpired || false;
     const isActiveCycle = order.isActiveCycle !== false; // 默认为true，如果没有活跃周期
     // 如果不属于活跃周期，显示为灰色（活跃周期内的订单不显示为灰色）
@@ -3755,6 +3816,94 @@ function renderOrders(orders) {
     </div>
   `;
   }).join('');
+  
+  // 如果是初始加载，清空容器并设置内容；否则追加
+  if (isInitial) {
+    container.innerHTML = ordersHTMLNew;
+  } else {
+    // 追加模式：先移除旧的"显示更多"按钮，然后追加新订单
+    const oldButton = container.querySelector('#loadMoreOrdersBtn');
+    if (oldButton) {
+      oldButton.remove();
+    }
+    container.innerHTML += ordersHTMLNew;
+  }
+  
+  // 添加或更新"显示更多"按钮
+  updateLoadMoreButton();
+}
+
+// 更新"显示更多"按钮
+function updateLoadMoreButton() {
+  const container = document.getElementById('ordersList');
+  if (!container) return;
+  
+  // 移除旧的按钮
+  const oldButton = container.querySelector('#loadMoreOrdersBtn');
+  if (oldButton) {
+    oldButton.remove();
+  }
+  
+  // 如果还有更多订单，显示按钮
+  if (ordersHasMore) {
+    const button = document.createElement('div');
+    button.id = 'loadMoreOrdersBtn';
+    button.className = 'text-center py-4';
+    button.innerHTML = `
+      <button onclick="loadMoreOrders()" 
+              class="px-6 py-2 text-gray-600 hover:text-gray-800 text-sm font-normal border border-gray-300 hover:border-gray-400 rounded-lg transition bg-white hover:bg-gray-50">
+        ${t('load_more') || '显示更多'}
+      </button>
+    `;
+    container.appendChild(button);
+  }
+}
+
+// 加载更多订单
+async function loadMoreOrders() {
+  if (ordersLoading || !ordersHasMore) {
+    return;
+  }
+  
+  const button = document.getElementById('loadMoreOrdersBtn');
+  if (button) {
+    const btn = button.querySelector('button');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = t('loading') || '加载中...';
+    }
+  }
+  
+  try {
+    ordersLoading = true;
+    
+    const data = await apiGet(`/user/orders?limit=10&offset=${ordersLoaded}`, { showError: false });
+    
+    if (data && data.success && data.orders && data.orders.length > 0) {
+      // 追加新订单到已有列表
+      allOrders = allOrders.concat(data.orders);
+      ordersLoaded += data.orders.length;
+      ordersHasMore = data.hasMore || false;
+      
+      // 渲染新订单（追加模式）
+      renderOrders(data.orders, false);
+    } else {
+      ordersHasMore = false;
+      updateLoadMoreButton();
+    }
+  } catch (error) {
+    console.error('加载更多订单失败:', error);
+    showToast(t('failed_load_orders') || '加载订单失败', 'error');
+  } finally {
+    ordersLoading = false;
+    if (button) {
+      const btn = button.querySelector('button');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = t('load_more') || '显示更多';
+      }
+    }
+  }
 }
 
 // 删除订单
@@ -3778,7 +3927,7 @@ async function deleteOrder(orderId) {
     
     if (data.success) {
       showToast(t('order_deleted'), 'success');
-      loadOrders();
+      loadOrders(true); // 删除订单后重置分页，因为订单数量变了
     } else {
       showToast(data.message || t('delete_failed_retry'), 'error');
     }
@@ -3788,22 +3937,304 @@ async function deleteOrder(orderId) {
   }
 }
 
+// 初始化 Stripe
+async function initStripe() {
+  try {
+    // 检查 Stripe.js 是否已加载（尝试多种方式）
+    let StripeConstructor = window.Stripe || (typeof Stripe !== 'undefined' ? Stripe : null);
+    
+    if (!StripeConstructor) {
+      console.warn('Stripe.js 未加载，等待加载...');
+      // 等待最多 5 秒让 Stripe.js 加载
+      let attempts = 0;
+      while (attempts < 50 && !window.Stripe && typeof Stripe === 'undefined') {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+        StripeConstructor = window.Stripe || (typeof Stripe !== 'undefined' ? Stripe : null);
+        if (StripeConstructor) break;
+      }
+      
+      if (!StripeConstructor) {
+        console.error('Stripe.js 加载超时，请检查网络连接');
+        return false;
+      }
+    }
+    
+    const response = await fetch(`${API_BASE}/user/stripe-config`, { credentials: 'include' });
+    const data = await response.json();
+    
+    console.log('Stripe 配置响应:', data); // 调试信息
+    
+    // 检查配置是否有效（publishableKey 不为空且以 pk_ 开头）
+    if (data.success && data.publishableKey && data.publishableKey.trim() && data.publishableKey.trim().startsWith('pk_')) {
+      stripe = StripeConstructor(data.publishableKey.trim());
+      return true;
+    }
+    console.warn('Stripe 配置无效:', { 
+      success: data.success, 
+      publishableKey: data.publishableKey ? (data.publishableKey.substring(0, 10) + '...') : 'empty',
+      enabled: data.enabled 
+    });
+    return false;
+  } catch (error) {
+    console.error('初始化 Stripe 失败:', error);
+    return false;
+  }
+}
+
+// 选择支付方式
+function selectPaymentMethod(method) {
+  currentPaymentMethod = method;
+  const stripeSection = document.getElementById('stripePaymentSection');
+  const screenshotSection = document.getElementById('screenshotPaymentSection');
+  const stripeBtn = document.getElementById('selectStripePayment');
+  const screenshotBtn = document.getElementById('selectScreenshotPayment');
+  
+  // 更新按钮样式
+  if (stripeBtn && screenshotBtn) {
+    if (method === 'stripe') {
+      stripeBtn.classList.add('border-blue-500', 'bg-blue-50');
+      stripeBtn.classList.remove('border-gray-300');
+      screenshotBtn.classList.remove('border-blue-500', 'bg-blue-50');
+      screenshotBtn.classList.add('border-gray-300');
+    } else {
+      screenshotBtn.classList.add('border-blue-500', 'bg-blue-50');
+      screenshotBtn.classList.remove('border-gray-300');
+      stripeBtn.classList.remove('border-blue-500', 'bg-blue-50');
+      stripeBtn.classList.add('border-gray-300');
+    }
+  }
+  
+  // 显示/隐藏对应的表单
+  if (method === 'stripe') {
+    stripeSection.classList.remove('hidden');
+    screenshotSection.classList.add('hidden');
+    initStripeElements();
+  } else {
+    stripeSection.classList.add('hidden');
+    screenshotSection.classList.remove('hidden');
+  }
+}
+
+// 初始化 Stripe Elements
+async function initStripeElements() {
+  if (!stripe || stripePaymentElement) return; // 已经初始化过
+  
+  try {
+    // 创建 Payment Intent
+    const response = await fetch(`${API_BASE}/user/orders/${currentPaymentOrderId}/create-payment-intent`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    const data = await response.json();
+    
+    if (!data.success) {
+      showToast(data.message || '创建支付失败', 'error');
+      return;
+    }
+    
+    // 创建 Payment Element（支持 Apple Pay 和银行卡）
+    stripeElements = stripe.elements({ 
+      clientSecret: data.clientSecret,
+      appearance: {
+        theme: 'stripe',
+      }
+    });
+    
+    // 使用 Payment Element 替代 Card Element
+    // Payment Element 自动支持 Apple Pay、Google Pay 等多种支付方式
+    // Apple Pay 会在支持的设备上自动显示在最前面
+    stripePaymentElement = stripeElements.create('payment', {
+      layout: 'tabs', // 使用标签页布局
+      // Payment Element 会自动检测设备支持的支付方式
+      // 在支持的设备上，Apple Pay 会自动显示在第一位
+    });
+    
+    stripePaymentElement.mount('#stripePaymentElement');
+    
+    // 监听错误
+    stripePaymentElement.on('change', (event) => {
+      const displayError = document.getElementById('stripeCardErrors');
+      if (event.error) {
+        displayError.textContent = event.error.message;
+      } else {
+        displayError.textContent = '';
+      }
+    });
+    
+    // 设置支付按钮事件
+    const payButton = document.getElementById('stripePayButton');
+    if (payButton) {
+      payButton.onclick = handleStripePayment;
+    }
+    
+  } catch (error) {
+    console.error('初始化 Stripe Elements 失败:', error);
+    showToast('初始化支付失败', 'error');
+  }
+}
+
+// 处理 Stripe 支付
+async function handleStripePayment() {
+  if (!stripe || !stripePaymentElement) {
+    showToast('支付未初始化', 'error');
+    return;
+  }
+  
+  const payButton = document.getElementById('stripePayButton');
+  setButtonLoading(payButton, true);
+  
+  try {
+    // 使用 Payment Element 确认支付（支持 Apple Pay 和银行卡）
+    const { error: submitError, paymentIntent } = await stripe.confirmPayment({
+      elements: stripeElements,
+      confirmParams: {
+        return_url: window.location.origin + window.location.pathname, // 支付完成后的返回地址
+      },
+      redirect: 'if_required', // 如果不需要重定向（如 Apple Pay），则不重定向
+    });
+    
+    if (submitError) {
+      showToast(submitError.message, 'error');
+      setButtonLoading(payButton, false);
+      return;
+    }
+    
+    // 检查支付状态
+    if (paymentIntent && paymentIntent.status === 'succeeded') {
+      // 通知后端确认支付
+      const response = await fetch(`${API_BASE}/user/orders/${currentPaymentOrderId}/confirm-stripe-payment`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentIntentId: paymentIntent.id })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        showToast('支付成功！', 'success');
+        closePayment();
+        loadOrders(false);
+      } else {
+        showToast(data.message || '确认支付失败', 'error');
+      }
+    } else if (paymentIntent && paymentIntent.status === 'requires_action') {
+      // 需要额外验证（如 3D Secure），Stripe 会自动处理
+      showToast('支付需要额外验证，请按照提示操作', 'info');
+    }
+  } catch (error) {
+    console.error('Stripe 支付失败:', error);
+    showToast('支付失败，请重试', 'error');
+  } finally {
+    setButtonLoading(payButton, false);
+  }
+}
+
 // 显示付款模态框
-function showPaymentModal(orderId) {
+async function showPaymentModal(orderId) {
   currentPaymentOrderId = orderId;
   
   // 查找订单信息
   fetch(`${API_BASE}/user/orders/${orderId}`, { credentials: 'include' })
     .then(res => res.json())
-    .then(data => {
+    .then(async (data) => {
       if (data.success) {
         const order = data.order;
         document.getElementById('paymentOrderInfo').innerHTML = `
           <p class="font-semibold"><span data-i18n="order_number_label">Order Number</span>: ${order.order_number}</p>
           <p class="text-2xl font-bold text-blue-600 mt-2"><span data-i18n="amount_due">Amount Due</span>: ${formatPriceDecimal(order.final_amount)}</p>
         `;
-        // 应用翻译到动态生成的内容
+        
+        // 检查 Stripe 配置（在显示模态框时再次检查，确保获取最新状态）
+        let isStripeEnabled = false;
+        try {
+          const configResponse = await fetch(`${API_BASE}/user/stripe-config`, { credentials: 'include' });
+          const configData = await configResponse.json();
+          console.log('Stripe 配置检查:', configData); // 调试信息
+          
+          isStripeEnabled = configData.success && 
+                           configData.publishableKey && 
+                           configData.publishableKey.trim() && 
+                           configData.publishableKey.trim().startsWith('pk_');
+          
+          // 如果配置有效，初始化 Stripe
+          if (isStripeEnabled && !stripe) {
+            // 检查 Stripe.js 是否已加载（尝试多种方式）
+            let StripeConstructor = null;
+            
+            // 尝试获取 Stripe 构造函数
+            if (typeof window.Stripe !== 'undefined') {
+              StripeConstructor = window.Stripe;
+            } else if (typeof Stripe !== 'undefined') {
+              StripeConstructor = Stripe;
+            }
+            
+            if (!StripeConstructor) {
+              console.warn('Stripe.js 未加载，尝试等待加载...');
+              // 等待最多 5 秒
+              let attempts = 0;
+              while (attempts < 50) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+                
+                if (typeof window.Stripe !== 'undefined') {
+                  StripeConstructor = window.Stripe;
+                  break;
+                } else if (typeof Stripe !== 'undefined') {
+                  StripeConstructor = Stripe;
+                  break;
+                }
+              }
+              
+              if (!StripeConstructor) {
+                console.error('Stripe.js 加载超时，请检查网络连接或刷新页面');
+                console.log('当前 window.Stripe:', typeof window.Stripe);
+                console.log('当前 Stripe:', typeof Stripe);
+                isStripeEnabled = false; // 标记为未启用，因为无法使用
+              } else {
+                stripe = StripeConstructor(configData.publishableKey.trim());
+                console.log('Stripe 实例已初始化（延迟加载）');
+              }
+            } else {
+              stripe = StripeConstructor(configData.publishableKey.trim());
+              console.log('Stripe 实例已初始化');
+            }
+          }
+        } catch (error) {
+          console.error('检查 Stripe 配置失败:', error);
+        }
+        
+        // 如果 Stripe 未启用，显示提示并禁用按钮
+        const stripeBtn = document.getElementById('selectStripePayment');
+        const stripeNotConfigured = document.getElementById('stripeNotConfigured');
+        if (!isStripeEnabled) {
+          if (stripeBtn) {
+            stripeBtn.disabled = true;
+            stripeBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          }
+          if (stripeNotConfigured) {
+            stripeNotConfigured.classList.remove('hidden');
+          }
+        } else {
+          if (stripeBtn) {
+            stripeBtn.disabled = false;
+            stripeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          }
+          if (stripeNotConfigured) {
+            stripeNotConfigured.classList.add('hidden');
+          }
+        }
+        
+        // 默认选择上传截图方式
+        selectPaymentMethod('screenshot');
+        
+        // 应用翻译
         applyTranslations();
+        
+        // 显示模态框
         document.getElementById('paymentModal').classList.add('active');
       }
     });
@@ -3813,14 +4244,42 @@ function showPaymentModal(orderId) {
 function closePayment() {
   document.getElementById('paymentModal').classList.remove('active');
   currentPaymentOrderId = null;
+  currentPaymentMethod = 'screenshot';
+  
+  // 重置表单
   document.getElementById('paymentForm').reset();
   
-  // 重置文件选择状态提示
+  // 重置 Stripe Elements
+  if (stripePaymentElement) {
+    stripePaymentElement.unmount();
+    stripePaymentElement = null;
+    stripeElements = null;
+  }
+  
+  // 重置文件选择状态
   const paymentFileStatus = document.getElementById('paymentFileStatus');
   if (paymentFileStatus) {
     paymentFileStatus.textContent = t('no_file_selected');
     paymentFileStatus.classList.remove('text-green-600');
     paymentFileStatus.classList.add('text-gray-500');
+  }
+  
+  // 重置支付方式显示和按钮样式
+  const stripeSection = document.getElementById('stripePaymentSection');
+  const screenshotSection = document.getElementById('screenshotPaymentSection');
+  if (stripeSection) stripeSection.classList.add('hidden');
+  if (screenshotSection) screenshotSection.classList.remove('hidden');
+  
+  // 重置按钮样式
+  const stripeBtn = document.getElementById('selectStripePayment');
+  const screenshotBtn = document.getElementById('selectScreenshotPayment');
+  if (stripeBtn) {
+    stripeBtn.classList.remove('border-blue-500', 'bg-blue-50');
+    stripeBtn.classList.add('border-gray-300');
+  }
+  if (screenshotBtn) {
+    screenshotBtn.classList.add('border-blue-500', 'bg-blue-50');
+    screenshotBtn.classList.remove('border-gray-300');
   }
 }
 
@@ -3853,7 +4312,7 @@ async function uploadPayment() {
     if (data.success) {
       showToast(t('payment_upload_success'), 'success');
       closePayment();
-      loadOrders();
+      loadOrders(false); // 保持分页状态，只刷新数据
     } else {
       showToast(data.message || 'Upload failed', 'error');
     }

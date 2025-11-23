@@ -530,22 +530,58 @@
   <!-- 付款模态框 -->
   <div id="paymentModal" class="modal">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
-      <h3 class="text-2xl font-bold text-gray-900 mb-4" data-i18n="upload_payment_screenshot_title">Upload Payment Screenshot</h3>
+      <h3 class="text-2xl font-bold text-gray-900 mb-4" data-i18n="payment_title">Payment</h3>
       <div id="paymentOrderInfo" class="mb-4 p-4 bg-gray-50 rounded-lg"></div>
-      <form id="paymentForm" class="space-y-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="select_payment_screenshot">Select Payment Screenshot</label>
-          <input type="file" id="paymentImage" accept="image/*" required
-                 class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg">
-          <p id="paymentFileStatus" class="mt-1 text-xs text-gray-500" data-i18n="no_file_selected">No file selected</p>
+      
+      <!-- 支付方式选择按钮（并列显示） -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-3" data-i18n="payment_method">Payment Method</label>
+        <div class="grid grid-cols-2 gap-3">
+          <button type="button" id="selectStripePayment" class="p-4 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-left payment-method-btn" onclick="selectPaymentMethod('stripe')">
+            <div class="font-semibold text-gray-900 mb-1" data-i18n="online_payment">Online Payment</div>
+            <div class="text-xs text-gray-500" data-i18n="stripe_payment_desc">Pay securely with Stripe</div>
+          </button>
+          <button type="button" id="selectScreenshotPayment" class="p-4 border-2 border-blue-500 bg-blue-50 rounded-lg hover:border-blue-600 transition text-left payment-method-btn" onclick="selectPaymentMethod('screenshot')">
+            <div class="font-semibold text-gray-900 mb-1" data-i18n="upload_screenshot">Upload Screenshot</div>
+            <div class="text-xs text-gray-500" data-i18n="screenshot_payment_desc">Upload your payment screenshot</div>
+          </button>
         </div>
+        <p id="stripeNotConfigured" class="mt-2 text-xs text-yellow-600 hidden" data-i18n="stripe_not_configured">Stripe payment is not configured. Please contact administrator.</p>
+      </div>
+      
+      <!-- Stripe 支付表单 -->
+      <div id="stripePaymentSection" class="hidden">
+        <div id="stripePaymentElement" class="mb-4">
+          <!-- Stripe Payment Element 将在这里渲染（支持 Apple Pay 和银行卡） -->
+        </div>
+        <div id="stripeCardErrors" class="text-red-600 text-sm mb-4"></div>
         <div class="flex space-x-3">
-          <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
-            <span data-i18n="upload_button">Upload</span>
+          <button type="button" id="stripePayButton" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+            <span data-i18n="pay_now">Pay Now</span>
           </button>
           <button type="button" onclick="closePayment()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg transition">
             <span data-i18n="cancel">Cancel</span>
           </button>
+        </div>
+      </div>
+      
+      <!-- 上传截图表单 -->
+      <form id="paymentForm" class="space-y-4">
+        <div id="screenshotPaymentSection">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="select_payment_screenshot">Select Payment Screenshot</label>
+            <input type="file" id="paymentImage" accept="image/*" required
+                   class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg">
+            <p id="paymentFileStatus" class="mt-1 text-xs text-gray-500" data-i18n="no_file_selected">No file selected</p>
+          </div>
+          <div class="flex space-x-3">
+            <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+              <span data-i18n="upload_button">Upload</span>
+            </button>
+            <button type="button" onclick="closePayment()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg transition">
+              <span data-i18n="cancel">Cancel</span>
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -584,6 +620,19 @@
   <script src="utils/validation.js"></script>
   <script src="utils/error-handler.js"></script>
   <script src="utils/network.js"></script>
+  <!-- Stripe.js - 必须在 app.js 之前加载 -->
+  <script src="https://js.stripe.com/v3/"></script>
+  <script>
+    // 等待 Stripe.js 加载完成
+    (function checkStripe() {
+      if (typeof Stripe === 'undefined' && typeof window.Stripe === 'undefined') {
+        setTimeout(checkStripe, 100);
+      } else {
+        console.log('Stripe.js 已加载:', typeof Stripe !== 'undefined' ? 'Stripe' : 'window.Stripe');
+        window.stripeJSReady = true;
+      }
+    })();
+  </script>
   <script src="app.js"></script>
 </body>
 </html>

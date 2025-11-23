@@ -11,6 +11,152 @@ const { calculateItemPrice, batchGetToppingProducts, batchGetOrderItems, roundAm
 
 const router = express.Router();
 
+// ==================== Stripe 配置管理 ====================
+/**
+ * 从环境变量或 settings 表读取 Stripe 私钥
+ * @returns {Promise<string>} Stripe 私钥
+ */
+async function getStripeSecretKey() {
+  // 优先从环境变量读取
+  if (process.env.STRIPE_SECRET_KEY) {
+    return process.env.STRIPE_SECRET_KEY;
+  }
+  // 从设置表读取
+  try {
+    const setting = await getAsync("SELECT value FROM settings WHERE key = 'stripe_secret_key'");
+    return setting?.value || '';
+  } catch (error) {
+    logger.error('读取 Stripe 私钥失败', { error: error.message });
+    return '';
+  }
+}
+
+/**
+ * 从环境变量或 settings 表读取 Stripe 公钥
+ * @returns {Promise<string>} Stripe 公钥
+ */
+async function getStripePublishableKey() {
+  // 优先从环境变量读取
+  if (process.env.STRIPE_PUBLISHABLE_KEY) {
+    return process.env.STRIPE_PUBLISHABLE_KEY;
+  }
+  // 从设置表读取
+  try {
+    const setting = await getAsync("SELECT value FROM settings WHERE key = 'stripe_publishable_key'");
+    return setting?.value || '';
+  } catch (error) {
+    logger.error('读取 Stripe 公钥失败', { error: error.message });
+    return '';
+  }
+}
+
+/**
+ * 从环境变量或 settings 表读取 Stripe Webhook Secret
+ * @returns {Promise<string>} Stripe Webhook Secret
+ */
+async function getStripeWebhookSecret() {
+  // 优先从环境变量读取
+  if (process.env.STRIPE_WEBHOOK_SECRET) {
+    return process.env.STRIPE_WEBHOOK_SECRET;
+  }
+  // 从设置表读取
+  try {
+    const setting = await getAsync("SELECT value FROM settings WHERE key = 'stripe_webhook_secret'");
+    return setting?.value || '';
+  } catch (error) {
+    logger.error('读取 Stripe Webhook Secret 失败', { error: error.message });
+    return '';
+  }
+}
+
+/**
+ * POST /api/user/stripe-webhook
+ * Stripe Webhook 处理（用于处理支付成功回调）
+ * 注意：这个接口需要配置在 Stripe Dashboard 的 Webhooks 中
+ * 注意：这个接口不需要用户认证，需要放在 requireUserAuth 之前
+ */
+router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const stripeSecretKey = await getStripeSecretKey();
+    if (!stripeSecretKey) {
+      logger.warn('Stripe Webhook: Stripe 未配置');
+      return res.status(400).json({ success: false, message: 'Stripe 未配置' });
+    }
+    
+    const stripe = require('stripe')(stripeSecretKey);
+    const sig = req.headers['stripe-signature'];
+    const webhookSecret = await getStripeWebhookSecret();
+    
+    let event;
+    
+    try {
+      if (webhookSecret) {
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      } else {
+        // 如果没有配置 webhook secret，记录警告但继续处理（仅用于开发环境）
+        logger.warn('Stripe Webhook: 未配置 Webhook Secret，跳过签名验证');
+        event = JSON.parse(req.body.toString());
+      }
+    } catch (err) {
+      logger.error('Stripe Webhook 验证失败', { error: err.message });
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+    
+    // 处理支付成功事件
+    if (event.type === 'payment_intent.succeeded') {
+      const paymentIntent = event.data.object;
+      const orderId = paymentIntent.metadata.order_id;
+      
+      if (orderId) {
+        try {
+          // 检查订单是否存在且状态为 pending
+          const order = await getAsync('SELECT * FROM orders WHERE id = ? AND status = ?', [orderId, 'pending']);
+          
+          if (order) {
+            // 验证金额
+            const amountInCents = Math.round(order.final_amount * 100);
+            if (paymentIntent.amount === amountInCents) {
+              // 更新订单状态
+              await runAsync(
+                `UPDATE orders SET 
+                 status = 'paid', 
+                 payment_method = 'stripe',
+                 payment_time = datetime('now', 'localtime'),
+                 updated_at = datetime('now', 'localtime') 
+                 WHERE id = ? AND status = 'pending'`,
+                [orderId]
+              );
+              
+              logger.info('Stripe Webhook: 订单支付成功', { 
+                orderId: orderId, 
+                paymentIntentId: paymentIntent.id 
+              });
+            } else {
+              logger.warn('Stripe Webhook: 支付金额不匹配', { 
+                orderId: orderId,
+                expected: amountInCents,
+                received: paymentIntent.amount
+              });
+            }
+          } else {
+            logger.warn('Stripe Webhook: 订单不存在或已处理', { orderId: orderId });
+          }
+        } catch (error) {
+          logger.error('Stripe Webhook: 更新订单状态失败', { 
+            error: error.message, 
+            orderId: orderId 
+          });
+        }
+      }
+    }
+    
+    res.json({ received: true });
+  } catch (error) {
+    logger.error('Stripe Webhook 处理失败', { error: error.message, stack: error.stack });
+    res.status(500).json({ success: false, message: 'Webhook 处理失败' });
+  }
+});
+
 // 用户需要登录
 router.use(requireUserAuth);
 
@@ -423,13 +569,30 @@ router.get('/orders', async (req, res) => {
       return res.status(401).json({ success: false, message: '请先登录' });
     }
 
-    const orders = await allAsync(
-      'SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC',
+    // 支持分页参数
+    const limit = parseInt(req.query.limit) || null; // 默认返回所有
+    const offset = parseInt(req.query.offset) || 0;
+
+    // 获取订单总数
+    const totalResult = await getAsync(
+      'SELECT COUNT(*) as total FROM orders WHERE user_id = ?',
       [req.session.userId]
     );
+    const total = totalResult ? totalResult.total : 0;
+
+    // 构建查询SQL
+    let query = 'SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC';
+    const params = [req.session.userId];
+    
+    if (limit !== null) {
+      query += ' LIMIT ? OFFSET ?';
+      params.push(limit, offset);
+    }
+
+    const orders = await allAsync(query, params);
 
     if (orders.length === 0) {
-      return res.json({ success: true, orders: [] });
+      return res.json({ success: true, orders: [], total: total, hasMore: false });
     }
 
     // 获取当前活跃周期
@@ -470,7 +633,10 @@ router.get('/orders', async (req, res) => {
       order.isExpired = isOrderExpired(order, activeCycle, null);
     }
 
-    res.json({ success: true, orders });
+    // 判断是否还有更多订单
+    const hasMore = limit !== null ? (offset + orders.length < total) : false;
+
+    res.json({ success: true, orders, total, hasMore });
   } catch (error) {
     logger.error('获取订单列表失败', { error: error.message, userId: req.session.userId });
     res.status(500).json({ success: false, message: '获取订单列表失败' });
@@ -943,6 +1109,229 @@ router.post('/orders/:id/payment', upload.single('payment_image'), async (req, r
   } catch (error) {
     logger.error('上传付款截图失败', { error: error.message });
     res.status(500).json({ success: false, message: '上传付款截图失败' });
+  }
+});
+
+/**
+ * GET /api/user/stripe-config
+ * 获取 Stripe 配置（仅返回公钥给前端）
+ * @returns {Object} Stripe 配置对象
+ */
+router.get('/stripe-config', async (req, res) => {
+  try {
+    const publishableKey = await getStripePublishableKey();
+    const trimmedKey = publishableKey ? publishableKey.trim() : '';
+    const isValid = trimmedKey && trimmedKey.startsWith('pk_');
+    
+    logger.info('获取 Stripe 配置', { 
+      hasKey: !!publishableKey, 
+      keyLength: trimmedKey.length,
+      isValid: isValid,
+      keyPrefix: trimmedKey ? trimmedKey.substring(0, 10) : 'empty'
+    });
+    
+    res.json({
+      success: true,
+      publishableKey: trimmedKey,
+      enabled: isValid
+    });
+  } catch (error) {
+    logger.error('获取 Stripe 配置失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取配置失败' });
+  }
+});
+
+/**
+ * POST /api/user/orders/:id/create-payment-intent
+ * 创建 Stripe Payment Intent
+ * @param {string} id - Order ID
+ * @returns {Object} Payment Intent 信息（包含 clientSecret）
+ */
+router.post('/orders/:id/create-payment-intent', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const stripeSecretKey = await getStripeSecretKey();
+    
+    if (!stripeSecretKey) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Stripe 未配置，请联系管理员' 
+      });
+    }
+    
+    const stripe = require('stripe')(stripeSecretKey);
+    
+    // 获取订单信息
+    const order = await getAsync(
+      'SELECT * FROM orders WHERE id = ? AND (user_id = ? OR customer_phone = ?)',
+      [id, req.session.userId, req.session.userPhone]
+    );
+    
+    if (!order) {
+      return res.status(404).json({ success: false, message: '订单不存在' });
+    }
+    
+    if (order.status === 'paid' || order.status === 'completed') {
+      return res.status(400).json({ success: false, message: '订单已付款' });
+    }
+    
+    // 检查订单所属周期是否已确认
+    if (order.cycle_id) {
+      const cycle = await getAsync('SELECT status FROM ordering_cycles WHERE id = ?', [order.cycle_id]);
+      if (cycle && cycle.status === 'confirmed') {
+        return res.status(400).json({ success: false, message: '该周期已确认，无法支付' });
+      }
+    } else {
+      // 如果没有 cycle_id，通过订单创建时间查找对应的周期
+      const cycle = await getAsync(
+        `SELECT status FROM ordering_cycles 
+         WHERE start_time <= ? AND (end_time >= ? OR end_time IS NULL) 
+         ORDER BY start_time DESC LIMIT 1`,
+        [order.created_at, order.created_at]
+      );
+      if (cycle && cycle.status === 'confirmed') {
+        return res.status(400).json({ success: false, message: '该周期已确认，无法支付' });
+      }
+    }
+    
+    // 创建 Payment Intent
+    // 注意：金额需要转换为最小单位（EGP: 1 EGP = 100 piastres）
+    const amountInCents = Math.round(order.final_amount * 100);
+    
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: 'egp', // 埃及镑
+      payment_method_types: ['card', 'apple_pay'], // 支持银行卡和 Apple Pay
+      metadata: {
+        order_id: order.id,
+        order_number: order.order_number,
+        user_id: req.session.userId || '',
+        customer_phone: order.customer_phone
+      },
+      description: `订单 ${order.order_number} - ${order.customer_name || order.customer_phone}`
+    });
+    
+    // 更新订单，保存 payment_intent_id
+    await runAsync(
+      `UPDATE orders SET 
+       stripe_payment_intent_id = ?, 
+       payment_method = 'stripe',
+       updated_at = datetime('now', 'localtime') 
+       WHERE id = ?`,
+      [paymentIntent.id, id]
+    );
+    
+    logger.info('Stripe Payment Intent 创建成功', { 
+      orderId: id, 
+      paymentIntentId: paymentIntent.id 
+    });
+    
+    res.json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id
+    });
+  } catch (error) {
+    logger.error('创建 Payment Intent 失败', { error: error.message, stack: error.stack });
+    res.status(500).json({ 
+      success: false, 
+      message: '创建支付失败: ' + error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/user/orders/:id/confirm-stripe-payment
+ * 确认 Stripe 支付（前端调用，用于更新订单状态）
+ * @param {string} id - Order ID
+ * @body {string} paymentIntentId - Payment Intent ID
+ * @returns {Object} 确认结果
+ */
+router.post('/orders/:id/confirm-stripe-payment', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { paymentIntentId } = req.body;
+    
+    if (!paymentIntentId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Payment Intent ID 不能为空' 
+      });
+    }
+    
+    const stripeSecretKey = await getStripeSecretKey();
+    if (!stripeSecretKey) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Stripe 未配置' 
+      });
+    }
+    
+    const stripe = require('stripe')(stripeSecretKey);
+    
+    // 验证订单
+    const order = await getAsync(
+      'SELECT * FROM orders WHERE id = ? AND (user_id = ? OR customer_phone = ?)',
+      [id, req.session.userId, req.session.userPhone]
+    );
+    
+    if (!order) {
+      return res.status(404).json({ success: false, message: '订单不存在' });
+    }
+    
+    // 验证 Payment Intent
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ 
+        success: false, 
+        message: '支付未成功，状态: ' + paymentIntent.status 
+      });
+    }
+    
+    // 验证金额
+    const amountInCents = Math.round(order.final_amount * 100);
+    if (paymentIntent.amount !== amountInCents) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '支付金额不匹配' 
+      });
+    }
+    
+    // 验证订单 ID 匹配
+    if (paymentIntent.metadata.order_id !== order.id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '订单 ID 不匹配' 
+      });
+    }
+    
+    // 更新订单状态
+    await runAsync(
+      `UPDATE orders SET 
+       status = 'paid', 
+       payment_method = 'stripe',
+       payment_time = datetime('now', 'localtime'),
+       updated_at = datetime('now', 'localtime') 
+       WHERE id = ?`,
+      [id]
+    );
+    
+    logger.info('Stripe 支付确认成功', { 
+      orderId: id, 
+      paymentIntentId: paymentIntentId 
+    });
+    
+    res.json({ 
+      success: true, 
+      message: '支付成功' 
+    });
+  } catch (error) {
+    logger.error('确认 Stripe 支付失败', { error: error.message, stack: error.stack });
+    res.status(500).json({ 
+      success: false, 
+      message: '确认支付失败: ' + error.message 
+    });
   }
 });
 

@@ -25,14 +25,14 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com"],
       scriptSrcAttr: ["'unsafe-inline'"], // 允许内联事件处理器（onclick等）
       imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", "https://api.stripe.com"],
       fontSrc: ["'self'", "https://cdn.jsdelivr.net"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
-      frameSrc: ["'self'", "blob:"], // 允许同源iframe和blob URL（用于测试报告）
+      frameSrc: ["'self'", "blob:", "https://js.stripe.com"], // 允许同源iframe、blob URL 和 Stripe Elements iframe
       baseUri: ["'self'"],
       formAction: ["'self'"],
       upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null

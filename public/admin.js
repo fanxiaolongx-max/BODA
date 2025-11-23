@@ -607,10 +607,7 @@ function switchTab(tabName) {
 // 加载仪表盘
 async function loadDashboard() {
   try {
-    const response = await fetch(`${API_BASE}/admin/orders/statistics`, {
-      credentials: 'include'
-    });
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/orders/statistics`);
     
     if (data.success) {
       const stats = data.statistics;
@@ -995,14 +992,11 @@ async function toggleOrdering() {
   const newStatus = currentSettings.ordering_open === 'true' ? 'false' : 'true';
   
   try {
-    const response = await fetch(`${API_BASE}/admin/settings`, {
+    const data = await adminApiRequest(`${API_BASE}/admin/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ ordering_open: newStatus })
     });
-    
-    const data = await response.json();
     if (data.success) {
       currentSettings.ordering_open = newStatus;
       updateOrderButton();
@@ -1046,8 +1040,7 @@ async function calculateDiscount() {
 // 加载周期列表
 async function loadCycles() {
   try {
-    const response = await fetch(`${API_BASE}/admin/cycles`, { credentials: 'include' });
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/cycles`);
     
     if (data.success) {
       const cycleFilter = document.getElementById('orderCycleFilter');
@@ -1127,8 +1120,7 @@ async function loadOrders() {
       url = url.slice(0, -1); // 移除末尾的?
     }
     
-    const response = await fetch(url, { credentials: 'include' });
-    const data = await response.json();
+    const data = await adminApiRequest(url);
     
     if (data.success) {
       renderOrders(data.orders);
@@ -1340,14 +1332,11 @@ async function updateOrderStatus(orderId, newStatus) {
   if (!newStatus) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/orders/${orderId}/status`, {
+    const data = await adminApiRequest(`${API_BASE}/admin/orders/${orderId}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ status: newStatus })
     });
-    
-    const data = await response.json();
     if (data.success) {
       showToast('Status updated successfully', 'success');
       loadOrders();
@@ -1364,8 +1353,7 @@ async function updateOrderStatus(orderId, newStatus) {
 // 加载菜品管理
 async function loadProducts() {
   try {
-    const response = await fetch(`${API_BASE}/admin/products`, { credentials: 'include' });
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/products`);
     
     if (data.success) {
       renderProducts(data.products);
@@ -1580,8 +1568,7 @@ function renderProducts(products) {
 async function showProductModal(product = null) {
   // 加载分类列表
   try {
-    const response = await fetch(`${API_BASE}/admin/categories`, { credentials: 'include' });
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/categories`);
     if (data.success) {
       const select = document.getElementById('productCategory');
       select.innerHTML = '<option value="">No Category</option>' +
@@ -1988,12 +1975,9 @@ async function deleteProduct(id) {
   if (!confirmed) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/products/${id}`, {
-      method: 'DELETE',
-      credentials: 'include'
+    const data = await adminApiRequest(`${API_BASE}/admin/products/${id}`, {
+      method: 'DELETE'
     });
-    
-    const data = await response.json();
     
     if (data.success) {
       showToast('Deleted successfully', 'success');
@@ -2010,8 +1994,7 @@ async function deleteProduct(id) {
 // 加载分类管理
 async function loadCategories() {
   try {
-    const response = await fetch(`${API_BASE}/admin/categories`, { credentials: 'include' });
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/categories`);
     
     if (data.success) {
       renderCategories(data.categories);
@@ -2153,14 +2136,11 @@ async function saveCategory(e) {
     const url = id ? `${API_BASE}/admin/categories/${id}` : `${API_BASE}/admin/categories`;
     const method = id ? 'PUT' : 'POST';
     
-    const response = await fetch(url, {
+    const result = await adminApiRequest(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(data)
     });
-    
-    const result = await response.json();
     
     if (result.success) {
       showToast(id ? 'Category updated successfully' : 'Category added successfully', 'success');
@@ -2186,12 +2166,9 @@ async function deleteCategory(id) {
   if (!confirmed) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/categories/${id}`, {
-      method: 'DELETE',
-      credentials: 'include'
+    const data = await adminApiRequest(`${API_BASE}/admin/categories/${id}`, {
+      method: 'DELETE'
     });
-    
-    const data = await response.json();
     
     if (data.success) {
       showToast('Deleted successfully', 'success');
@@ -2210,8 +2187,7 @@ async function loadDiscounts() {
   const container = document.getElementById('discountsTab');
   
   try {
-    const response = await fetch(`${API_BASE}/admin/discount-rules`, { credentials: 'include' });
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/discount-rules`);
     
     if (data.success) {
       const rules = data.rules || [];
@@ -2341,8 +2317,7 @@ async function saveDiscountRule(e) {
   e.preventDefault();
   
   // 先获取当前所有规则
-  const response = await fetch(`${API_BASE}/admin/discount-rules`, { credentials: 'include' });
-  const data = await response.json();
+  const data = await adminApiRequest(`${API_BASE}/admin/discount-rules`);
   let rules = data.success ? data.rules : [];
   
   const id = document.getElementById('discountId').value;
@@ -2368,14 +2343,11 @@ async function saveDiscountRule(e) {
   rules.sort((a, b) => a.min_amount - b.min_amount);
   
   try {
-    const saveResponse = await fetch(`${API_BASE}/admin/discount-rules/batch`, {
+    const result = await adminApiRequest(`${API_BASE}/admin/discount-rules/batch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ rules })
     });
-    
-    const result = await saveResponse.json();
     
     if (result.success) {
       showToast(id ? 'Discount rule updated successfully' : 'Discount rule added successfully', 'success');
@@ -2405,19 +2377,15 @@ async function deleteDiscountRule(id) {
   if (!confirmed) return;
   
   // 获取当前所有规则，删除指定的
-  const response = await fetch(`${API_BASE}/admin/discount-rules`, { credentials: 'include' });
-  const data = await response.json();
+  const data = await adminApiRequest(`${API_BASE}/admin/discount-rules`);
   let rules = data.success ? data.rules.filter(r => r.id != id) : [];
   
   try {
-    const saveResponse = await fetch(`${API_BASE}/admin/discount-rules/batch`, {
+    const result = await adminApiRequest(`${API_BASE}/admin/discount-rules/batch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ rules })
     });
-    
-    const result = await saveResponse.json();
     
     if (result.success) {
       showToast('Discount rule deleted successfully', 'success');
@@ -2692,6 +2660,47 @@ async function loadSettingsPage() {
               </div>
               
               <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Stripe Payment Settings</h3>
+                <p class="text-sm text-gray-600 mb-4">Configure Stripe payment gateway for online payments. Users can choose between online payment (Stripe) or uploading payment screenshots.</p>
+                
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Stripe Publishable Key</label>
+                    <input type="text" id="stripePublishableKey" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="pk_test_..."
+                           value="${settings.stripe_publishable_key || ''}">
+                    <p class="text-xs text-gray-500 mt-1">Your Stripe Publishable Key (starts with pk_test_ or pk_live_). This key is safe to expose to the frontend.</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Stripe Secret Key</label>
+                    <input type="password" id="stripeSecretKey" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="sk_test_..."
+                           value="${settings.stripe_secret_key || ''}">
+                    <p class="text-xs text-gray-500 mt-1">Your Stripe Secret Key (starts with sk_test_ or sk_live_). Keep this key secure and never expose it to the frontend.</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Stripe Webhook Secret (Optional)</label>
+                    <input type="password" id="stripeWebhookSecret" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                           placeholder="whsec_..."
+                           value="${settings.stripe_webhook_secret || ''}">
+                    <p class="text-xs text-gray-500 mt-1">Your Stripe Webhook Secret (starts with whsec_). Used to verify webhook requests from Stripe. Optional but recommended for production.</p>
+                  </div>
+                  
+                  <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p class="text-xs text-blue-800">
+                      <strong>Note:</strong> You can get your Stripe API keys from the <a href="https://dashboard.stripe.com/apikeys" target="_blank" class="underline">Stripe Dashboard</a>. 
+                      Use test keys (pk_test_/sk_test_) for development and live keys (pk_live_/sk_live_) for production.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">Logging Settings</h3>
                 
                 <div class="mb-4">
@@ -2951,7 +2960,10 @@ async function saveSettings(e) {
     email_smtp_password: document.getElementById('emailSmtpPassword')?.value.trim() || '',
     email_from: document.getElementById('emailFrom')?.value.trim() || '',
     email_to: document.getElementById('emailTo')?.value.trim() || '',
-    debug_logging_enabled: debugLoggingEnabled ? 'true' : 'false'
+    debug_logging_enabled: debugLoggingEnabled ? 'true' : 'false',
+    stripe_publishable_key: document.getElementById('stripePublishableKey')?.value.trim() || '',
+    stripe_secret_key: document.getElementById('stripeSecretKey')?.value.trim() || '',
+    stripe_webhook_secret: document.getElementById('stripeWebhookSecret')?.value.trim() || ''
   };
   
   try {
@@ -3014,11 +3026,7 @@ async function previewCleanup() {
       cleanLogs: cleanLogs.toString()
     });
     
-    const response = await fetch(`${API_BASE}/admin/cleanup/info?${params}`, {
-      credentials: 'include'
-    });
-    
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/cleanup/info?${params}`);
     hideGlobalLoading();
     
     if (data.success) {
@@ -3139,13 +3147,10 @@ async function testEmail() {
   try {
     showGlobalLoading('Sending test email...');
     
-    const response = await fetch(`${API_BASE}/admin/email/test`, {
+    const data = await adminApiRequest(`${API_BASE}/admin/email/test`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include'
+      headers: { 'Content-Type': 'application/json' }
     });
-    
-    const data = await response.json();
     
     hideGlobalLoading();
     
@@ -3166,8 +3171,7 @@ async function loadUsers() {
   const container = document.getElementById('usersTab');
   
   try {
-    const response = await fetch(`${API_BASE}/admin/users`, { credentials: 'include' });
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/users`);
     
     if (data.success) {
       const users = data.users || [];
@@ -3663,8 +3667,7 @@ async function loadAdmins() {
   const container = document.getElementById('adminsTab');
   
   try {
-    const response = await fetch(`${API_BASE}/admin/admins`, { credentials: 'include' });
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/admins`);
     
     if (data.success) {
       const admins = data.admins || [];
@@ -4102,8 +4105,7 @@ async function loadLogs() {
   
   try {
     // 获取过滤器选项（用于下拉菜单）
-    const optionsResponse = await fetch(`${API_BASE}/admin/logs/filter-options`, { credentials: 'include' });
-    const optionsData = await optionsResponse.json();
+    const optionsData = await adminApiRequest(`${API_BASE}/admin/logs/filter-options`);
     const filterOptions = optionsData.success ? optionsData.options : { actions: [], resourceTypes: [], operators: [] };
     
     // 构建查询参数
@@ -4131,8 +4133,7 @@ async function loadLogs() {
     if (logsFilterState.ip_address) params.append('ip_address', logsFilterState.ip_address);
     if (logsFilterState.details) params.append('details', logsFilterState.details);
     
-    const response = await fetch(`${API_BASE}/admin/logs?${params.toString()}`, { credentials: 'include' });
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/logs?${params.toString()}`);
     
     if (data.success) {
       const logs = data.logs || [];
@@ -5277,14 +5278,11 @@ async function createBackup(type = 'db') {
     const backupType = type === 'full' ? 'Full' : 'Database';
     showGlobalLoading(`Creating ${backupType.toLowerCase()} backup...`);
     
-    const response = await fetch(`${API_BASE}/admin/backup/create`, {
+    const data = await adminApiRequest(`${API_BASE}/admin/backup/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ type: type })
     });
-    
-    const data = await response.json();
     hideGlobalLoading();
     
     if (data.success) {
@@ -5306,11 +5304,7 @@ async function loadBackupList() {
   if (!container) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/backup/list`, {
-      credentials: 'include'
-    });
-    
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/backup/list`);
     
     if (data.success) {
       const backups = data.backups || [];
@@ -5409,14 +5403,11 @@ async function restoreBackup(fileName) {
   try {
     showGlobalLoading('Restoring database... This may take a moment.');
     
-    const response = await fetch(`${API_BASE}/admin/backup/restore`, {
+    const data = await adminApiRequest(`${API_BASE}/admin/backup/restore`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ fileName })
     });
-    
-    const data = await response.json();
     hideGlobalLoading();
     
     if (data.success) {
@@ -5446,14 +5437,11 @@ async function deleteBackupFile(fileName) {
   if (!confirmed) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/backup/delete`, {
+    const data = await adminApiRequest(`${API_BASE}/admin/backup/delete`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ fileName })
     });
-    
-    const data = await response.json();
     
     if (data.success) {
       showToast('Backup deleted successfully', 'success');
@@ -5609,11 +5597,7 @@ async function loadRemoteBackupConfigs() {
   if (!container) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/remote-backup/configs`, {
-      credentials: 'include'
-    });
-    
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/remote-backup/configs`);
     
     if (data.success) {
       const configs = data.configs || [];
@@ -5765,12 +5749,9 @@ async function deleteRemoteBackupConfig(id) {
   if (!confirmed) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/remote-backup/configs/${id}`, {
-      method: 'DELETE',
-      credentials: 'include'
+    const data = await adminApiRequest(`${API_BASE}/admin/remote-backup/configs/${id}`, {
+      method: 'DELETE'
     });
-    
-    const data = await response.json();
     
     if (data.success) {
       showToast('Configuration deleted successfully', 'success');
@@ -5796,12 +5777,9 @@ async function triggerManualPush(configId) {
   try {
     showGlobalLoading('Triggering manual push...');
     
-    const response = await fetch(`${API_BASE}/admin/remote-backup/configs/${configId}/push`, {
-      method: 'POST',
-      credentials: 'include'
+    const data = await adminApiRequest(`${API_BASE}/admin/remote-backup/configs/${configId}/push`, {
+      method: 'POST'
     });
-    
-    const data = await response.json();
     hideGlobalLoading();
     
     if (data.success) {
@@ -5861,11 +5839,7 @@ function maskApiToken(token) {
 // 加载接收配置
 async function loadReceiveConfig() {
   try {
-    const response = await fetch(`${API_BASE}/admin/remote-backup/receive-config`, {
-      credentials: 'include'
-    });
-    
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/remote-backup/receive-config`);
     
     if (data.success && data.config) {
       const apiToken = data.config.api_token || '';
@@ -5930,17 +5904,14 @@ async function saveReceiveConfig() {
   try {
     showGlobalLoading('Saving receive config...');
     
-    const response = await fetch(`${API_BASE}/admin/remote-backup/receive-config`, {
+    const data = await adminApiRequest(`${API_BASE}/admin/remote-backup/receive-config`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({
         api_token: apiToken,
         auto_restore: autoRestore
       })
     });
-    
-    const data = await response.json();
     hideGlobalLoading();
     
     if (data.success) {
@@ -5965,11 +5936,7 @@ async function loadPushLogs() {
   if (!container) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/remote-backup/push-logs?limit=50`, {
-      credentials: 'include'
-    });
-    
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/remote-backup/push-logs?limit=50`);
     
     if (data.success) {
       const logs = data.logs || [];
@@ -6017,11 +5984,7 @@ async function loadReceivedBackups() {
   if (!container) return;
   
   try {
-    const response = await fetch(`${API_BASE}/admin/remote-backup/received`, {
-      credentials: 'include'
-    });
-    
-    const data = await response.json();
+    const data = await adminApiRequest(`${API_BASE}/admin/remote-backup/received`);
     
     if (data.success) {
       const backups = data.backups || [];
@@ -6081,12 +6044,9 @@ async function restoreReceivedBackup(id) {
   try {
     showGlobalLoading('Restoring backup...');
     
-    const response = await fetch(`${API_BASE}/admin/remote-backup/received/${id}/restore`, {
-      method: 'POST',
-      credentials: 'include'
+    const data = await adminApiRequest(`${API_BASE}/admin/remote-backup/received/${id}/restore`, {
+      method: 'POST'
     });
-    
-    const data = await response.json();
     hideGlobalLoading();
     
     if (data.success) {
@@ -6670,12 +6630,9 @@ async function backupMenu() {
   try {
     showGlobalLoading();
     
-    const response = await fetch(`${API_BASE}/admin/menu/backup`, {
-      method: 'POST',
-      credentials: 'include'
+    const data = await adminApiRequest(`${API_BASE}/admin/menu/backup`, {
+      method: 'POST'
     });
-    
-    const data = await response.json();
     hideGlobalLoading();
     
     if (data.success) {

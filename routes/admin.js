@@ -935,6 +935,40 @@ router.post('/settings', async (req, res) => {
       const newOrderingOpen = settings.ordering_open === 'true';
       const oldOrderingOpen = oldSetting && oldSetting.value === 'true';
       
+      // 验证 Stripe 密钥格式（如果提供）
+      if (settings.stripe_publishable_key && settings.stripe_publishable_key.trim()) {
+        const pubKey = settings.stripe_publishable_key.trim();
+        if (!pubKey.startsWith('pk_test_') && !pubKey.startsWith('pk_live_')) {
+          await rollback();
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Stripe 公钥格式不正确，应以 pk_test_ 或 pk_live_ 开头' 
+          });
+        }
+      }
+      
+      if (settings.stripe_secret_key && settings.stripe_secret_key.trim()) {
+        const secKey = settings.stripe_secret_key.trim();
+        if (!secKey.startsWith('sk_test_') && !secKey.startsWith('sk_live_')) {
+          await rollback();
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Stripe 私钥格式不正确，应以 sk_test_ 或 sk_live_ 开头' 
+          });
+        }
+      }
+      
+      if (settings.stripe_webhook_secret && settings.stripe_webhook_secret.trim()) {
+        const webhookSecret = settings.stripe_webhook_secret.trim();
+        if (!webhookSecret.startsWith('whsec_')) {
+          await rollback();
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Stripe Webhook Secret 格式不正确，应以 whsec_ 开头' 
+          });
+        }
+      }
+      
       for (const [key, value] of Object.entries(settings)) {
         await runAsync(
           `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now', 'localtime'))
