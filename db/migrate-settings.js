@@ -27,7 +27,10 @@ async function migrateSettings() {
       { key: 'twilio_auth_token', value: '', description: 'Twilio Auth Token' },
       { key: 'twilio_phone_number', value: '', description: 'Twilio发送号码' },
       { key: 'twilio_verify_service_sid', value: '', description: 'Twilio Verify Service SID (推荐使用)' },
-      { key: 'debug_logging_enabled', value: 'false', description: '是否启用详细DEBUG日志（记录所有请求，包括静态资源）' }
+      { key: 'debug_logging_enabled', value: 'false', description: '是否启用详细DEBUG日志（记录所有请求，包括静态资源）' },
+      { key: 'stripe_publishable_key', value: '', description: 'Stripe Publishable Key (starts with pk_)' },
+      { key: 'stripe_secret_key', value: '', description: 'Stripe Secret Key (starts with sk_)' },
+      { key: 'stripe_webhook_secret', value: '', description: 'Stripe Webhook Secret (starts with whsec_, optional)' }
     ];
 
     let addedCount = 0;
