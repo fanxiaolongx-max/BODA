@@ -292,12 +292,13 @@ let sessionRefreshInterval = null;
 
 async function checkAuth() {
   try {
-    const response = await adminApiRequest(`${API_BASE}/auth/admin/me`, {
+    // adminApiRequest 已经返回解析后的 JSON 数据，不是 response 对象
+    const data = await adminApiRequest(`${API_BASE}/auth/admin/me`, {
       method: 'GET'
     });
     
-    if (response.ok) {
-      const data = await response.json();
+    // 检查返回的数据是否成功
+    if (data && data.success && data.admin) {
       currentAdmin = data.admin;
       showMainPage();
       // 根据admin状态显示/隐藏Developer菜单
@@ -307,16 +308,25 @@ async function checkAuth() {
       startSessionCheck();
       startSessionRefresh();
     } else {
+      // 数据格式不正确，显示登录页
       showLoginPage();
       // 停止session检查和刷新
       stopSessionCheck();
       stopSessionRefresh();
     }
   } catch (error) {
-    console.error('认证检查失败:', error);
-    showLoginPage();
-    // 停止session检查
-    stopSessionCheck();
+    // 401错误已经在adminApiRequest中处理了（会跳转到登录页）
+    // 这里只处理其他错误
+    if (!error.message || !error.message.includes('Unauthorized')) {
+      console.error('认证检查失败:', error);
+    }
+    // 如果还没有跳转到登录页，则跳转
+    if (currentAdmin === null) {
+      showLoginPage();
+      // 停止session检查
+      stopSessionCheck();
+      stopSessionRefresh();
+    }
   }
 }
 
