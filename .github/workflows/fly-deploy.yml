@@ -14,12 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # 使用固定版本而不是 master，避免网络问题
-      - name: Setup Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@1.9
-        with:
-          version: latest
-        continue-on-error: false
+      # 使用官方推荐的 setup-flyctl action（更快更稳定）
+      - uses: superfly/flyctl-actions/setup-flyctl@master
       
       # 部署到 Fly.io，添加重试逻辑
       - name: Deploy to Fly.io

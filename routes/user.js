@@ -1198,10 +1198,18 @@ router.post('/orders/:id/create-payment-intent', async (req, res) => {
     // 注意：金额需要转换为最小单位（EGP: 1 EGP = 100 piastres）
     const amountInCents = Math.round(order.final_amount * 100);
     
+    // 使用 Payment Element 时，不需要手动指定 payment_method_types
+    // Payment Element 会自动检测设备支持的支付方式（包括 Apple Pay、Google Pay、银行卡等）
+    // 参考：https://docs.stripe.com/payments/payment-element
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: 'egp', // 埃及镑
-      payment_method_types: ['card', 'apple_pay'], // 支持银行卡和 Apple Pay
+      // 不指定 payment_method_types，让 Payment Element 自动处理
+      // Payment Element 会自动显示设备支持的所有支付方式
+      automatic_payment_methods: {
+        enabled: true, // 启用自动支付方式检测
+        allow_redirects: 'never' // 不允许重定向（保持在同一页面）
+      },
       metadata: {
         order_id: order.id,
         order_number: order.order_number,

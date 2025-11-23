@@ -20,6 +20,12 @@ uploads/payments/*
 .env
 .env.local
 
+# SSL Certificates (本地开发使用，不提交到仓库)
+*.pem
+*.key
+!node_modules/**/*.pem
+!node_modules/**/*.key
+
 # OS
 .DS_Store
 Thumbs.db

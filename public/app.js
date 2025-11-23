@@ -4045,11 +4045,13 @@ async function initStripeElements() {
     
     // 使用 Payment Element 替代 Card Element
     // Payment Element 自动支持 Apple Pay、Google Pay 等多种支付方式
-    // Apple Pay 会在支持的设备上自动显示在最前面
+    // 参考：https://docs.stripe.com/payments/payment-element
+    // Payment Element 会自动检测设备支持的支付方式并优先显示
     stripePaymentElement = stripeElements.create('payment', {
       layout: 'tabs', // 使用标签页布局
-      // Payment Element 会自动检测设备支持的支付方式
-      // 在支持的设备上，Apple Pay 会自动显示在第一位
+      // Payment Element 会自动检测并显示设备支持的所有支付方式
+      // 在支持的设备上，Apple Pay 会自动显示在最前面
+      // 对于本地开发（localhost），Apple Pay 可能不可用，但银行卡可以正常工作
     });
     
     stripePaymentElement.mount('#stripePaymentElement');

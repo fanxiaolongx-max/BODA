@@ -5,6 +5,7 @@ const session = require('express-session');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 
 const { initData } = require('./db/init');
 const { logger } = require('./utils/logger');
@@ -387,16 +388,69 @@ async function startServer() {
   try {
     await initData();
     
-    server = app.listen(PORT, HOST, () => {
-      logger.info(`服务器运行在 http://${HOST}:${PORT}`);
-      console.log(`\n=================================`);
-      console.log(`📱 BOBA TEA Ordering System`);
-      console.log(`🚀 服务器: http://${HOST}:${PORT}`);
-      console.log(`👤 管理后台: http://${HOST}:${PORT}/admin.html`);
-      console.log(`🛒 用户端: http://${HOST}:${PORT}/index.html`);
-      console.log(`📝 默认管理员: admin / admin123`);
-      console.log(`=================================\n`);
-    });
+    // 检查是否使用本地 HTTPS（仅本地开发环境）
+    // 如果证书文件存在，自动启用 HTTPS（除非明确禁用）
+    const certPath = path.join(__dirname, 'boba.local.pem');
+    const keyPath = path.join(__dirname, 'boba.local-key.pem');
+    const certFilesExist = fs.existsSync(certPath) && fs.existsSync(keyPath);
+    
+    const useLocalHttps = (process.env.USE_LOCAL_HTTPS === 'true' || process.env.USE_LOCAL_HTTPS === '1' || certFilesExist) 
+                          && process.env.USE_LOCAL_HTTPS !== 'false';
+    const isLocalEnv = process.env.NODE_ENV !== 'production' && !process.env.FLY_APP_NAME;
+    
+    if (useLocalHttps && isLocalEnv) {
+      // 本地环境：使用 mkcert 证书
+      if (certFilesExist) {
+        const httpsOptions = {
+          cert: fs.readFileSync(certPath),
+          key: fs.readFileSync(keyPath)
+        };
+        
+        // 如果未指定 HTTPS 端口，使用与 HTTP 相同的端口（3000）
+        const httpsPort = process.env.HTTPS_PORT ? parseInt(process.env.HTTPS_PORT) : PORT;
+        
+        // 启动 HTTPS 服务器
+        server = https.createServer(httpsOptions, app).listen(httpsPort, HOST, () => {
+          logger.info(`服务器运行在 https://${HOST}:${httpsPort} (本地 HTTPS)`);
+          console.log(`\n=================================`);
+          console.log(`📱 BOBA TEA Ordering System`);
+          console.log(`🔒 服务器: https://${HOST}:${httpsPort} (本地 HTTPS)`);
+          console.log(`👤 管理后台: https://${HOST}:${httpsPort}/admin.html`);
+          console.log(`🛒 用户端: https://${HOST}:${httpsPort}/index.html`);
+          console.log(`📝 默认管理员: admin / admin123`);
+          console.log(`=================================\n`);
+        });
+      } else {
+        logger.warn('本地 HTTPS 证书文件不存在，使用 HTTP 启动');
+        logger.warn(`证书路径: ${certPath}`);
+        logger.warn(`密钥路径: ${keyPath}`);
+        logger.warn('提示: 设置 USE_LOCAL_HTTPS=true 但证书文件不存在，回退到 HTTP');
+        // 回退到 HTTP
+        server = app.listen(PORT, HOST, () => {
+          logger.info(`服务器运行在 http://${HOST}:${PORT}`);
+          console.log(`\n=================================`);
+          console.log(`📱 BOBA TEA Ordering System`);
+          console.log(`🚀 服务器: http://${HOST}:${PORT}`);
+          console.log(`👤 管理后台: http://${HOST}:${PORT}/admin.html`);
+          console.log(`🛒 用户端: http://${HOST}:${PORT}/index.html`);
+          console.log(`📝 默认管理员: admin / admin123`);
+          console.log(`=================================\n`);
+        });
+      }
+    } else {
+      // 生产环境或未启用本地 HTTPS：使用 HTTP（由 Nginx/Fly.io 处理 HTTPS）
+      server = app.listen(PORT, HOST, () => {
+        const protocol = process.env.NODE_ENV === 'production' ? 'https (via proxy)' : 'http';
+        logger.info(`服务器运行在 ${protocol}://${HOST}:${PORT}`);
+        console.log(`\n=================================`);
+        console.log(`📱 BOBA TEA Ordering System`);
+        console.log(`🚀 服务器: ${protocol}://${HOST}:${PORT}`);
+        console.log(`👤 管理后台: ${protocol}://${HOST}:${PORT}/admin.html`);
+        console.log(`🛒 用户端: ${protocol}://${HOST}:${PORT}/index.html`);
+        console.log(`📝 默认管理员: admin / admin123`);
+        console.log(`=================================\n`);
+      });
+    }
   } catch (error) {
     logger.error('启动服务器失败', { error: error.message });
     process.exit(1);
