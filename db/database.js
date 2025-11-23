@@ -428,6 +428,22 @@ async function migrateDatabaseSchema() {
       console.log('自动迁移: 添加 orders.balance_used 字段...');
       await runAsync('ALTER TABLE orders ADD COLUMN balance_used REAL DEFAULT 0');
     }
+    
+    // Stripe 支付相关字段迁移
+    if (!ordersColumns.includes('payment_method')) {
+      console.log('自动迁移: 添加 orders.payment_method 字段...');
+      await runAsync('ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT NULL');
+    }
+    
+    if (!ordersColumns.includes('stripe_payment_intent_id')) {
+      console.log('自动迁移: 添加 orders.stripe_payment_intent_id 字段...');
+      await runAsync('ALTER TABLE orders ADD COLUMN stripe_payment_intent_id TEXT DEFAULT NULL');
+    }
+    
+    if (!ordersColumns.includes('stripe_session_id')) {
+      console.log('自动迁移: 添加 orders.stripe_session_id 字段...');
+      await runAsync('ALTER TABLE orders ADD COLUMN stripe_session_id TEXT DEFAULT NULL');
+    }
 
     // 检查 users 表的字段
     const usersInfo = await getTableInfo('users');
