@@ -2600,7 +2600,7 @@ router.post('/cycles/:id/confirm', async (req, res) => {
       let cancelledCount = 0;
       let refundedCount = 0;
       for (const order of orders) {
-        const discountAmount = order.total_amount * discountRate;
+        const discountAmount = roundAmount(order.total_amount * discountRate);
         // 计算最终金额：原价 - 折扣 - 已使用的余额
         const balanceUsed = hasBalanceUsed && order.balance_used ? (order.balance_used || 0) : 0;
         const finalAmount = roundAmount(order.total_amount - discountAmount - balanceUsed);

@@ -141,7 +141,7 @@ router.post('/orders', async (req, res) => {
 
         // 使用精度处理，避免浮点数误差
         const subtotal = roundAmount(finalPrice * quantity);
-        totalAmount += subtotal;
+        totalAmount = roundAmount(totalAmount + subtotal);
 
         orderItems.push({
           product_id: product.id,
@@ -758,7 +758,7 @@ router.put('/orders/:id', async (req, res) => {
 
         // 使用精度处理，避免浮点数误差
         const subtotal = roundAmount(finalPrice * quantity);
-        totalAmount += subtotal;
+        totalAmount = roundAmount(totalAmount + subtotal);
 
         orderItems.push({
           product_id: product.id,
@@ -819,8 +819,15 @@ router.put('/orders/:id', async (req, res) => {
       const ordersTableInfo = await allAsync("PRAGMA table_info(orders)");
       const ordersColumns = ordersTableInfo.map(col => col.name);
       
+      // 确保 totalAmount 精度正确
+      totalAmount = roundAmount(totalAmount);
+      
+      // 计算 final_amount：如果订单使用了余额，需要减去余额
+      const balanceUsed = ordersColumns.includes('balance_used') && order.balance_used ? (order.balance_used || 0) : 0;
+      const finalAmount = roundAmount(totalAmount - balanceUsed);
+      
       const updateFields = ['total_amount = ?', 'final_amount = ?'];
-      const updateValues = [totalAmount, totalAmount];
+      const updateValues = [totalAmount, finalAmount];
       
       if (ordersColumns.includes('notes')) {
         updateFields.push('notes = ?');
