@@ -456,7 +456,8 @@ async function initData() {
       { key: 'twilio_verify_service_sid', value: '', description: 'Twilio Verify Service SID (推荐使用)' },
       { key: 'stripe_publishable_key', value: '', description: 'Stripe Publishable Key (starts with pk_)' },
       { key: 'stripe_secret_key', value: '', description: 'Stripe Secret Key (starts with sk_)' },
-      { key: 'stripe_webhook_secret', value: '', description: 'Stripe Webhook Secret (starts with whsec_, optional)' }
+      { key: 'stripe_webhook_secret', value: '', description: 'Stripe Webhook Secret (starts with whsec_, optional)' },
+      { key: 'instant_payment_enabled', value: 'false', description: '允许用户即时支付（开启后用户无需等待周期结束即可支付或删除订单，折扣功能不生效）' }
     ];
 
     for (const setting of settings) {

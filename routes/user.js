@@ -306,7 +306,14 @@ router.post('/orders', async (req, res) => {
         });
       }
 
-      // 计算最终金额（先不考虑折扣，折扣在周期确认时计算）
+      // 检查是否启用即时支付
+      const instantPaymentSetting = await getAsync("SELECT value FROM settings WHERE key = 'instant_payment_enabled'");
+      const instantPaymentEnabled = instantPaymentSetting && instantPaymentSetting.value === 'true';
+      
+      // 计算最终金额
+      // 如果启用即时支付，不计算折扣（discount_amount = 0）
+      // 否则，折扣在周期确认时计算（这里先设为0）
+      let discountAmount = 0;
       let finalAmount = roundAmount(totalAmount);
       let balanceUsed = 0;
       let orderStatus = 'pending';
@@ -765,10 +772,16 @@ router.delete('/orders/:id', async (req, res) => {
       return res.status(400).json({ success: false, message: '只能删除待付款的订单' });
     }
 
-    // 检查点单是否开放
-    const setting = await getAsync("SELECT value FROM settings WHERE key = 'ordering_open'");
-    if (!setting || setting.value !== 'true') {
-      return res.status(400).json({ success: false, message: '点单已关闭，无法删除订单' });
+    // 检查是否启用即时支付
+    const instantPaymentSetting = await getAsync("SELECT value FROM settings WHERE key = 'instant_payment_enabled'");
+    const instantPaymentEnabled = instantPaymentSetting && instantPaymentSetting.value === 'true';
+    
+    // 如果未启用即时支付，需要检查点单是否开放
+    if (!instantPaymentEnabled) {
+      const setting = await getAsync("SELECT value FROM settings WHERE key = 'ordering_open'");
+      if (!setting || setting.value !== 'true') {
+        return res.status(400).json({ success: false, message: '点单已关闭，无法删除订单' });
+      }
     }
 
     // 删除订单详情和订单
@@ -1044,10 +1057,16 @@ router.post('/orders/:id/payment', upload.single('payment_image'), async (req, r
   try {
     const { id } = req.params;
 
-    // 检查点单是否已关闭
-    const setting = await getAsync("SELECT value FROM settings WHERE key = 'ordering_open'");
-    if (setting && setting.value === 'true') {
-      return res.status(400).json({ success: false, message: '点单时间未关闭，暂不能付款' });
+    // 检查是否启用即时支付
+    const instantPaymentSetting = await getAsync("SELECT value FROM settings WHERE key = 'instant_payment_enabled'");
+    const instantPaymentEnabled = instantPaymentSetting && instantPaymentSetting.value === 'true';
+    
+    // 如果未启用即时支付，需要检查点单是否已关闭
+    if (!instantPaymentEnabled) {
+      const setting = await getAsync("SELECT value FROM settings WHERE key = 'ordering_open'");
+      if (setting && setting.value === 'true') {
+        return res.status(400).json({ success: false, message: '点单时间未关闭，暂不能付款' });
+      }
     }
 
     const order = await getAsync(
@@ -1175,22 +1194,28 @@ router.post('/orders/:id/create-payment-intent', async (req, res) => {
       return res.status(400).json({ success: false, message: '订单已付款' });
     }
     
-    // 检查订单所属周期是否已确认
-    if (order.cycle_id) {
-      const cycle = await getAsync('SELECT status FROM ordering_cycles WHERE id = ?', [order.cycle_id]);
-      if (cycle && cycle.status === 'confirmed') {
-        return res.status(400).json({ success: false, message: '该周期已确认，无法支付' });
-      }
-    } else {
-      // 如果没有 cycle_id，通过订单创建时间查找对应的周期
-      const cycle = await getAsync(
-        `SELECT status FROM ordering_cycles 
-         WHERE start_time <= ? AND (end_time >= ? OR end_time IS NULL) 
-         ORDER BY start_time DESC LIMIT 1`,
-        [order.created_at, order.created_at]
-      );
-      if (cycle && cycle.status === 'confirmed') {
-        return res.status(400).json({ success: false, message: '该周期已确认，无法支付' });
+    // 检查是否启用即时支付
+    const instantPaymentSetting = await getAsync("SELECT value FROM settings WHERE key = 'instant_payment_enabled'");
+    const instantPaymentEnabled = instantPaymentSetting && instantPaymentSetting.value === 'true';
+    
+    // 如果未启用即时支付，检查订单所属周期是否已确认
+    if (!instantPaymentEnabled) {
+      if (order.cycle_id) {
+        const cycle = await getAsync('SELECT status FROM ordering_cycles WHERE id = ?', [order.cycle_id]);
+        if (cycle && cycle.status === 'confirmed') {
+          return res.status(400).json({ success: false, message: '该周期已确认，无法支付' });
+        }
+      } else {
+        // 如果没有 cycle_id，通过订单创建时间查找对应的周期
+        const cycle = await getAsync(
+          `SELECT status FROM ordering_cycles 
+           WHERE start_time <= ? AND (end_time >= ? OR end_time IS NULL) 
+           ORDER BY start_time DESC LIMIT 1`,
+          [order.created_at, order.created_at]
+        );
+        if (cycle && cycle.status === 'confirmed') {
+          return res.status(400).json({ success: false, message: '该周期已确认，无法支付' });
+        }
       }
     }
     

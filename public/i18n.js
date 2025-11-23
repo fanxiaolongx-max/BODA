@@ -292,12 +292,16 @@ const translations = {
     'zoom_label': 'Zoom:',
     'payment_title': 'Payment',
     'payment_method': 'Payment Method',
+    'payment_button': 'Payment',
     'online_payment': 'Online Payment',
     'stripe_payment_desc': 'Pay securely with Stripe',
     'upload_screenshot': 'Upload Screenshot',
     'screenshot_payment_desc': 'Upload your payment screenshot',
     'pay_now': 'Pay Now',
     'stripe_not_configured': 'Stripe payment is not configured. Please contact administrator.',
+    'online_payment_badge': 'Online Payment',
+    'payment_method': 'Payment Method',
+    'transaction_id': 'Transaction ID',
     
     // Login modal
     'login_to_continue': 'Login to Continue',
@@ -616,12 +620,16 @@ const translations = {
     'zoom_label': '缩放：',
     'payment_title': '支付',
     'payment_method': '支付方式',
+    'payment_button': '支付',
     'online_payment': '在线支付',
     'stripe_payment_desc': '使用 Stripe 安全支付',
     'upload_screenshot': '上传截图',
     'screenshot_payment_desc': '上传您的付款截图',
     'pay_now': '立即支付',
     'stripe_not_configured': 'Stripe 支付未配置，请联系管理员。',
+    'online_payment_badge': '在线支付',
+    'payment_method': '支付方式',
+    'transaction_id': '对账ID',
     
     // Login modal
     'login_to_continue': '登录以继续',

@@ -1304,9 +1304,18 @@ function renderOrders(orders) {
           </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
-          <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[order.status]}">
-            ${statusText[order.status]}
-          </span>
+          <div class="space-y-1">
+            <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[order.status]}">
+              ${statusText[order.status]}
+            </span>
+            ${order.payment_method === 'stripe' ? `
+              <div class="mt-1">
+                <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                  💳 Online Payment
+                </span>
+              </div>
+            ` : ''}
+          </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm ${expiredClass}">
           ${new Date(order.created_at).toLocaleString('en-US')}
@@ -1321,6 +1330,12 @@ function renderOrders(orders) {
             <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
           </select>
           ${order.payment_image ? `<br><button onclick="showPaymentImageModal('${order.payment_image}')" class="text-blue-600 hover:text-blue-800 text-xs underline">View Payment Screenshot</button>` : ''}
+          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id ? `
+            <div class="mt-2 text-xs">
+              <div class="text-gray-600 font-semibold">Transaction ID:</div>
+              <div class="text-gray-800 font-mono text-xs break-all">${order.stripe_payment_intent_id}</div>
+            </div>
+          ` : ''}
         </td>
       </tr>
     `;
@@ -2425,6 +2440,29 @@ async function loadSettingsPage() {
                 <p class="text-xs text-gray-500 mt-1">Control whether users can place orders</p>
               </div>
               
+              <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Payment Settings</h3>
+                
+                <div class="mb-4">
+                  <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="instantPaymentEnabled" 
+                           class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                           ${settings.instant_payment_enabled === 'true' ? 'checked' : ''}>
+                    <span class="text-sm font-medium text-gray-700">Enable Instant Payment</span>
+                  </label>
+                  <p class="text-xs text-gray-500 mt-1 ml-6">
+                    When enabled, users can pay or delete orders immediately without waiting for cycle to end. 
+                    Discount feature will be disabled (Discount Amount = 0). Balance can still be used.
+                  </p>
+                  <div class="mt-2 ml-6 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p class="text-xs text-yellow-800">
+                      <strong>⚠️ Note:</strong> When instant payment is enabled, discount calculations are disabled. 
+                      All orders will have Discount Amount = 0, regardless of cycle discount settings.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Store Name</label>
                 <input type="text" id="storeName" 
@@ -2923,6 +2961,7 @@ async function saveSettings(e) {
   const smsEnabled = document.getElementById('smsEnabled')?.checked || false;
   const emailEnabled = document.getElementById('emailEnabled')?.checked || false;
   const debugLoggingEnabled = document.getElementById('debugLoggingEnabled')?.checked || false;
+  const instantPaymentEnabled = document.getElementById('instantPaymentEnabled')?.checked || false;
   
   // 获取session过期时间配置
   const adminSessionTimeout = document.getElementById('adminSessionTimeout')?.value;
@@ -2961,6 +3000,7 @@ async function saveSettings(e) {
     email_from: document.getElementById('emailFrom')?.value.trim() || '',
     email_to: document.getElementById('emailTo')?.value.trim() || '',
     debug_logging_enabled: debugLoggingEnabled ? 'true' : 'false',
+    instant_payment_enabled: instantPaymentEnabled ? 'true' : 'false',
     stripe_publishable_key: document.getElementById('stripePublishableKey')?.value.trim() || '',
     stripe_secret_key: document.getElementById('stripeSecretKey')?.value.trim() || '',
     stripe_webhook_secret: document.getElementById('stripeWebhookSecret')?.value.trim() || ''

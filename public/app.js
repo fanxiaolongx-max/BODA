@@ -3597,6 +3597,7 @@ function renderOrders(orders, isInitial = false) {
   };
   
   const canEdit = currentSettings.ordering_open === 'true';
+  const instantPaymentEnabled = currentSettings.instant_payment_enabled === 'true';
   
   const sugarLabels = {
     '0': t('sugar_zero'),
@@ -3645,9 +3646,16 @@ function renderOrders(orders, isInitial = false) {
           ${cycleInfo}
           ${isExpired ? `<p class="text-sm text-red-600 font-semibold mt-1">⚠️ ${t('order_expired')}</p>` : ''}
         </div>
-        <span class="px-3 py-1 rounded-full text-sm font-semibold ${statusColors[order.status]}">
-          ${statusText[order.status]}
-        </span>
+        <div class="flex flex-col items-end space-y-2">
+          <span class="px-3 py-1 rounded-full text-sm font-semibold ${statusColors[order.status]}">
+            ${statusText[order.status]}
+          </span>
+          ${order.payment_method === 'stripe' ? `
+            <span class="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+              💳 ${t('online_payment_badge')}
+            </span>
+          ` : ''}
+        </div>
       </div>
       
       <div class="border-t border-gray-200 pt-4 mb-4 space-y-3">
@@ -3779,29 +3787,43 @@ function renderOrders(orders, isInitial = false) {
               <div class="text-sm ${expiredClass || inactiveClass || 'text-gray-700'} bg-gray-50 p-2 rounded">${order.notes}</div>
             </div>
           ` : ''}
+          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id ? `
+            <div class="mt-3 pt-3 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'}">
+              <div class="text-xs text-gray-500 mb-1">${t('transaction_id')}:</div>
+              <div class="text-xs ${expiredClass || inactiveClass || 'text-gray-700'} font-mono break-all bg-gray-50 p-2 rounded">${order.stripe_payment_intent_id}</div>
+            </div>
+          ` : ''}
         </div>
       </div>
       
       ${order.status === 'pending' ? `
-        <div class="flex ${canEdit ? 'space-x-2' : ''} mt-4">
-          ${canEdit ? `
+        <div class="flex ${canEdit || instantPaymentEnabled ? 'space-x-2' : ''} mt-4">
+          ${(canEdit || instantPaymentEnabled) ? `
             <button onclick="deleteOrder('${order.id}')" 
                     class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition">
               ${t('delete_order')}
             </button>
           ` : ''}
-          ${currentSettings.ordering_open === 'true' ? `
+          ${instantPaymentEnabled ? `
+            <!-- 即时支付模式：随时可以支付 -->
+            <button onclick="showPaymentModal('${order.id}')" 
+                    class="${(canEdit || instantPaymentEnabled) ? 'flex-1' : 'w-full'} bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition">
+              ${t('payment_button')}
+            </button>
+          ` : currentSettings.ordering_open === 'true' ? `
+            <!-- 传统模式：点单开放时不能支付，需要等待周期结束 -->
             <button disabled
                     class="${canEdit ? 'flex-1' : 'w-full'} bg-gray-400 text-white font-semibold py-3 rounded-lg transition cursor-not-allowed relative">
               <div class="flex flex-col items-center">
-                <span>${t('upload_payment_screenshot')}</span>
+                <span>${t('payment_button')}</span>
                 <span class="text-xs font-normal mt-1 opacity-90">${t('wait_close_ordering')}</span>
               </div>
             </button>
           ` : `
+            <!-- 传统模式：点单关闭后可以支付 -->
             <button onclick="showPaymentModal('${order.id}')" 
                     class="${canEdit ? 'flex-1' : 'w-full'} bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition">
-              ${t('upload_payment_screenshot')}
+              ${t('payment_button')}
             </button>
           `}
         </div>
@@ -4209,29 +4231,84 @@ async function showPaymentModal(orderId) {
           console.error('检查 Stripe 配置失败:', error);
         }
         
-        // 如果 Stripe 未启用，显示提示并禁用按钮
-        const stripeBtn = document.getElementById('selectStripePayment');
-        const stripeNotConfigured = document.getElementById('stripeNotConfigured');
-        if (!isStripeEnabled) {
-          if (stripeBtn) {
-            stripeBtn.disabled = true;
-            stripeBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        // 检查是否启用即时支付
+        const instantPaymentEnabled = currentSettings.instant_payment_enabled === 'true';
+        
+        // 如果启用即时支付，只显示在线支付，隐藏上传截图选项
+        if (instantPaymentEnabled) {
+          // 隐藏支付方式选择按钮（直接通过 ID 隐藏）
+          const stripeBtn = document.getElementById('selectStripePayment');
+          const screenshotBtn = document.getElementById('selectScreenshotPayment');
+          if (stripeBtn) stripeBtn.style.display = 'none';
+          if (screenshotBtn) screenshotBtn.style.display = 'none';
+          
+          // 隐藏支付方式选择区域的标签
+          const paymentMethodLabel = document.querySelector('#paymentModal label[data-i18n="payment_method"]');
+          if (paymentMethodLabel) {
+            const labelContainer = paymentMethodLabel.closest('.mb-4');
+            if (labelContainer) labelContainer.style.display = 'none';
           }
-          if (stripeNotConfigured) {
-            stripeNotConfigured.classList.remove('hidden');
+          
+          // 隐藏上传截图表单
+          const screenshotSection = document.getElementById('screenshotPaymentSection');
+          if (screenshotSection) {
+            screenshotSection.style.display = 'none';
+          }
+          
+          // 如果 Stripe 已启用，直接显示 Stripe 支付表单
+          if (isStripeEnabled) {
+            const stripeSection = document.getElementById('stripePaymentSection');
+            if (stripeSection) {
+              stripeSection.classList.remove('hidden');
+              // 初始化 Stripe Elements
+              initStripeElements();
+            }
+          } else {
+            // Stripe 未配置，显示错误提示
+            const stripeNotConfigured = document.getElementById('stripeNotConfigured');
+            if (stripeNotConfigured) {
+              stripeNotConfigured.classList.remove('hidden');
+              stripeNotConfigured.style.display = 'block';
+              stripeNotConfigured.style.marginTop = '1rem';
+            }
           }
         } else {
-          if (stripeBtn) {
-            stripeBtn.disabled = false;
-            stripeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          // 传统模式：显示两种支付方式选择
+          const stripeBtn = document.getElementById('selectStripePayment');
+          const screenshotBtn = document.getElementById('selectScreenshotPayment');
+          if (stripeBtn) stripeBtn.style.display = 'block';
+          if (screenshotBtn) screenshotBtn.style.display = 'block';
+          
+          // 显示支付方式选择区域的标签
+          const paymentMethodLabel = document.querySelector('#paymentModal label[data-i18n="payment_method"]');
+          if (paymentMethodLabel) {
+            const labelContainer = paymentMethodLabel.closest('.mb-4');
+            if (labelContainer) labelContainer.style.display = 'block';
           }
-          if (stripeNotConfigured) {
-            stripeNotConfigured.classList.add('hidden');
+          
+          // 如果 Stripe 未启用，显示提示并禁用按钮
+          const stripeNotConfigured = document.getElementById('stripeNotConfigured');
+          if (!isStripeEnabled) {
+            if (stripeBtn) {
+              stripeBtn.disabled = true;
+              stripeBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+            if (stripeNotConfigured) {
+              stripeNotConfigured.classList.remove('hidden');
+            }
+          } else {
+            if (stripeBtn) {
+              stripeBtn.disabled = false;
+              stripeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            if (stripeNotConfigured) {
+              stripeNotConfigured.classList.add('hidden');
+            }
           }
+          
+          // 默认选择上传截图方式
+          selectPaymentMethod('screenshot');
         }
-        
-        // 默认选择上传截图方式
-        selectPaymentMethod('screenshot');
         
         // 应用翻译
         applyTranslations();
@@ -4270,18 +4347,37 @@ function closePayment() {
   const stripeSection = document.getElementById('stripePaymentSection');
   const screenshotSection = document.getElementById('screenshotPaymentSection');
   if (stripeSection) stripeSection.classList.add('hidden');
-  if (screenshotSection) screenshotSection.classList.remove('hidden');
+  if (screenshotSection) {
+    screenshotSection.classList.remove('hidden');
+    screenshotSection.style.display = 'block'; // 确保显示
+  }
   
-  // 重置按钮样式
+  // 重置支付方式选择按钮显示
   const stripeBtn = document.getElementById('selectStripePayment');
   const screenshotBtn = document.getElementById('selectScreenshotPayment');
   if (stripeBtn) {
-    stripeBtn.classList.remove('border-blue-500', 'bg-blue-50');
+    stripeBtn.style.display = 'block';
+    stripeBtn.disabled = false;
+    stripeBtn.classList.remove('border-blue-500', 'bg-blue-50', 'opacity-50', 'cursor-not-allowed');
     stripeBtn.classList.add('border-gray-300');
   }
   if (screenshotBtn) {
+    screenshotBtn.style.display = 'block';
     screenshotBtn.classList.add('border-blue-500', 'bg-blue-50');
     screenshotBtn.classList.remove('border-gray-300');
+  }
+  
+  // 重置支付方式选择区域的标签显示
+  const paymentMethodLabel = document.querySelector('#paymentModal label[data-i18n="payment_method"]');
+  if (paymentMethodLabel) {
+    const labelContainer = paymentMethodLabel.closest('.mb-4');
+    if (labelContainer) labelContainer.style.display = 'block';
+  }
+  
+  // 隐藏 Stripe 未配置提示
+  const stripeNotConfigured = document.getElementById('stripeNotConfigured');
+  if (stripeNotConfigured) {
+    stripeNotConfigured.classList.add('hidden');
   }
 }
 
