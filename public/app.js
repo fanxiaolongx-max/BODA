@@ -2869,8 +2869,16 @@ async function submitOrder() {
       showTab('orders');
       
       // 延迟一下再加载订单，确保数据库已更新
+      // 重置分页，从第一页开始加载，确保新订单显示在最前面
       setTimeout(() => {
-        loadOrders(false); // 保持分页状态，只刷新数据
+        loadOrders(true); // 重置分页，显示最新订单
+        // 滚动到订单列表顶部，确保新订单可见
+        setTimeout(() => {
+          const ordersList = document.getElementById('ordersList');
+          if (ordersList) {
+            ordersList.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 300);
       }, 500);
     } else {
       showToast(data.message || t('order_submission_failed'), 'error');
@@ -3842,6 +3850,13 @@ function renderOrders(orders, isInitial = false) {
   // 如果是初始加载，清空容器并设置内容；否则追加
   if (isInitial) {
     container.innerHTML = ordersHTMLNew;
+    // 如果是初始加载，滚动到顶部（确保新订单可见）
+    setTimeout(() => {
+      const ordersTab = document.getElementById('ordersTab');
+      if (ordersTab && !ordersTab.classList.contains('hidden')) {
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
   } else {
     // 追加模式：先移除旧的"显示更多"按钮，然后追加新订单
     const oldButton = container.querySelector('#loadMoreOrdersBtn');
