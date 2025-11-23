@@ -40,6 +40,8 @@ node db/init.js
 npm start
 ```
 
+**注意**：CSS 文件（`public/dist/output.css`）已包含在仓库中，无需构建。如果修改了 HTML/JS 中的 Tailwind 类名，需要运行 `npm run build:css:prod` 后提交。
+
 ### 访问系统
 
 启动成功后，在浏览器中访问：

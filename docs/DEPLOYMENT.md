@@ -249,6 +249,9 @@ git pull
 # 安装新依赖
 npm install --production
 
+# 注意：CSS 文件（public/dist/output.css）已包含在仓库中，无需构建
+# 如果修改了 HTML/JS 中的 Tailwind 类，需要在本地运行 npm run build:css:prod 后提交
+
 # 重启服务
 pm2 restart boda
 ```
@@ -257,29 +260,52 @@ pm2 restart boda
 
 ### Dockerfile
 ```dockerfile
-FROM node:18-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# 安装依赖
-COPY package*.json ./
-RUN npm install --production
+# 安装系统依赖（sqlite3 需要编译工具）
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-# 复制项目文件
-COPY . .
+# 创建数据目录
+RUN mkdir -p /data /data/uploads /data/logs /data/uploads/products /data/uploads/payments /data/show && \
+    chown -R node:node /data
 
-# 创建必要目录
-RUN mkdir -p db uploads/products uploads/payments logs
+RUN chown -R node:node /app
+USER node
 
-# 初始化数据库
-RUN node db/init.js
+# 复制 package 文件
+COPY --chown=node:node package*.json ./
+
+# 安装依赖（生产环境，CSS文件已包含在仓库中）
+RUN npm ci --omit=dev && \
+    npm cache clean --force
+
+# 复制项目文件（包括已构建的 CSS 文件 public/dist/output.css）
+COPY --chown=node:node . .
+
+# 设置环境变量
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV DATA_DIR=/data
 
 # 暴露端口
 EXPOSE 3000
 
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
 # 启动应用
 CMD ["node", "server.js"]
 ```
+
+**注意**：CSS 文件（`public/dist/output.css`）已包含在仓库中，无需在 Docker 构建时生成。
 
 ### docker-compose.yml
 ```yaml

@@ -308,6 +308,8 @@ async function checkAuth() {
       // 启动session过期检查和刷新
       startSessionCheck();
       startSessionRefresh();
+      // 认证成功后重新加载设置（使用管理员权限）
+      loadSettings();
     } else {
       // 数据格式不正确，显示登录页
       showLoginPage();
@@ -476,6 +478,8 @@ async function login() {
       updateDeveloperMenuVisibility();
       // 启动session检查
       startSessionCheck();
+      // 登录成功后重新加载设置（使用管理员权限）
+      loadSettings();
     } else {
       showToast(data.message || 'Login failed', 'error');
     }
@@ -753,7 +757,10 @@ async function loadSettings() {
     
     // 如果管理员设置获取失败（401 或其他错误），降级到公开设置
     // 这样即使未登录也能显示正确的商店名称
-    console.log('管理员设置获取失败，尝试获取公开设置...');
+    // 只在非401错误时打印日志（401是正常的未登录状态）
+    if (response.status !== 401) {
+      console.log('管理员设置获取失败，尝试获取公开设置...');
+    }
     const publicResponse = await fetch(`${API_BASE}/public/settings`, {
       credentials: 'include'
     });

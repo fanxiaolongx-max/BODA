@@ -24,12 +24,12 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       scriptSrcAttr: ["'unsafe-inline'"], // 允许内联事件处理器（onclick等）
       imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net"],
       connectSrc: ["'self'"],
-      fontSrc: ["'self'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net"],
+      fontSrc: ["'self'", "https://cdn.jsdelivr.net"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
       frameSrc: ["'self'", "blob:"], // 允许同源iframe和blob URL（用于测试报告）
@@ -303,6 +303,11 @@ app.use('/api/public', publicRoutes);
 
 // 健康检查
 const { performHealthCheck } = require('./utils/health-check');
+// 显式处理 favicon.ico 请求
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
+});
+
 app.get('/health', async (req, res) => {
   try {
     const health = await performHealthCheck();
@@ -320,9 +325,25 @@ app.get('/health', async (req, res) => {
 app.get('/7a21c2d1a7f0427a2a7cb5854bfac05a.txt', (req, res) => {
   res.send("29656752675be119d4ff6f5f0f0912d3996676d7");
 });
-// 404处理
+// 404处理（排除静态文件请求）
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: '接口不存在' });
+  // 如果是静态文件请求（如 .ico, .css, .js, .png 等），尝试从 public 目录提供
+  const staticExtensions = ['.ico', '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.woff2', '.ttf', '.eot'];
+  const ext = path.extname(req.path).toLowerCase();
+  
+  if (staticExtensions.includes(ext)) {
+    const filePath = path.join(__dirname, 'public', req.path);
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath);
+    }
+  }
+  
+  // 对于 API 请求返回 JSON，其他请求返回 HTML
+  if (req.path.startsWith('/api/')) {
+    res.status(404).json({ success: false, message: '接口不存在' });
+  } else {
+    res.status(404).send('Not Found');
+  }
 });
 
 // 错误处理

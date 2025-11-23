@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "build:css": "tailwindcss -i ./src/input.css -o ./public/dist/output.css",
+    "build:css:watch": "tailwindcss -i ./src/input.css -o ./public/dist/output.css --watch",
+    "build:css:prod": "tailwindcss -i ./src/input.css -o ./public/dist/output.css --minify",
     "test": "jest --coverage --json --outputFile=reports/test-results.json && node scripts/generate-test-report.js",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --json --outputFile=reports/test-results.json && node scripts/generate-test-report.js",
@@ -51,12 +54,15 @@
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
+    "autoprefixer": "^10.4.22",
     "eslint": "^9.39.1",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^30.2.0",
     "jsdom": "^23.2.0",
     "nodemon": "^3.0.1",
+    "postcss": "^8.5.6",
     "prettier": "^3.6.2",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3",
+    "tailwindcss": "^3.4.18"
   }
 }
