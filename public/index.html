@@ -112,6 +112,19 @@
     .checkout-btn-glow:hover {
       box-shadow: 0 0 30px rgba(255, 69, 0, 0.8);
     }
+    /* 反馈按钮透明效果 */
+    #feedbackButton {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.45), rgba(29, 78, 216, 0.65)) !important;
+      backdrop-filter: blur(10px) !important;
+      -webkit-backdrop-filter: blur(10px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.3) !important;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4), 0 0 20px rgba(37, 99, 235, 0.15) !important;
+      opacity: 1 !important;
+    }
+    #feedbackButton:hover {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(29, 78, 216, 0.95)) !important;
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5), 0 0 25px rgba(37, 99, 235, 0.2) !important;
+    }
     .showcase-item {
       scroll-snap-align: start;
       flex-shrink: 0;
@@ -598,11 +611,12 @@
   <!-- Toast 容器 -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
 
-  <!-- 反馈/投诉按钮（常驻，在底部导航栏上方） -->
-  <button id="feedbackButton" onclick="showFeedbackModal()" 
-          class="fixed right-4 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 hover:scale-110 flex items-center justify-center w-14 h-14 md:w-16 md:h-16"
-          title="Feedback & Complaint" style="z-index: 60; position: fixed; bottom: 80px;">
-    <span class="text-2xl md:text-3xl">💬</span>
+  <!-- 反馈/投诉按钮（常驻，可拖动） -->
+  <button id="feedbackButton" 
+          class="fixed text-white rounded-full shadow-xl transition-all duration-300 hover:scale-110 flex items-center justify-center w-14 h-14 md:w-16 md:h-16 cursor-move"
+          title="Feedback & Complaint (拖拽移动)" 
+          style="z-index: 60; position: fixed; touch-action: none; user-select: none;">
+    <span class="text-2xl md:text-3xl pointer-events-none">💬</span>
   </button>
 
   <!-- 反馈/投诉模态框 -->

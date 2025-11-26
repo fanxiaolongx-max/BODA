@@ -81,41 +81,46 @@ function formatPriceDecimal(price) {
   return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
 }
 
-// 智能分割中英文文本
+// 智能分割中英文文本（支持序号）
 function smartSplitText(text) {
-  if (!text) return { en: '', zh: '' };
+  if (!text) return { en: '', zh: '', number: '' };
   
   // 检测中文字符的正则表达式
   const chineseRegex = /[\u4e00-\u9fa5]/;
   const englishRegex = /[a-zA-Z]/;
   
+  // 提取序号（格式：数字. 或 数字.）
+  const numberMatch = text.match(/^(\d+)\.\s*/);
+  const number = numberMatch ? numberMatch[1] + '.' : '';
+  const textWithoutNumber = numberMatch ? text.substring(numberMatch[0].length) : text;
+  
   // 如果文本不包含中文，全部作为英文
-  if (!chineseRegex.test(text)) {
-    return { en: text.trim(), zh: '' };
+  if (!chineseRegex.test(textWithoutNumber)) {
+    return { en: textWithoutNumber.trim(), zh: '', number };
   }
   
   // 如果文本不包含英文，全部作为中文
-  if (!englishRegex.test(text)) {
-    return { en: '', zh: text.trim() };
+  if (!englishRegex.test(textWithoutNumber)) {
+    return { en: '', zh: textWithoutNumber.trim(), number };
   }
   
   // 尝试多种分割模式
   // 模式1: "English 中文" 或 "English中文" (英文在前，最常见)
-  const pattern1 = /^([a-zA-Z\s]+?)([\u4e00-\u9fa5]+.*)$/;
-  const match1 = text.match(pattern1);
+  const pattern1 = /^([a-zA-Z\s&]+?)([\u4e00-\u9fa5]+.*)$/;
+  const match1 = textWithoutNumber.match(pattern1);
   if (match1) {
-    return { en: match1[1].trim(), zh: match1[2].trim() };
+    return { en: match1[1].trim(), zh: match1[2].trim(), number };
   }
   
   // 模式2: "中文 English" 或 "中文English" (中文在前)
-  const pattern2 = /^([\u4e00-\u9fa5]+.*?)([a-zA-Z\s]+)$/;
-  const match2 = text.match(pattern2);
+  const pattern2 = /^([\u4e00-\u9fa5]+.*?)([a-zA-Z\s&]+)$/;
+  const match2 = textWithoutNumber.match(pattern2);
   if (match2) {
-    return { en: match2[2].trim(), zh: match2[1].trim() };
+    return { en: match2[2].trim(), zh: match2[1].trim(), number };
   }
   
   // 模式3: 混合格式，尝试按空格分割
-  const parts = text.split(/\s+/);
+  const parts = textWithoutNumber.split(/\s+/);
   const enParts = [];
   const zhParts = [];
   
@@ -133,11 +138,12 @@ function smartSplitText(text) {
   
   return {
     en: enParts.join(' ').trim(),
-    zh: zhParts.join(' ').trim()
+    zh: zhParts.join(' ').trim(),
+    number
   };
 }
 
-// 根据当前语言获取文本（带缓存）
+// 根据当前语言获取文本（带缓存，支持序号）
 const localizedTextCache = new Map();
 function getLocalizedText(text) {
   if (!text) return '';
@@ -153,11 +159,13 @@ function getLocalizedText(text) {
   let result;
   
   if (lang === 'zh') {
-    // 优先显示中文，如果没有中文则显示英文
-    result = split.zh || split.en || text;
+    // 中文模式：序号 + 中文名（如果没有中文则显示英文）
+    const name = split.zh || split.en || text;
+    result = split.number ? `${split.number} ${name}` : name;
   } else {
-    // 优先显示英文，如果没有英文则显示中文
-    result = split.en || split.zh || text;
+    // 英文模式：序号 + 英文名（如果没有英文则显示中文）
+    const name = split.en || split.zh || text;
+    result = split.number ? `${split.number} ${name}` : name;
   }
   
   localizedTextCache.set(cacheKey, result);
@@ -171,6 +179,18 @@ function clearLocalizedTextCache() {
 
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
+  // 初始化反馈按钮位置
+  initFeedbackButtonPosition();
+  
+  // 设置反馈按钮拖动事件（延迟执行，确保DOM已加载）
+  setTimeout(() => {
+    const feedbackButton = document.getElementById('feedbackButton');
+    if (feedbackButton) {
+      feedbackButton.addEventListener('mousedown', startDragFeedbackButton);
+      feedbackButton.addEventListener('touchstart', startDragFeedbackButton, { passive: false });
+    }
+  }, 100);
+  
   // 先隐藏所有tab，避免闪烁
   document.getElementById('homeTab')?.classList.add('hidden');
   document.getElementById('menuTab')?.classList.add('hidden');
@@ -4617,6 +4637,219 @@ function showToast(message, type = 'success') {
 }
 
 // 确认对话框
+// 反馈按钮拖动功能（业界成熟方案：使用left/top定位，requestAnimationFrame优化）
+let feedbackButtonDragState = {
+  isDragging: false,
+  startX: 0,
+  startY: 0,
+  startLeft: 0,
+  startTop: 0,
+  hasMoved: false,
+  rafId: null
+};
+
+// 初始化反馈按钮位置
+function initFeedbackButtonPosition() {
+  const button = document.getElementById('feedbackButton');
+  if (!button) return;
+  
+  // 从localStorage读取保存的位置
+  const savedPosition = localStorage.getItem('feedbackButtonPosition');
+  if (savedPosition) {
+    try {
+      const { x, y } = JSON.parse(savedPosition);
+      setButtonPosition(button, x, y);
+      return;
+    } catch (e) {
+      console.error('Failed to parse saved feedback button position:', e);
+    }
+  }
+  
+  // 默认位置：左侧，距离底部120px（避免覆盖购物车和结算按钮）
+  const defaultX = 16; // 左边距16px
+  const defaultY = window.innerHeight - 120; // 距离底部120px
+  setButtonPosition(button, defaultX, defaultY);
+}
+
+// 设置按钮位置（使用left/top，更直观）
+function setButtonPosition(button, x, y) {
+  // 限制在屏幕范围内
+  const buttonWidth = button.offsetWidth || 56;
+  const buttonHeight = button.offsetHeight || 56;
+  const minX = 0;
+  const maxX = window.innerWidth - buttonWidth;
+  const minY = 60; // 避免覆盖底部导航栏
+  const maxY = window.innerHeight - buttonHeight;
+  
+  x = Math.max(minX, Math.min(x, maxX));
+  y = Math.max(minY, Math.min(y, maxY));
+  
+  // 使用left和top定位
+  button.style.left = `${x}px`;
+  button.style.top = `${y}px`;
+  button.style.right = 'auto';
+  button.style.bottom = 'auto';
+}
+
+// 保存反馈按钮位置
+function saveFeedbackButtonPosition() {
+  const button = document.getElementById('feedbackButton');
+  if (!button) return;
+  
+  const rect = button.getBoundingClientRect();
+  const position = {
+    x: rect.left,
+    y: rect.top
+  };
+  
+  localStorage.setItem('feedbackButtonPosition', JSON.stringify(position));
+}
+
+// 获取指针位置（统一处理鼠标和触摸）
+function getPointerPosition(event) {
+  if (event.touches && event.touches.length > 0) {
+    return { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }
+  if (event.changedTouches && event.changedTouches.length > 0) {
+    return { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY };
+  }
+  return { x: event.clientX, y: event.clientY };
+}
+
+// 开始拖动反馈按钮
+function startDragFeedbackButton(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  
+  const button = document.getElementById('feedbackButton');
+  if (!button) return;
+  
+  const state = feedbackButtonDragState;
+  state.isDragging = true;
+  state.hasMoved = false;
+  
+  // 获取按钮当前位置（使用getBoundingClientRect，最准确）
+  const rect = button.getBoundingClientRect();
+  state.startLeft = rect.left;
+  state.startTop = rect.top;
+  
+  // 获取初始指针位置
+  const pointer = getPointerPosition(event);
+  state.startX = pointer.x;
+  state.startY = pointer.y;
+  
+  // 添加拖动事件监听
+  document.addEventListener('mousemove', handleDragMove, { passive: false });
+  document.addEventListener('mouseup', handleDragEnd, { passive: false });
+  document.addEventListener('touchmove', handleDragMove, { passive: false });
+  document.addEventListener('touchend', handleDragEnd, { passive: false });
+  document.addEventListener('touchcancel', handleDragEnd, { passive: false });
+  
+  // 添加拖动样式
+  button.style.transition = 'none';
+  button.style.cursor = 'grabbing';
+  button.style.userSelect = 'none';
+  document.body.style.userSelect = 'none';
+}
+
+// 拖动移动处理（使用requestAnimationFrame优化性能）
+function handleDragMove(event) {
+  const state = feedbackButtonDragState;
+  if (!state.isDragging) return;
+  
+  event.preventDefault();
+  event.stopPropagation();
+  
+  // 取消之前的动画帧
+  if (state.rafId !== null) {
+    cancelAnimationFrame(state.rafId);
+  }
+  
+  // 使用requestAnimationFrame确保流畅的拖动
+  state.rafId = requestAnimationFrame(() => {
+    const button = document.getElementById('feedbackButton');
+    if (!button) return;
+    
+    const pointer = getPointerPosition(event);
+    
+    // 计算移动距离
+    const deltaX = pointer.x - state.startX;
+    const deltaY = pointer.y - state.startY;
+    
+    // 检测是否移动（用于区分点击和拖动）
+    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      state.hasMoved = true;
+    }
+    
+    // 计算新位置
+    let newX = state.startLeft + deltaX;
+    let newY = state.startTop + deltaY;
+    
+    // 限制在屏幕范围内
+    const buttonWidth = button.offsetWidth || 56;
+    const buttonHeight = button.offsetHeight || 56;
+    const minX = 0;
+    const maxX = window.innerWidth - buttonWidth;
+    const minY = 60; // 避免覆盖底部导航栏
+    const maxY = window.innerHeight - buttonHeight;
+    
+    newX = Math.max(minX, Math.min(newX, maxX));
+    newY = Math.max(minY, Math.min(newY, maxY));
+    
+    // 设置新位置
+    button.style.left = `${newX}px`;
+    button.style.top = `${newY}px`;
+    button.style.right = 'auto';
+    button.style.bottom = 'auto';
+    
+    state.rafId = null;
+  });
+}
+
+// 停止拖动反馈按钮
+function handleDragEnd(event) {
+  const state = feedbackButtonDragState;
+  if (!state.isDragging) return;
+  
+  state.isDragging = false;
+  
+  // 取消动画帧
+  if (state.rafId !== null) {
+    cancelAnimationFrame(state.rafId);
+    state.rafId = null;
+  }
+  
+  const button = document.getElementById('feedbackButton');
+  if (button) {
+    // 恢复样式
+    button.style.transition = 'all 0.3s ease';
+    button.style.cursor = 'move';
+    button.style.userSelect = '';
+    document.body.style.userSelect = '';
+    
+    // 保存位置
+    saveFeedbackButtonPosition();
+  }
+  
+  // 移除事件监听
+  document.removeEventListener('mousemove', handleDragMove);
+  document.removeEventListener('mouseup', handleDragEnd);
+  document.removeEventListener('touchmove', handleDragMove);
+  document.removeEventListener('touchend', handleDragEnd);
+  document.removeEventListener('touchcancel', handleDragEnd);
+  
+  // 检查是否点击（不是拖动）
+  if (!state.hasMoved) {
+    // 延迟执行点击，避免与拖动冲突
+    setTimeout(() => {
+      showFeedbackModal();
+    }, 10);
+  }
+  
+  // 重置状态
+  state.hasMoved = false;
+}
+
 // 显示反馈/投诉模态框
 async function showFeedbackModal() {
   const modal = document.getElementById('feedbackModal');
