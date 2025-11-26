@@ -5963,13 +5963,58 @@ async function uploadBackupFile() {
     const formData = new FormData();
     formData.append('backupFile', file);
     
-    const response = await fetch(`${API_BASE}/admin/backup/upload`, {
-      method: 'POST',
-      credentials: 'include',
-      body: formData
-    });
+    // 创建 AbortController 用于超时控制（10分钟超时，大文件可能需要较长时间）
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000);
     
-    const data = await response.json();
+    let response;
+    try {
+      response = await fetch(`${API_BASE}/admin/backup/upload`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Upload timeout: File is too large or network is too slow. Please try again.');
+      }
+      throw fetchError;
+    }
+    
+    // 检查响应状态
+    if (!response.ok) {
+      let errorMessage = `Upload failed with status ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch (e) {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      hideGlobalLoading();
+      statusDiv.innerHTML = `<p class="text-red-600 text-sm">✗ ${errorMessage}</p>`;
+      showToast(errorMessage, 'error');
+      fileInput.value = '';
+      return;
+    }
+    
+    // 解析响应数据
+    let data;
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      hideGlobalLoading();
+      const errorMessage = 'Failed to parse server response';
+      statusDiv.innerHTML = `<p class="text-red-600 text-sm">✗ ${errorMessage}</p>`;
+      showToast(errorMessage, 'error');
+      console.error('Failed to parse response:', jsonError);
+      fileInput.value = '';
+      return;
+    }
+    
     hideGlobalLoading();
     
     if (data.success) {
@@ -5990,9 +6035,10 @@ async function uploadBackupFile() {
     }
   } catch (error) {
     hideGlobalLoading();
-    statusDiv.innerHTML = `<p class="text-red-600 text-sm">✗ Upload failed: ${error.message}</p>`;
+    const errorMessage = error.message || 'Upload failed: Unknown error';
+    statusDiv.innerHTML = `<p class="text-red-600 text-sm">✗ ${errorMessage}</p>`;
     console.error('Upload backup failed:', error);
-    showToast('Upload failed', 'error');
+    showToast(errorMessage, 'error');
     fileInput.value = '';
   }
 }
