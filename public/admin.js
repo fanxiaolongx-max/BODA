@@ -32,11 +32,19 @@ async function adminApiRequest(url, options = {}) {
     }
     
     // 解析JSON响应
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      // JSON解析失败
+      const error = new Error(`Failed to parse response: ${jsonError.message}`);
+      error.response = response;
+      throw error;
+    }
     
-    // 如果响应状态不是2xx，且响应包含错误信息，抛出错误
-    if (!response.ok && data && !data.success) {
-      const error = new Error(data.message || 'Request failed');
+    // 如果响应状态不是2xx，抛出错误
+    if (!response.ok) {
+      const error = new Error(data?.message || `Request failed with status ${response.status}`);
       error.response = response;
       error.data = data;
       throw error;
@@ -1370,7 +1378,7 @@ function renderOrders(orders) {
             <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[order.status]}">
               ${statusText[order.status]}
             </span>
-            ${order.payment_method === 'stripe' && order.status === 'paid' ? `
+            ${order.payment_method === 'stripe' && order.status === 'paid' && !order.payment_image ? `
               <div class="mt-1">
                 <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                   💳 Online Payment
@@ -1392,7 +1400,7 @@ function renderOrders(orders) {
             <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
           </select>
           ${order.payment_image ? `<br><button onclick="showPaymentImageModal('${order.payment_image}')" class="text-blue-600 hover:text-blue-800 text-xs underline">View Payment Screenshot</button>` : ''}
-          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id && order.status === 'paid' ? `
+          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id && order.status === 'paid' && !order.payment_image ? `
             <div class="mt-2 text-xs">
               <div class="text-gray-600 font-semibold">Transaction ID:</div>
               <div class="text-gray-800 font-mono text-xs break-all">${order.stripe_payment_intent_id}</div>
@@ -2823,6 +2831,193 @@ async function loadSettingsPage() {
                 </div>
               </div>
               
+              <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔒 Security Policy Settings</h3>
+                
+                <div class="space-y-6">
+                  <!-- Admin Security Policy -->
+                  <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 class="text-md font-semibold text-blue-900 mb-4">Admin Account Security Policy</h4>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Time Window (minutes)</label>
+                        <input type="number" id="adminLockoutTimeWindow" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.admin_lockout_time_window_minutes || '30'}"
+                               min="1" max="1440">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts reset after this time window</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Max Lockout (hours)</label>
+                        <input type="number" id="adminMaxLockoutHours" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.admin_max_lockout_hours || '4'}"
+                               min="1" max="168">
+                        <p class="text-xs text-gray-500 mt-1">Maximum lockout duration</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 1 (Lock 15min)</label>
+                        <input type="number" id="adminLockoutThreshold1" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.admin_lockout_threshold_1 || '10'}"
+                               min="1" max="100">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 15min lockout</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 2 (Lock 30min)</label>
+                        <input type="number" id="adminLockoutThreshold2" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.admin_lockout_threshold_2 || '20'}"
+                               min="1" max="100">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 30min lockout</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 3 (Lock 1hr)</label>
+                        <input type="number" id="adminLockoutThreshold3" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.admin_lockout_threshold_3 || '30'}"
+                               min="1" max="100">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 1hr lockout</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 4 (Lock Max)</label>
+                        <input type="number" id="adminLockoutThreshold4" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.admin_lockout_threshold_4 || '40'}"
+                               min="1" max="100">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger max lockout</p>
+                      </div>
+                      
+                      <div class="md:col-span-2">
+                        <label class="flex items-center space-x-2">
+                          <input type="checkbox" id="adminProgressiveDelayEnabled" 
+                                 class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                 ${settings.admin_progressive_delay_enabled === 'true' ? 'checked' : ''}>
+                          <span class="text-sm font-medium text-gray-700">Enable Progressive Delay</span>
+                        </label>
+                        <p class="text-xs text-gray-500 mt-1 ml-6">Enable delays before hard lockout (3→5s, 5→15s, 7→30s)</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- User Security Policy -->
+                  <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h4 class="text-md font-semibold text-green-900 mb-4">User Account Security Policy</h4>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Time Window (minutes)</label>
+                        <input type="number" id="userLockoutTimeWindow" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.user_lockout_time_window_minutes || '30'}"
+                               min="1" max="1440">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts reset after this time window</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Max Lockout (hours)</label>
+                        <input type="number" id="userMaxLockoutHours" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.user_max_lockout_hours || '4'}"
+                               min="1" max="168">
+                        <p class="text-xs text-gray-500 mt-1">Maximum lockout duration</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 1 (Lock 15min)</label>
+                        <input type="number" id="userLockoutThreshold1" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.user_lockout_threshold_1 || '10'}"
+                               min="1" max="100">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 15min lockout</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 2 (Lock 30min)</label>
+                        <input type="number" id="userLockoutThreshold2" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.user_lockout_threshold_2 || '20'}"
+                               min="1" max="100">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 30min lockout</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 3 (Lock 1hr)</label>
+                        <input type="number" id="userLockoutThreshold3" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.user_lockout_threshold_3 || '30'}"
+                               min="1" max="100">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 1hr lockout</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 4 (Lock Max)</label>
+                        <input type="number" id="userLockoutThreshold4" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.user_lockout_threshold_4 || '40'}"
+                               min="1" max="100">
+                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger max lockout</p>
+                      </div>
+                      
+                      <div class="md:col-span-2">
+                        <label class="flex items-center space-x-2">
+                          <input type="checkbox" id="userProgressiveDelayEnabled" 
+                                 class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                 ${settings.user_progressive_delay_enabled === 'true' ? 'checked' : ''}>
+                          <span class="text-sm font-medium text-gray-700">Enable Progressive Delay</span>
+                        </label>
+                        <p class="text-xs text-gray-500 mt-1 ml-6">Enable delays before hard lockout (3→5s, 5→15s, 7→30s)</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- IP Rate Limiting (Common) -->
+                  <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <h4 class="text-md font-semibold text-yellow-900 mb-4">IP Rate Limiting (Common for Admin & User)</h4>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Rate Limit Attempts</label>
+                        <input type="number" id="ipRateLimitAttempts" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.ip_rate_limit_attempts || '5'}"
+                               min="1" max="50">
+                        <p class="text-xs text-gray-500 mt-1">Max failed attempts per IP in time window</p>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Rate Limit Window (minutes)</label>
+                        <input type="number" id="ipRateLimitWindowMinutes" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                               value="${settings.ip_rate_limit_window_minutes || '15'}"
+                               min="1" max="1440">
+                        <p class="text-xs text-gray-500 mt-1">Time window for IP rate limiting</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- IP Management -->
+                  <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-4">
+                      <h4 class="text-md font-semibold text-purple-900">IP Management</h4>
+                      <button onclick="loadBlockedIps()" class="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm">
+                        🔄 Refresh
+                      </button>
+                    </div>
+                    
+                    <div id="blockedIpsList" class="space-y-2">
+                      <p class="text-sm text-gray-500">Loading blocked IPs...</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
               <div class="flex space-x-3 pt-4">
                 <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg">
                   Save Settings
@@ -2995,12 +3190,13 @@ async function loadSettingsPage() {
         }
       });
       
-      // 等待 DOM 渲染完成后再加载远程备份配置
+      // 等待 DOM 渲染完成后再加载远程备份配置和IP列表
       setTimeout(() => {
         loadRemoteBackupConfigs();
         loadReceiveConfig();
         loadPushLogs();
         loadReceivedBackups();
+        loadBlockedIps();
       }, 100);
     } else {
       container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
@@ -3040,6 +3236,26 @@ async function saveSettings(e) {
     return;
   }
   
+  // 获取安全策略设置
+  const adminLockoutTimeWindow = document.getElementById('adminLockoutTimeWindow')?.value || '30';
+  const adminMaxLockoutHours = document.getElementById('adminMaxLockoutHours')?.value || '4';
+  const adminLockoutThreshold1 = document.getElementById('adminLockoutThreshold1')?.value || '10';
+  const adminLockoutThreshold2 = document.getElementById('adminLockoutThreshold2')?.value || '20';
+  const adminLockoutThreshold3 = document.getElementById('adminLockoutThreshold3')?.value || '30';
+  const adminLockoutThreshold4 = document.getElementById('adminLockoutThreshold4')?.value || '40';
+  const adminProgressiveDelayEnabled = document.getElementById('adminProgressiveDelayEnabled')?.checked || false;
+  
+  const userLockoutTimeWindow = document.getElementById('userLockoutTimeWindow')?.value || '30';
+  const userMaxLockoutHours = document.getElementById('userMaxLockoutHours')?.value || '4';
+  const userLockoutThreshold1 = document.getElementById('userLockoutThreshold1')?.value || '10';
+  const userLockoutThreshold2 = document.getElementById('userLockoutThreshold2')?.value || '20';
+  const userLockoutThreshold3 = document.getElementById('userLockoutThreshold3')?.value || '30';
+  const userLockoutThreshold4 = document.getElementById('userLockoutThreshold4')?.value || '40';
+  const userProgressiveDelayEnabled = document.getElementById('userProgressiveDelayEnabled')?.checked || false;
+  
+  const ipRateLimitAttempts = document.getElementById('ipRateLimitAttempts')?.value || '5';
+  const ipRateLimitWindowMinutes = document.getElementById('ipRateLimitWindowMinutes')?.value || '15';
+  
   const settings = {
     ordering_open: document.getElementById('orderingOpen').value,
     system_notice: document.getElementById('systemNotice').value,
@@ -3065,7 +3281,26 @@ async function saveSettings(e) {
     instant_payment_enabled: instantPaymentEnabled ? 'true' : 'false',
     stripe_publishable_key: document.getElementById('stripePublishableKey')?.value.trim() || '',
     stripe_secret_key: document.getElementById('stripeSecretKey')?.value.trim() || '',
-    stripe_webhook_secret: document.getElementById('stripeWebhookSecret')?.value.trim() || ''
+    stripe_webhook_secret: document.getElementById('stripeWebhookSecret')?.value.trim() || '',
+    // Admin security policy
+    admin_lockout_time_window_minutes: adminLockoutTimeWindow,
+    admin_max_lockout_hours: adminMaxLockoutHours,
+    admin_lockout_threshold_1: adminLockoutThreshold1,
+    admin_lockout_threshold_2: adminLockoutThreshold2,
+    admin_lockout_threshold_3: adminLockoutThreshold3,
+    admin_lockout_threshold_4: adminLockoutThreshold4,
+    admin_progressive_delay_enabled: adminProgressiveDelayEnabled ? 'true' : 'false',
+    // User security policy
+    user_lockout_time_window_minutes: userLockoutTimeWindow,
+    user_max_lockout_hours: userMaxLockoutHours,
+    user_lockout_threshold_1: userLockoutThreshold1,
+    user_lockout_threshold_2: userLockoutThreshold2,
+    user_lockout_threshold_3: userLockoutThreshold3,
+    user_lockout_threshold_4: userLockoutThreshold4,
+    user_progressive_delay_enabled: userProgressiveDelayEnabled ? 'true' : 'false',
+    // IP rate limiting
+    ip_rate_limit_attempts: ipRateLimitAttempts,
+    ip_rate_limit_window_minutes: ipRateLimitWindowMinutes
   };
   
   try {
@@ -3320,12 +3555,16 @@ async function loadUsers() {
                               </span>
                               <span class="text-xs text-gray-500">${user.remainingTime} remaining</span>
                               <span class="text-xs text-gray-500">Failed: ${user.failedCount} times</span>
+                              ${user.firstAttemptAt ? `<span class="text-xs text-gray-400">First attempt: ${new Date(user.firstAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
                             </div>
                           ` : user.failedCount > 0 ? `
                             <div class="flex flex-col space-y-1">
                               <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
                                 ⚠️ ${user.failedCount} failed attempts
                               </span>
+                              <span class="text-xs text-gray-500">Lock expired or not yet locked</span>
+                              ${user.firstAttemptAt ? `<span class="text-xs text-gray-400">First attempt: ${new Date(user.firstAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
+                              ${user.lastAttemptAt ? `<span class="text-xs text-gray-400">Last attempt: ${new Date(user.lastAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
                             </div>
                           ` : `
                             <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
@@ -3337,18 +3576,18 @@ async function loadUsers() {
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.last_login ? new Date(user.last_login).toLocaleString('en-US') : '-'}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                           <div class="flex flex-col space-y-1">
-                            <div class="flex space-x-2">
-                              <button onclick="showEditUserModal(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}')" 
+                          <div class="flex space-x-2">
+                            <button onclick="showEditUserModal(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}')" 
                                       class="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
-                              <button onclick="resetUserPin(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
+                            <button onclick="resetUserPin(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
                                       class="text-yellow-600 hover:text-yellow-800 text-xs">Reset PIN</button>
-                              <button onclick="deleteUser(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
+                            <button onclick="deleteUser(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
                                       class="text-red-600 hover:text-red-800 text-xs">Delete</button>
                             </div>
-                            ${user.isLocked ? `
-                              <button onclick="unlockUser('${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}')" 
+                            ${(user.isLocked || user.failedCount > 0) ? `
+                              <button onclick="unlockUser('${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}', ${user.isLocked}, ${user.failedCount || 0})" 
                                       class="mt-1 text-xs text-green-600 hover:text-green-800 font-semibold">
-                                🔓 Unlock
+                                ${user.isLocked ? '🔓 Unlock' : '🧹 Clear Failed Attempts'}
                               </button>
                             ` : ''}
                           </div>
@@ -3423,12 +3662,17 @@ async function resetUserPin(userId, phone) {
   }
 }
 
-// 解锁用户
-async function unlockUser(phone, name) {
+// 解锁用户或清除失败记录
+async function unlockUser(phone, name, isLocked, failedCount) {
+  const actionText = isLocked ? 'unlock' : 'clear login failure records';
+  const message = isLocked 
+    ? `Are you sure you want to unlock the account for ${name || phone}? This will clear all login failure records (${failedCount} failed attempts) and allow the user to login immediately.`
+    : `Are you sure you want to clear login failure records for ${name || phone}? This will reset the failed attempt count (${failedCount} failed attempts) and allow the user to start fresh.`;
+  
   const confirmed = await showConfirmDialog(
-    'Unlock User Account',
-    `Are you sure you want to unlock the account for ${name || phone}? This will clear all login failure records and allow the user to login immediately.`,
-    'Unlock',
+    isLocked ? 'Unlock User Account' : 'Clear Login Failure Records',
+    message,
+    isLocked ? 'Unlock' : 'Clear',
     'Cancel'
   );
   
@@ -3445,14 +3689,16 @@ async function unlockUser(phone, name) {
     if (response && response.success) {
       if (response.wasLocked) {
         showToast('User unlocked successfully', 'success');
+      } else if (response.hadRecords) {
+        showToast('Login failure records cleared successfully', 'success');
       } else {
-        showToast('User is not locked', 'info');
+        showToast('No records to clear', 'info');
       }
       await loadUsers();
     }
   } catch (error) {
-    console.error('解锁用户失败:', error);
-    showToast('Failed to unlock user', 'error');
+    console.error('解锁/清除用户失败记录失败:', error);
+    showToast('Failed to unlock/clear user records', 'error');
   }
 }
 
@@ -3859,13 +4105,14 @@ async function loadAdmins() {
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Security</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200" id="adminsTableBody">
                   ${admins.length === 0 ? 
-                    '<tr><td colspan="8" class="px-6 py-4 text-center text-gray-500">No admins</td></tr>' :
+                    '<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">No admins</td></tr>' :
                     admins.map((admin, index) => `
                       <tr class="hover:bg-gray-50" data-admin-index="${index}">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${admin.id}</td>
@@ -3878,13 +4125,34 @@ async function loadAdmins() {
                             ${admin.status === 'active' ? 'Active' : 'Inactive'}
                           </span>
                         </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                          ${admin.isLocked ? `
+                            <div class="flex flex-col space-y-1">
+                              <span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">🔒 Locked</span>
+                              <span class="text-xs text-gray-600">${admin.remainingTime || 'Unknown'}</span>
+                            </div>
+                          ` : admin.failedCount > 0 ? `
+                            <div class="flex flex-col space-y-1">
+                              <span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">⚠️ ${admin.failedCount} failed</span>
+                              ${admin.lastAttemptAt ? `<span class="text-xs text-gray-600">Last: ${new Date(admin.lastAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
+                            </div>
+                          ` : `
+                            <span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">✓ OK</span>
+                          `}
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${admin.created_at ? new Date(admin.created_at).toLocaleString('en-US') : '-'}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                           ${isSuper ? `
+                          <div class="flex items-center space-x-2">
                           <button data-action="edit" data-admin-id="${admin.id}" 
-                                  class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                                    class="text-blue-600 hover:text-blue-800">Edit</button>
+                            ${(admin.isLocked || admin.failedCount > 0) ? `
+                            <button data-action="unlock" data-admin-username="${admin.username.replace(/'/g, "\\'")}" 
+                                    class="text-green-600 hover:text-green-800">Unlock</button>
+                            ` : ''}
                           <button data-action="delete" data-admin-id="${admin.id}" 
                                   class="text-red-600 hover:text-red-800">Delete</button>
+                          </div>
                           ` : `
                           <span class="text-gray-400 text-xs">No permission</span>
                           `}
@@ -3989,6 +4257,11 @@ async function loadAdmins() {
             const adminId = parseInt(e.target.dataset.adminId);
             if (adminId) {
               deleteAdmin(adminId);
+            }
+          } else if (e.target.dataset.action === 'unlock') {
+            const username = e.target.dataset.adminUsername;
+            if (username) {
+              unlockAdmin(username);
             }
           }
         });
@@ -4216,6 +4489,45 @@ function editAdmin(admin) {
 }
 
 // 删除管理员
+async function unlockAdmin(username) {
+  const admin = adminsList.find(a => a.username === username);
+  if (!admin) {
+    showToast('Admin not found', 'error');
+    return;
+  }
+  
+  const isLocked = admin.isLocked;
+  const failedCount = admin.failedCount || 0;
+  
+  let confirmMessage = '';
+  if (isLocked) {
+    confirmMessage = `Unlock admin "${admin.username}" (${admin.name || 'N/A'})?\n\nThis will:\n- Clear all login failure records\n- Remove account lockout\n- Reactivate the account if it was deactivated`;
+  } else if (failedCount > 0) {
+    confirmMessage = `Clear login failure records for admin "${admin.username}" (${admin.name || 'N/A'})?\n\nFailed attempts: ${failedCount}`;
+  } else {
+    showToast('No login failure records to clear', 'info');
+    return;
+  }
+  
+  if (!confirm(confirmMessage)) {
+    return;
+  }
+  
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/admins/${encodeURIComponent(username)}/unlock`, {
+      method: 'POST'
+    });
+    
+    if (response && response.success) {
+      showToast(response.message || 'Admin unlocked successfully', 'success');
+      await loadAdmins();
+    }
+  } catch (error) {
+    console.error('解锁管理员失败:', error);
+    showToast('Failed to unlock admin', 'error');
+  }
+}
+
 async function deleteAdmin(adminId) {
   // 只有super_admin可以管理其他admin
   if (!isSuperAdmin()) {
@@ -4719,7 +5031,7 @@ function debounceFilterLogsByIP(value) {
 // 加载关于页面
 function loadAboutPage() {
   const container = document.getElementById('aboutTab');
-  const version = '2.1.0';
+  const version = '2.2.0';
   const currentStoreName = storeName || 'BOBA TEA'; // 使用当前商店名称，如果没有则使用默认值
   
   container.innerHTML = `
@@ -4734,7 +5046,7 @@ function loadAboutPage() {
           </div>
           <div>
             <p class="text-sm text-gray-600 mb-2">Description</p>
-            <p class="text-gray-700">A comprehensive online ordering system for ${currentStoreName.toLowerCase()} shops with cycle-based order management, discount rules, and payment tracking.</p>
+            <p class="text-gray-700">A comprehensive online ordering system for ${currentStoreName.toLowerCase()} shops with cycle-based order management, discount rules, online payment (Stripe), feedback system, and advanced security features.</p>
           </div>
         </div>
       </div>
@@ -4752,7 +5064,9 @@ function loadAboutPage() {
               <li>Shopping cart management</li>
               <li>Order creation and tracking</li>
               <li>Payment screenshot upload</li>
+              <li>Online payment (Stripe - Apple Pay, cards)</li>
               <li>Real-time discount viewing</li>
+              <li>Feedback & complaint system</li>
             </ul>
           </div>
           <div>
@@ -4765,6 +5079,9 @@ function loadAboutPage() {
               <li>User and admin management</li>
               <li>Operation logs</li>
               <li>System settings</li>
+              <li>Email configuration (SMTP)</li>
+              <li>Security policy management</li>
+              <li>IP lockout management</li>
             </ul>
           </div>
           </div>
@@ -4815,6 +5132,9 @@ function loadAboutPage() {
               <li>Role-based access control</li>
               <li>HSTS enabled</li>
               <li>Comprehensive logging</li>
+              <li>Progressive account lockout</li>
+              <li>IP-based rate limiting</li>
+              <li>Login audit logging</li>
             </ul>
           </div>
         </div>
@@ -7984,5 +8304,139 @@ function toggleTestLogsFullscreen() {
     if (fullscreenBtn) {
       fullscreenBtn.textContent = '⛶ 全屏';
     }
+  }
+}
+
+// 加载被锁定的IP列表
+async function loadBlockedIps() {
+  const container = document.getElementById('blockedIpsList');
+  if (!container) {
+    console.error('loadBlockedIps: blockedIpsList container not found');
+    return;
+  }
+  
+  try {
+    container.innerHTML = '<p class="text-sm text-gray-500">Loading blocked IPs...</p>';
+    
+    let data;
+    try {
+      data = await adminApiRequest(`${API_BASE}/admin/security/blocked-ips`);
+    } catch (apiError) {
+      console.error('loadBlockedIps: API request failed', apiError);
+      const errorMsg = apiError.message || apiError.data?.message || 'Failed to load blocked IPs';
+      container.innerHTML = `<p class="text-sm text-red-500">Error: ${errorMsg}</p>`;
+      return;
+    }
+    
+    if (!data) {
+      container.innerHTML = '<p class="text-sm text-red-500">No response from server</p>';
+      return;
+    }
+    
+    if (data && data.success) {
+      const blockedIps = data.blockedIps || [];
+      const warningIps = data.warningIps || [];
+      
+      if (blockedIps.length === 0 && warningIps.length === 0) {
+        container.innerHTML = '<p class="text-sm text-gray-500">No blocked IPs</p>';
+        return;
+      }
+      
+      let html = '';
+      
+      // 显示被锁定的IP
+      if (blockedIps.length > 0) {
+        html += '<div class="mb-4"><h5 class="text-sm font-semibold text-red-700 mb-2">🔒 Blocked IPs</h5>';
+        html += '<div class="space-y-2">';
+        blockedIps.forEach(ip => {
+          html += `
+            <div class="bg-red-50 border border-red-200 rounded p-3 flex items-center justify-between">
+              <div class="flex-1">
+                <div class="flex items-center space-x-2">
+                  <span class="font-mono text-sm font-semibold text-red-900">${ip.ipAddress}</span>
+                  <span class="px-2 py-1 text-xs bg-red-200 text-red-800 rounded">Blocked</span>
+                </div>
+                <div class="mt-1 text-xs text-gray-600">
+                  <span>Failed: ${ip.failedCount} times</span>
+                  <span class="mx-2">•</span>
+                  <span>Remaining: ${ip.remainingTime}</span>
+                  ${ip.lastAttemptAt ? `<span class="mx-2">•</span><span>Last: ${new Date(ip.lastAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
+                </div>
+              </div>
+              <button onclick="unlockIp('${ip.ipAddress.replace(/'/g, "\\'")}')" 
+                      class="ml-3 px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded">
+                🔓 Unlock
+              </button>
+            </div>
+          `;
+        });
+        html += '</div></div>';
+      }
+      
+      // 显示警告IP（有失败记录但未锁定）
+      if (warningIps.length > 0) {
+        html += '<div><h5 class="text-sm font-semibold text-yellow-700 mb-2">⚠️ Warning IPs (Failed attempts but not blocked)</h5>';
+        html += '<div class="space-y-2">';
+        warningIps.forEach(ip => {
+          html += `
+            <div class="bg-yellow-50 border border-yellow-200 rounded p-3 flex items-center justify-between">
+              <div class="flex-1">
+                <div class="flex items-center space-x-2">
+                  <span class="font-mono text-sm font-semibold text-yellow-900">${ip.ipAddress}</span>
+                  <span class="px-2 py-1 text-xs bg-yellow-200 text-yellow-800 rounded">${ip.failedCount} failed</span>
+                </div>
+                <div class="mt-1 text-xs text-gray-600">
+                  ${ip.lastAttemptAt ? `<span>Last attempt: ${new Date(ip.lastAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
+                </div>
+              </div>
+              <button onclick="unlockIp('${ip.ipAddress.replace(/'/g, "\\'")}')" 
+                      class="ml-3 px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded">
+                🧹 Clear
+              </button>
+            </div>
+          `;
+        });
+        html += '</div></div>';
+      }
+      
+      container.innerHTML = html;
+    } else {
+      // API返回了success: false
+      const errorMsg = data?.message || data?.error || 'Unknown error';
+      container.innerHTML = `<p class="text-sm text-red-500">Failed to load blocked IPs: ${errorMsg}</p>`;
+    }
+  } catch (error) {
+    console.error('loadBlockedIps: Exception caught', error);
+    const errorMsg = error.message || error.data?.message || 'Failed to load blocked IPs';
+    container.innerHTML = `<p class="text-sm text-red-500">Error: ${errorMsg}</p>`;
+  }
+}
+
+// 解锁IP地址
+async function unlockIp(ipAddress) {
+  const confirmed = await showConfirmDialog(
+    'Unlock IP Address',
+    `Are you sure you want to unlock IP address ${ipAddress}? This will clear all login failure records for this IP and allow login attempts immediately.`,
+    'Unlock',
+    'Cancel'
+  );
+  
+  if (!confirmed) {
+    return;
+  }
+  
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/security/blocked-ips/${encodeURIComponent(ipAddress)}/unlock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (response && response.success) {
+      showToast('IP address unlocked successfully', 'success');
+      await loadBlockedIps();
+    }
+  } catch (error) {
+    console.error('解锁IP失败:', error);
+    showToast('Failed to unlock IP address', 'error');
   }
 }

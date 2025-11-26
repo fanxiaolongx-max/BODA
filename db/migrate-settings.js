@@ -31,7 +31,26 @@ async function migrateSettings() {
       { key: 'stripe_publishable_key', value: '', description: 'Stripe Publishable Key (starts with pk_)' },
       { key: 'stripe_secret_key', value: '', description: 'Stripe Secret Key (starts with sk_)' },
       { key: 'stripe_webhook_secret', value: '', description: 'Stripe Webhook Secret (starts with whsec_, optional)' },
-      { key: 'instant_payment_enabled', value: 'false', description: '允许用户即时支付（开启后用户无需等待周期结束即可支付或删除订单，折扣功能不生效）' }
+      { key: 'instant_payment_enabled', value: 'false', description: '允许用户即时支付（开启后用户无需等待周期结束即可支付或删除订单，折扣功能不生效）' },
+      // 管理员安全策略
+      { key: 'admin_lockout_time_window_minutes', value: '30', description: '管理员账户锁定时间窗口（分钟），失败计数在此时间窗口内累积，超过窗口后自动重置' },
+      { key: 'admin_max_lockout_hours', value: '4', description: '管理员最大账户锁定时间（小时），渐进式锁定的最大锁定时长' },
+      { key: 'admin_lockout_threshold_1', value: '10', description: '管理员锁定阈值1：失败次数达到此值时锁定15分钟' },
+      { key: 'admin_lockout_threshold_2', value: '20', description: '管理员锁定阈值2：失败次数达到此值时锁定30分钟' },
+      { key: 'admin_lockout_threshold_3', value: '30', description: '管理员锁定阈值3：失败次数达到此值时锁定1小时' },
+      { key: 'admin_lockout_threshold_4', value: '40', description: '管理员锁定阈值4：失败次数达到此值时锁定最大时长' },
+      { key: 'admin_progressive_delay_enabled', value: 'true', description: '管理员是否启用渐进延迟（3次5秒，5次15秒，7次30秒）' },
+      // 用户安全策略
+      { key: 'user_lockout_time_window_minutes', value: '30', description: '用户账户锁定时间窗口（分钟），失败计数在此时间窗口内累积，超过窗口后自动重置' },
+      { key: 'user_max_lockout_hours', value: '4', description: '用户最大账户锁定时间（小时），渐进式锁定的最大锁定时长' },
+      { key: 'user_lockout_threshold_1', value: '10', description: '用户锁定阈值1：失败次数达到此值时锁定15分钟' },
+      { key: 'user_lockout_threshold_2', value: '20', description: '用户锁定阈值2：失败次数达到此值时锁定30分钟' },
+      { key: 'user_lockout_threshold_3', value: '30', description: '用户锁定阈值3：失败次数达到此值时锁定1小时' },
+      { key: 'user_lockout_threshold_4', value: '40', description: '用户锁定阈值4：失败次数达到此值时锁定最大时长' },
+      { key: 'user_progressive_delay_enabled', value: 'true', description: '用户是否启用渐进延迟（3次5秒，5次15秒，7次30秒）' },
+      // IP速率限制（通用）
+      { key: 'ip_rate_limit_attempts', value: '5', description: 'IP速率限制尝试次数，超过此次数后IP将被临时阻止' },
+      { key: 'ip_rate_limit_window_minutes', value: '15', description: 'IP速率限制时间窗口（分钟），在此时间窗口内计算失败次数' }
     ];
 
     let addedCount = 0;

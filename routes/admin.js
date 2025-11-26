@@ -3522,7 +3522,7 @@ router.post('/users/:userId/reset-pin', async (req, res) => {
 // 获取所有用户
 /**
  * POST /api/admin/users/:phone/unlock
- * Unlock a user account (clear login failure records)
+ * Unlock a user account and clear login failure records
  * @param {string} phone - User phone number
  * @returns {Object} Success message
  */
@@ -3536,23 +3536,23 @@ router.post('/users/:phone/unlock', async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    // 检查是否有锁定记录
+    // 检查是否有失败记录（包括锁定和未锁定的）
     const attempt = await getAsync(
       'SELECT * FROM user_login_attempts WHERE phone = ?',
       [phone]
     );
     
-    if (!attempt || !attempt.locked_until) {
+    if (!attempt) {
       return res.json({ 
         success: true, 
-        message: 'User is not locked',
-        wasLocked: false
+        message: 'No login failure records found',
+        hadRecords: false
       });
     }
     
     await beginTransaction();
     
-    // 清除锁定记录
+    // 清除所有失败记录（包括锁定状态和失败计数）
     await runAsync(
       'DELETE FROM user_login_attempts WHERE phone = ?',
       [phone]
@@ -3562,27 +3562,30 @@ router.post('/users/:phone/unlock', async (req, res) => {
     await logAction(req.session.adminId, 'UNLOCK_USER', 'user', user.id, {
       phone: user.phone,
       name: user.name,
-      failedCount: attempt.failed_count,
-      lockedUntil: attempt.locked_until
+      failedCount: attempt.failed_count || 0,
+      lockedUntil: attempt.locked_until || null,
+      wasLocked: !!attempt.locked_until
     }, req);
     
     await commit();
     
-    logger.info('用户账户解锁成功', {
+    logger.info('用户账户解锁/清除失败记录成功', {
       userId: user.id,
       phone: user.phone,
-      failedCount: attempt.failed_count
+      failedCount: attempt.failed_count || 0,
+      wasLocked: !!attempt.locked_until
     });
     
     res.json({ 
       success: true, 
-      message: 'User unlocked successfully',
-      wasLocked: true
+      message: attempt.locked_until ? 'User unlocked successfully' : 'Login failure records cleared successfully',
+      hadRecords: true,
+      wasLocked: !!attempt.locked_until
     });
   } catch (error) {
     await rollback();
-    logger.error('解锁用户失败', { error: error.message, phone });
-    res.status(500).json({ success: false, message: error.message || 'Failed to unlock user' });
+    logger.error('解锁/清除用户失败记录失败', { error: error.message, phone });
+    res.status(500).json({ success: false, message: error.message || 'Failed to unlock/clear user records' });
   }
 });
 
@@ -3603,9 +3606,18 @@ router.get('/users', async (req, res) => {
         [user.phone]
       );
 
+      const now = new Date();
+      let securityInfo = {
+        isLocked: false,
+        lockedUntil: null,
+        remainingTime: null,
+        failedCount: attempt ? (attempt.failed_count || 0) : 0,
+        firstAttemptAt: attempt ? attempt.first_attempt_at : null,
+        lastAttemptAt: attempt ? attempt.last_attempt_at : null
+      };
+
       if (attempt && attempt.locked_until) {
-        const lockedUntil = new Date(attempt.locked_until.replace(' ', 'T') + ':00');
-        const now = new Date();
+        const lockedUntil = new Date(attempt.locked_until.replace(' ', 'T'));
         
         if (now < lockedUntil) {
           // 仍在锁定期间
@@ -3621,22 +3633,15 @@ router.get('/users', async (req, res) => {
             lockoutMessage = `${remainingMinutes}m`;
           }
           
-          return {
-            ...user,
-            isLocked: true,
-            lockedUntil: attempt.locked_until,
-            remainingTime: lockoutMessage,
-            failedCount: attempt.failed_count
-          };
+          securityInfo.isLocked = true;
+          securityInfo.lockedUntil = attempt.locked_until;
+          securityInfo.remainingTime = lockoutMessage;
         }
       }
 
       return {
         ...user,
-        isLocked: false,
-        lockedUntil: null,
-        remainingTime: null,
-        failedCount: attempt ? (attempt.failed_count || 0) : 0
+        ...securityInfo
       };
     }));
 
@@ -3644,6 +3649,134 @@ router.get('/users', async (req, res) => {
   } catch (error) {
     logger.error('获取用户列表失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取用户列表失败' });
+  }
+});
+
+// ==================== IP锁定管理 ====================
+
+/**
+ * GET /api/admin/security/blocked-ips
+ * Get list of blocked IP addresses
+ * @returns {Object} List of blocked IPs with details
+ */
+router.get('/security/blocked-ips', async (req, res) => {
+  try {
+    const now = new Date();
+    
+    // 获取所有有blocked_until的IP记录
+    const blockedIps = await allAsync(`
+      SELECT * FROM ip_login_attempts 
+      WHERE blocked_until IS NOT NULL 
+      AND blocked_until > datetime('now', 'localtime')
+      ORDER BY blocked_until DESC
+    `);
+    
+    // 获取所有有失败记录但未锁定的IP（用于显示警告）
+    const warningIps = await allAsync(`
+      SELECT * FROM ip_login_attempts 
+      WHERE (blocked_until IS NULL OR blocked_until <= datetime('now', 'localtime'))
+      AND failed_count > 0
+      ORDER BY failed_count DESC, last_attempt_at DESC
+    `);
+    
+    const blockedIpsWithDetails = blockedIps.map(ip => {
+      const blockedUntil = new Date(ip.blocked_until.replace(' ', 'T'));
+      const remainingMs = blockedUntil.getTime() - now.getTime();
+      const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+      const remainingHours = Math.floor(remainingMinutes / 60);
+      const remainingMins = remainingMinutes % 60;
+      
+      let remainingTime = '';
+      if (remainingHours > 0) {
+        remainingTime = `${remainingHours}h ${remainingMins}m`;
+      } else {
+        remainingTime = `${remainingMinutes}m`;
+      }
+      
+      return {
+        ipAddress: ip.ip_address,
+        failedCount: ip.failed_count || 0,
+        blockedUntil: ip.blocked_until,
+        remainingTime: remainingTime,
+        remainingMs: remainingMs,
+        firstAttemptAt: ip.first_attempt_at,
+        lastAttemptAt: ip.last_attempt_at
+      };
+    });
+    
+    const warningIpsWithDetails = warningIps.map(ip => {
+      return {
+        ipAddress: ip.ip_address,
+        failedCount: ip.failed_count || 0,
+        blockedUntil: null,
+        remainingTime: null,
+        remainingMs: 0,
+        firstAttemptAt: ip.first_attempt_at,
+        lastAttemptAt: ip.last_attempt_at
+      };
+    });
+    
+    res.json({ 
+      success: true, 
+      blockedIps: blockedIpsWithDetails,
+      warningIps: warningIpsWithDetails
+    });
+  } catch (error) {
+    logger.error('获取被锁定IP列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取被锁定IP列表失败' });
+  }
+});
+
+/**
+ * POST /api/admin/security/blocked-ips/:ip/unlock
+ * Unlock a blocked IP address
+ * @param {string} ip - IP address
+ * @returns {Object} Success message
+ */
+router.post('/security/blocked-ips/:ip/unlock', async (req, res) => {
+  const { ip } = req.params;
+  
+  try {
+    // 检查IP是否存在
+    const attempt = await getAsync(
+      'SELECT * FROM ip_login_attempts WHERE ip_address = ?',
+      [ip]
+    );
+    
+    if (!attempt) {
+      return res.status(404).json({ success: false, message: 'IP address not found' });
+    }
+    
+    await beginTransaction();
+    
+    // 清除IP锁定记录（包括blocked_until和failed_count）
+    await runAsync(
+      'DELETE FROM ip_login_attempts WHERE ip_address = ?',
+      [ip]
+    );
+    
+    // 记录操作日志
+    await logAction(req.session.adminId, 'UNLOCK_IP', 'system', null, {
+      ipAddress: ip,
+      failedCount: attempt.failed_count || 0,
+      blockedUntil: attempt.blocked_until || null
+    }, req);
+    
+    await commit();
+    
+    logger.info('IP地址解锁成功', {
+      ip: ip,
+      failedCount: attempt.failed_count || 0
+    });
+    
+    res.json({ 
+      success: true, 
+      message: 'IP address unlocked successfully'
+    });
+  } catch (error) {
+    await rollback();
+    logger.error('解锁IP失败', { error: error.message, ip });
+    res.status(500).json({ success: false, message: error.message || 'Failed to unlock IP address' });
   }
 });
 
@@ -3675,7 +3808,54 @@ router.get('/admins', requireAuth, async (req, res) => {
     const admins = await allAsync(
       'SELECT id, username, name, email, role, status, created_at FROM admins ORDER BY created_at DESC'
     );
-    res.json({ success: true, admins });
+    
+    // 为每个管理员添加锁定状态信息
+    const adminsWithLockStatus = await Promise.all(admins.map(async (admin) => {
+      const attempt = await getAsync(
+        'SELECT * FROM admin_login_attempts WHERE username = ?',
+        [admin.username]
+      );
+
+      const now = new Date();
+      let securityInfo = {
+        isLocked: false,
+        lockedUntil: null,
+        remainingTime: null,
+        failedCount: attempt ? (attempt.failed_count || 0) : 0,
+        firstAttemptAt: attempt ? attempt.first_attempt_at : null,
+        lastAttemptAt: attempt ? attempt.last_attempt_at : null
+      };
+
+      if (attempt && attempt.locked_until) {
+        const lockedUntil = new Date(attempt.locked_until.replace(' ', 'T'));
+        
+        if (now < lockedUntil) {
+          // 仍在锁定期间
+          const remainingMs = lockedUntil.getTime() - now.getTime();
+          const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+          const remainingHours = Math.floor(remainingMinutes / 60);
+          const remainingMins = remainingMinutes % 60;
+          
+          let lockoutMessage = '';
+          if (remainingHours > 0) {
+            lockoutMessage = `${remainingHours}h ${remainingMins}m`;
+          } else {
+            lockoutMessage = `${remainingMinutes}m`;
+          }
+          
+          securityInfo.isLocked = true;
+          securityInfo.lockedUntil = attempt.locked_until;
+          securityInfo.remainingTime = lockoutMessage;
+        }
+      }
+
+      return {
+        ...admin,
+        ...securityInfo
+      };
+    }));
+    
+    res.json({ success: true, admins: adminsWithLockStatus });
   } catch (error) {
     logger.error('获取管理员列表失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取管理员列表失败' });
@@ -3851,6 +4031,86 @@ router.delete('/admins/:id', requireSuperAdmin, async (req, res) => {
   } catch (error) {
     logger.error('删除管理员失败', { error: error.message });
     res.status(500).json({ success: false, message: '删除管理员失败' });
+  }
+});
+
+/**
+ * POST /api/admin/admins/:username/unlock
+ * Unlock an admin account and clear login failure records
+ * @param {string} username - Admin username
+ * @returns {Object} Success message
+ */
+router.post('/admins/:username/unlock', requireSuperAdmin, async (req, res) => {
+  const { username } = req.params;
+  
+  try {
+    // 检查管理员是否存在
+    const admin = await getAsync('SELECT * FROM admins WHERE username = ?', [username]);
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'Admin not found' });
+    }
+    
+    // 检查是否有失败记录（包括锁定和未锁定的）
+    const attempt = await getAsync(
+      'SELECT * FROM admin_login_attempts WHERE username = ?',
+      [username]
+    );
+    
+    if (!attempt) {
+      return res.json({ 
+        success: true, 
+        message: 'No login failure records found',
+        hadRecords: false
+      });
+    }
+    
+    await beginTransaction();
+    
+    // 清除所有失败记录（包括锁定状态和失败计数）
+    await runAsync(
+      'DELETE FROM admin_login_attempts WHERE username = ?',
+      [username]
+    );
+    
+    // 如果管理员状态是inactive（由于锁定），自动激活
+    if (admin.status === 'inactive') {
+      await runAsync(
+        'UPDATE admins SET status = ? WHERE username = ?',
+        ['active', username]
+      );
+    }
+    
+    // 记录操作日志
+    await logAction(req.session.adminId, 'UNLOCK_ADMIN', 'admin', admin.id, {
+      username: admin.username,
+      name: admin.name,
+      failedCount: attempt.failed_count || 0,
+      lockedUntil: attempt.locked_until || null,
+      wasLocked: !!attempt.locked_until,
+      wasInactive: admin.status === 'inactive'
+    }, req);
+    
+    await commit();
+    
+    logger.info('管理员账户解锁/清除失败记录成功', {
+      adminId: admin.id,
+      username: admin.username,
+      failedCount: attempt.failed_count || 0,
+      wasLocked: !!attempt.locked_until,
+      wasInactive: admin.status === 'inactive'
+    });
+    
+    res.json({ 
+      success: true, 
+      message: attempt.locked_until ? 'Admin unlocked and activated successfully' : 'Login failure records cleared successfully',
+      hadRecords: true,
+      wasLocked: !!attempt.locked_until,
+      wasInactive: admin.status === 'inactive'
+    });
+  } catch (error) {
+    await rollback();
+    logger.error('解锁/清除管理员失败记录失败', { error: error.message, username });
+    res.status(500).json({ success: false, message: error.message || 'Failed to unlock/clear admin records' });
   }
 });
 

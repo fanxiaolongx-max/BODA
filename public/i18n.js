@@ -262,6 +262,32 @@ const translations = {
     'closed': 'Closed',
     'starting_from': 'from',
     'resend_code_in': 'Resend code in {seconds} seconds',
+    
+    // Payment related
+    'create_payment_failed': 'Failed to create payment',
+    'init_payment_failed': 'Failed to initialize payment',
+    'payment_not_initialized': 'Payment not initialized',
+    'payment_success': 'Payment successful!',
+    'confirm_payment_failed': 'Failed to confirm payment',
+    'payment_requires_action': 'Payment requires additional verification, please follow the prompts',
+    'payment_failed_retry': 'Payment failed, please try again',
+    
+    // Order cycle related
+    'order_not_in_cycle': 'Order is not in the current cycle',
+    'not_in_active_cycle': 'Not in active cycle',
+    'cycle_confirmed_cannot_pay': 'This cycle has been confirmed, payment is not allowed',
+    'order_already_paid': 'Order already paid',
+    'order_not_found': 'Order not found',
+    'stripe_not_configured_contact_admin': 'Stripe is not configured, please contact administrator',
+    
+    // Stripe payment errors
+    'card_number_incomplete': 'Your card number is incomplete.',
+    'card_number_invalid': 'Your card number is invalid.',
+    'card_expired': 'Your card has expired.',
+    'card_cvc_incomplete': 'Your card CVC is incomplete.',
+    'card_cvc_invalid': 'Your card CVC is invalid.',
+    'postal_code_incomplete': 'Your postal code is incomplete.',
+    'postal_code_invalid': 'Your postal code is invalid.',
     'store_ordering_system': '{storeName} Ordering System',
     
     // Language switcher
@@ -326,7 +352,24 @@ const translations = {
     'pin_incorrect': 'Incorrect PIN',
     'pin_setup_success': 'PIN set successfully',
     'enter_pin_again': 'Enter PIN again to confirm',
-    'pin_placeholder': '••••'
+    'pin_placeholder': '••••',
+    
+    // Feedback & Complaint
+    'feedback_complaint': 'Feedback & Complaint',
+    'feedback': 'Feedback',
+    'complaint': 'Complaint',
+    'type': 'Type',
+    'content': 'Content',
+    'optional': '(Optional)',
+    'submit': 'Submit',
+    'feedback_success': 'Feedback submitted successfully',
+    'feedback_failed': 'Failed to submit feedback',
+    'feedback_required': 'Please enter your feedback or complaint',
+    'order_number': 'Order Number',
+    'select_order': 'Select Order',
+    'no_orders_found': 'No orders found',
+    'please_login_first': 'Please login first',
+    'failed_to_load_orders': 'Failed to load orders'
   },
   zh: {
     // Basic UI
@@ -589,6 +632,32 @@ const translations = {
     'select': '选择',
     'closed': '已关闭',
     'starting_from': '起',
+    
+    // Payment related
+    'create_payment_failed': '创建支付失败',
+    'init_payment_failed': '初始化支付失败',
+    'payment_not_initialized': '支付未初始化',
+    'payment_success': '支付成功！',
+    'confirm_payment_failed': '确认支付失败',
+    'payment_requires_action': '支付需要额外验证，请按照提示操作',
+    'payment_failed_retry': '支付失败，请重试',
+    
+    // Order cycle related
+    'order_not_in_cycle': '订单不在当前周期内',
+    'not_in_active_cycle': '不在活跃周期内',
+    'cycle_confirmed_cannot_pay': '该周期已确认，无法支付',
+    'order_already_paid': '订单已付款',
+    'order_not_found': '订单不存在',
+    'stripe_not_configured_contact_admin': 'Stripe 未配置，请联系管理员',
+    
+    // Stripe payment errors
+    'card_number_incomplete': '您的银行卡卡号不完整。',
+    'card_number_invalid': '您的银行卡卡号无效。',
+    'card_expired': '您的银行卡已过期。',
+    'card_cvc_incomplete': '您的银行卡 CVC 不完整。',
+    'card_cvc_invalid': '您的银行卡 CVC 无效。',
+    'postal_code_incomplete': '您的邮政编码不完整。',
+    'postal_code_invalid': '您的邮政编码无效。',
     'resend_code_in': '{seconds} 秒后重新发送验证码',
     'store_ordering_system': '{storeName} 点单系统',
     
@@ -654,7 +723,24 @@ const translations = {
     'pin_incorrect': 'PIN密码错误',
     'pin_setup_success': 'PIN密码设置成功',
     'enter_pin_again': '请再次输入PIN密码以确认',
-    'pin_placeholder': '••••'
+    'pin_placeholder': '••••',
+    
+    // Feedback & Complaint
+    'feedback_complaint': '反馈与投诉',
+    'feedback': '反馈',
+    'complaint': '投诉',
+    'type': '类型',
+    'content': '内容',
+    'optional': '（可选）',
+    'submit': '提交',
+    'feedback_success': '反馈提交成功',
+    'feedback_failed': '反馈提交失败',
+    'feedback_required': '请输入您的反馈或投诉内容',
+    'order_number': '订单号',
+    'select_order': '选择订单',
+    'no_orders_found': '未找到订单',
+    'please_login_first': '请先登录',
+    'failed_to_load_orders': '加载订单失败'
   }
 };
 

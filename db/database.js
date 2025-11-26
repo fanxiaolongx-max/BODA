@@ -267,6 +267,7 @@ async function initDatabase() {
         username TEXT NOT NULL,
         failed_count INTEGER DEFAULT 0,
         locked_until DATETIME,
+        first_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
         last_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
         created_at DATETIME DEFAULT (datetime('now', 'localtime')),
         updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
@@ -286,6 +287,7 @@ async function initDatabase() {
         phone TEXT NOT NULL,
         failed_count INTEGER DEFAULT 0,
         locked_until DATETIME,
+        first_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
         last_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
         created_at DATETIME DEFAULT (datetime('now', 'localtime')),
         updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
@@ -296,6 +298,58 @@ async function initDatabase() {
     await runAsync(`
       CREATE INDEX IF NOT EXISTS idx_user_login_attempts_phone 
       ON user_login_attempts(phone)
+    `);
+
+    // IP登录失败记录表（用于IP级别的速率限制）
+    await runAsync(`
+      CREATE TABLE IF NOT EXISTS ip_login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip_address TEXT NOT NULL,
+        failed_count INTEGER DEFAULT 0,
+        blocked_until DATETIME,
+        first_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        last_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+      )
+    `);
+    
+    // 创建索引以提高查询性能
+    await runAsync(`
+      CREATE INDEX IF NOT EXISTS idx_ip_login_attempts_ip 
+      ON ip_login_attempts(ip_address)
+    `);
+    await runAsync(`
+      CREATE INDEX IF NOT EXISTS idx_ip_login_attempts_blocked 
+      ON ip_login_attempts(blocked_until)
+    `);
+
+    // 登录尝试审计表（记录所有登录尝试，用于安全分析）
+    await runAsync(`
+      CREATE TABLE IF NOT EXISTS login_attempts_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_type TEXT NOT NULL,
+        account_identifier TEXT NOT NULL,
+        ip_address TEXT,
+        user_agent TEXT,
+        success INTEGER DEFAULT 0,
+        failure_reason TEXT,
+        created_at DATETIME DEFAULT (datetime('now', 'localtime'))
+      )
+    `);
+    
+    // 创建索引以提高查询性能
+    await runAsync(`
+      CREATE INDEX IF NOT EXISTS idx_login_audit_account 
+      ON login_attempts_audit(account_type, account_identifier)
+    `);
+    await runAsync(`
+      CREATE INDEX IF NOT EXISTS idx_login_audit_ip 
+      ON login_attempts_audit(ip_address)
+    `);
+    await runAsync(`
+      CREATE INDEX IF NOT EXISTS idx_login_audit_created 
+      ON login_attempts_audit(created_at)
     `);
 
     // 周期管理表
@@ -550,6 +604,83 @@ async function migrateDatabaseSchema() {
         console.log('自动迁移: 添加 balance_transactions.notes 字段...');
         await runAsync('ALTER TABLE balance_transactions ADD COLUMN notes TEXT');
       }
+    }
+
+    // 检查并添加 first_attempt_at 字段到 admin_login_attempts
+    try {
+      const adminAttemptsInfo = await getTableInfo('admin_login_attempts');
+      const adminAttemptsColumns = adminAttemptsInfo.map(col => col.name);
+      if (!adminAttemptsColumns.includes('first_attempt_at')) {
+        console.log('自动迁移: 添加 admin_login_attempts.first_attempt_at 字段...');
+        await runAsync('ALTER TABLE admin_login_attempts ADD COLUMN first_attempt_at DATETIME');
+        // 为现有记录设置 first_attempt_at = created_at
+        await runAsync('UPDATE admin_login_attempts SET first_attempt_at = created_at WHERE first_attempt_at IS NULL');
+      }
+    } catch (error) {
+      console.error('迁移 admin_login_attempts.first_attempt_at 失败:', error.message);
+    }
+
+    // 检查并添加 first_attempt_at 字段到 user_login_attempts
+    try {
+      const userAttemptsInfo = await getTableInfo('user_login_attempts');
+      const userAttemptsColumns = userAttemptsInfo.map(col => col.name);
+      if (!userAttemptsColumns.includes('first_attempt_at')) {
+        console.log('自动迁移: 添加 user_login_attempts.first_attempt_at 字段...');
+        await runAsync('ALTER TABLE user_login_attempts ADD COLUMN first_attempt_at DATETIME');
+        // 为现有记录设置 first_attempt_at = created_at
+        await runAsync('UPDATE user_login_attempts SET first_attempt_at = created_at WHERE first_attempt_at IS NULL');
+      }
+    } catch (error) {
+      console.error('迁移 user_login_attempts.first_attempt_at 失败:', error.message);
+    }
+
+    // 检查并创建 ip_login_attempts 表
+    try {
+      const ipAttemptsTables = await allAsync("SELECT name FROM sqlite_master WHERE type='table' AND name='ip_login_attempts'");
+      if (ipAttemptsTables.length === 0) {
+        console.log('自动迁移: 创建 ip_login_attempts 表...');
+        await runAsync(`
+          CREATE TABLE IF NOT EXISTS ip_login_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip_address TEXT NOT NULL,
+            failed_count INTEGER DEFAULT 0,
+            blocked_until DATETIME,
+            first_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            last_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+          )
+        `);
+        await runAsync('CREATE INDEX IF NOT EXISTS idx_ip_login_attempts_ip ON ip_login_attempts(ip_address)');
+        await runAsync('CREATE INDEX IF NOT EXISTS idx_ip_login_attempts_blocked ON ip_login_attempts(blocked_until)');
+      }
+    } catch (error) {
+      console.error('迁移 ip_login_attempts 表失败:', error.message);
+    }
+
+    // 检查并创建 login_attempts_audit 表
+    try {
+      const auditTables = await allAsync("SELECT name FROM sqlite_master WHERE type='table' AND name='login_attempts_audit'");
+      if (auditTables.length === 0) {
+        console.log('自动迁移: 创建 login_attempts_audit 表...');
+        await runAsync(`
+          CREATE TABLE IF NOT EXISTS login_attempts_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_type TEXT NOT NULL,
+            account_identifier TEXT NOT NULL,
+            ip_address TEXT,
+            user_agent TEXT,
+            success INTEGER DEFAULT 0,
+            failure_reason TEXT,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime'))
+          )
+        `);
+        await runAsync('CREATE INDEX IF NOT EXISTS idx_login_audit_account ON login_attempts_audit(account_type, account_identifier)');
+        await runAsync('CREATE INDEX IF NOT EXISTS idx_login_audit_ip ON login_attempts_audit(ip_address)');
+        await runAsync('CREATE INDEX IF NOT EXISTS idx_login_audit_created ON login_attempts_audit(created_at)');
+      }
+    } catch (error) {
+      console.error('迁移 login_attempts_audit 表失败:', error.message);
     }
 
     console.log('数据库架构迁移完成');

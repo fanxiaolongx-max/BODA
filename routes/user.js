@@ -3,8 +3,10 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const { body } = require('express-validator');
 const { runAsync, getAsync, allAsync, beginTransaction, commit, rollback } = require('../db/database');
 const { requireUserAuth } = require('../middleware/auth');
+const { validate } = require('../middleware/validation');
 const { logger } = require('../utils/logger');
 const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = require('../utils/cycle-helper');
 const { calculateItemPrice, batchGetToppingProducts, batchGetOrderItems, roundAmount } = require('../utils/order-helper');
@@ -606,7 +608,7 @@ router.get('/orders', async (req, res) => {
     const activeCycle = await getAsync(
       "SELECT * FROM ordering_cycles WHERE status = 'active' ORDER BY id DESC LIMIT 1"
     );
-    
+
     // 如果没有活跃周期，获取最近一个已结束的周期
     let latestEndedCycle = null;
     if (!activeCycle) {
@@ -1431,6 +1433,148 @@ router.get('/orders-summary', async (req, res) => {
   } catch (error) {
     logger.error('获取订单汇总失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取订单汇总失败' });
+  }
+});
+
+/**
+ * POST /api/user/feedback
+ * Submit feedback or complaint
+ * @body {string} type - 'feedback' or 'complaint'
+ * @body {string} [orderNumber] - Order number (optional)
+ * @body {string} content - Feedback content (max 100 characters)
+ * @returns {Object} Success message
+ */
+router.post('/feedback', requireUserAuth, [
+  body('type').isIn(['feedback', 'complaint']).withMessage('Type must be feedback or complaint'),
+  body('orderNumber').optional({ nullable: true, checkFalsy: true }).trim().isLength({ max: 50 }),
+  body('content').trim().isLength({ min: 1, max: 100 }).withMessage('Content must be between 1 and 100 characters'),
+  validate
+], async (req, res) => {
+  try {
+    const { type, orderNumber, content } = req.body;
+    
+    // 获取用户信息
+    const user = await getAsync('SELECT * FROM users WHERE id = ?', [req.session.userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    // 获取商店名称
+    const storeNameSetting = await getAsync("SELECT value FROM settings WHERE key = 'store_name'");
+    const storeName = storeNameSetting?.value || 'Ordering System';
+    
+    // 获取邮件配置
+    const { sendEmail } = require('../utils/email');
+    
+    // 构建邮件内容
+    const typeText = type === 'feedback' ? 'Feedback' : 'Complaint';
+    const typeTextZh = type === 'feedback' ? '反馈' : '投诉';
+    
+    const subject = `[${typeText}] ${storeName} - ${user.name || user.phone}`;
+    const subjectZh = `[${typeTextZh}] ${storeName} - ${user.name || user.phone}`;
+    
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333; border-bottom: 2px solid #4F46E5; padding-bottom: 10px;">
+          ${type === 'feedback' ? '📝 Feedback' : '⚠️ Complaint'} / ${typeTextZh}
+        </h2>
+        
+        <div style="background-color: #f9fafb; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #4F46E5; margin-top: 0;">User Information / 用户信息</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px; font-weight: bold; color: #666; width: 150px;">Name / 姓名:</td>
+              <td style="padding: 8px;">${user.name || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; font-weight: bold; color: #666;">Phone / 手机号:</td>
+              <td style="padding: 8px;">${user.phone}</td>
+            </tr>
+            ${orderNumber ? `
+            <tr>
+              <td style="padding: 8px; font-weight: bold; color: #666;">Order Number / 订单号:</td>
+              <td style="padding: 8px;">${orderNumber}</td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td style="padding: 8px; font-weight: bold; color: #666;">Type / 类型:</td>
+              <td style="padding: 8px;">
+                <span style="background-color: ${type === 'feedback' ? '#10B981' : '#EF4444'}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                  ${typeText} / ${typeTextZh}
+                </span>
+              </td>
+            </tr>
+          </table>
+        </div>
+        
+        <div style="background-color: #fff; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #4F46E5; margin-top: 0;">Content / 内容</h3>
+          <p style="color: #333; white-space: pre-wrap; word-wrap: break-word;">${content.replace(/\n/g, '<br>')}</p>
+        </div>
+        
+        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e5e7eb; color: #666; font-size: 12px;">
+          <p>Submitted at / 提交时间: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })} / ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</p>
+          <p>User ID / 用户ID: ${user.id}</p>
+        </div>
+      </div>
+    `;
+    
+    const textContent = `
+${typeText} / ${typeTextZh}
+${'='.repeat(50)}
+
+User Information / 用户信息:
+- Name / 姓名: ${user.name || 'N/A'}
+- Phone / 手机号: ${user.phone}
+${orderNumber ? `- Order Number / 订单号: ${orderNumber}` : ''}
+- Type / 类型: ${typeText} / ${typeTextZh}
+
+Content / 内容:
+${content}
+
+---
+Submitted at / 提交时间: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })} / ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
+User ID / 用户ID: ${user.id}
+    `;
+    
+    // 发送邮件
+    const emailResult = await sendEmail({
+      subject: subject,
+      text: textContent,
+      html: htmlContent
+    });
+    
+    if (emailResult.success || emailResult.partialSuccess) {
+      logger.info('反馈/投诉提交成功', {
+        userId: user.id,
+        userPhone: user.phone,
+        type: type,
+        orderNumber: orderNumber || null,
+        emailSent: true
+      });
+      
+      return res.json({
+        success: true,
+        message: 'Feedback submitted successfully. Thank you for your feedback!'
+      });
+    } else {
+      logger.warn('反馈/投诉提交成功但邮件发送失败', {
+        userId: user.id,
+        userPhone: user.phone,
+        type: type,
+        emailError: emailResult.message
+      });
+      
+      // 即使邮件发送失败，也返回成功（因为反馈已记录）
+      return res.json({
+        success: true,
+        message: 'Feedback submitted successfully, but email notification failed. Please contact administrator directly.',
+        emailSent: false
+      });
+    }
+  } catch (error) {
+    logger.error('提交反馈/投诉失败', { error: error.message, stack: error.stack });
+    res.status(500).json({ success: false, message: 'Failed to submit feedback' });
   }
 });
 

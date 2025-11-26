@@ -215,6 +215,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 初始化PIN输入框
   initPinInputs();
   
+  // 反馈表单提交
+  const feedbackForm = document.getElementById('feedbackForm');
+  if (feedbackForm) {
+    feedbackForm.addEventListener('submit', submitFeedback);
+  }
+  
+  // 反馈内容字符计数
+  const feedbackContent = document.getElementById('feedbackContent');
+  if (feedbackContent) {
+    feedbackContent.addEventListener('input', updateFeedbackCharCount);
+  }
+  
   // 手机号输入验证和检查PIN状态
   const phoneInput = document.getElementById('phone');
   const phoneError = document.getElementById('phoneError');
@@ -1355,8 +1367,6 @@ async function checkPinStatus(phone, requestId = null) {
       body: JSON.stringify({ phone })
     });
     
-    const data = await response.json();
-    
     // 检查这个请求是否还是最新的（防止竞态条件）
     // 如果requestId不等于最新的请求ID，说明有更新的请求，忽略这个结果
     if (requestId !== checkPinStatusRequestId) {
@@ -1370,6 +1380,31 @@ async function checkPinStatus(phone, requestId = null) {
       console.log('手机号已改变，忽略PIN状态检查结果', { requestedPhone: phone, currentPhone });
       return false;
     }
+    
+    // 处理非成功响应（包括IP阻止等错误）
+    if (!response.ok) {
+      let errorData = {};
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        // 如果无法解析JSON，使用状态文本
+        errorData = { message: response.statusText || 'Request failed' };
+      }
+      
+      // 如果是IP阻止错误，清除checkedPhone状态，允许用户重新尝试
+      if (response.status === 403 && (errorData.message || '').includes('IP')) {
+        loginState.checkedPhone = '';
+        console.log('IP被阻止，清除PIN检查状态', { phone, errorData });
+        // 不显示PIN区域，让用户知道IP被阻止
+        return false;
+      }
+      // 其他错误也清除状态
+      loginState.checkedPhone = '';
+      console.error('Check PIN status failed:', response.status, errorData);
+      return false;
+    }
+    
+    const data = await response.json();
     
     if (data.success) {
       const loginModalTitle = document.getElementById('loginModalTitle');
@@ -1429,6 +1464,9 @@ async function checkPinStatus(phone, requestId = null) {
     }
   } catch (error) {
     console.error('Check PIN status failed:', error);
+    // 发生错误时清除checkedPhone状态，允许用户重新尝试
+    loginState.checkedPhone = '';
+    return false;
   }
   return false;
 }
@@ -1855,7 +1893,7 @@ function renderProducts() {
             <div class="flex items-center justify-between mt-2">
               <div>
                 <span class="${getPriceColor(priceForColor)} font-bold text-base">${formatPrice(minPrice)}</span>
-                ${hasMultipleSizes ? '<span class="text-xs text-gray-500 ml-1">起</span>' : ''}
+                ${hasMultipleSizes ? `<span class="text-xs text-gray-500 ml-1">${t('starting_from')}</span>` : ''}
               </div>
               <button onclick='showProductDetail(${JSON.stringify(product).replace(/'/g, "&apos;")})' 
                       class="px-4 py-1.5 ${currentSettings.ordering_open === 'true' ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'} text-white font-semibold rounded-full transition text-xs"
@@ -3667,7 +3705,7 @@ function renderOrders(orders, isInitial = false) {
           <span class="px-3 py-1 rounded-full text-sm font-semibold ${statusColors[order.status]}">
             ${statusText[order.status]}
           </span>
-          ${order.payment_method === 'stripe' && order.status === 'paid' ? `
+          ${order.payment_method === 'stripe' && order.status === 'paid' && !order.payment_image ? `
             <span class="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
               💳 ${t('online_payment_badge')}
             </span>
@@ -3804,7 +3842,7 @@ function renderOrders(orders, isInitial = false) {
               <div class="text-sm ${expiredClass || inactiveClass || 'text-gray-700'} bg-gray-50 p-2 rounded">${order.notes}</div>
             </div>
           ` : ''}
-          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id && order.status === 'paid' ? `
+          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id && order.status === 'paid' && !order.payment_image ? `
             <div class="mt-3 pt-3 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'}">
               <div class="text-xs text-gray-500 mb-1">${t('transaction_id')}:</div>
               <div class="text-xs ${expiredClass || inactiveClass || 'text-gray-700'} font-mono break-all bg-gray-50 p-2 rounded">${order.stripe_payment_intent_id}</div>
@@ -4066,10 +4104,12 @@ function selectPaymentMethod(method) {
   if (method === 'stripe') {
     stripeSection.classList.remove('hidden');
     screenshotSection.classList.add('hidden');
+    screenshotSection.style.display = 'none'; // 确保隐藏
     initStripeElements();
   } else {
     stripeSection.classList.add('hidden');
     screenshotSection.classList.remove('hidden');
+    screenshotSection.style.display = 'block'; // 确保显示
   }
 }
 
@@ -4088,15 +4128,20 @@ async function initStripeElements() {
     const data = await response.json();
     
     if (!data.success) {
-      showToast(data.message || '创建支付失败', 'error');
+      showToast(data.message || t('create_payment_failed'), 'error');
       return;
     }
+    
+    // 获取当前语言设置（用于 Stripe Payment Element 的 locale）
+    const currentLang = typeof getLanguage === 'function' ? getLanguage() : 'en';
+    const stripeLocale = currentLang === 'zh' ? 'zh' : 'en';
     
     // 创建 Payment Element（支持 Apple Pay 和银行卡）
     stripeElements = stripe.elements({ 
       clientSecret: data.clientSecret,
       appearance: {
         theme: 'stripe',
+        locale: stripeLocale, // 设置语言
       }
     });
     
@@ -4117,7 +4162,8 @@ async function initStripeElements() {
     stripePaymentElement.on('change', (event) => {
       const displayError = document.getElementById('stripeCardErrors');
       if (event.error) {
-        displayError.textContent = event.error.message;
+        // 翻译 Stripe 错误消息
+        displayError.textContent = translateStripeErrorMessage(event.error.message);
       } else {
         displayError.textContent = '';
       }
@@ -4131,14 +4177,14 @@ async function initStripeElements() {
     
   } catch (error) {
     console.error('初始化 Stripe Elements 失败:', error);
-    showToast('初始化支付失败', 'error');
+    showToast(t('init_payment_failed'), 'error');
   }
 }
 
 // 处理 Stripe 支付
 async function handleStripePayment() {
   if (!stripe || !stripePaymentElement) {
-    showToast('支付未初始化', 'error');
+    showToast(t('payment_not_initialized'), 'error');
     return;
   }
   
@@ -4156,7 +4202,9 @@ async function handleStripePayment() {
     });
     
     if (submitError) {
-      showToast(submitError.message, 'error');
+      // 翻译 Stripe 错误消息
+      const translatedError = translateStripeErrorMessage(submitError.message);
+      showToast(translatedError, 'error');
       setButtonLoading(payButton, false);
       return;
     }
@@ -4174,19 +4222,19 @@ async function handleStripePayment() {
       const data = await response.json();
       
       if (data.success) {
-        showToast('支付成功！', 'success');
+        showToast(t('payment_success'), 'success');
         closePayment();
         loadOrders(false);
       } else {
-        showToast(data.message || '确认支付失败', 'error');
+        showToast(data.message || t('confirm_payment_failed'), 'error');
       }
     } else if (paymentIntent && paymentIntent.status === 'requires_action') {
       // 需要额外验证（如 3D Secure），Stripe 会自动处理
-      showToast('支付需要额外验证，请按照提示操作', 'info');
+      showToast(t('payment_requires_action'), 'info');
     }
   } catch (error) {
     console.error('Stripe 支付失败:', error);
-    showToast('支付失败，请重试', 'error');
+    showToast(t('payment_failed_retry'), 'error');
   } finally {
     setButtonLoading(payButton, false);
   }
@@ -4459,7 +4507,74 @@ async function uploadPayment() {
 
 // 显示提示
 // Toast 通知系统
+// 翻译 Stripe 错误消息
+function translateStripeErrorMessage(message) {
+  if (!message || typeof message !== 'string') {
+    return message;
+  }
+  
+  // Stripe 错误消息到翻译键的映射
+  const stripeMessageMap = {
+    '您的银行卡卡号不完整。': 'card_number_incomplete',
+    '您的银行卡卡号无效。': 'card_number_invalid',
+    '您的银行卡已过期。': 'card_expired',
+    '您的银行卡 CVC 不完整。': 'card_cvc_incomplete',
+    '您的银行卡 CVC 无效。': 'card_cvc_invalid',
+    '您的邮政编码不完整。': 'postal_code_incomplete',
+    '您的邮政编码无效。': 'postal_code_invalid',
+  };
+  
+  // 检查是否有精确匹配
+  if (stripeMessageMap[message] && typeof t === 'function') {
+    return t(stripeMessageMap[message]);
+  }
+  
+  // 检查部分匹配（处理 Stripe 可能返回的变体）
+  for (const [key, translationKey] of Object.entries(stripeMessageMap)) {
+    if (message.includes(key.replace(/[。.]/g, ''))) {
+      if (typeof t === 'function') {
+        return t(translationKey);
+      }
+    }
+  }
+  
+  // 如果没有匹配，尝试使用 getLocalizedText 处理
+  return getLocalizedText(message);
+}
+
+// 翻译后端返回的中文错误消息
+function translateBackendMessage(message) {
+  if (!message || typeof message !== 'string') {
+    return message;
+  }
+  
+  // 后端消息到翻译键的映射
+  const messageMap = {
+    '该周期已确认，无法支付': 'cycle_confirmed_cannot_pay',
+    '订单已付款': 'order_already_paid',
+    '订单不存在': 'order_not_found',
+    'Stripe 未配置，请联系管理员': 'stripe_not_configured_contact_admin',
+    '创建支付失败': 'create_payment_failed',
+    '初始化支付失败': 'init_payment_failed',
+    '支付未初始化': 'payment_not_initialized',
+    '支付成功！': 'payment_success',
+    '确认支付失败': 'confirm_payment_failed',
+    '支付需要额外验证，请按照提示操作': 'payment_requires_action',
+    '支付失败，请重试': 'payment_failed_retry',
+  };
+  
+  // 检查是否有匹配的翻译键
+  if (messageMap[message] && typeof t === 'function') {
+    return t(messageMap[message]);
+  }
+  
+  // 如果没有匹配，尝试使用 getLocalizedText 处理（如果消息包含中英文混合）
+  return getLocalizedText(message);
+}
+
 function showToast(message, type = 'success') {
+  // 翻译后端返回的消息
+  const translatedMessage = translateBackendMessage(message);
   // 确保 Toast 容器存在
   let toastContainer = document.getElementById('toastContainer');
   if (!toastContainer) {
@@ -4485,7 +4600,7 @@ function showToast(message, type = 'success') {
   toast.className = `${config.bg} text-white px-6 py-3 rounded-lg shadow-lg fade-in flex items-center space-x-2 min-w-[300px] max-w-[500px]`;
   toast.innerHTML = `
     <span class="font-bold">${config.icon}</span>
-    <span class="flex-1">${message}</span>
+    <span class="flex-1">${translatedMessage}</span>
   `;
   
   toastContainer.appendChild(toast);
@@ -4502,6 +4617,247 @@ function showToast(message, type = 'success') {
 }
 
 // 确认对话框
+// 显示反馈/投诉模态框
+async function showFeedbackModal() {
+  const modal = document.getElementById('feedbackModal');
+  if (!modal) return;
+  
+  modal.classList.add('active');
+  document.body.classList.add('modal-open');
+  
+  // 重置表单
+  document.getElementById('feedbackForm').reset();
+  document.getElementById('feedbackCharCount').textContent = '0';
+  
+  // 设置默认选中Feedback
+  updateFeedbackTypeUI('feedback');
+  
+  // 设置字符计数
+  const contentInput = document.getElementById('feedbackContent');
+  if (contentInput) {
+    contentInput.addEventListener('input', updateFeedbackCharCount);
+    updateFeedbackCharCount();
+  }
+  
+  // 加载最近的订单列表
+  await loadFeedbackOrderOptions();
+  
+  // 设置radio按钮点击事件
+  setupFeedbackTypeListeners();
+  
+  // 应用翻译
+  applyTranslations();
+}
+
+// 设置反馈类型选择监听器
+function setupFeedbackTypeListeners() {
+  const feedbackRadio = document.querySelector('input[name="feedbackType"][value="feedback"]');
+  const complaintRadio = document.querySelector('input[name="feedbackType"][value="complaint"]');
+  const feedbackDiv = document.getElementById('feedbackTypeFeedback');
+  const complaintDiv = document.getElementById('feedbackTypeComplaint');
+  
+  if (feedbackDiv) {
+    feedbackDiv.onclick = () => {
+      feedbackRadio.checked = true;
+      updateFeedbackTypeUI('feedback');
+    };
+  }
+  
+  if (complaintDiv) {
+    complaintDiv.onclick = () => {
+      complaintRadio.checked = true;
+      updateFeedbackTypeUI('complaint');
+    };
+  }
+}
+
+// 更新反馈类型UI样式
+function updateFeedbackTypeUI(selectedType) {
+  const feedbackDiv = document.getElementById('feedbackTypeFeedback');
+  const complaintDiv = document.getElementById('feedbackTypeComplaint');
+  
+  if (feedbackDiv && complaintDiv) {
+    if (selectedType === 'feedback') {
+      feedbackDiv.className = 'p-3 border-2 border-blue-500 rounded-lg text-center bg-blue-50 transition';
+      complaintDiv.className = 'p-3 border-2 border-gray-300 rounded-lg text-center bg-white transition';
+    } else {
+      feedbackDiv.className = 'p-3 border-2 border-gray-300 rounded-lg text-center bg-white transition';
+      complaintDiv.className = 'p-3 border-2 border-red-500 rounded-lg text-center bg-red-50 transition';
+    }
+  }
+}
+
+// 加载反馈表单的订单选项
+async function loadFeedbackOrderOptions() {
+  const orderSelect = document.getElementById('feedbackOrderNumber');
+  if (!orderSelect) return;
+  
+  // 检查是否登录
+  if (!currentUser) {
+    orderSelect.innerHTML = `<option value="">-- ${t('please_login_first')} --</option>`;
+    return;
+  }
+  
+  try {
+    // 使用与 loadOrders 相同的 API 调用方式
+    let data;
+    if (typeof apiGet !== 'undefined') {
+      // 使用统一的 API 封装
+      data = await apiGet('/user/orders?limit=5', { showError: false });
+    } else {
+      // 回退到直接 fetch
+      const response = await fetch(`${API_BASE}/user/orders?limit=5`, {
+        credentials: 'include'
+      });
+      
+      // 检查响应状态
+      if (!response.ok) {
+        // 如果是401未授权，提示需要登录
+        if (response.status === 401) {
+          orderSelect.innerHTML = `<option value="">-- ${t('please_login_first')} --</option>`;
+          return;
+        }
+        // 其他错误
+        const errorText = await response.text();
+        console.error('Failed to load orders for feedback:', response.status, errorText);
+        orderSelect.innerHTML = `<option value="">-- ${t('failed_to_load_orders')} --</option>`;
+        return;
+      }
+      
+      // 尝试解析JSON
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('Failed to parse JSON response:', jsonError);
+        orderSelect.innerHTML = `<option value="">-- ${t('failed_to_load_orders')} --</option>`;
+        return;
+      }
+    }
+    
+    if (data && data.success && data.orders && data.orders.length > 0) {
+      orderSelect.innerHTML = `<option value="">-- ${t('select_order')} --</option>`;
+      data.orders.forEach(order => {
+        const option = document.createElement('option');
+        option.value = order.order_number || order.id;
+        const date = new Date(order.created_at).toLocaleDateString();
+        const total = order.total_amount || 0;
+        option.textContent = `${order.order_number || order.id} - ${date} - ${formatPrice(total)}`;
+        orderSelect.appendChild(option);
+      });
+    } else {
+      orderSelect.innerHTML = `<option value="">-- ${t('no_orders_found')} --</option>`;
+    }
+  } catch (error) {
+    console.error('Failed to load orders for feedback:', error);
+    orderSelect.innerHTML = `<option value="">-- ${t('failed_to_load_orders')} --</option>`;
+  }
+}
+
+// 关闭反馈/投诉模态框
+function closeFeedbackModal(event) {
+  // 如果提供了 event 参数，检查是否点击了模态框背景
+  if (event) {
+    if (event.target !== event.currentTarget) {
+      return; // 点击模态框内容时不关闭
+    }
+  }
+  
+  const modal = document.getElementById('feedbackModal');
+  if (modal) {
+    modal.classList.remove('active');
+    document.body.classList.remove('modal-open');
+  }
+  
+  // 重置表单
+  const form = document.getElementById('feedbackForm');
+  if (form) {
+    form.reset();
+    const charCount = document.getElementById('feedbackCharCount');
+    if (charCount) {
+      charCount.textContent = '0';
+    }
+  }
+}
+
+// 更新字符计数
+function updateFeedbackCharCount() {
+  const contentInput = document.getElementById('feedbackContent');
+  const charCount = document.getElementById('feedbackCharCount');
+  if (contentInput && charCount) {
+    const count = contentInput.value.length;
+    charCount.textContent = count;
+    if (count > 100) {
+      charCount.classList.add('text-red-600');
+    } else {
+      charCount.classList.remove('text-red-600');
+    }
+  }
+}
+
+// 提交反馈/投诉
+async function submitFeedback(e) {
+  e.preventDefault();
+  
+  // 检查是否登录
+  if (!currentUser) {
+    closeFeedbackModal();
+    showLoginModal();
+    showToast(t('please_login_to_checkout'), 'info');
+    return;
+  }
+  
+  const type = document.querySelector('input[name="feedbackType"]:checked')?.value;
+  const orderNumber = document.getElementById('feedbackOrderNumber')?.value.trim();
+  const content = document.getElementById('feedbackContent')?.value.trim();
+  
+  if (!content) {
+    showToast(t('feedback_required'), 'error');
+    return;
+  }
+  
+  if (content.length > 100) {
+    showToast('Content exceeds 100 characters', 'error');
+    return;
+  }
+  
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  setButtonLoading(submitBtn, true);
+  
+  try {
+    const response = await fetch(`${API_BASE}/user/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        type: type,
+        orderNumber: orderNumber || null,
+        content: content
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast(t('feedback_success'), 'success');
+      closeFeedbackModal();
+    } else {
+      // 如果是未登录错误，显示登录提示
+      if (response.status === 401) {
+        closeFeedbackModal();
+        showLoginModal();
+        showToast(t('please_login_to_checkout'), 'info');
+      } else {
+        showToast(data.message || t('feedback_failed'), 'error');
+      }
+    }
+  } catch (error) {
+    console.error('Submit feedback failed:', error);
+    showToast(t('feedback_failed'), 'error');
+  } finally {
+    setButtonLoading(submitBtn, false);
+  }
+}
+
 function showConfirmDialog(title, message, confirmText = 'Confirm', cancelText = 'Cancel') {
   return new Promise((resolve) => {
     const dialog = document.getElementById('confirmDialog');
