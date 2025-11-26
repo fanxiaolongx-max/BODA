@@ -1,39 +1,34 @@
-# See https://fly.io/docs/app-guides/continuous-deployment-with-github-actions/
-
 name: Fly Deploy
+
 on:
   push:
     branches:
       - main
+      - dev
+
 jobs:
   deploy:
-    name: Deploy app
+    name: Deploy Fly App
     runs-on: ubuntu-latest
-    concurrency: deploy-group    # optional: ensure only one action runs at a time
-    timeout-minutes: 15
+    concurrency: deploy-group
     steps:
       - uses: actions/checkout@v4
-      
-      # 使用官方推荐的 setup-flyctl action（更快更稳定）
+
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      
-      # 部署到 Fly.io，添加重试逻辑
+
+      - name: Select Fly Config
+        id: config
+        run: |
+          if [[ "${GITHUB_REF##*/}" == "main" ]]; then
+            echo "config=fly.boda-t0amgq.toml" >> $GITHUB_OUTPUT
+            echo "Deploying Production → boda-t0amgq"
+          else
+            echo "config=fly.boda-0mqtrq.toml" >> $GITHUB_OUTPUT
+            echo "Deploying Staging → boda-0mqtrq"
+          fi
+
       - name: Deploy to Fly.io
         run: |
-          for i in {1..3}; do
-            echo "尝试部署 (第 $i 次)..."
-            if flyctl deploy --remote-only; then
-              echo "部署成功！"
-              exit 0
-            else
-              if [ $i -lt 3 ]; then
-                echo "部署失败，等待 10 秒后重试..."
-                sleep 10
-              else
-                echo "部署失败，已重试 3 次"
-                exit 1
-              fi
-            fi
-          done
+          flyctl deploy -c ${{ steps.config.outputs.config }} --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
