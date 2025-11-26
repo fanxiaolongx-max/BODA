@@ -1,22 +1,12 @@
-# fly.toml app configuration file generated for boda-t0amgq on 2025-11-17T22:10:29+02:00
+# fly.toml app configuration file generated for boda-0mqtrq on 2025-11-26T22:24:37Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'boda-t0amgq'
-primary_region = 'iad'
-
-[env]
-  TZ = "Africa/Cairo"
+app = 'boda-0mqtrq'
+primary_region = 'cdg'
 
 [build]
-
-[[mounts]]
-  source = 'data'
-  destination = '/data'
-  auto_extend_size_threshold = 80
-  auto_extend_size_increment = '1GB'
-  auto_extend_size_limit = '10GB'
 
 [http_service]
   internal_port = 3000
