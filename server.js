@@ -35,7 +35,7 @@ app.use(helmet({
       mediaSrc: ["'self'"],
       frameSrc: ["'self'", "blob:", "https://js.stripe.com"], // 允许同源iframe、blob URL 和 Stripe Elements iframe
       baseUri: ["'self'"],
-      formAction: ["'self'"],
+      formAction: ["'self'"], // 允许同源表单提交（包括文件上传）
       upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
     },
   },

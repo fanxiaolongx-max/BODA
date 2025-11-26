@@ -5770,9 +5770,55 @@ const backupUpload = multer({
   }
 });
 
-router.post('/backup/upload', backupUpload.single('backupFile'), async (req, res) => {
+router.post('/backup/upload', (req, res, next) => {
+  // 记录上传请求开始
+  logger.info('备份上传请求开始', {
+    contentType: req.get('content-type'),
+    contentLength: req.get('content-length'),
+    method: req.method,
+    path: req.path
+  });
+  next();
+}, backupUpload.single('backupFile'), (err, req, res, next) => {
+  // Multer错误处理中间件
+  if (err) {
+    logger.error('Multer上传错误', {
+      error: err.message,
+      code: err.code,
+      field: err.field,
+      name: err.name
+    });
+    
+    let errorMessage = 'File upload failed';
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      errorMessage = 'File size exceeds 500MB limit';
+    } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      errorMessage = 'Unexpected file field name. Expected: backupFile';
+    } else if (err.message) {
+      errorMessage = err.message;
+    }
+    
+    return res.status(400).json({
+      success: false,
+      message: errorMessage
+    });
+  }
+  next();
+}, async (req, res) => {
   try {
+    // 记录上传请求信息（用于调试）
+    logger.info('备份上传请求处理', {
+      hasFile: !!req.file,
+      fileSize: req.file?.size,
+      fileName: req.file?.originalname,
+      filePath: req.file?.path
+    });
+    
     if (!req.file) {
+      logger.warn('备份上传失败：未检测到文件', {
+        body: req.body,
+        files: req.files
+      });
       return res.status(400).json({
         success: false,
         message: 'No file uploaded'
@@ -5843,16 +5889,33 @@ router.post('/backup/upload', backupUpload.single('backupFile'), async (req, res
       message: `Backup file uploaded successfully: ${fileName} (${sizeMB}MB)`
     });
   } catch (error) {
-    logger.error('上传备份文件失败', { error: error.message });
+    logger.error('上传备份文件失败', { 
+      error: error.message,
+      stack: error.stack,
+      code: error.code,
+      name: error.name
+    });
     
     // 如果上传失败，删除文件
     if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (unlinkError) {
+        logger.warn('删除上传失败的文件时出错', { error: unlinkError.message });
+      }
+    }
+    
+    // 检查是否是multer错误（文件大小超限等）
+    let errorMessage = 'Failed to upload backup file: ' + error.message;
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      errorMessage = 'File size exceeds 500MB limit';
+    } else if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+      errorMessage = 'Unexpected file field name';
     }
     
     res.status(500).json({
       success: false,
-      message: 'Failed to upload backup file: ' + error.message
+      message: errorMessage
     });
   }
 });
