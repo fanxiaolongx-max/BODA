@@ -1766,6 +1766,11 @@ async function loadCategories() {
     const data = await response.json();
     if (data.success) {
       categories = data.categories;
+      // 确保分类ID是数字类型
+      categories = categories.map(cat => ({
+        ...cat,
+        id: Number(cat.id)
+      }));
       renderCategoryFilter();
     }
   } catch (error) {
@@ -1780,6 +1785,11 @@ async function loadProducts() {
     const data = await response.json();
     if (data.success) {
       products = data.products;
+      // 确保category_id是数字类型（如果存在）
+      products = products.map(p => ({
+        ...p,
+        category_id: p.category_id != null ? Number(p.category_id) : null
+      }));
       renderProducts();
     }
   } catch (error) {
@@ -1799,12 +1809,14 @@ function renderCategoryFilter() {
   `;
   
   categories.forEach(cat => {
+    // 确保分类ID是数字类型
+    const categoryId = Number(cat.id);
     // 使用智能分割获取本地化分类名称
     const localizedName = getLocalizedText(cat.name);
     // 简化分类名称显示（如果名称太长，只显示前几个字符）
     const shortName = localizedName.length > 8 ? localizedName.substring(0, 8) + '...' : localizedName;
     html += `
-      <button onclick="filterCategory(${cat.id})" class="category-nav-btn w-full py-4 text-center ${selectedCategory === cat.id ? 'bg-white text-green-600 font-semibold border-l-3 border-green-600' : 'text-gray-600 hover:bg-gray-100'}">
+      <button onclick="filterCategory(${categoryId})" class="category-nav-btn w-full py-4 text-center ${selectedCategory === categoryId ? 'bg-white text-green-600 font-semibold border-l-3 border-green-600' : 'text-gray-600 hover:bg-gray-100'}">
         <div class="text-xs leading-tight px-1">${shortName}</div>
       </button>
     `;
@@ -1815,7 +1827,8 @@ function renderCategoryFilter() {
 
 // 筛选分类
 function filterCategory(categoryId) {
-  selectedCategory = categoryId;
+  // 确保类型一致：转换为数字或null
+  selectedCategory = categoryId === null ? null : Number(categoryId);
   renderCategoryFilter();
   renderProducts();
   
@@ -1829,7 +1842,26 @@ function renderProducts() {
   
   let filteredProducts = products;
   if (selectedCategory !== null) {
-    filteredProducts = products.filter(p => p.category_id === selectedCategory);
+    // 使用类型转换确保比较正确：SQLite返回的category_id可能是字符串或数字
+    filteredProducts = products.filter(p => {
+      const productCategoryId = p.category_id != null ? Number(p.category_id) : null;
+      return productCategoryId === selectedCategory;
+    });
+    
+    // 调试信息（仅在开发环境）
+    if (filteredProducts.length === 0 && products.length > 0) {
+      console.warn('分类过滤结果为空', {
+        selectedCategory,
+        selectedCategoryType: typeof selectedCategory,
+        totalProducts: products.length,
+        sampleProductCategoryIds: products.slice(0, 5).map(p => ({
+          id: p.id,
+          name: p.name,
+          category_id: p.category_id,
+          category_id_type: typeof p.category_id
+        }))
+      });
+    }
   }
   
   if (filteredProducts.length === 0) {

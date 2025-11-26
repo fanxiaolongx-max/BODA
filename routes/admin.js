@@ -5263,6 +5263,9 @@ router.post('/menu/import', menuImportUpload.single('backupFile'), async (req, r
       for (const category of backupData.categories) {
         const { id: oldId, created_at, updated_at, ...categoryData } = category;
         
+        // 确保oldId的类型一致性：转换为数字（SQLite的ID通常是整数）
+        const oldIdAsNumber = oldId != null ? Number(oldId) : null;
+        
         // 检查分类是否已存在（按名称）
         const existing = await getAsync('SELECT id FROM categories WHERE name = ?', [categoryData.name]);
         
@@ -5272,7 +5275,12 @@ router.post('/menu/import', menuImportUpload.single('backupFile'), async (req, r
             'UPDATE categories SET description = ?, sort_order = ?, status = ?, updated_at = datetime("now", "localtime") WHERE id = ?',
             [categoryData.description || '', categoryData.sort_order || 0, 'active', existing.id]
           );
-          categoryIdMap.set(oldId, existing.id);
+          // 同时存储数字和字符串键，确保匹配成功
+          categoryIdMap.set(oldIdAsNumber, existing.id);
+          categoryIdMap.set(String(oldId), existing.id);
+          if (oldId != null && oldId !== oldIdAsNumber && oldId !== String(oldId)) {
+            categoryIdMap.set(oldId, existing.id);
+          }
         } else {
           // 插入新分类（导入后统一设置为active）
           const result = await runAsync(
@@ -5285,7 +5293,12 @@ router.post('/menu/import', menuImportUpload.single('backupFile'), async (req, r
             logger.error('分类插入失败，未获取到ID', { categoryName: categoryData.name, result });
             throw new Error(`Failed to insert category: ${categoryData.name}`);
           }
-          categoryIdMap.set(oldId, newCategoryId);
+          // 同时存储数字和字符串键，确保匹配成功
+          categoryIdMap.set(oldIdAsNumber, newCategoryId);
+          categoryIdMap.set(String(oldId), newCategoryId);
+          if (oldId != null && oldId !== oldIdAsNumber && oldId !== String(oldId)) {
+            categoryIdMap.set(oldId, newCategoryId);
+          }
         }
       }
       
@@ -5323,16 +5336,34 @@ router.post('/menu/import', menuImportUpload.single('backupFile'), async (req, r
         // 提取字段，保留所有其他字段
         const { created_at, updated_at, category_id: oldCategoryId, image_url, ...productData } = product;
         
-        // 映射分类ID
+        // 映射分类ID（确保类型一致：都转换为数字或字符串）
         let newCategoryId = null;
-        if (oldCategoryId) {
-          newCategoryId = categoryIdMap.get(oldCategoryId);
+        if (oldCategoryId != null) {
+          // 尝试多种类型匹配：数字、字符串
+          const oldIdAsNumber = Number(oldCategoryId);
+          const oldIdAsString = String(oldCategoryId);
+          
+          // 先尝试数字匹配
+          newCategoryId = categoryIdMap.get(oldIdAsNumber);
+          // 如果数字匹配失败，尝试字符串匹配
+          if (newCategoryId === undefined) {
+            newCategoryId = categoryIdMap.get(oldIdAsString);
+          }
+          // 如果都失败，尝试原始值匹配
+          if (newCategoryId === undefined) {
+            newCategoryId = categoryIdMap.get(oldCategoryId);
+          }
+          
           if (newCategoryId === undefined) {
             // 如果分类ID映射失败，记录警告但继续导入（产品将没有分类）
             logger.warn('分类ID映射失败', { 
-              oldCategoryId, 
+              oldCategoryId,
+              oldCategoryIdType: typeof oldCategoryId,
+              oldIdAsNumber,
+              oldIdAsString,
               productName: productData.name,
-              availableCategoryIds: Array.from(categoryIdMap.keys())
+              availableCategoryIds: Array.from(categoryIdMap.keys()),
+              categoryIdMapSample: Array.from(categoryIdMap.entries()).slice(0, 5)
             });
             newCategoryId = null;
           }
