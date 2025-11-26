@@ -104,6 +104,14 @@
     .fade-in-up {
       animation: fadeInUp 0.6s ease-out;
     }
+    /* Checkout按钮发光效果 */
+    .checkout-btn-glow {
+      box-shadow: 0 0 20px rgba(255, 69, 0, 0.6);
+      transition: all 0.3s ease;
+    }
+    .checkout-btn-glow:hover {
+      box-shadow: 0 0 30px rgba(255, 69, 0, 0.8);
+    }
     .showcase-item {
       scroll-snap-align: start;
       flex-shrink: 0;
@@ -323,7 +331,7 @@
               <p id="cartBarTotal" class="text-lg font-bold text-red-500">0 LE</p>
             </div>
           </div>
-          <button onclick="goToCheckout(event)" class="px-8 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-full text-base touch-none" style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;">
+          <button onclick="goToCheckout(event)" class="px-8 py-3 text-white font-bold rounded-full text-base touch-none checkout-btn-glow" style="touch-action: manipulation; -webkit-tap-highlight-color: transparent; background: linear-gradient(to right, #f97316, #dc2626);">
             <span data-i18n="checkout">Checkout</span>
           </button>
         </div>

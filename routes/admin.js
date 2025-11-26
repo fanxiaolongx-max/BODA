@@ -3520,6 +3520,72 @@ router.post('/users/:userId/reset-pin', async (req, res) => {
 });
 
 // 获取所有用户
+/**
+ * POST /api/admin/users/:phone/unlock
+ * Unlock a user account (clear login failure records)
+ * @param {string} phone - User phone number
+ * @returns {Object} Success message
+ */
+router.post('/users/:phone/unlock', async (req, res) => {
+  const { phone } = req.params;
+  
+  try {
+    // 检查用户是否存在
+    const user = await getAsync('SELECT * FROM users WHERE phone = ?', [phone]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    // 检查是否有锁定记录
+    const attempt = await getAsync(
+      'SELECT * FROM user_login_attempts WHERE phone = ?',
+      [phone]
+    );
+    
+    if (!attempt || !attempt.locked_until) {
+      return res.json({ 
+        success: true, 
+        message: 'User is not locked',
+        wasLocked: false
+      });
+    }
+    
+    await beginTransaction();
+    
+    // 清除锁定记录
+    await runAsync(
+      'DELETE FROM user_login_attempts WHERE phone = ?',
+      [phone]
+    );
+    
+    // 记录操作日志
+    await logAction(req.session.adminId, 'UNLOCK_USER', 'user', user.id, {
+      phone: user.phone,
+      name: user.name,
+      failedCount: attempt.failed_count,
+      lockedUntil: attempt.locked_until
+    }, req);
+    
+    await commit();
+    
+    logger.info('用户账户解锁成功', {
+      userId: user.id,
+      phone: user.phone,
+      failedCount: attempt.failed_count
+    });
+    
+    res.json({ 
+      success: true, 
+      message: 'User unlocked successfully',
+      wasLocked: true
+    });
+  } catch (error) {
+    await rollback();
+    logger.error('解锁用户失败', { error: error.message, phone });
+    res.status(500).json({ success: false, message: error.message || 'Failed to unlock user' });
+  }
+});
+
 router.get('/users', async (req, res) => {
   try {
     const users = await allAsync(`
@@ -3530,7 +3596,51 @@ router.get('/users', async (req, res) => {
       ORDER BY u.created_at DESC
     `);
 
-    res.json({ success: true, users });
+    // 为每个用户添加锁定状态信息
+    const usersWithLockStatus = await Promise.all(users.map(async (user) => {
+      const attempt = await getAsync(
+        'SELECT * FROM user_login_attempts WHERE phone = ?',
+        [user.phone]
+      );
+
+      if (attempt && attempt.locked_until) {
+        const lockedUntil = new Date(attempt.locked_until.replace(' ', 'T') + ':00');
+        const now = new Date();
+        
+        if (now < lockedUntil) {
+          // 仍在锁定期间
+          const remainingMs = lockedUntil.getTime() - now.getTime();
+          const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+          const remainingHours = Math.floor(remainingMinutes / 60);
+          const remainingMins = remainingMinutes % 60;
+          
+          let lockoutMessage = '';
+          if (remainingHours > 0) {
+            lockoutMessage = `${remainingHours}h ${remainingMins}m`;
+          } else {
+            lockoutMessage = `${remainingMinutes}m`;
+          }
+          
+          return {
+            ...user,
+            isLocked: true,
+            lockedUntil: attempt.locked_until,
+            remainingTime: lockoutMessage,
+            failedCount: attempt.failed_count
+          };
+        }
+      }
+
+      return {
+        ...user,
+        isLocked: false,
+        lockedUntil: null,
+        remainingTime: null,
+        failedCount: attempt ? (attempt.failed_count || 0) : 0
+      };
+    }));
+
+    res.json({ success: true, users: usersWithLockStatus });
   } catch (error) {
     logger.error('获取用户列表失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取用户列表失败' });

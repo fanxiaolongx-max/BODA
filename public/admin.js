@@ -149,6 +149,49 @@ function showConfirmDialog(title, message, confirmText = 'Confirm', cancelText =
   });
 }
 
+// 显示危险确认对话框（醒目的样式和大字）
+function showDangerConfirmDialog(title, message, confirmText = 'Confirm', cancelText = 'Cancel') {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('dangerConfirmDialog');
+    const titleEl = document.getElementById('dangerConfirmDialogTitle');
+    const messageEl = document.getElementById('dangerConfirmDialogMessage');
+    const confirmBtn = document.getElementById('dangerConfirmDialogConfirm');
+    const cancelBtn = document.getElementById('dangerConfirmDialogCancel');
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    confirmBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+
+    // 移除旧的事件监听器
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+    // 添加新的事件监听器
+    newConfirmBtn.addEventListener('click', () => {
+      dialog.classList.remove('active');
+      resolve(true);
+    });
+
+    newCancelBtn.addEventListener('click', () => {
+      dialog.classList.remove('active');
+      resolve(false);
+    });
+
+    // 点击背景关闭
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) {
+        dialog.classList.remove('active');
+        resolve(false);
+      }
+    });
+
+    dialog.classList.add('active');
+  });
+}
+
 // 按钮 Loading 状态
 function setButtonLoading(button, loading) {
   if (typeof button === 'string') {
@@ -667,7 +710,7 @@ async function loadDashboard() {
               <div class="mt-4 pt-4 border-t border-gray-200">
                 <button onclick="confirmCycle(${cycle.id})" 
                         class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition">
-                  Confirm Cycle and Calculate Discount
+                  Confirm All Orders Payment Received
                 </button>
               </div>
             ` : ''}
@@ -700,9 +743,9 @@ async function loadDashboard() {
 
 // 确认周期
 async function confirmCycle(cycleId) {
-  const confirmed = await showConfirmDialog(
-    'Confirm Cycle and Calculate Discount',
-    'Are you sure you want to confirm this cycle and calculate discounts? This will:\n\n1. Calculate and apply discounts to all orders\n2. Automatically cancel all pending orders\n3. Prevent users from uploading payment screenshots for these orders\n\nThis action cannot be undone.',
+  const confirmed = await showDangerConfirmDialog(
+    '⚠️ Confirm All Orders Payment Received',
+    'Have you confirmed that you have received payment from everyone?\n\nUnpaid orders will be automatically cancelled after confirmation!',
     'Confirm',
     'Cancel'
   );
@@ -991,6 +1034,20 @@ function updateOrderButton() {
 async function toggleOrdering() {
   const newStatus = currentSettings.ordering_open === 'true' ? 'false' : 'true';
   
+  // 如果是要关闭订单，显示危险确认提示
+  if (newStatus === 'false') {
+    const confirmed = await showDangerConfirmDialog(
+      '⚠️ Confirm Close Ordering',
+      'Are you sure everyone has finished placing orders?',
+      'Confirm Close',
+      'Cancel'
+    );
+    
+    if (!confirmed) {
+      return;
+    }
+  }
+  
   try {
     const data = await adminApiRequest(`${API_BASE}/admin/settings`, {
       method: 'POST',
@@ -1147,8 +1204,13 @@ async function exportOrders() {
       url = url.slice(0, -1); // 移除末尾的?
     }
     
-    // 使用window.open或创建a标签下载
-    window.location.href = url;
+    // 使用 <a> 标签下载，避免页面跳转
+    const link = document.createElement('a');
+    link.href = url;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   } catch (error) {
     console.error('Failed to export orders:', error);
     showToast('Export failed', 'error');
@@ -1308,7 +1370,7 @@ function renderOrders(orders) {
             <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[order.status]}">
               ${statusText[order.status]}
             </span>
-            ${order.payment_method === 'stripe' ? `
+            ${order.payment_method === 'stripe' && order.status === 'paid' ? `
               <div class="mt-1">
                 <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                   💳 Online Payment
@@ -1330,7 +1392,7 @@ function renderOrders(orders) {
             <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
           </select>
           ${order.payment_image ? `<br><button onclick="showPaymentImageModal('${order.payment_image}')" class="text-blue-600 hover:text-blue-800 text-xs underline">View Payment Screenshot</button>` : ''}
-          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id ? `
+          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id && order.status === 'paid' ? `
             <div class="mt-2 text-xs">
               <div class="text-gray-600 font-semibold">Transaction ID:</div>
               <div class="text-gray-800 font-mono text-xs break-all">${order.stripe_payment_intent_id}</div>
@@ -3231,6 +3293,7 @@ async function loadUsers() {
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Orders</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Spent</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lock Status</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registered</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Login</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -3238,7 +3301,7 @@ async function loadUsers() {
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                   ${users.length === 0 ? 
-                    '<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">No users</td></tr>' :
+                    '<tr><td colspan="10" class="px-6 py-4 text-center text-gray-500">No users</td></tr>' :
                     users.map(user => `
                       <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.id}</td>
@@ -3249,16 +3312,45 @@ async function loadUsers() {
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.order_count || 0}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatPriceDecimal(user.total_spent || 0)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                          ${user.isLocked ? `
+                            <div class="flex flex-col space-y-1">
+                              <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                🔒 Locked
+                              </span>
+                              <span class="text-xs text-gray-500">${user.remainingTime} remaining</span>
+                              <span class="text-xs text-gray-500">Failed: ${user.failedCount} times</span>
+                            </div>
+                          ` : user.failedCount > 0 ? `
+                            <div class="flex flex-col space-y-1">
+                              <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                ⚠️ ${user.failedCount} failed attempts
+                              </span>
+                            </div>
+                          ` : `
+                            <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                              ✓ Active
+                            </span>
+                          `}
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.created_at ? new Date(user.created_at).toLocaleString('en-US') : '-'}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.last_login ? new Date(user.last_login).toLocaleString('en-US') : '-'}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
-                          <div class="flex space-x-2">
-                            <button onclick="showEditUserModal(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}')" 
-                                    class="text-blue-600 hover:text-blue-800">Edit</button>
-                            <button onclick="resetUserPin(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
-                                    class="text-yellow-600 hover:text-yellow-800">Reset PIN</button>
-                            <button onclick="deleteUser(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
-                                    class="text-red-600 hover:text-red-800">Delete</button>
+                          <div class="flex flex-col space-y-1">
+                            <div class="flex space-x-2">
+                              <button onclick="showEditUserModal(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}')" 
+                                      class="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
+                              <button onclick="resetUserPin(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
+                                      class="text-yellow-600 hover:text-yellow-800 text-xs">Reset PIN</button>
+                              <button onclick="deleteUser(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
+                                      class="text-red-600 hover:text-red-800 text-xs">Delete</button>
+                            </div>
+                            ${user.isLocked ? `
+                              <button onclick="unlockUser('${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}')" 
+                                      class="mt-1 text-xs text-green-600 hover:text-green-800 font-semibold">
+                                🔓 Unlock
+                              </button>
+                            ` : ''}
                           </div>
                         </td>
                       </tr>
@@ -3328,6 +3420,39 @@ async function resetUserPin(userId, phone) {
   } catch (error) {
     console.error('重置用户PIN失败:', error);
     showToast('Failed to reset user PIN', 'error');
+  }
+}
+
+// 解锁用户
+async function unlockUser(phone, name) {
+  const confirmed = await showConfirmDialog(
+    'Unlock User Account',
+    `Are you sure you want to unlock the account for ${name || phone}? This will clear all login failure records and allow the user to login immediately.`,
+    'Unlock',
+    'Cancel'
+  );
+  
+  if (!confirmed) {
+    return;
+  }
+  
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/users/${encodeURIComponent(phone)}/unlock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (response && response.success) {
+      if (response.wasLocked) {
+        showToast('User unlocked successfully', 'success');
+      } else {
+        showToast('User is not locked', 'info');
+      }
+      await loadUsers();
+    }
+  } catch (error) {
+    console.error('解锁用户失败:', error);
+    showToast('Failed to unlock user', 'error');
   }
 }
 
@@ -5402,27 +5527,17 @@ async function loadBackupList() {
 // 下载备份文件
 async function downloadBackup(fileName) {
   try {
-    const response = await fetch(`${API_BASE}/admin/backup/download/${encodeURIComponent(fileName)}`, {
-      credentials: 'include'
-    });
+    // 改为直接使用 <a> 标签下载，避免 blob URL 和 CSP 限制，对大文件更友好
+    const downloadUrl = `${API_BASE}/admin/backup/download/${encodeURIComponent(fileName)}`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = fileName;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     
-    if (!response.ok) {
-      const data = await response.json();
-      showToast(data.message || 'Download failed', 'error');
-      return;
-    }
-    
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-    
-    showToast('Backup downloaded successfully', 'success');
+    showToast('Download started', 'success');
   } catch (error) {
     console.error('Download backup failed:', error);
     showToast('Download failed', 'error');
@@ -6412,7 +6527,14 @@ function fileEditorClose() {
 
 // 下载文件
 function fileManagerDownload(path) {
-  window.open(`${API_BASE}/admin/developer/files/download?path=${encodeURIComponent(path)}`, '_blank');
+  // 使用 <a> 标签下载，避免 window.open() 被弹窗阻止策略阻止
+  const downloadUrl = `${API_BASE}/admin/developer/files/download?path=${encodeURIComponent(path)}`;
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 // 删除文件/目录

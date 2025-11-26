@@ -10,6 +10,343 @@ const { getAdminSessionTimeoutMs, getUserSessionTimeoutMs } = require('../utils/
 const router = express.Router();
 
 /**
+ * 计算锁定时间（渐进式锁定）
+ * @param {number} failedCount - 失败次数
+ * @returns {number} 锁定时间（毫秒）
+ */
+function calculateLockoutTime(failedCount) {
+  if (failedCount >= 40) {
+    return 24 * 60 * 60 * 1000; // 24小时
+  } else if (failedCount >= 30) {
+    return 60 * 60 * 1000; // 1小时
+  } else if (failedCount >= 20) {
+    return 30 * 60 * 1000; // 30分钟
+  } else if (failedCount >= 10) {
+    return 10 * 60 * 1000; // 10分钟
+  }
+  return 0; // 未锁定
+}
+
+/**
+ * 检查管理员是否被锁定
+ * @param {string} username - 管理员用户名
+ * @returns {Promise<Object|null>} 锁定信息，如果未锁定返回null
+ */
+async function checkAdminLockout(username) {
+  const attempt = await getAsync(
+    'SELECT * FROM admin_login_attempts WHERE username = ?',
+    [username]
+  );
+
+  if (!attempt || !attempt.locked_until) {
+    return null;
+  }
+
+  // SQLite 返回的时间字符串格式：'YYYY-MM-DD HH:MM:SS' (本地时间)
+  // 需要正确解析为 Date 对象
+  const lockedUntilStr = attempt.locked_until;
+  if (!lockedUntilStr) {
+    return null;
+  }
+
+  // 将 SQLite 的本地时间字符串转换为 Date 对象
+  // SQLite 返回的格式是 'YYYY-MM-DD HH:MM:SS'，这是本地时间
+  // 我们需要将其解析为本地时间的 Date 对象
+  const lockedUntil = new Date(lockedUntilStr.replace(' ', 'T'));
+  const now = new Date();
+
+  if (now < lockedUntil) {
+    // 仍在锁定期间
+    const remainingMs = lockedUntil.getTime() - now.getTime();
+    if (remainingMs <= 0) {
+      // 锁定已过期，清除锁定并恢复用户状态
+      await runAsync(
+        'UPDATE admin_login_attempts SET locked_until = NULL WHERE username = ?',
+        [username]
+      );
+      // 自动激活用户
+      await runAsync(
+        'UPDATE admins SET status = ? WHERE username = ?',
+        ['active', username]
+      );
+      return null;
+    }
+    
+    const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+    const remainingHours = Math.floor(remainingMinutes / 60);
+    const remainingMins = remainingMinutes % 60;
+    
+    let lockoutMessage = 'Account is locked. ';
+    if (remainingHours > 0) {
+      lockoutMessage += `Please try again in ${remainingHours} hour(s) and ${remainingMins} minute(s).`;
+    } else if (remainingMinutes > 0) {
+      lockoutMessage += `Please try again in ${remainingMinutes} minute(s).`;
+    } else {
+      lockoutMessage += `Please try again in less than 1 minute.`;
+    }
+    
+    return {
+      isLocked: true,
+      lockedUntil: lockedUntil,
+      remainingMs: remainingMs,
+      message: lockoutMessage
+    };
+  }
+
+  // 锁定已过期，清除锁定并恢复用户状态
+  await runAsync(
+    'UPDATE admin_login_attempts SET locked_until = NULL WHERE username = ?',
+    [username]
+  );
+  // 自动激活用户
+  await runAsync(
+    'UPDATE admins SET status = ? WHERE username = ?',
+    ['active', username]
+  );
+
+  return null;
+}
+
+/**
+ * 记录登录失败
+ * @param {string} username - 管理员用户名
+ * @returns {Promise<Object>} 失败信息，包含锁定时间（毫秒）
+ */
+async function recordLoginFailure(username) {
+  const attempt = await getAsync(
+    'SELECT * FROM admin_login_attempts WHERE username = ?',
+    [username]
+  );
+
+  // 如果已经锁定，不再增加失败计数
+  if (attempt && attempt.locked_until) {
+    const lockedUntil = new Date(attempt.locked_until.replace(' ', 'T'));
+    const now = new Date();
+    if (now < lockedUntil) {
+      // 仍在锁定期间，不更新计数
+      return { 
+        failedCount: attempt.failed_count || 0, 
+        lockedUntil: attempt.locked_until, 
+        lockoutTime: 0 
+      };
+    }
+  }
+
+  const failedCount = attempt ? (attempt.failed_count || 0) + 1 : 1;
+  const lockoutTime = calculateLockoutTime(failedCount);
+  
+  // 使用 SQLite 的 datetime 函数计算锁定时间，避免时区问题
+  let lockedUntil = null;
+  if (lockoutTime > 0) {
+    const totalMinutes = Math.floor(lockoutTime / (60 * 1000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    
+    // 先获取当前时间，然后计算锁定时间
+    const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
+    const now = new Date(nowResult.now.replace(' ', 'T'));
+    const lockedUntilDate = new Date(now.getTime() + lockoutTime);
+    
+    // 格式化为 SQLite 可以接受的格式：'YYYY-MM-DD HH:MM:SS'
+    const year = lockedUntilDate.getFullYear();
+    const month = String(lockedUntilDate.getMonth() + 1).padStart(2, '0');
+    const day = String(lockedUntilDate.getDate()).padStart(2, '0');
+    const hour = String(lockedUntilDate.getHours()).padStart(2, '0');
+    const minute = String(lockedUntilDate.getMinutes()).padStart(2, '0');
+    const second = String(lockedUntilDate.getSeconds()).padStart(2, '0');
+    lockedUntil = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+    
+    // 锁定后自动停用用户
+    await runAsync(
+      'UPDATE admins SET status = ? WHERE username = ?',
+      ['inactive', username]
+    );
+    logger.warn('管理员账户已自动停用（锁定）', { username, failedCount, lockoutTime });
+  }
+
+  if (attempt) {
+    await runAsync(
+      `UPDATE admin_login_attempts 
+       SET failed_count = ?, locked_until = ?, last_attempt_at = datetime('now', 'localtime'), 
+           updated_at = datetime('now', 'localtime')
+       WHERE username = ?`,
+      [failedCount, lockedUntil, username]
+    );
+  } else {
+    await runAsync(
+      `INSERT INTO admin_login_attempts (username, failed_count, locked_until, last_attempt_at, created_at, updated_at)
+       VALUES (?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'), datetime('now', 'localtime'))`,
+      [username, failedCount, lockedUntil]
+    );
+  }
+
+  return { 
+    failedCount, 
+    lockedUntil: lockedUntil, 
+    lockoutTime 
+  };
+}
+
+/**
+ * 清除登录失败记录（登录成功时调用）
+ * @param {string} username - 管理员用户名
+ */
+async function clearLoginFailure(username) {
+  await runAsync(
+    'DELETE FROM admin_login_attempts WHERE username = ?',
+    [username]
+  );
+}
+
+/**
+ * 检查用户是否被锁定（基于手机号）
+ * @param {string} phone - 用户手机号
+ * @returns {Promise<Object|null>} 锁定信息，如果未锁定返回null
+ */
+async function checkUserLockout(phone) {
+  const attempt = await getAsync(
+    'SELECT * FROM user_login_attempts WHERE phone = ?',
+    [phone]
+  );
+
+  if (!attempt || !attempt.locked_until) {
+    return null;
+  }
+
+  const lockedUntilStr = attempt.locked_until;
+  if (!lockedUntilStr) {
+    return null;
+  }
+
+  const lockedUntil = new Date(lockedUntilStr.replace(' ', 'T'));
+  const now = new Date();
+
+  if (now < lockedUntil) {
+    // 仍在锁定期间
+    const remainingMs = lockedUntil.getTime() - now.getTime();
+    if (remainingMs <= 0) {
+      // 锁定已过期，清除锁定
+      await runAsync(
+        'UPDATE user_login_attempts SET locked_until = NULL WHERE phone = ?',
+        [phone]
+      );
+      return null;
+    }
+    
+    const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+    const remainingHours = Math.floor(remainingMinutes / 60);
+    const remainingMins = remainingMinutes % 60;
+    
+    let lockoutMessage = 'Account is locked. ';
+    if (remainingHours > 0) {
+      lockoutMessage += `Please try again in ${remainingHours} hour(s) and ${remainingMins} minute(s).`;
+    } else if (remainingMinutes > 0) {
+      lockoutMessage += `Please try again in ${remainingMinutes} minute(s).`;
+    } else {
+      lockoutMessage += `Please try again in less than 1 minute.`;
+    }
+    
+    return {
+      isLocked: true,
+      lockedUntil: lockedUntil,
+      remainingMs: remainingMs,
+      message: lockoutMessage
+    };
+  }
+
+  // 锁定已过期，清除锁定
+  await runAsync(
+    'UPDATE user_login_attempts SET locked_until = NULL WHERE phone = ?',
+    [phone]
+  );
+
+  return null;
+}
+
+/**
+ * 记录用户登录失败
+ * @param {string} phone - 用户手机号
+ * @returns {Promise<Object>} 失败信息，包含锁定时间（毫秒）
+ */
+async function recordUserLoginFailure(phone) {
+  const attempt = await getAsync(
+    'SELECT * FROM user_login_attempts WHERE phone = ?',
+    [phone]
+  );
+
+  // 如果已经锁定，不再增加失败计数
+  if (attempt && attempt.locked_until) {
+    const lockedUntil = new Date(attempt.locked_until.replace(' ', 'T'));
+    const now = new Date();
+    if (now < lockedUntil) {
+      // 仍在锁定期间，不更新计数
+      return { 
+        failedCount: attempt.failed_count || 0, 
+        lockedUntil: attempt.locked_until, 
+        lockoutTime: 0 
+      };
+    }
+  }
+
+  const failedCount = attempt ? (attempt.failed_count || 0) + 1 : 1;
+  const lockoutTime = calculateLockoutTime(failedCount);
+  
+  let lockedUntil = null;
+  if (lockoutTime > 0) {
+    const totalMinutes = Math.floor(lockoutTime / (60 * 1000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    
+    const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
+    const now = new Date(nowResult.now.replace(' ', 'T'));
+    const lockedUntilDate = new Date(now.getTime() + lockoutTime);
+    
+    const year = lockedUntilDate.getFullYear();
+    const month = String(lockedUntilDate.getMonth() + 1).padStart(2, '0');
+    const day = String(lockedUntilDate.getDate()).padStart(2, '0');
+    const hour = String(lockedUntilDate.getHours()).padStart(2, '0');
+    const minute = String(lockedUntilDate.getMinutes()).padStart(2, '0');
+    const second = String(lockedUntilDate.getSeconds()).padStart(2, '0');
+    lockedUntil = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+    
+    logger.warn('用户账户已锁定', { phone, failedCount, lockoutTime });
+  }
+
+  if (attempt) {
+    await runAsync(
+      `UPDATE user_login_attempts 
+       SET failed_count = ?, locked_until = ?, last_attempt_at = datetime('now', 'localtime'), 
+           updated_at = datetime('now', 'localtime')
+       WHERE phone = ?`,
+      [failedCount, lockedUntil, phone]
+    );
+  } else {
+    await runAsync(
+      `INSERT INTO user_login_attempts (phone, failed_count, locked_until, last_attempt_at, created_at, updated_at)
+       VALUES (?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'), datetime('now', 'localtime'))`,
+      [phone, failedCount, lockedUntil]
+    );
+  }
+
+  return { 
+    failedCount, 
+    lockedUntil: lockedUntil, 
+    lockoutTime 
+  };
+}
+
+/**
+ * 清除用户登录失败记录（登录成功时调用）
+ * @param {string} phone - 用户手机号
+ */
+async function clearUserLoginFailure(phone) {
+  await runAsync(
+    'DELETE FROM user_login_attempts WHERE phone = ?',
+    [phone]
+  );
+}
+
+/**
  * POST /api/auth/admin/login
  * Admin login
  * @body {string} username - Admin username
@@ -20,21 +357,130 @@ router.post('/admin/login', loginValidation, async (req, res) => {
   try {
     const { username, password } = req.body;
 
+    // 检查是否被锁定
+    const lockoutInfo = await checkAdminLockout(username);
+    if (lockoutInfo && lockoutInfo.isLocked) {
+      logger.warn('管理员登录失败：账户被锁定', { username, ip: req.ip, lockoutInfo });
+      return res.status(403).json({ 
+        success: false, 
+        message: lockoutInfo.message,
+        lockedUntil: lockoutInfo.lockedUntil.toISOString()
+      });
+    }
+
+    // 检查用户状态（锁定后可能被设为inactive）
     const admin = await getAsync(
-      'SELECT * FROM admins WHERE username = ? AND status = ?',
-      [username, 'active']
+      'SELECT * FROM admins WHERE username = ?',
+      [username]
     );
 
     if (!admin) {
+      // 记录失败（即使用户不存在，也记录以防止用户名枚举）
+      await recordLoginFailure(username);
       logger.warn('管理员登录失败：用户不存在', { username, ip: req.ip });
       return res.status(401).json({ success: false, message: '用户名或密码错误' });
     }
 
+    // 如果用户被停用（可能是锁定导致的），检查锁定是否已过期
+    if (admin.status === 'inactive') {
+      const attempt = await getAsync(
+        'SELECT * FROM admin_login_attempts WHERE username = ?',
+        [username]
+      );
+      
+      if (attempt && attempt.locked_until) {
+        const lockedUntil = new Date(attempt.locked_until.replace(' ', 'T'));
+        const now = new Date();
+        
+        if (now < lockedUntil) {
+          // 仍在锁定期间
+          const remainingMs = lockedUntil.getTime() - now.getTime();
+          const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+          const remainingHours = Math.floor(remainingMinutes / 60);
+          const remainingMins = remainingMinutes % 60;
+          
+          let lockoutMessage = 'Account is locked and deactivated. ';
+          if (remainingHours > 0) {
+            lockoutMessage += `Please try again in ${remainingHours} hour(s) and ${remainingMins} minute(s).`;
+          } else if (remainingMinutes > 0) {
+            lockoutMessage += `Please try again in ${remainingMinutes} minute(s).`;
+          } else {
+            lockoutMessage += `Please try again in less than 1 minute.`;
+          }
+          
+          return res.status(403).json({ 
+            success: false, 
+            message: lockoutMessage,
+            lockedUntil: lockedUntil.toISOString()
+          });
+        } else {
+          // 锁定已过期，自动激活
+          await runAsync(
+            'UPDATE admins SET status = ? WHERE username = ?',
+            ['active', username]
+          );
+        }
+      }
+    }
+
+    // 检查用户状态（锁定后可能被设为inactive）
+    if (admin.status !== 'active') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Account is deactivated. Please contact administrator.' 
+      });
+    }
+
     const isValid = await bcrypt.compare(password, admin.password);
     if (!isValid) {
-      logger.warn('管理员登录失败：密码错误', { username, ip: req.ip });
+      // 记录失败
+      const failureInfo = await recordLoginFailure(username);
+      logger.warn('管理员登录失败：密码错误', { 
+        username, 
+        ip: req.ip, 
+        failedCount: failureInfo.failedCount 
+      });
+      
+      // 如果刚刚触发了锁定，返回锁定信息
+      if (failureInfo.lockedUntil) {
+        // SQLite 返回的时间字符串格式：'YYYY-MM-DD HH:MM:SS' (本地时间)
+        const lockedUntilStr = failureInfo.lockedUntil;
+        const lockedUntil = new Date(lockedUntilStr.replace(' ', 'T'));
+        const now = new Date();
+        const remainingMs = lockedUntil.getTime() - now.getTime();
+        
+        if (remainingMs > 0) {
+          const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+          const remainingHours = Math.floor(remainingMinutes / 60);
+          const remainingMins = remainingMinutes % 60;
+          
+          let lockoutMessage = 'Too many failed login attempts. Account is locked and deactivated. ';
+          if (remainingHours > 0) {
+            lockoutMessage += `Please try again in ${remainingHours} hour(s) and ${remainingMins} minute(s).`;
+          } else if (remainingMinutes > 0) {
+            lockoutMessage += `Please try again in ${remainingMinutes} minute(s).`;
+          } else {
+            lockoutMessage += `Please try again in less than 1 minute.`;
+          }
+          
+          return res.status(403).json({ 
+            success: false, 
+            message: lockoutMessage,
+            lockedUntil: lockedUntil.toISOString()
+          });
+        }
+      }
+      
       return res.status(401).json({ success: false, message: '用户名或密码错误' });
     }
+
+    // 登录成功，清除失败记录
+    await clearLoginFailure(username);
+    // 确保用户状态为active
+    await runAsync(
+      'UPDATE admins SET status = ? WHERE username = ?',
+      ['active', username]
+    );
 
     // 获取管理员session过期时间
     const adminTimeoutMs = await getAdminSessionTimeoutMs();
@@ -242,10 +688,58 @@ router.post('/user/login', [
         user.name = name || user.name;
         logger.info('用户设置PIN', { phone, userId: user.id });
       } else {
+        // 检查是否被锁定
+        const lockoutInfo = await checkUserLockout(phone);
+        if (lockoutInfo && lockoutInfo.isLocked) {
+          logger.warn('用户登录失败：账户被锁定', { phone, ip: req.ip, lockoutInfo });
+          return res.status(403).json({ 
+            success: false, 
+            message: lockoutInfo.message,
+            lockedUntil: lockoutInfo.lockedUntil.toISOString()
+          });
+        }
+
         // 验证PIN
         const isValidPin = await bcrypt.compare(pin, user.pin);
         if (!isValidPin) {
-          logger.warn('用户登录失败：PIN错误', { phone, userId: user.id });
+          // 记录失败
+          const failureInfo = await recordUserLoginFailure(phone);
+          logger.warn('用户登录失败：PIN错误', { 
+            phone, 
+            userId: user.id, 
+            ip: req.ip,
+            failedCount: failureInfo.failedCount 
+          });
+          
+          // 如果刚刚触发了锁定，返回锁定信息
+          if (failureInfo.lockedUntil) {
+            const lockedUntilStr = failureInfo.lockedUntil;
+            const lockedUntil = new Date(lockedUntilStr.replace(' ', 'T'));
+            const now = new Date();
+            const remainingMs = lockedUntil.getTime() - now.getTime();
+            
+            if (remainingMs > 0) {
+              const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+              const remainingHours = Math.floor(remainingMinutes / 60);
+              const remainingMins = remainingMinutes % 60;
+              
+              let lockoutMessage = 'Too many failed login attempts. Account is locked. ';
+              if (remainingHours > 0) {
+                lockoutMessage += `Please try again in ${remainingHours} hour(s) and ${remainingMins} minute(s).`;
+              } else if (remainingMinutes > 0) {
+                lockoutMessage += `Please try again in ${remainingMinutes} minute(s).`;
+              } else {
+                lockoutMessage += `Please try again in less than 1 minute.`;
+              }
+              
+              return res.status(403).json({ 
+                success: false, 
+                message: lockoutMessage,
+                lockedUntil: lockedUntil.toISOString()
+              });
+            }
+          }
+          
           return res.status(401).json({
             success: false,
             message: 'Incorrect PIN'
@@ -260,6 +754,9 @@ router.post('/user/login', [
         user.name = name || user.name;
       }
     }
+
+    // 登录成功，清除失败记录
+    await clearUserLoginFailure(phone);
 
     // 获取用户session过期时间
     const userTimeoutMs = await getUserSessionTimeoutMs();
@@ -498,10 +995,58 @@ router.post('/user/login-with-code', [
           });
         }
         
+        // 检查是否被锁定
+        const lockoutInfo = await checkUserLockout(phone);
+        if (lockoutInfo && lockoutInfo.isLocked) {
+          logger.warn('用户登录失败：账户被锁定（验证码登录）', { phone, ip: req.ip, lockoutInfo });
+          return res.status(403).json({ 
+            success: false, 
+            message: lockoutInfo.message,
+            lockedUntil: lockoutInfo.lockedUntil.toISOString()
+          });
+        }
+        
         // 验证PIN
         const isValidPin = await bcrypt.compare(pin, user.pin);
         if (!isValidPin) {
-          logger.warn('用户登录失败：PIN错误（验证码登录）', { phone, userId: user.id });
+          // 记录失败
+          const failureInfo = await recordUserLoginFailure(phone);
+          logger.warn('用户登录失败：PIN错误（验证码登录）', { 
+            phone, 
+            userId: user.id,
+            ip: req.ip,
+            failedCount: failureInfo.failedCount 
+          });
+          
+          // 如果刚刚触发了锁定，返回锁定信息
+          if (failureInfo.lockedUntil) {
+            const lockedUntilStr = failureInfo.lockedUntil;
+            const lockedUntil = new Date(lockedUntilStr.replace(' ', 'T'));
+            const now = new Date();
+            const remainingMs = lockedUntil.getTime() - now.getTime();
+            
+            if (remainingMs > 0) {
+              const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+              const remainingHours = Math.floor(remainingMinutes / 60);
+              const remainingMins = remainingMinutes % 60;
+              
+              let lockoutMessage = 'Too many failed login attempts. Account is locked. ';
+              if (remainingHours > 0) {
+                lockoutMessage += `Please try again in ${remainingHours} hour(s) and ${remainingMins} minute(s).`;
+              } else if (remainingMinutes > 0) {
+                lockoutMessage += `Please try again in ${remainingMinutes} minute(s).`;
+              } else {
+                lockoutMessage += `Please try again in less than 1 minute.`;
+              }
+              
+              return res.status(403).json({ 
+                success: false, 
+                message: lockoutMessage,
+                lockedUntil: lockedUntil.toISOString()
+              });
+            }
+          }
+          
           return res.status(401).json({
             success: false,
             message: 'Incorrect PIN'
@@ -516,6 +1061,9 @@ router.post('/user/login-with-code', [
         user.name = name || user.name;
       }
     }
+
+    // 登录成功，清除失败记录
+    await clearUserLoginFailure(phone);
 
     // 获取用户session过期时间
     const userTimeoutMs = await getUserSessionTimeoutMs();

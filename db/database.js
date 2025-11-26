@@ -260,6 +260,44 @@ async function initDatabase() {
       )
     `);
 
+    // 管理员登录失败记录表（用于渐进式锁定）
+    await runAsync(`
+      CREATE TABLE IF NOT EXISTS admin_login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        failed_count INTEGER DEFAULT 0,
+        locked_until DATETIME,
+        last_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+      )
+    `);
+    
+    // 创建索引以提高查询性能
+    await runAsync(`
+      CREATE INDEX IF NOT EXISTS idx_admin_login_attempts_username 
+      ON admin_login_attempts(username)
+    `);
+
+    // 用户登录失败记录表（用于渐进式锁定）
+    await runAsync(`
+      CREATE TABLE IF NOT EXISTS user_login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone TEXT NOT NULL,
+        failed_count INTEGER DEFAULT 0,
+        locked_until DATETIME,
+        last_attempt_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+      )
+    `);
+    
+    // 创建索引以提高查询性能
+    await runAsync(`
+      CREATE INDEX IF NOT EXISTS idx_user_login_attempts_phone 
+      ON user_login_attempts(phone)
+    `);
+
     // 周期管理表
     await runAsync(`
       CREATE TABLE IF NOT EXISTS ordering_cycles (

@@ -1600,9 +1600,13 @@ async function updateCurrencyDisplay() {
   if (cartModal && cartModal.classList.contains('active') && cart.length > 0) {
     await showCart();
   }
-  // 更新订单显示
-  if (document.getElementById('ordersList') && currentUser) {
-    loadOrders(false); // 保持分页状态，只刷新数据
+  // 更新订单显示（只在订单页面可见时刷新，避免不必要的刷新）
+  const ordersTab = document.getElementById('ordersTab');
+  const ordersList = document.getElementById('ordersList');
+  const isOrdersTabVisible = ordersTab && !ordersTab.classList.contains('hidden');
+  
+  if (isOrdersTabVisible && ordersList && currentUser) {
+    loadOrders(false); // 保持分页状态，只刷新数据（不滚动）
   }
 }
 
@@ -2085,6 +2089,10 @@ function highlightCategory(categoryName) {
 async function updateOrderingStatus() {
   const container = document.getElementById('orderingStatus');
   if (!container) return;
+  
+  console.log('[updateOrderingStatus] 开始更新点单状态（每10秒）:', {
+    timestamp: new Date().toISOString()
+  });
   
   try {
     await loadSettings();
@@ -2870,15 +2878,9 @@ async function submitOrder() {
       
       // 延迟一下再加载订单，确保数据库已更新
       // 重置分页，从第一页开始加载，确保新订单显示在最前面
+      // loadOrders(true) 会设置 shouldScrollToTopOnOrdersLoad 标志，renderOrders 会自动滚动到顶部
       setTimeout(() => {
-        loadOrders(true); // 重置分页，显示最新订单
-        // 滚动到订单列表顶部，确保新订单可见
-        setTimeout(() => {
-          const ordersList = document.getElementById('ordersList');
-          if (ordersList) {
-            ordersList.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }, 300);
+        loadOrders(true); // 重置分页，显示最新订单（会自动滚动到顶部）
       }, 500);
     } else {
       showToast(data.message || t('order_submission_failed'), 'error');
@@ -2931,7 +2933,7 @@ function showBottomTab(tabName) {
       }
       document.getElementById('ordersTab').classList.remove('hidden');
       document.getElementById('ordersNav').className = 'flex flex-col items-center space-y-1 px-4 py-2 text-green-600 font-semibold';
-      loadOrders();
+      loadOrders(true); // 首次切换到订单页面，需要重置分页
       break;
     case 'profile':
       document.getElementById('profileTab').classList.remove('hidden');
@@ -3470,6 +3472,13 @@ let allOrders = []; // 存储所有已加载的订单
 
 async function loadOrders(resetPagination = true) {
   const container = document.getElementById('ordersList');
+  const ordersTab = document.getElementById('ordersTab');
+  
+  // 设置是否需要滚动到顶部的标志
+  // resetPagination=true 表示新订单或首次加载，需要滚动到顶部
+  // resetPagination=false 表示刷新，保持当前位置
+  // 注意：必须在函数开始就设置，即使后续可能因为防抖而提前返回
+  window.shouldScrollToTopOnOrdersLoad = resetPagination;
   
   // 防抖：如果正在加载，取消之前的请求
   if (ordersLoading) {
@@ -3558,7 +3567,7 @@ async function loadOrders(resetPagination = true) {
             // 429错误：请求过于频繁，显示友好提示
             container.innerHTML = `<div class="text-center py-12 text-yellow-600">
               <p class="mb-2">${t('request_too_frequent') || '请求过于频繁，请稍后再试'}</p>
-              <button onclick="setTimeout(() => loadOrders(), 2000)" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm mt-2">${t('retry') || '重试'}</button>
+              <button onclick="setTimeout(() => loadOrders(false), 2000)" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm mt-2">${t('retry') || '重试'}</button>
             </div>`;
           } else {
             console.error('加载订单失败:', error);
@@ -3658,7 +3667,7 @@ function renderOrders(orders, isInitial = false) {
           <span class="px-3 py-1 rounded-full text-sm font-semibold ${statusColors[order.status]}">
             ${statusText[order.status]}
           </span>
-          ${order.payment_method === 'stripe' ? `
+          ${order.payment_method === 'stripe' && order.status === 'paid' ? `
             <span class="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
               💳 ${t('online_payment_badge')}
             </span>
@@ -3795,7 +3804,7 @@ function renderOrders(orders, isInitial = false) {
               <div class="text-sm ${expiredClass || inactiveClass || 'text-gray-700'} bg-gray-50 p-2 rounded">${order.notes}</div>
             </div>
           ` : ''}
-          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id ? `
+          ${order.payment_method === 'stripe' && order.stripe_payment_intent_id && order.status === 'paid' ? `
             <div class="mt-3 pt-3 border-t ${!isActiveCycle || isExpired ? 'border-gray-300' : 'border-gray-200'}">
               <div class="text-xs text-gray-500 mb-1">${t('transaction_id')}:</div>
               <div class="text-xs ${expiredClass || inactiveClass || 'text-gray-700'} font-mono break-all bg-gray-50 p-2 rounded">${order.stripe_payment_intent_id}</div>
@@ -3849,14 +3858,25 @@ function renderOrders(orders, isInitial = false) {
   
   // 如果是初始加载，清空容器并设置内容；否则追加
   if (isInitial) {
-    container.innerHTML = ordersHTMLNew;
-    // 如果是初始加载，滚动到顶部（确保新订单可见）
-    setTimeout(() => {
+    // 获取可滚动容器
       const ordersTab = document.getElementById('ordersTab');
-      if (ordersTab && !ordersTab.classList.contains('hidden')) {
-        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const isOrdersTabVisible = ordersTab && !ordersTab.classList.contains('hidden');
+    
+    // 检查是否需要滚动到顶部（点单后）
+    const shouldScrollToTop = window.shouldScrollToTopOnOrdersLoad === true;
+    
+    container.innerHTML = ordersHTMLNew;
+    
+    // 简单的滚动处理：只在点单后滚动到顶部，刷新时不操作滚动位置
+    if (shouldScrollToTop && isOrdersTabVisible && ordersTab) {
+      // 点单后：滚动到顶部显示最新订单
+      // 使用 requestAnimationFrame 确保 DOM 已更新
+      requestAnimationFrame(() => {
+        ordersTab.scrollTop = 0;
+        window.shouldScrollToTopOnOrdersLoad = false; // 重置标志
+      });
       }
-    }, 100);
+    // 刷新时：不进行任何滚动操作，让浏览器保持用户的滚动位置
   } else {
     // 追加模式：先移除旧的"显示更多"按钮，然后追加新订单
     const oldButton = container.querySelector('#loadMoreOrdersBtn');

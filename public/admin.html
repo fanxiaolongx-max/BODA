@@ -792,6 +792,25 @@
     </div>
   </div>
 
+  <!-- 危险确认对话框 -->
+  <div id="dangerConfirmDialog" class="modal">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-8" onclick="event.stopPropagation()">
+      <div class="text-center mb-6">
+        <div class="text-6xl mb-4">⚠️</div>
+        <h3 id="dangerConfirmDialogTitle" class="text-3xl font-bold text-red-600 mb-4">Warning</h3>
+        <p id="dangerConfirmDialogMessage" class="text-xl text-gray-800 font-semibold leading-relaxed"></p>
+      </div>
+      <div class="flex space-x-4">
+        <button id="dangerConfirmDialogCancel" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-4 text-lg rounded-lg transition">
+          Cancel
+        </button>
+        <button id="dangerConfirmDialogConfirm" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 text-lg rounded-lg transition shadow-lg">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- 远程备份配置模态框 -->
   <div id="remoteBackupConfigModal" class="modal" onclick="closeRemoteBackupConfigModal(event)">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-6" onclick="event.stopPropagation()">

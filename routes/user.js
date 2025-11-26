@@ -606,6 +606,14 @@ router.get('/orders', async (req, res) => {
     const activeCycle = await getAsync(
       "SELECT * FROM ordering_cycles WHERE status = 'active' ORDER BY id DESC LIMIT 1"
     );
+    
+    // 如果没有活跃周期，获取最近一个已结束的周期
+    let latestEndedCycle = null;
+    if (!activeCycle) {
+      latestEndedCycle = await getAsync(
+        "SELECT * FROM ordering_cycles WHERE status IN ('ended', 'confirmed') ORDER BY end_time DESC, id DESC LIMIT 1"
+      );
+    }
 
     // 批量获取订单项
     const orderIds = orders.map(o => o.id);
@@ -637,7 +645,7 @@ router.get('/orders', async (req, res) => {
       }
       
       // 检查订单是否已过期
-      order.isExpired = isOrderExpired(order, activeCycle, null);
+      order.isExpired = isOrderExpired(order, activeCycle, latestEndedCycle);
     }
 
     // 判断是否还有更多订单
@@ -675,6 +683,14 @@ router.get('/orders/by-phone', async (req, res) => {
     const activeCycle = await getAsync(
       "SELECT * FROM ordering_cycles WHERE status = 'active' ORDER BY id DESC LIMIT 1"
     );
+    
+    // 如果没有活跃周期，获取最近一个已结束的周期
+    let latestEndedCycle = null;
+    if (!activeCycle) {
+      latestEndedCycle = await getAsync(
+        "SELECT * FROM ordering_cycles WHERE status IN ('ended', 'confirmed') ORDER BY end_time DESC, id DESC LIMIT 1"
+      );
+    }
 
     // 批量获取订单项
     const orderIds = orders.map(o => o.id);
@@ -706,7 +722,7 @@ router.get('/orders/by-phone', async (req, res) => {
       }
       
       // 检查订单是否已过期
-      order.isExpired = isOrderExpired(order, activeCycle, null);
+      order.isExpired = isOrderExpired(order, activeCycle, latestEndedCycle);
     }
 
     res.json({ success: true, orders });
