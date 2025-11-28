@@ -7,11 +7,182 @@
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link href="/dist/output.css" rel="stylesheet">
   <script src="/i18n.js"></script>
+  <!-- QZ Tray for silent printing -->
+  <!-- 优先使用本地文件，如果加载失败则回退到 CDN -->
+  <script>
+    (function() {
+      const script = document.createElement('script');
+      script.src = '/js/qz-tray.min.js';
+      script.onerror = function() {
+        // 如果本地文件加载失败，回退到 CDN
+        console.log('Local QZ Tray file not found, falling back to CDN');
+        const cdnScript = document.createElement('script');
+        cdnScript.src = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2.5/qz-tray.min.js';
+        document.head.appendChild(cdnScript);
+      };
+      document.head.appendChild(script);
+    })();
+  </script>
+  <!-- Print helper -->
+  <script src="/utils/print-helper.js"></script>
   <style>
     .fade-in { animation: fadeIn 0.3s ease-in; }
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* 打印小票样式 */
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #receiptPrintArea, #receiptPrintArea * {
+        visibility: visible;
+      }
+      #receiptPrintArea {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 80mm; /* 标准POS小票宽度（80mm更常用） */
+        max-width: 80mm;
+        margin: 0;
+        padding: 8mm 5mm;
+        box-sizing: border-box;
+      }
+      @page {
+        size: 80mm auto;
+        margin: 0;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    }
+    
+    #receiptPrintArea {
+      display: none;
+      font-family: 'Courier New', 'Consolas', monospace;
+      width: 80mm;
+      max-width: 80mm;
+      padding: 8mm 5mm;
+      background: white;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #000;
+      box-sizing: border-box;
+    }
+    
+    #receiptPrintArea * {
+      box-sizing: border-box;
+    }
+    
+    #receiptPrintArea .receipt-header {
+      text-align: center;
+      margin-bottom: 10px;
+      border-bottom: 2px dashed #000;
+      padding-bottom: 8px;
+    }
+    
+    #receiptPrintArea .receipt-store-name {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+    
+    #receiptPrintArea .receipt-order-info {
+      font-size: 11px;
+      margin: 8px 0;
+      line-height: 1.6;
+    }
+    
+    #receiptPrintArea .receipt-customer-info {
+      font-size: 11px;
+      margin: 8px 0;
+      padding: 6px 0;
+      border-top: 1px dashed #000;
+      border-bottom: 1px dashed #000;
+      line-height: 1.6;
+    }
+    
+    #receiptPrintArea .receipt-items {
+      margin: 10px 0;
+    }
+    
+    #receiptPrintArea .receipt-item {
+      margin: 8px 0;
+      padding-bottom: 6px;
+      border-bottom: 1px dotted #666;
+    }
+    
+    #receiptPrintArea .receipt-item:last-child {
+      border-bottom: none;
+    }
+    
+    #receiptPrintArea .receipt-item-name {
+      font-weight: bold;
+      margin-bottom: 3px;
+      font-size: 13px;
+    }
+    
+    #receiptPrintArea .receipt-item-specs {
+      font-size: 10px;
+      color: #333;
+      margin-left: 2px;
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+    
+    #receiptPrintArea .receipt-item-qty-price {
+      text-align: right;
+      margin-top: 3px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    
+    #receiptPrintArea .receipt-divider {
+      border-top: 1px dashed #000;
+      margin: 10px 0;
+      height: 0;
+    }
+    
+    #receiptPrintArea .receipt-totals {
+      margin: 10px 0;
+    }
+    
+    #receiptPrintArea .receipt-total-line {
+      display: flex;
+      justify-content: space-between;
+      margin: 5px 0;
+      font-size: 12px;
+    }
+    
+    #receiptPrintArea .receipt-total-final {
+      font-weight: bold;
+      font-size: 16px;
+      border-top: 2px solid #000;
+      padding-top: 6px;
+      margin-top: 6px;
+    }
+    
+    #receiptPrintArea .receipt-notes {
+      margin: 10px 0;
+      padding: 8px 0;
+      border-top: 1px dashed #000;
+      border-bottom: 1px dashed #000;
+      font-size: 11px;
+      font-style: italic;
+      line-height: 1.5;
+    }
+    
+    #receiptPrintArea .receipt-footer {
+      text-align: center;
+      margin-top: 15px;
+      padding-top: 10px;
+      border-top: 1px dashed #000;
+      font-size: 11px;
+      font-weight: bold;
     }
     .sidebar-item:hover { background: rgba(59, 130, 246, 0.1); }
     .sidebar-item.active { background: rgba(59, 130, 246, 0.2); border-left: 3px solid #3b82f6; }
@@ -302,10 +473,10 @@
           <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold text-gray-900">Orders</h2>
             <div class="flex space-x-2">
-              <select id="orderCycleFilter" onchange="loadOrders()" class="px-4 py-2 border border-gray-300 rounded-lg">
+              <select id="orderCycleFilter" onchange="resetAndLoadOrders()" class="px-4 py-2 border border-gray-300 rounded-lg">
                 <option value="">All Cycles</option>
               </select>
-              <select id="orderStatusFilter" onchange="loadOrders()" class="px-4 py-2 border border-gray-300 rounded-lg">
+              <select id="orderStatusFilter" onchange="resetAndLoadOrders()" class="px-4 py-2 border border-gray-300 rounded-lg">
                 <option value="">All Status</option>
                 <option value="pending">Pending Payment</option>
                 <option value="paid">Paid</option>
@@ -338,6 +509,8 @@
                 </tbody>
               </table>
             </div>
+            <!-- 分页容器 -->
+            <div id="ordersPagination"></div>
           </div>
         </div>
 
@@ -775,6 +948,9 @@
 
   <!-- Toast 容器 -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+  <!-- 打印小票区域 -->
+  <div id="receiptPrintArea"></div>
 
   <!-- 确认对话框 -->
   <div id="confirmDialog" class="modal">

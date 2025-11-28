@@ -1242,7 +1242,10 @@ router.get('/orders', async (req, res) => {
     // 先执行归档检查
     await archiveOldCycles();
     
-    const { status, phone, date, cycle_id } = req.query;
+    const { status, phone, date, cycle_id, page = 1, limit = 30 } = req.query;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
     
     // 获取最大可见周期数设置
     const maxVisibleSetting = await getAsync("SELECT value FROM settings WHERE key = 'max_visible_cycles'");
@@ -1255,7 +1258,16 @@ router.get('/orders', async (req, res) => {
     );
     
     if (recentCycles.length === 0) {
-      return res.json({ success: true, orders: [] });
+      return res.json({ 
+        success: true, 
+        orders: [],
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: 0,
+          totalPages: 0
+        }
+      });
     }
     
     // 构建周期时间范围
@@ -1310,7 +1322,16 @@ router.get('/orders', async (req, res) => {
         params.push(endTime);
       } else {
         // 如果指定的周期不在最近N个周期内，返回空结果
-        return res.json({ success: true, orders: [] });
+        return res.json({ 
+          success: true, 
+          orders: [],
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total: 0,
+            totalPages: 0
+          }
+        });
       }
     }
 
@@ -1331,6 +1352,16 @@ router.get('/orders', async (req, res) => {
     }
 
     sql += ' ORDER BY created_at DESC';
+
+    // 先获取总数（在分页之前）
+    // 移除 ORDER BY 子句，因为 COUNT 查询不需要排序
+    const countSql = sql.replace('SELECT *', 'SELECT COUNT(*) as total').replace(/ORDER BY.*$/i, '');
+    const { total } = await getAsync(countSql, params);
+
+    // 添加 LIMIT 和 OFFSET 进行分页
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limitNum);
+    params.push(offset);
 
     const orders = await allAsync(sql, params);
 
@@ -1383,10 +1414,80 @@ router.get('/orders', async (req, res) => {
       }
     }
 
-    res.json({ success: true, orders });
+    res.json({ 
+      success: true, 
+      orders,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    });
   } catch (error) {
     logger.error('获取订单失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取订单失败' });
+  }
+});
+
+// 检查新订单（用于实时通知，轻量级查询）
+router.get('/orders/new', async (req, res) => {
+  try {
+    const { since } = req.query; // ISO 时间戳，用于只获取此时间之后的订单
+    
+    // 查询最近5分钟内状态为 paid 的新订单（用于通知）
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19);
+    
+    let sql = `SELECT id, order_number, status, customer_name, customer_phone, final_amount, created_at, payment_time 
+               FROM orders 
+               WHERE status = 'paid' AND (payment_time >= ? OR created_at >= ?) 
+               ORDER BY COALESCE(payment_time, created_at) DESC 
+               LIMIT 20`;
+    
+    let orders = await allAsync(sql, [fiveMinutesAgo, fiveMinutesAgo]);
+    
+    // 如果提供了 since 参数，只返回在此之后的订单
+    if (since) {
+      try {
+        const sinceDate = new Date(since);
+        orders = orders.filter(order => {
+          const orderTime = order.payment_time || order.created_at;
+          return orderTime && new Date(orderTime) > sinceDate;
+        });
+      } catch (dateError) {
+        // 如果日期解析失败，忽略过滤，返回所有结果
+        logger.warn('解析 since 参数失败', { since, error: dateError.message });
+      }
+    }
+    
+    // 获取当前时间戳（使用 ISO 格式）
+    const nowResult = await getAsync("SELECT datetime('now', 'localtime') as now");
+    let timestamp = nowResult.now;
+    
+    // 转换为 ISO 格式（如果后端返回 SQLite datetime 格式）
+    if (timestamp && timestamp.includes(' ')) {
+      // SQLite 格式: "2024-01-01 12:00:00" -> ISO: "2024-01-01T12:00:00"
+      timestamp = timestamp.replace(' ', 'T');
+    }
+    
+    // 如果没有时间戳，使用当前时间
+    if (!timestamp) {
+      timestamp = new Date().toISOString();
+    }
+    
+    res.json({ 
+      success: true, 
+      orders: orders,
+      timestamp: timestamp
+    });
+  } catch (error) {
+    logger.error('检查新订单失败', { error: error.message });
+    // 错误时返回空数组，不影响通知功能
+    res.json({ 
+      success: true, 
+      orders: [],
+      timestamp: new Date().toISOString()
+    });
   }
 });
 

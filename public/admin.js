@@ -531,6 +531,16 @@ async function login() {
       startSessionCheck();
       // 登录成功后重新加载设置（使用管理员权限）
       loadSettings();
+      
+      // 立即请求音频权限（用户刚刚点击了登录按钮，这是一个用户交互）
+      // 延迟一小段时间确保页面已加载
+      setTimeout(() => {
+        try {
+          requestAudioPermission();
+        } catch (error) {
+          console.log('请求音频权限失败（不影响功能）:', error);
+        }
+      }, 100);
     } else {
       showToast(data.message || 'Login failed', 'error');
     }
@@ -542,6 +552,14 @@ async function login() {
 
 // 登出
 async function logout() {
+  // 停止订单通知（非侵入式）
+  try {
+    stopOrderNotification();
+  } catch (error) {
+    // 停止通知失败不影响登出
+    console.log('停止订单通知失败（不影响功能）:', error);
+  }
+  
   try {
     // 停止session检查和刷新
     stopSessionCheck();
@@ -578,6 +596,17 @@ function showMainPage() {
   // 加载默认数据
   loadDashboard();
   loadSettings();
+  
+  // 启动订单通知（非侵入式，失败不影响其他功能）
+  // 延迟启动，确保页面已完全加载
+  setTimeout(() => {
+    try {
+      startOrderNotification();
+    } catch (error) {
+      // 通知启动失败不影响登录和页面加载
+      console.error('启动订单通知失败（不影响功能）:', error);
+    }
+  }, 1000);
 }
 
 // 切换标签
@@ -1168,27 +1197,38 @@ async function loadCycles() {
   }
 }
 
+// 当前订单列表（用于打印等功能）
+let currentOrdersList = [];
+
 // 加载订单列表
 async function loadOrders() {
   try {
     const status = document.getElementById('orderStatusFilter')?.value || '';
     const cycleId = document.getElementById('orderCycleFilter')?.value || '';
-    let url = `${API_BASE}/admin/orders?`;
-    const params = [];
     
-    if (status) params.push(`status=${status}`);
-    if (cycleId) params.push(`cycle_id=${cycleId}`);
+    // 更新过滤状态
+    ordersFilterState.status = status;
+    ordersFilterState.cycleId = cycleId;
     
-    if (params.length > 0) {
-      url += params.join('&');
-    } else {
-      url = url.slice(0, -1); // 移除末尾的?
-    }
+    // 构建查询参数
+    const params = new URLSearchParams({
+      page: ordersFilterState.page.toString(),
+      limit: ordersFilterState.limit.toString()
+    });
     
-    const data = await adminApiRequest(url);
+    if (status) params.append('status', status);
+    if (cycleId) params.append('cycle_id', cycleId);
+    
+    const data = await adminApiRequest(`${API_BASE}/admin/orders?${params.toString()}`);
     
     if (data.success) {
-      renderOrders(data.orders);
+      // 保存当前订单列表
+      currentOrdersList = data.orders || [];
+      renderOrders(data.orders, data.pagination);
+      // 更新分页状态
+      if (data.pagination) {
+        ordersFilterState.page = data.pagination.page;
+      }
     }
   } catch (error) {
     console.error('加载订单失败:', error);
@@ -1226,12 +1266,17 @@ async function exportOrders() {
 }
 
 // 渲染订单列表
-function renderOrders(orders) {
+function renderOrders(orders, pagination) {
   const tbody = document.getElementById('ordersTableBody');
   if (!tbody) return;
   
   if (orders.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No orders</td></tr>';
+    // 清空分页
+    const paginationContainer = document.getElementById('ordersPagination');
+    if (paginationContainer) {
+      paginationContainer.innerHTML = '';
+    }
     return;
   }
   
@@ -1399,7 +1444,12 @@ function renderOrders(orders) {
             <option value="completed" ${order.status === 'completed' ? 'selected' : ''}>Completed</option>
             <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
           </select>
-          ${order.payment_image ? `<br><button onclick="showPaymentImageModal('${order.payment_image}')" class="text-blue-600 hover:text-blue-800 text-xs underline">View Payment Screenshot</button>` : ''}
+          <br>
+          <button onclick="printOrderReceiptById('${order.id}')" 
+                  class="mt-1 px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-xs transition-colors">
+            🖨️ Print Receipt
+          </button>
+          ${order.payment_image ? `<br><button onclick="showPaymentImageModal('${order.payment_image}')" class="mt-1 text-blue-600 hover:text-blue-800 text-xs underline">View Payment Screenshot</button>` : ''}
           ${order.payment_method === 'stripe' && order.stripe_payment_intent_id && order.status === 'paid' && !order.payment_image ? `
             <div class="mt-2 text-xs">
               <div class="text-gray-600 font-semibold">Transaction ID:</div>
@@ -1410,6 +1460,440 @@ function renderOrders(orders) {
       </tr>
     `;
   }).join('');
+  
+  // 渲染分页控件
+  if (pagination) {
+    const paginationContainer = document.getElementById('ordersPagination');
+    if (paginationContainer) {
+      paginationContainer.innerHTML = `
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200">
+          <div class="flex items-center justify-between">
+            <div class="text-sm text-gray-600">
+              Showing <span class="font-semibold">${(pagination.page - 1) * pagination.limit + 1}</span> to 
+              <span class="font-semibold">${Math.min(pagination.page * pagination.limit, pagination.total)}</span> of 
+              <span class="font-semibold">${pagination.total}</span> orders
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <!-- 上一页按钮 -->
+              <button 
+                onclick="goToOrderPage(${pagination.page - 1})"
+                ${pagination.page <= 1 ? 'disabled' : ''}
+                class="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium ${pagination.page <= 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
+              >
+                Previous
+              </button>
+              
+              <!-- 页码显示和输入 -->
+              <div class="flex items-center gap-2">
+                <span class="text-sm text-gray-600">Page</span>
+                <input 
+                  type="number" 
+                  id="orderPageInput"
+                  min="1" 
+                  max="${pagination.totalPages}"
+                  value="${pagination.page}"
+                  class="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onkeyup="if(event.key==='Enter') goToOrderPage(parseInt(this.value))"
+                />
+                <span class="text-sm text-gray-600">of ${pagination.totalPages}</span>
+              </div>
+              
+              <!-- 下一页按钮 -->
+              <button 
+                onclick="goToOrderPage(${pagination.page + 1})"
+                ${pagination.page >= pagination.totalPages ? 'disabled' : ''}
+                class="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium ${pagination.page >= pagination.totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+}
+
+// 通过订单ID打印小票
+function printOrderReceiptById(orderId) {
+  console.log('Print receipt requested for order ID:', orderId);
+  console.log('Current orders list:', currentOrdersList);
+  
+  const order = currentOrdersList.find(o => o.id === orderId);
+  if (!order) {
+    console.error('Order not found in currentOrdersList. ID:', orderId);
+    showToast('Order not found. Please refresh the page.', 'error');
+    return;
+  }
+  
+  console.log('Found order for printing:', order);
+  printOrderReceipt(order);
+}
+
+// 打印订单小票
+async function printOrderReceipt(order) {
+  try {
+    // 调试：检查订单数据
+    console.log('Printing order:', order);
+    
+    if (!order || !order.id) {
+      showToast('Invalid order data', 'error');
+      console.error('Order data:', order);
+      return;
+    }
+
+    // 格式化日期时间
+    const orderDate = new Date(order.created_at);
+    const dateStr = orderDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const timeStr = orderDate.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+
+    // 商品标签映射
+    const sugarLabels = {
+      '0': 'Zero',
+      '30': 'Light',
+      '50': 'Half',
+      '70': 'Less',
+      '100': 'Regular'
+    };
+    
+    const iceLabels = {
+      'normal': 'Normal Ice',
+      'less': 'Less Ice',
+      'no': 'No Ice',
+      'room': 'Room Temperature',
+      'hot': 'Hot'
+    };
+
+    // 调试：检查订单项
+    console.log('Order items:', order.items);
+    
+    // 构建商品列表HTML
+    let itemsHtml = '';
+    if (order.items && order.items.length > 0) {
+      itemsHtml = order.items.map(item => {
+        let toppings = [];
+        try {
+          if (item.toppings) {
+            toppings = typeof item.toppings === 'string' ? JSON.parse(item.toppings) : item.toppings;
+          }
+        } catch (e) {}
+
+        const unitPrice = item.quantity > 0 ? (item.subtotal / item.quantity) : item.product_price;
+        
+        // 构建规格信息
+        let specs = [];
+        if (item.size) specs.push(`Size: ${item.size}`);
+        if (item.sugar_level) {
+          const sugarLabel = sugarLabels[item.sugar_level] || `${item.sugar_level}%`;
+          specs.push(`Sweetness: ${sugarLabel}`);
+        }
+        if (item.ice_level) {
+          const iceLabel = iceLabels[item.ice_level] || item.ice_level;
+          specs.push(`Ice: ${iceLabel}`);
+        }
+        if (toppings.length > 0) {
+          const toppingNames = toppings.map(t => {
+            if (typeof t === 'object' && t !== null && t.name) return t.name;
+            return typeof t === 'string' ? t : String(t);
+          });
+          specs.push(`Toppings: ${toppingNames.join(', ')}`);
+        }
+
+        return `
+          <div class="receipt-item">
+            <div class="receipt-item-name">${item.product_name} × ${item.quantity}</div>
+            ${specs.length > 0 ? `<div class="receipt-item-specs">${specs.join(' | ')}</div>` : ''}
+            <div class="receipt-item-qty-price">
+              ${formatPrice(unitPrice)} × ${item.quantity} = ${formatPrice(item.subtotal)}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 计算总金额
+    const subtotal = order.total_amount || 0;
+    const discount = order.discount_amount || 0;
+    const balanceUsed = order.balance_used || 0;
+    const finalAmount = order.final_amount || 0;
+
+    // 生成小票HTML
+    const receiptHtml = `
+      <div class="receipt-header">
+        <div class="receipt-store-name">${storeName || 'BOBA TEA'}</div>
+      </div>
+      
+      <div class="receipt-order-info">
+        <div>Order: ${order.order_number}</div>
+        <div>Date: ${dateStr} ${timeStr}</div>
+        ${order.cycle_number ? `<div>Cycle: ${order.cycle_number}</div>` : ''}
+      </div>
+      
+      <div class="receipt-customer-info">
+        <div>Customer: ${order.customer_name || 'Anonymous'}</div>
+        <div>Phone: ${order.customer_phone || 'N/A'}</div>
+      </div>
+      
+      <div class="receipt-divider"></div>
+      
+      <div class="receipt-items">
+        ${itemsHtml || '<div class="receipt-item">No items found</div>'}
+      </div>
+      
+      <div class="receipt-divider"></div>
+      
+      <div class="receipt-totals">
+        <div class="receipt-total-line">
+          <span>Subtotal:</span>
+          <span>${formatPrice(subtotal)}</span>
+        </div>
+        ${discount > 0 ? `
+          <div class="receipt-total-line">
+            <span>Discount:</span>
+            <span>-${formatPrice(discount)}</span>
+          </div>
+        ` : ''}
+        ${balanceUsed > 0 ? `
+          <div class="receipt-total-line">
+            <span>Balance Used:</span>
+            <span>-${formatPrice(balanceUsed)}</span>
+          </div>
+        ` : ''}
+        <div class="receipt-total-line receipt-total-final">
+          <span>TOTAL:</span>
+          <span>${formatPrice(finalAmount)}</span>
+        </div>
+      </div>
+      
+      <div class="receipt-order-info">
+        <div>Status: ${order.status ? order.status.toUpperCase() : 'PENDING'}</div>
+        ${order.payment_method === 'stripe' ? '<div>Payment: Online</div>' : ''}
+      </div>
+      
+      ${order.notes ? `
+        <div class="receipt-notes">
+          <div><strong>Notes:</strong></div>
+          <div>${order.notes.replace(/\n/g, '<br>')}</div>
+        </div>
+      ` : ''}
+      
+      <div class="receipt-footer">
+        <div>Thank you for your order!</div>
+      </div>
+    `;
+
+    // 尝试静默打印（QZ Tray 或 WebPrint）
+    if (typeof silentPrint === 'function') {
+      try {
+        const printResult = await silentPrint(receiptHtml, {
+          printerName: null, // 使用默认打印机，或从设置中获取
+          fallbackToWindowPrint: true,
+          useHtmlPrint: true
+        });
+        
+        if (printResult.success) {
+          showToast(`Printed via ${printResult.method}`, 'success');
+          return; // 静默打印成功，直接返回
+        }
+        
+        // 静默打印失败，继续使用标准打印方式
+        if (printResult.requiresDialog) {
+          console.log('Falling back to window.print()');
+          // 继续执行下面的标准打印代码
+        }
+      } catch (error) {
+        console.error('Silent print error:', error);
+        // 继续使用标准打印方式
+      }
+    }
+    
+    // 标准打印方式（原有的代码）- 作为回退方案
+    const printWindow = window.open('', '_blank', 'width=300,height=600');
+    if (!printWindow) {
+      showToast('Please allow popups to print receipt', 'error');
+      return;
+    }
+    
+    // 调试：检查生成的HTML
+    console.log('Receipt HTML length:', receiptHtml.length);
+    console.log('Items HTML:', itemsHtml);
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt - ${order.order_number || 'Unknown'}</title>
+        <meta charset="UTF-8">
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          body {
+            font-family: 'Courier New', 'Consolas', monospace;
+            width: 80mm;
+            max-width: 80mm;
+            padding: 8mm 5mm;
+            background: white;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #000;
+          }
+          .receipt-header {
+            text-align: center;
+            margin-bottom: 10px;
+            border-bottom: 2px dashed #000;
+            padding-bottom: 8px;
+          }
+          .receipt-store-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+          }
+          .receipt-order-info {
+            font-size: 11px;
+            margin: 8px 0;
+            line-height: 1.6;
+          }
+          .receipt-customer-info {
+            font-size: 11px;
+            margin: 8px 0;
+            padding: 6px 0;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            line-height: 1.6;
+          }
+          .receipt-items {
+            margin: 10px 0;
+          }
+          .receipt-item {
+            margin: 8px 0;
+            padding-bottom: 6px;
+            border-bottom: 1px dotted #666;
+          }
+          .receipt-item:last-child {
+            border-bottom: none;
+          }
+          .receipt-item-name {
+            font-weight: bold;
+            margin-bottom: 3px;
+            font-size: 13px;
+          }
+          .receipt-item-specs {
+            font-size: 10px;
+            color: #333;
+            margin-left: 2px;
+            margin-top: 2px;
+            line-height: 1.4;
+          }
+          .receipt-item-qty-price {
+            text-align: right;
+            margin-top: 3px;
+            font-size: 12px;
+            font-weight: bold;
+          }
+          .receipt-divider {
+            border-top: 1px dashed #000;
+            margin: 10px 0;
+            height: 0;
+          }
+          .receipt-totals {
+            margin: 10px 0;
+          }
+          .receipt-total-line {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 12px;
+          }
+          .receipt-total-final {
+            font-weight: bold;
+            font-size: 16px;
+            border-top: 2px solid #000;
+            padding-top: 6px;
+            margin-top: 6px;
+          }
+          .receipt-notes {
+            margin: 10px 0;
+            padding: 8px 0;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            font-size: 11px;
+            font-style: italic;
+            line-height: 1.5;
+          }
+          .receipt-footer {
+            text-align: center;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px dashed #000;
+            font-size: 11px;
+            font-weight: bold;
+          }
+          @media print {
+            body {
+              margin: 0;
+              padding: 8mm 5mm;
+            }
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        ${receiptHtml}
+        <script>
+          // 页面加载后立即打印（业界标准做法：自动打开打印对话框）
+          (function() {
+            function doPrint() {
+              try {
+                window.print();
+                // 打印对话框关闭后关闭窗口
+                // 注意：Chrome等浏览器会阻止自动关闭，但用户关闭打印对话框后窗口会自动关闭
+                window.onfocus = function() {
+                  setTimeout(function() {
+                    window.close();
+                  }, 100);
+                };
+              } catch(e) {
+                console.error('Print error:', e);
+              }
+            }
+            
+            // 确保DOM完全加载后再打印
+            if (document.readyState === 'complete') {
+              setTimeout(doPrint, 100);
+            } else {
+              window.addEventListener('load', function() {
+                setTimeout(doPrint, 100);
+              });
+            }
+          })();
+        </script>
+      </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    
+  } catch (error) {
+    console.error('Print receipt error:', error);
+    showToast('Failed to print receipt: ' + error.message, 'error');
+  }
 }
 
 // 更新订单状态
@@ -4562,6 +5046,14 @@ async function deleteAdmin(adminId) {
   }
 }
 
+// 订单过滤状态
+let ordersFilterState = {
+  page: 1,        // 当前页码
+  limit: 30,      // 每页条数
+  status: '',     // 订单状态
+  cycleId: ''     // 周期ID
+};
+
 // 日志过滤状态
 let logsFilterState = {
   page: 1,        // 当前页码
@@ -4978,7 +5470,23 @@ function clearAllLogFilters() {
   loadLogs();
 }
 
-// 分页函数
+// 订单分页函数
+function goToOrderPage(page) {
+  const totalPages = parseInt(document.querySelector('#orderPageInput')?.max || 1);
+  if (page < 1) page = 1;
+  if (page > totalPages) page = totalPages;
+  
+  ordersFilterState.page = page;
+  loadOrders();
+}
+
+// 重置并加载订单（筛选时重置到第一页）
+function resetAndLoadOrders() {
+  ordersFilterState.page = 1;
+  loadOrders();
+}
+
+// 日志分页函数
 function goToLogPage(page) {
   const totalPages = parseInt(document.querySelector('#logPageInput')?.max || 1);
   if (page < 1) page = 1;
@@ -8484,5 +8992,403 @@ async function unlockIp(ipAddress) {
   } catch (error) {
     console.error('解锁IP失败:', error);
     showToast('Failed to unlock IP address', 'error');
+  }
+}
+
+// ==================== 新订单通知功能 ====================
+// 注意：此功能独立于现有业务，即使出错也不会影响其他功能
+
+// 订单通知相关变量
+let orderNotificationInterval = null;
+let notifiedOrderIds = new Set(); // 已通知的订单ID集合
+let lastCheckTimestamp = null; // 上次检查的时间戳
+let isNotificationEnabled = true; // 是否启用通知
+let audioContextPermissionGranted = false; // 音频权限是否已授予
+let audioContext = null; // 复用的 AudioContext 实例
+
+// 从 localStorage 恢复通知设置
+try {
+  const savedNotificationEnabled = localStorage.getItem('orderNotificationEnabled');
+  if (savedNotificationEnabled !== null) {
+    isNotificationEnabled = savedNotificationEnabled === 'true';
+  }
+} catch (e) {
+  // 如果读取失败，使用默认值
+  console.log('无法读取通知设置，使用默认值');
+}
+
+// 请求并初始化音频权限（需要在用户交互时调用）
+async function initAudioContext() {
+  try {
+    if (audioContext) {
+      return audioContext;
+    }
+    
+    // 创建 AudioContext
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // 如果状态是 suspended，需要用户交互来恢复
+    if (audioContext.state === 'suspended') {
+      // 尝试恢复（需要用户交互）
+      await audioContext.resume();
+    }
+    
+    audioContextPermissionGranted = true;
+    console.log('音频权限已初始化，状态:', audioContext.state);
+    return audioContext;
+  } catch (error) {
+    console.error('初始化音频权限失败:', error);
+    audioContextPermissionGranted = false;
+    return null;
+  }
+}
+
+// 播放订单通知音频（使用音频文件）
+let notificationAudio = null; // 缓存音频对象
+let audioLoadAttempted = false; // 是否已尝试加载音频
+
+async function playDingSound() {
+  try {
+    // 如果音频对象不存在，创建并加载
+    if (!notificationAudio && !audioLoadAttempted) {
+      audioLoadAttempted = true;
+      notificationAudio = new Audio('/newoder.mp3');
+      notificationAudio.volume = 0.8; // 设置音量（0.0 - 1.0）
+      
+      // 预加载音频
+      notificationAudio.preload = 'auto';
+      
+      // 添加错误处理
+      notificationAudio.addEventListener('error', (e) => {
+        console.error('音频文件加载失败:', e);
+        notificationAudio = null; // 重置，下次尝试重新加载
+        audioLoadAttempted = false;
+      });
+      
+      // 添加加载完成事件
+      notificationAudio.addEventListener('canplaythrough', () => {
+        console.log('订单通知音频已加载完成');
+      });
+      
+      // 尝试加载音频
+      try {
+        await notificationAudio.load();
+      } catch (loadError) {
+        console.warn('音频预加载失败，将在播放时加载:', loadError);
+      }
+    }
+    
+    // 如果音频对象仍然不存在，说明加载失败
+    if (!notificationAudio) {
+      console.warn('音频文件未加载，跳过播放');
+      return;
+    }
+    
+    // 重置音频到开始位置（如果正在播放）
+    notificationAudio.currentTime = 0;
+    
+    // 播放音频
+    const playPromise = notificationAudio.play();
+    
+    if (playPromise !== undefined) {
+      await playPromise;
+      console.log('✅ 播放订单通知音频: newoder.mp3');
+    }
+  } catch (error) {
+    // 如果播放失败，尝试重新加载
+    if (error.name === 'NotAllowedError') {
+      console.warn('音频播放被阻止，可能需要用户交互');
+    } else if (error.name === 'NotSupportedError') {
+      console.error('浏览器不支持音频播放');
+    } else {
+      console.error('播放订单通知音频失败（不影响功能）:', error);
+      // 重置音频对象，下次尝试重新加载
+      notificationAudio = null;
+      audioLoadAttempted = false;
+    }
+  }
+}
+
+// 语音提示
+function speakNotification(message) {
+  try {
+    if (!('speechSynthesis' in window)) {
+      return; // 浏览器不支持，静默返回
+    }
+    
+    // 取消之前的语音（如果有）
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(message);
+    utterance.lang = 'en-US'; // 可以根据设置调整
+    utterance.rate = 1.0;     // 语速
+    utterance.pitch = 1.0;    // 音调
+    utterance.volume = 0.8;   // 音量
+    
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    // 语音失败不影响其他功能
+    console.log('语音提示失败（不影响功能）:', error);
+  }
+}
+
+// 显示订单通知
+async function showOrderNotification(order) {
+  try {
+    console.log('显示新订单通知:', order.order_number);
+    
+    // 1. 播放订单通知音频（包含叮咚声和语音朗读）
+    await playDingSound();
+    
+    // 2. Toast 通知（音频文件已包含语音，这里只显示视觉通知）
+    const customerName = order.customer_name || 'Anonymous';
+    const amount = formatPrice(order.final_amount);
+    
+    showToast(
+      `🛒 New Order: ${order.order_number}<br>` +
+      `Customer: ${customerName}<br>` +
+      `Amount: ${amount}`,
+      'info'
+    );
+    
+    // 3. 如果当前在订单页面，延迟刷新（避免频繁刷新）
+    if (currentTab === 'orders') {
+      setTimeout(() => {
+        try {
+          console.log('自动刷新订单列表');
+          loadOrders();
+        } catch (e) {
+          // 刷新失败不影响通知
+          console.error('自动刷新订单列表失败（不影响功能）:', e);
+        }
+      }, 2000);
+    }
+  } catch (error) {
+    // 通知显示失败不影响其他功能
+    console.error('显示订单通知失败（不影响功能）:', error);
+  }
+}
+
+// 检查新订单
+async function checkNewOrders(isInitialCheck = false) {
+  // 如果通知被禁用，直接返回
+  if (!isNotificationEnabled) {
+    return;
+  }
+  
+  try {
+    const params = new URLSearchParams();
+    if (lastCheckTimestamp && !isInitialCheck) {
+      // 只在使用 since 参数时使用时间戳格式
+      // 后端期望的是 ISO 格式或 SQLite datetime 格式
+      params.append('since', lastCheckTimestamp);
+    }
+    
+    console.log('检查新订单...', { lastCheckTimestamp, isInitialCheck });
+    
+    const data = await adminApiRequest(`${API_BASE}/admin/orders/new?${params.toString()}`);
+    
+    console.log('检查新订单响应:', { 
+      success: data.success, 
+      ordersCount: data.orders?.length || 0,
+      timestamp: data.timestamp 
+    });
+    
+    if (data.success && data.orders && data.orders.length > 0) {
+      // 过滤出未通知的订单
+      const newOrders = data.orders.filter(order => !notifiedOrderIds.has(order.id));
+      
+      console.log('发现新订单:', { 
+        total: data.orders.length, 
+        new: newOrders.length,
+        alreadyNotified: data.orders.length - newOrders.length 
+      });
+      
+      // 如果是初始化检查，只记录订单ID，不通知
+      if (isInitialCheck) {
+        data.orders.forEach(order => {
+          notifiedOrderIds.add(order.id);
+        });
+        console.log('初始化检查完成，已记录', data.orders.length, '个订单');
+      } else {
+        // 按时间排序，确保按顺序通知
+        newOrders.sort((a, b) => {
+          try {
+            const timeA = new Date(a.payment_time || a.created_at);
+            const timeB = new Date(b.payment_time || b.created_at);
+            return timeA - timeB;
+          } catch (e) {
+            return 0;
+          }
+        });
+        
+        // 通知每个新订单（间隔通知，避免同时播放多个声音）
+        newOrders.forEach((order, index) => {
+          setTimeout(() => {
+            try {
+              notifiedOrderIds.add(order.id);
+              showOrderNotification(order);
+            } catch (e) {
+              // 单个订单通知失败不影响其他订单
+              console.error('通知单个订单失败（不影响功能）:', e);
+            }
+          }, index * 1500); // 每个订单间隔1.5秒
+        });
+      }
+    }
+    
+    // 更新最后检查时间（使用 ISO 格式）
+    if (data.timestamp) {
+      // 转换 SQLite datetime 格式为 ISO 格式
+      const timestampStr = data.timestamp;
+      if (timestampStr.includes(' ')) {
+        // SQLite 格式: "2024-01-01 12:00:00" -> ISO: "2024-01-01T12:00:00"
+        lastCheckTimestamp = timestampStr.replace(' ', 'T');
+      } else {
+        lastCheckTimestamp = timestampStr;
+      }
+    } else {
+      // 如果没有返回时间戳，使用当前时间
+      lastCheckTimestamp = new Date().toISOString();
+    }
+    
+    // 清理旧的已通知订单ID（只保留最近100个）
+    if (notifiedOrderIds.size > 100) {
+      const orderIdsArray = Array.from(notifiedOrderIds);
+      notifiedOrderIds = new Set(orderIdsArray.slice(-50));
+    }
+  } catch (error) {
+    // 检查新订单失败不影响其他功能，但记录错误
+    console.error('检查新订单失败（不影响功能）:', error);
+  }
+}
+
+// 启动订单通知
+async function startOrderNotification() {
+  try {
+    // 停止之前的轮询（如果存在）
+    if (orderNotificationInterval) {
+      clearInterval(orderNotificationInterval);
+    }
+    
+    // 只在管理员已登录时启动
+    if (!currentAdmin) {
+      console.log('管理员未登录，无法启动订单通知');
+      return;
+    }
+    
+    console.log('正在启动订单通知...');
+    
+    // 初始化音频上下文（在用户交互后）
+    try {
+      await initAudioContext();
+    } catch (e) {
+      console.warn('音频初始化失败，但将继续尝试:', e);
+    }
+    
+    // 初始化：检查最近5分钟的订单（但只记录，不通知）
+    await checkNewOrders(true).then(() => {
+      // 之后每5秒检查一次新订单
+      orderNotificationInterval = setInterval(() => {
+        try {
+          checkNewOrders(false);
+        } catch (e) {
+          // 轮询失败不影响其他功能
+          console.error('订单通知轮询失败（不影响功能）:', e);
+        }
+      }, 5000); // 5秒检查一次
+      
+      console.log('✅ 订单通知已启动，每5秒检查一次新订单');
+    }).catch((error) => {
+      // 初始化失败不影响其他功能
+      console.error('订单通知初始化失败（不影响功能）:', error);
+      // 即使初始化失败，也启动轮询
+      orderNotificationInterval = setInterval(() => {
+        try {
+          checkNewOrders(false);
+        } catch (e) {
+          console.error('订单通知轮询失败（不影响功能）:', e);
+        }
+      }, 5000);
+    });
+  } catch (error) {
+    // 启动通知失败不影响其他功能
+    console.error('启动订单通知失败（不影响功能）:', error);
+  }
+}
+
+// 停止订单通知
+function stopOrderNotification() {
+  try {
+    if (orderNotificationInterval) {
+      clearInterval(orderNotificationInterval);
+      orderNotificationInterval = null;
+      console.log('订单通知已停止');
+    }
+  } catch (error) {
+    // 停止失败不影响其他功能
+    console.log('停止订单通知失败（不影响功能）:', error);
+  }
+}
+
+// 请求音频权限（通过播放一个静音的测试音）
+async function requestAudioPermission() {
+  try {
+    console.log('请求音频权限...');
+    const ctx = await initAudioContext();
+    if (ctx) {
+      // 播放一个非常短且音量很小的测试音来激活音频上下文
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+      
+      // 播放一个几乎听不见的测试音（0.01音量，0.05秒）
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      oscillator.frequency.value = 200; // 低频率
+      oscillator.type = 'sine';
+      
+      const now = ctx.currentTime;
+      gainNode.gain.setValueAtTime(0.01, now); // 非常小的音量
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+      
+      oscillator.start(now);
+      oscillator.stop(now + 0.05);
+      
+      console.log('音频权限已请求，状态:', ctx.state);
+      audioContextPermissionGranted = true;
+    }
+  } catch (error) {
+    console.warn('请求音频权限失败（不影响功能）:', error);
+    audioContextPermissionGranted = false;
+  }
+}
+
+// 切换通知状态（可选功能，可以添加到设置中）
+function toggleOrderNotification() {
+  try {
+    isNotificationEnabled = !isNotificationEnabled;
+    if (isNotificationEnabled) {
+      startOrderNotification();
+      showToast('订单通知已开启', 'success');
+    } else {
+      stopOrderNotification();
+      showToast('订单通知已关闭', 'info');
+    }
+    
+    // 保存到 localStorage
+    try {
+      localStorage.setItem('orderNotificationEnabled', isNotificationEnabled.toString());
+    } catch (e) {
+      // 保存失败不影响功能
+      console.log('保存通知设置失败（不影响功能）');
+    }
+  } catch (error) {
+    // 切换失败不影响其他功能
+    console.error('切换订单通知失败（不影响功能）:', error);
   }
 }

@@ -26,10 +26,40 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com", "https://cdn.jsdelivr.net"],
       scriptSrcAttr: ["'unsafe-inline'"], // 允许内联事件处理器（onclick等）
       imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net"],
-      connectSrc: ["'self'", "https://api.stripe.com"],
+      connectSrc: [
+        "'self'", 
+        "https://api.stripe.com",
+        // QZ Tray WebSocket 连接（本地服务）
+        // 安全连接 (wss://)
+        "wss://localhost:8181",
+        "wss://localhost:8282",
+        "wss://localhost:8383",
+        "wss://localhost:8484",
+        "wss://127.0.0.1:8181",
+        "wss://127.0.0.1:8282",
+        "wss://127.0.0.1:8383",
+        "wss://127.0.0.1:8484",
+        "wss://localhost.qz.io:8181",
+        "wss://localhost.qz.io:8282",
+        "wss://localhost.qz.io:8383",
+        "wss://localhost.qz.io:8484",
+        // 非安全连接 (ws://) - 用于 HTTP 页面
+        "ws://localhost:8182",
+        "ws://localhost:8283",
+        "ws://localhost:8384",
+        "ws://localhost:8485",
+        "ws://127.0.0.1:8182",
+        "ws://127.0.0.1:8283",
+        "ws://127.0.0.1:8384",
+        "ws://127.0.0.1:8485",
+        "ws://localhost.qz.io:8182",
+        "ws://localhost.qz.io:8283",
+        "ws://localhost.qz.io:8384",
+        "ws://localhost.qz.io:8485"
+      ],
       fontSrc: ["'self'", "https://cdn.jsdelivr.net"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
