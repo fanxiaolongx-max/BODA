@@ -335,5 +335,132 @@ router.get('/show-images', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/public/digital-certificate.txt
+ * Get QZ Tray digital certificate (compatible with original file path)
+ * @returns {string} Certificate content as text/plain
+ */
+router.get('/digital-certificate.txt', async (req, res) => {
+  try {
+    // 优先从数据库读取证书
+    const certSetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_certificate'");
+    
+    if (certSetting && certSetting.value) {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.send(certSetting.value);
+    }
+    
+    // 回退到文件系统（向后兼容）
+    const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+    const certPath = path.join(DATA_DIR, 'public', 'digital-certificate.txt');
+    const fallbackCertPath = path.join(__dirname, '../public/digital-certificate.txt');
+    
+    const finalCertPath = fs.existsSync(certPath) ? certPath : fallbackCertPath;
+    
+    if (fs.existsSync(finalCertPath)) {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.sendFile(finalCertPath);
+    }
+    
+    // 如果都不存在，返回404
+    res.status(404).json({ success: false, message: '证书文件不存在' });
+  } catch (error) {
+    logger.error('获取QZ证书失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取证书失败' });
+  }
+});
+
+/**
+ * GET /api/public/private-key.pem
+ * Get QZ Tray private key (compatible with original file path)
+ * @returns {string} Private key content as text/plain
+ */
+router.get('/private-key.pem', async (req, res) => {
+  try {
+    // 优先从数据库读取私钥
+    const keySetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_private_key'");
+    
+    if (keySetting && keySetting.value) {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.send(keySetting.value);
+    }
+    
+    // 回退到文件系统（向后兼容）
+    const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+    const keyPath = path.join(DATA_DIR, 'public', 'private-key.pem');
+    const fallbackKeyPath = path.join(__dirname, '../public/private-key.pem');
+    
+    const finalKeyPath = fs.existsSync(keyPath) ? keyPath : fallbackKeyPath;
+    
+    if (fs.existsSync(finalKeyPath)) {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.sendFile(finalKeyPath);
+    }
+    
+    // 如果都不存在，返回404
+    res.status(404).json({ success: false, message: '私钥文件不存在' });
+  } catch (error) {
+    logger.error('获取QZ私钥失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取私钥失败' });
+  }
+});
+
+/**
+ * GET /api/public/qz-certificates
+ * Get QZ Tray certificates (JSON format)
+ * @returns {Object} Certificate and private key
+ */
+router.get('/qz-certificates', async (req, res) => {
+  try {
+    const certSetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_certificate'");
+    const keySetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_private_key'");
+    
+    // 如果数据库中有证书，直接返回
+    if (certSetting && certSetting.value && keySetting && keySetting.value) {
+      return res.json({
+        success: true,
+        certificate: certSetting.value,
+        privateKey: keySetting.value,
+        source: 'database'
+      });
+    }
+    
+    // 回退到文件系统
+    const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+    const certPath = path.join(DATA_DIR, 'public', 'digital-certificate.txt');
+    const keyPath = path.join(DATA_DIR, 'public', 'private-key.pem');
+    const fallbackCertPath = path.join(__dirname, '../public/digital-certificate.txt');
+    const fallbackKeyPath = path.join(__dirname, '../public/private-key.pem');
+    
+    const finalCertPath = fs.existsSync(certPath) ? certPath : fallbackCertPath;
+    const finalKeyPath = fs.existsSync(keyPath) ? keyPath : fallbackKeyPath;
+    
+    let certificate = null;
+    let privateKey = null;
+    
+    if (fs.existsSync(finalCertPath)) {
+      certificate = fs.readFileSync(finalCertPath, 'utf8');
+    }
+    
+    if (fs.existsSync(finalKeyPath)) {
+      privateKey = fs.readFileSync(finalKeyPath, 'utf8');
+    }
+    
+    if (certificate && privateKey) {
+      return res.json({
+        success: true,
+        certificate,
+        privateKey,
+        source: 'filesystem'
+      });
+    }
+    
+    res.status(404).json({ success: false, message: '证书文件不存在' });
+  } catch (error) {
+    logger.error('获取QZ证书失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取证书失败' });
+  }
+});
+
 module.exports = router;
 

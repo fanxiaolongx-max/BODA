@@ -50,7 +50,10 @@ async function migrateSettings() {
       { key: 'user_progressive_delay_enabled', value: 'true', description: '用户是否启用渐进延迟（3次5秒，5次15秒，7次30秒）' },
       // IP速率限制（通用）
       { key: 'ip_rate_limit_attempts', value: '5', description: 'IP速率限制尝试次数，超过此次数后IP将被临时阻止' },
-      { key: 'ip_rate_limit_window_minutes', value: '15', description: 'IP速率限制时间窗口（分钟），在此时间窗口内计算失败次数' }
+      { key: 'ip_rate_limit_window_minutes', value: '15', description: 'IP速率限制时间窗口（分钟），在此时间窗口内计算失败次数' },
+      // QZ Tray 证书设置（用于静默打印）
+      { key: 'qz_certificate', value: '', description: 'QZ Tray 数字证书（用于静默打印，可通过管理界面上传）' },
+      { key: 'qz_private_key', value: '', description: 'QZ Tray 私钥（用于静默打印，可通过管理界面上传）' }
     ];
 
     let addedCount = 0;

@@ -3293,6 +3293,54 @@ async function loadSettingsPage() {
               </div>
               
               <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🖨️ QZ Tray Certificate Settings</h3>
+                <p class="text-sm text-gray-600 mb-4">Upload QZ Tray certificates for silent printing. Certificates are stored in the database and compatible with cloud platforms like Fly.io.</p>
+                
+                <div class="space-y-4">
+                  <div id="qzCertStatus" class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p class="text-sm text-gray-600">Loading certificate status...</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Digital Certificate (digital-certificate.txt)</label>
+                    <textarea id="qzCertificate" 
+                              rows="8"
+                              class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-xs"
+                              placeholder="-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"></textarea>
+                    <p class="text-xs text-gray-500 mt-1">Paste the content of your digital-certificate.txt file here</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Private Key (private-key.pem)</label>
+                    <textarea id="qzPrivateKey" 
+                              rows="8"
+                              class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-xs"
+                              placeholder="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"></textarea>
+                    <p class="text-xs text-gray-500 mt-1">Paste the content of your private-key.pem file here</p>
+                  </div>
+                  
+                  <div class="flex items-center space-x-4">
+                    <button type="button" onclick="saveQZCertificates()" 
+                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
+                      Upload/Update Certificates
+                    </button>
+                    <button type="button" onclick="loadQZCertificates()" 
+                            class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
+                      Reload Status
+                    </button>
+                  </div>
+                  
+                  <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p class="text-xs text-blue-800">
+                      <strong>Note:</strong> Certificates are stored in the database, making them compatible with cloud platforms like Fly.io where the filesystem may be read-only. 
+                      After uploading, the new certificates will be used for all future print jobs. 
+                      If certificates are not uploaded, the system will fall back to reading from the filesystem (for backward compatibility).
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">Logging Settings</h3>
                 
                 <div class="mb-4">
@@ -3681,6 +3729,7 @@ async function loadSettingsPage() {
         loadPushLogs();
         loadReceivedBackups();
         loadBlockedIps();
+        loadQZCertificates();
       }, 100);
     } else {
       container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
@@ -7004,6 +7053,105 @@ async function loadPushLogs() {
   } catch (error) {
     console.error('Load push logs failed:', error);
     container.innerHTML = '<p class="text-red-500 text-sm">Failed to load logs</p>';
+  }
+}
+
+// 加载 QZ Tray 证书状态
+async function loadQZCertificates() {
+  const statusContainer = document.getElementById('qzCertStatus');
+  if (!statusContainer) return;
+  
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/qz-certificates`);
+    
+    if (data.success) {
+      const hasCert = data.hasCertificate;
+      const hasKey = data.hasPrivateKey;
+      const updatedAt = data.updatedAt;
+      const source = data.source || 'unknown';
+      
+      let statusHtml = '';
+      if (hasCert && hasKey) {
+        statusHtml = `
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-green-700">✅ Certificates loaded</p>
+              <p class="text-xs text-gray-600 mt-1">
+                Source: ${source === 'database' ? 'Database (recommended for cloud platforms)' : 'Filesystem'}
+                ${updatedAt ? ` • Updated: ${new Date(updatedAt).toLocaleString()}` : ''}
+              </p>
+            </div>
+            <span class="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">Ready</span>
+          </div>
+        `;
+      } else {
+        statusHtml = `
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-yellow-700">⚠️ Certificates not uploaded</p>
+              <p class="text-xs text-gray-600 mt-1">
+                ${hasCert ? 'Certificate found, but private key is missing' : 
+                  hasKey ? 'Private key found, but certificate is missing' : 
+                  'No certificates found. System will fall back to filesystem if files exist.'}
+              </p>
+            </div>
+            <span class="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded">Not Ready</span>
+          </div>
+        `;
+      }
+      
+      statusContainer.innerHTML = statusHtml;
+    } else {
+      statusContainer.innerHTML = '<p class="text-sm text-red-600">Failed to load certificate status</p>';
+    }
+  } catch (error) {
+    console.error('Load QZ certificates status failed:', error);
+    statusContainer.innerHTML = '<p class="text-sm text-red-600">Failed to load certificate status</p>';
+  }
+}
+
+// 保存 QZ Tray 证书
+async function saveQZCertificates() {
+  const certificate = document.getElementById('qzCertificate')?.value?.trim();
+  const privateKey = document.getElementById('qzPrivateKey')?.value?.trim();
+  
+  if (!certificate) {
+    showToast('Please enter the digital certificate', 'warning');
+    return;
+  }
+  
+  if (!privateKey) {
+    showToast('Please enter the private key', 'warning');
+    return;
+  }
+  
+  try {
+    showToast('Uploading certificates...', 'info');
+    
+    const data = await adminApiRequest(`${API_BASE}/admin/qz-certificates`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        certificate,
+        privateKey
+      })
+    });
+    
+    if (data.success) {
+      showToast('Certificates uploaded successfully! New certificates will be used for future print jobs.', 'success');
+      // 重新加载状态
+      await loadQZCertificates();
+      // 清空输入框（可选，让用户知道已保存）
+      // document.getElementById('qzCertificate').value = '';
+      // document.getElementById('qzPrivateKey').value = '';
+    } else {
+      showToast(data.message || 'Failed to upload certificates', 'error');
+    }
+  } catch (error) {
+    console.error('Save QZ certificates failed:', error);
+    showToast('Failed to upload certificates: ' + (error.message || 'Unknown error'), 'error');
   }
 }
 

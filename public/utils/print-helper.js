@@ -14,19 +14,38 @@ async function loadQZCerts() {
       return { certificate: qzCertificate, privateKey: qzPrivateKey };
     }
     
-    // 从服务器加载证书
-    const certResponse = await fetch('/digital-certificate.txt');
-    if (!certResponse.ok) {
-      throw new Error('无法加载证书文件');
+    // 优先从 API 获取证书（支持数据库存储，兼容 fly.io）
+    try {
+      const apiResponse = await fetch('/api/public/qz-certificates');
+      if (apiResponse.ok) {
+        const data = await apiResponse.json();
+        if (data.success && data.certificate && data.privateKey) {
+          qzCertificate = data.certificate;
+          qzPrivateKey = data.privateKey;
+          console.log('✅ 从API加载QZ证书成功（来源：' + data.source + '）');
+        }
+      }
+    } catch (apiError) {
+      console.warn('从API加载证书失败，尝试从文件系统加载:', apiError);
     }
-    qzCertificate = await certResponse.text();
     
-    // 从服务器加载私钥
-    const keyResponse = await fetch('/private-key.pem');
-    if (!keyResponse.ok) {
-      throw new Error('无法加载私钥文件');
+    // 如果 API 加载失败，回退到文件系统（向后兼容）
+    if (!qzCertificate || !qzPrivateKey) {
+      // 从服务器加载证书
+      const certResponse = await fetch('/digital-certificate.txt');
+      if (!certResponse.ok) {
+        throw new Error('无法加载证书文件');
+      }
+      qzCertificate = await certResponse.text();
+      
+      // 从服务器加载私钥
+      const keyResponse = await fetch('/private-key.pem');
+      if (!keyResponse.ok) {
+        throw new Error('无法加载私钥文件');
+      }
+      qzPrivateKey = await keyResponse.text();
+      console.log('✅ 从文件系统加载QZ证书成功');
     }
-    qzPrivateKey = await keyResponse.text();
     
     // 使用 Web Crypto API 导入私钥用于签名
     try {

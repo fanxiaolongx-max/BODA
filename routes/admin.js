@@ -1085,6 +1085,128 @@ router.post('/settings', async (req, res) => {
   }
 });
 
+// ==================== QZ Tray 证书管理 ====================
+
+/**
+ * POST /api/admin/qz-certificates
+ * Upload/Update QZ Tray certificates
+ * @body {string} certificate - Digital certificate content
+ * @body {string} privateKey - Private key content
+ * @returns {Object} Success message
+ */
+router.post('/qz-certificates', async (req, res) => {
+  try {
+    const { certificate, privateKey } = req.body;
+    
+    // 验证必填字段
+    if (!certificate || !certificate.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '证书内容不能为空' 
+      });
+    }
+    
+    if (!privateKey || !privateKey.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '私钥内容不能为空' 
+      });
+    }
+    
+    // 验证证书格式
+    if (!certificate.includes('-----BEGIN CERTIFICATE-----') || 
+        !certificate.includes('-----END CERTIFICATE-----')) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '证书格式不正确，应包含 BEGIN CERTIFICATE 和 END CERTIFICATE' 
+      });
+    }
+    
+    // 验证私钥格式（支持两种格式）
+    const hasPKCS8 = privateKey.includes('-----BEGIN PRIVATE KEY-----') && 
+                     privateKey.includes('-----END PRIVATE KEY-----');
+    const hasPKCS1 = privateKey.includes('-----BEGIN RSA PRIVATE KEY-----') && 
+                     privateKey.includes('-----END RSA PRIVATE KEY-----');
+    
+    if (!hasPKCS8 && !hasPKCS1) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '私钥格式不正确，应包含 BEGIN PRIVATE KEY 或 BEGIN RSA PRIVATE KEY' 
+      });
+    }
+    
+    await beginTransaction();
+    
+    try {
+      // 保存证书到数据库
+      await runAsync(
+        `INSERT INTO settings (key, value, description, updated_at) 
+         VALUES (?, ?, ?, datetime('now', 'localtime'))
+         ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now', 'localtime')`,
+        ['qz_certificate', certificate.trim(), 'QZ Tray 数字证书', certificate.trim()]
+      );
+      
+      // 保存私钥到数据库
+      await runAsync(
+        `INSERT INTO settings (key, value, description, updated_at) 
+         VALUES (?, ?, ?, datetime('now', 'localtime'))
+         ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now', 'localtime')`,
+        ['qz_private_key', privateKey.trim(), 'QZ Tray 私钥', privateKey.trim()]
+      );
+      
+      await commit();
+      
+      // 清除相关缓存
+      cache.delete('public:settings');
+      
+      await logAction(req.session.adminId, 'UPDATE', 'qz_certificates', null, JSON.stringify({
+        action: '更新QZ Tray证书',
+        certificate_length: certificate.length,
+        private_key_length: privateKey.length
+      }), req);
+      
+      logger.info('QZ Tray证书已更新', { adminId: req.session.adminId });
+      
+      res.json({ 
+        success: true, 
+        message: '证书更新成功，新证书将在下次打印时生效' 
+      });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('更新QZ证书失败', { error: error.message });
+    res.status(500).json({ success: false, message: '更新证书失败: ' + error.message });
+  }
+});
+
+/**
+ * GET /api/admin/qz-certificates
+ * Get QZ Tray certificates status
+ * @returns {Object} Certificate status information
+ */
+router.get('/qz-certificates', async (req, res) => {
+  try {
+    const certSetting = await getAsync("SELECT value, updated_at FROM settings WHERE key = 'qz_certificate'");
+    const keySetting = await getAsync("SELECT value, updated_at FROM settings WHERE key = 'qz_private_key'");
+    
+    const hasCertificate = certSetting && certSetting.value;
+    const hasPrivateKey = keySetting && keySetting.value;
+    
+    res.json({
+      success: true,
+      hasCertificate,
+      hasPrivateKey,
+      updatedAt: certSetting?.updated_at || keySetting?.updated_at || null,
+      source: hasCertificate && hasPrivateKey ? 'database' : 'filesystem'
+    });
+  } catch (error) {
+    logger.error('获取QZ证书状态失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取证书状态失败' });
+  }
+});
+
 // ==================== 点单控制API ====================
 
 // 开放点单（供定时任务调用）

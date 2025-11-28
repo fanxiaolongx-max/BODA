@@ -332,6 +332,44 @@ app.use('/api/admin', adminApiLimiter, adminRoutes); // 使用更宽松的管理
 app.use('/api/user', apiLimiter, userRoutes);
 app.use('/api/public', publicRoutes);
 
+// QZ Tray 证书路由（在静态文件服务之前，优先从数据库读取）
+// 这样可以确保即使文件不存在，也能从数据库获取证书
+app.get('/digital-certificate.txt', async (req, res, next) => {
+  try {
+    const { getAsync } = require('./db/database');
+    const certSetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_certificate'");
+    
+    if (certSetting && certSetting.value) {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.send(certSetting.value);
+    }
+    
+    // 如果数据库中没有，继续到下一个中间件（静态文件服务）
+    next();
+  } catch (error) {
+    // 出错时继续到下一个中间件
+    next();
+  }
+});
+
+app.get('/private-key.pem', async (req, res, next) => {
+  try {
+    const { getAsync } = require('./db/database');
+    const keySetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_private_key'");
+    
+    if (keySetting && keySetting.value) {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.send(keySetting.value);
+    }
+    
+    // 如果数据库中没有，继续到下一个中间件（静态文件服务）
+    next();
+  } catch (error) {
+    // 出错时继续到下一个中间件
+    next();
+  }
+});
+
 // 健康检查
 const { performHealthCheck } = require('./utils/health-check');
 // 显式处理 favicon.ico 请求
