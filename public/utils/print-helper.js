@@ -31,19 +31,19 @@ async function loadQZCerts() {
     
     // 如果 API 加载失败，回退到文件系统（向后兼容）
     if (!qzCertificate || !qzPrivateKey) {
-      // 从服务器加载证书
-      const certResponse = await fetch('/digital-certificate.txt');
-      if (!certResponse.ok) {
-        throw new Error('无法加载证书文件');
-      }
-      qzCertificate = await certResponse.text();
-      
-      // 从服务器加载私钥
-      const keyResponse = await fetch('/private-key.pem');
-      if (!keyResponse.ok) {
-        throw new Error('无法加载私钥文件');
-      }
-      qzPrivateKey = await keyResponse.text();
+    // 从服务器加载证书
+    const certResponse = await fetch('/digital-certificate.txt');
+    if (!certResponse.ok) {
+      throw new Error('无法加载证书文件');
+    }
+    qzCertificate = await certResponse.text();
+    
+    // 从服务器加载私钥
+    const keyResponse = await fetch('/private-key.pem');
+    if (!keyResponse.ok) {
+      throw new Error('无法加载私钥文件');
+    }
+    qzPrivateKey = await keyResponse.text();
       console.log('✅ 从文件系统加载QZ证书成功');
     }
     

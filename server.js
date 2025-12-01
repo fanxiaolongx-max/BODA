@@ -330,6 +330,30 @@ const publicRoutes = require('./routes/public');
 app.use('/api/auth', loginLimiter, authRoutes);
 app.use('/api/admin', adminApiLimiter, adminRoutes); // 使用更宽松的管理员API限流器
 app.use('/api/user', apiLimiter, userRoutes);
+
+// 堂食扫码登录路由（在public路由之前，提供简洁的URL）
+app.get('/dine-in', (req, res) => {
+  // 重定向到API端点
+  const { table } = req.query;
+  if (table) {
+    res.redirect(`/api/public/dine-in/login?table=${encodeURIComponent(table)}`);
+  } else {
+    res.status(400).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>错误</title>
+        <meta charset="utf-8">
+      </head>
+      <body>
+        <h1>二维码无效</h1>
+        <p>桌号参数缺失，请重新扫描二维码。</p>
+      </body>
+      </html>
+    `);
+  }
+});
+
 app.use('/api/public', publicRoutes);
 
 // QZ Tray 证书路由（在静态文件服务之前，优先从数据库读取）

@@ -655,6 +655,12 @@ function switchTab(tabName) {
     case 'discounts':
       loadDiscounts();
       break;
+    case 'dine-in-qr':
+      loadDineInQRCodeHistory();
+      break;
+    case 'delivery-addresses':
+      loadDeliveryAddresses();
+      break;
     case 'settings':
       loadSettingsPage();
       break;
@@ -1399,6 +1405,24 @@ function renderOrders(orders, pagination) {
         </td>
         <td class="px-6 py-4 text-sm ${expiredClass} max-w-md">
           ${itemsHtml}
+          ${order.order_type === 'dine_in' ? `
+            <div class="mt-2 p-2 bg-blue-50 rounded text-xs border border-blue-200">
+              <div class="text-blue-700 font-semibold mb-1">🍽️ Dine-In:</div>
+              ${order.table_number ? `<div class="text-blue-900 font-medium">Table: ${order.table_number}</div>` : ''}
+            </div>
+          ` : ''}
+          ${order.delivery_address ? `
+            <div class="mt-2 p-2 bg-green-50 rounded text-xs border border-green-200">
+              <div class="text-green-700 font-semibold mb-1">📍 Delivery Address:</div>
+              <div class="text-green-900 font-medium">${order.delivery_address.name}</div>
+              ${order.delivery_address.description ? `<div class="text-green-700 mt-1">${order.delivery_address.description}</div>` : ''}
+            </div>
+          ` : ''}
+          ${!order.delivery_address && order.order_type !== 'dine_in' ? `
+            <div class="mt-2 p-2 bg-green-50 rounded text-xs border border-green-200">
+              <div class="text-green-700 font-semibold mb-1">🚚 Delivery</div>
+            </div>
+          ` : ''}
           ${order.notes ? `
             <div class="mt-2 p-2 bg-blue-50 rounded text-xs border border-blue-200">
               <div class="text-blue-700 font-semibold mb-1">Order Notes:</div>
@@ -1642,6 +1666,24 @@ async function printOrderReceipt(order) {
       <div class="receipt-customer-info">
         <div>Customer: ${order.customer_name || 'Anonymous'}</div>
         <div>Phone: ${order.customer_phone || 'N/A'}</div>
+        ${order.order_type === 'dine_in' && order.table_number ? `
+          <div style="margin-top: 4px;">
+            <div><strong>🍽️ Dine-In:</strong></div>
+            <div>Table: ${order.table_number}</div>
+          </div>
+        ` : ''}
+        ${order.delivery_address ? `
+          <div style="margin-top: 4px;">
+            <div><strong>📍 Delivery Address:</strong></div>
+            <div>${order.delivery_address.name}</div>
+            ${order.delivery_address.description ? `<div style="font-size: 11px; color: #666;">${order.delivery_address.description}</div>` : ''}
+          </div>
+        ` : ''}
+        ${!order.delivery_address && order.order_type !== 'dine_in' ? `
+          <div style="margin-top: 4px;">
+            <div><strong>🚚 Delivery</strong></div>
+          </div>
+        ` : ''}
       </div>
       
       <div class="receipt-divider"></div>
@@ -2965,6 +3007,598 @@ async function deleteDiscountRule(id) {
   } catch (error) {
     console.error('Failed to delete discount rule:', error);
     showToast('Delete failed', 'error');
+  }
+}
+
+// 加载配送地址管理
+async function loadDeliveryAddresses() {
+  const container = document.getElementById('delivery-addressesTab');
+  
+  try {
+    // 暂时使用占位API路径，等后端实现后再调整
+    const data = await adminApiRequest(`${API_BASE}/admin/delivery-addresses`);
+    
+    if (data.success) {
+      const addresses = data.addresses || [];
+      
+      container.innerHTML = `
+        <div class="fade-in">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-900">Delivery Addresses</h2>
+            <button onclick="showDeliveryAddressModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+              + Add Delivery Address
+            </button>
+          </div>
+          
+          <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="p-6">
+              <p class="text-sm text-gray-600 mb-4">Configure delivery addresses that users can select when placing orders. Only active addresses will be shown to users.</p>
+              
+              <div id="deliveryAddressesList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                ${addresses.length === 0 ? 
+                  '<div class="col-span-full text-center py-8 text-gray-500">No delivery addresses. Click "Add Delivery Address" to create one.</div>' :
+                  addresses.map(address => `
+                    <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <div class="flex justify-between items-start mb-3">
+                        <div class="flex-1">
+                          <h3 class="text-lg font-semibold text-gray-900">${escapeHtml(address.name || 'Unnamed')}</h3>
+                          ${address.description ? `<p class="text-sm text-gray-600 mt-1">${escapeHtml(address.description)}</p>` : ''}
+                        </div>
+                        <span class="px-2 py-1 text-xs rounded-full ${address.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                          ${address.status === 'active' ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <div class="text-xs text-gray-500 mb-3">
+                        Sort Order: ${address.sort_order || 0}
+                      </div>
+                      <div class="flex space-x-2">
+                        <button onclick='showDeliveryAddressModal(${JSON.stringify(address).replace(/'/g, "&apos;")})' 
+                                class="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+                          Edit
+                        </button>
+                        <button onclick='deleteDeliveryAddress(${address.id})' 
+                                class="flex-1 px-3 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700">
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  `).join('')
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 配送地址编辑模态框 -->
+        <div id="deliveryAddressModal" class="modal">
+          <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
+            <h3 id="deliveryAddressModalTitle" class="text-2xl font-bold text-gray-900 mb-6">Add Delivery Address</h3>
+            <form id="deliveryAddressForm" class="space-y-4">
+              <input type="hidden" id="deliveryAddressId">
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Address Name *</label>
+                <input type="text" id="deliveryAddressName" required 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg" 
+                       placeholder="e.g., Downtown, Campus, etc.">
+                <p class="text-xs text-gray-500 mt-1">A short name to identify this delivery location</p>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea id="deliveryAddressDescription" rows="3" 
+                          class="w-full px-4 py-2 border border-gray-300 rounded-lg" 
+                          placeholder="e.g., Detailed address, landmarks, etc."></textarea>
+                <p class="text-xs text-gray-500 mt-1">Optional: More details about this delivery location</p>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Sort Order</label>
+                <input type="number" id="deliveryAddressSortOrder" value="0" step="1" min="0"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                <p class="text-xs text-gray-500 mt-1">Lower numbers appear first in the list</p>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <select id="deliveryAddressStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+                <p class="text-xs text-gray-500 mt-1">Only active addresses will be shown to users</p>
+              </div>
+              
+              <div class="flex space-x-3 mt-6">
+                <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
+                  Save
+                </button>
+                <button type="button" onclick="closeDeliveryAddressModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      
+      // 设置表单提交事件
+      document.getElementById('deliveryAddressForm')?.addEventListener('submit', saveDeliveryAddress);
+    } else {
+      container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
+    }
+  } catch (error) {
+    console.error('加载配送地址失败:', error);
+    container.innerHTML = `
+      <div class="text-center py-12">
+        <div class="text-red-500 mb-2">加载失败</div>
+        <div class="text-sm text-gray-500">请检查后端API是否已实现</div>
+      </div>
+    `;
+  }
+}
+
+// 显示配送地址模态框
+function showDeliveryAddressModal(address = null) {
+  const modal = document.getElementById('deliveryAddressModal');
+  const title = document.getElementById('deliveryAddressModalTitle');
+  
+  if (!modal) {
+    console.error('Delivery address modal not found');
+    return;
+  }
+  
+  if (address) {
+    title.textContent = 'Edit Delivery Address';
+    document.getElementById('deliveryAddressId').value = address.id;
+    document.getElementById('deliveryAddressName').value = address.name || '';
+    document.getElementById('deliveryAddressDescription').value = address.description || '';
+    document.getElementById('deliveryAddressSortOrder').value = address.sort_order || 0;
+    document.getElementById('deliveryAddressStatus').value = address.status || 'active';
+  } else {
+    title.textContent = 'Add Delivery Address';
+    document.getElementById('deliveryAddressForm').reset();
+    document.getElementById('deliveryAddressId').value = '';
+    document.getElementById('deliveryAddressStatus').value = 'active';
+    document.getElementById('deliveryAddressSortOrder').value = 0;
+  }
+  
+  modal.classList.add('active');
+  modal.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// 关闭配送地址模态框
+function closeDeliveryAddressModal() {
+  const modal = document.getElementById('deliveryAddressModal');
+  if (modal) {
+    modal.classList.remove('active');
+  }
+}
+
+// 保存配送地址
+async function saveDeliveryAddress(e) {
+  e.preventDefault();
+  
+  const id = document.getElementById('deliveryAddressId').value;
+  const addressData = {
+    name: document.getElementById('deliveryAddressName').value.trim(),
+    description: document.getElementById('deliveryAddressDescription').value.trim(),
+    sort_order: parseInt(document.getElementById('deliveryAddressSortOrder').value) || 0,
+    status: document.getElementById('deliveryAddressStatus').value
+  };
+  
+  if (!addressData.name) {
+    showToast('Address name is required', 'warning');
+    return;
+  }
+  
+  try {
+    const url = id ? `${API_BASE}/admin/delivery-addresses/${id}` : `${API_BASE}/admin/delivery-addresses`;
+    const method = id ? 'PUT' : 'POST';
+    
+    const result = await adminApiRequest(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(addressData)
+    });
+    
+    if (result.success) {
+      showToast(id ? 'Delivery address updated successfully' : 'Delivery address added successfully', 'success');
+      closeDeliveryAddressModal();
+      loadDeliveryAddresses();
+    } else {
+      showToast(result.message || 'Operation failed', 'error');
+    }
+  } catch (error) {
+    console.error('Failed to save delivery address:', error);
+    showToast(error.data?.message || 'Operation failed', 'error');
+  }
+}
+
+// 删除配送地址
+async function deleteDeliveryAddress(id) {
+  const confirmed = await showConfirmDialog(
+    'Delete Delivery Address',
+    'Are you sure you want to delete this delivery address? This action cannot be undone. If any orders use this address, deletion will fail.',
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/delivery-addresses/${id}`, {
+      method: 'DELETE'
+    });
+    
+    if (data.success) {
+      showToast('Delivery address deleted successfully', 'success');
+      loadDeliveryAddresses();
+    } else {
+      showToast(data.message || 'Delete failed', 'error');
+    }
+  } catch (error) {
+    console.error('Failed to delete delivery address:', error);
+    showToast(error.data?.message || 'Delete failed', 'error');
+  }
+}
+
+// 转义HTML（防止XSS）
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ==================== 现场扫码点单 ====================
+
+// 存储当前二维码信息
+let currentQRCodeData = null;
+
+// 生成桌号二维码
+async function generateDineInQRCode() {
+  const tableNumberInput = document.getElementById('tableNumberInput');
+  const qrCodeDisplayArea = document.getElementById('qrCodeDisplayArea');
+  const qrCodeContainer = document.getElementById('qrCodeContainer');
+  const displayTableNumber = document.getElementById('displayTableNumber');
+  
+  if (!tableNumberInput || !qrCodeDisplayArea || !qrCodeContainer) {
+    showToast('Page elements not found', 'error');
+    return;
+  }
+  
+  const tableNumber = tableNumberInput.value.trim();
+  
+  if (!tableNumber) {
+    showToast('Please enter table number', 'error');
+    return;
+  }
+  
+  try {
+    // 调用后端API生成二维码URL
+    const data = await adminApiRequest(`${API_BASE}/admin/dine-in/qr-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table_number: tableNumber })
+    });
+    
+    if (!data.success) {
+      showToast(data.message || 'Failed to generate QR code', 'error');
+      return;
+    }
+    
+    // 保存二维码数据
+    currentQRCodeData = {
+      tableNumber: tableNumber,
+      qrCodeUrl: data.qr_code_url
+    };
+    
+    // 清空容器
+    qrCodeContainer.innerHTML = '';
+    
+    // 等待二维码库加载（最多等待5秒）
+    let attempts = 0;
+    const maxAttempts = 50; // 50次 * 100ms = 5秒
+    
+    const tryGenerateQR = () => {
+      attempts++;
+      
+      // 检查库是否已加载
+      if (typeof QRCode !== 'undefined' && typeof QRCode === 'function') {
+        try {
+          // qrcodejs库：new QRCode(element, options)
+          // 它会直接在element中生成canvas
+          new QRCode(qrCodeContainer, {
+            text: data.qr_code_url,
+            width: 256,
+            height: 256,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
+          });
+          
+          // 显示桌号
+          displayTableNumber.textContent = tableNumber;
+          
+          // 显示二维码区域
+          qrCodeDisplayArea.classList.remove('hidden');
+          
+          showToast('QR code generated successfully', 'success');
+          
+          // 刷新历史列表
+          loadDineInQRCodeHistory();
+          
+          return true; // 成功生成
+        } catch (qrError) {
+          console.error('Failed to generate QR code:', qrError);
+          showToast('Failed to generate QR code: ' + (qrError.message || 'Unknown error'), 'error');
+          qrCodeContainer.innerHTML = '<p class="text-red-500 text-sm">Failed to generate QR code: ' + (qrError.message || 'Unknown error') + '</p>';
+          return false;
+        }
+      } else if (attempts < maxAttempts) {
+        // 库还未加载，继续等待
+        if (attempts === 1) {
+          qrCodeContainer.innerHTML = '<p class="text-blue-500 text-sm">Loading QR code library, please wait...</p>';
+        } else if (attempts % 10 === 0) {
+          // 每1秒更新一次提示
+          qrCodeContainer.innerHTML = `<p class="text-blue-500 text-sm">Loading QR code library, please wait... (${attempts * 0.1}s)</p>`;
+        }
+        setTimeout(tryGenerateQR, 100);
+        return false;
+      } else {
+        // 超时，显示错误
+        showToast('QR code library loading timeout, please check network connection or refresh page', 'error');
+        qrCodeContainer.innerHTML = `
+          <div class="text-red-500 text-sm space-y-2 p-4">
+            <p class="font-semibold">QR code library loading failed</p>
+            <p class="text-xs">Possible reasons:</p>
+            <ul class="list-disc list-inside text-xs space-y-1 ml-2">
+              <li>Network connection issue</li>
+              <li>CDN service unavailable</li>
+              <li>Browser blocked external script loading</li>
+            </ul>
+            <p class="text-xs mt-2 font-semibold">Suggestions:</p>
+            <ul class="list-disc list-inside text-xs space-y-1 ml-2">
+              <li>Refresh page and try again</li>
+              <li>Check network connection</li>
+              <li>Check browser console for errors</li>
+            </ul>
+          </div>
+        `;
+        console.error('QRCode library not loaded after', maxAttempts * 100, 'ms');
+        console.error('Current QRCode type:', typeof QRCode);
+        return false;
+      }
+    };
+    
+    // 开始尝试生成
+    tryGenerateQR();
+  } catch (error) {
+    console.error('Failed to generate QR code:', error);
+    showToast(error.data?.message || 'Failed to generate QR code', 'error');
+  }
+}
+
+// Load QR code history
+async function loadDineInQRCodeHistory() {
+  const historyList = document.getElementById('qrCodeHistoryList');
+  if (!historyList) return;
+  
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/dine-in/qr-codes`);
+    
+    if (data.success && data.qr_codes && data.qr_codes.length > 0) {
+      historyList.innerHTML = data.qr_codes.map(qr => {
+        const createdDate = new Date(qr.created_at).toLocaleString('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        return `
+          <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+            <div class="flex-1">
+              <div class="flex items-center space-x-3">
+                <span class="font-semibold text-gray-900">Table: ${escapeHtml(qr.table_number)}</span>
+                <span class="text-xs text-gray-500">Created: ${createdDate}</span>
+              </div>
+              <div class="mt-1">
+                <a href="${escapeHtml(qr.qr_code_url)}" target="_blank" class="text-xs text-blue-600 hover:underline">
+                  ${escapeHtml(qr.qr_code_url)}
+                </a>
+              </div>
+            </div>
+            <button 
+              onclick="deleteDineInQRCode('${escapeHtml(qr.table_number)}')"
+              class="ml-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm transition-colors">
+              Delete
+            </button>
+          </div>
+        `;
+      }).join('');
+    } else {
+      historyList.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">No QR codes generated yet</p>';
+    }
+  } catch (error) {
+    console.error('Failed to load QR code history:', error);
+    historyList.innerHTML = '<p class="text-red-500 text-sm text-center py-4">Failed to load QR code history</p>';
+  }
+}
+
+// Delete QR code
+async function deleteDineInQRCode(tableNumber) {
+  if (!confirm(`Are you sure you want to delete QR code for table ${tableNumber}? This will also delete the corresponding table user account.`)) {
+    return;
+  }
+  
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/dine-in/qr-code/${encodeURIComponent(tableNumber)}`, {
+      method: 'DELETE'
+    });
+    
+    if (data.success) {
+      showToast('QR code and table user deleted successfully', 'success');
+      loadDineInQRCodeHistory();
+    } else {
+      showToast(data.message || 'Failed to delete QR code', 'error');
+    }
+  } catch (error) {
+    console.error('Failed to delete QR code:', error);
+    showToast(error.data?.message || 'Failed to delete QR code', 'error');
+  }
+}
+
+// Print QR code
+function printQRCode() {
+  if (!currentQRCodeData) {
+    showToast('Please generate QR code first', 'error');
+    return;
+  }
+  
+  const qrCodeContainer = document.getElementById('qrCodeContainer');
+  if (!qrCodeContainer) {
+    showToast('QR code container not found', 'error');
+    return;
+  }
+  
+  // Create print window
+  const printWindow = window.open('', '_blank');
+  const tableNumber = currentQRCodeData.tableNumber;
+  
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Table ${escapeHtml(tableNumber)} - Dine-In Ordering</title>
+      <style>
+        @media print {
+          @page {
+            size: A4;
+            margin: 20mm;
+          }
+        }
+        body {
+          font-family: Arial, sans-serif;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          margin: 0;
+          padding: 40px;
+        }
+        .qr-title {
+          font-size: 24px;
+          font-weight: bold;
+          margin-bottom: 20px;
+          text-align: center;
+        }
+        .qr-subtitle {
+          font-size: 16px;
+          color: #666;
+          margin-bottom: 30px;
+          text-align: center;
+        }
+        .qr-code-container {
+          border: 2px solid #000;
+          padding: 20px;
+          background: white;
+        }
+        .qr-instructions {
+          margin-top: 30px;
+          text-align: center;
+          font-size: 14px;
+          color: #333;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="qr-title">Table ${escapeHtml(tableNumber)}</div>
+      <div class="qr-subtitle">Scan to Order</div>
+      <div class="qr-code-container">
+        ${qrCodeContainer.innerHTML}
+      </div>
+      <div class="qr-instructions">
+        Scan the QR code with your phone to place an order
+      </div>
+    </body>
+    </html>
+  `);
+  
+  printWindow.document.close();
+  printWindow.focus();
+  
+  // Wait for images to load before printing
+  setTimeout(() => {
+    printWindow.print();
+  }, 500);
+}
+
+// Download QR code
+function downloadQRCode() {
+  if (!currentQRCodeData) {
+    showToast('Please generate QR code first', 'error');
+    return;
+  }
+  
+  const qrCodeContainer = document.getElementById('qrCodeContainer');
+  if (!qrCodeContainer) {
+    showToast('QR code container not found', 'error');
+    return;
+  }
+  
+  // Try to get QR code image from canvas or img
+  const canvas = qrCodeContainer.querySelector('canvas');
+  const img = qrCodeContainer.querySelector('img');
+  
+  if (canvas) {
+    // Download from canvas
+    try {
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Table${currentQRCodeData.tableNumber}-QRCode.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showToast('QR code downloaded successfully', 'success');
+      }, 'image/png');
+    } catch (error) {
+      console.error('Failed to download QR code:', error);
+      showToast('Failed to download QR code', 'error');
+    }
+  } else if (img && img.src) {
+    // Download from img
+    try {
+      fetch(img.src)
+        .then(res => res.blob())
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `Table${currentQRCodeData.tableNumber}-QRCode.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          showToast('QR code downloaded successfully', 'success');
+        })
+        .catch(error => {
+          console.error('Failed to download QR code:', error);
+          showToast('Failed to download QR code', 'error');
+        });
+    } catch (error) {
+      console.error('Failed to download QR code:', error);
+      showToast('Failed to download QR code', 'error');
+    }
+  } else {
+    showToast('QR code not generated, please generate QR code first', 'error');
   }
 }
 

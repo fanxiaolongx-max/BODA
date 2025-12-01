@@ -227,7 +227,54 @@ router.get('/balance', async (req, res) => {
  */
 router.post('/orders', async (req, res) => {
   try {
-    const { items, customer_name, notes, use_balance } = req.body;
+    const { items, customer_name, notes, use_balance, delivery_address_id, order_type, table_number } = req.body;
+    
+    // 确定订单类型：dine_in (堂食) 或 delivery (外卖)
+    // 优先使用前端发送的 order_type，如果前端未指定，则根据数据判断
+    let finalOrderType = 'delivery'; // 默认为外卖
+    
+    // 优先使用前端明确指定的 order_type
+    if (order_type === 'dine_in' || order_type === 'delivery') {
+      finalOrderType = order_type;
+    } else {
+      // 前端未指定 order_type，根据数据判断：
+      // 1. 如果有配送地址，判断为外卖
+      // 2. 如果只有桌号且没有配送地址，判断为堂食
+      // 3. 如果都没有，检查 session 标记（兼容旧逻辑）
+      if (delivery_address_id) {
+        // 有配送地址，判断为外卖
+        finalOrderType = 'delivery';
+      } else if (table_number && table_number.trim()) {
+        // 只有桌号，判断为堂食
+        finalOrderType = 'dine_in';
+      } else if (req.session.isDineIn) {
+        // 都没有，检查 session 标记（兼容旧逻辑）
+        finalOrderType = 'dine_in';
+      }
+    }
+    
+    // 验证订单类型要求
+    if (finalOrderType === 'delivery') {
+      // 外卖订单必须选择配送地址
+      if (!delivery_address_id) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Delivery order must select a delivery address' 
+        });
+      }
+      // 外卖订单不应该有桌号（如果前端错误地同时发送了桌号和配送地址，清除桌号）
+      // 但这里只验证，不修改数据
+    } else if (finalOrderType === 'dine_in') {
+      // 堂食订单必须提供桌号
+      if (!table_number || !table_number.trim()) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Dine-in order must provide table number' 
+        });
+      }
+      // 堂食订单不应该有配送地址（如果前端错误地同时发送了配送地址和桌号，清除配送地址）
+      // 但这里只验证，不修改数据
+    }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: '订单不能为空' });
@@ -397,44 +444,65 @@ router.post('/orders', async (req, res) => {
           const ordersTableInfo = await allAsync("PRAGMA table_info(orders)");
           const ordersColumns = ordersTableInfo.map(col => col.name);
           
-          if (ordersColumns.includes('balance_used')) {
-            await runAsync(
-              `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
-               total_amount, discount_amount, final_amount, balance_used, status, notes, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
-              [
-                orderId,
-                orderNumber,
-                req.session.userId,
-                customer_name || req.session.userName || '',
-                req.session.userPhone,
-                roundAmount(totalAmount),
-                0,
-                finalAmount,
-                balanceUsed,
-                orderStatus,
-                notes || null
-              ]
-            );
-          } else {
-          await runAsync(
-            `INSERT INTO orders (id, order_number, user_id, customer_name, customer_phone, 
-             total_amount, discount_amount, final_amount, status, notes, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
-            [
-              orderId,
-              orderNumber,
-              req.session.userId,
-              customer_name || req.session.userName || '',
-              req.session.userPhone,
-                roundAmount(totalAmount),
-              0,
-                finalAmount,
-                orderStatus,
-              notes || null
-            ]
-          );
+          // 检查字段是否存在
+          const hasBalanceUsed = ordersColumns.includes('balance_used');
+          const hasDeliveryAddressId = ordersColumns.includes('delivery_address_id');
+          const hasOrderType = ordersColumns.includes('order_type');
+          const hasTableNumber = ordersColumns.includes('table_number');
+          
+          // 构建动态的INSERT语句（只包含我们明确要设置的字段）
+          const insertColumns = ['id', 'order_number', 'user_id', 'customer_name', 'customer_phone', 
+                                'total_amount', 'discount_amount', 'final_amount', 'status', 'notes'];
+          const insertValues = [
+            orderId,
+            orderNumber,
+            req.session.userId,
+            customer_name || req.session.userName || '',
+            req.session.userPhone,
+            roundAmount(totalAmount),
+            0,
+            finalAmount,
+            orderStatus,
+            notes || null
+          ];
+          
+          // 如果有balance_used字段，添加它
+          if (hasBalanceUsed) {
+            insertColumns.push('balance_used');
+            insertValues.push(balanceUsed);
           }
+          
+          // 如果有order_type字段，添加订单类型
+          if (hasOrderType) {
+            insertColumns.push('order_type');
+            insertValues.push(finalOrderType);
+          }
+          
+          // 如果有table_number字段，添加桌号（仅堂食订单）
+          if (hasTableNumber) {
+            insertColumns.push('table_number');
+            insertValues.push(finalOrderType === 'dine_in' ? (table_number || null) : null);
+          }
+          
+          // 如果有delivery_address_id字段，添加配送地址（仅外卖订单）
+          if (hasDeliveryAddressId) {
+            insertColumns.push('delivery_address_id');
+            insertValues.push(finalOrderType === 'delivery' ? (delivery_address_id || null) : null);
+          }
+          
+          // 添加created_at（使用datetime函数，不传值）
+          insertColumns.push('created_at');
+          
+          // 构建SQL语句，created_at使用SQL函数
+          const placeholders = insertColumns.map(col => 
+            col === 'created_at' ? "datetime('now', 'localtime')" : '?'
+          ).join(', ');
+          
+          const columnList = insertColumns.join(', ');
+          const sql = `INSERT INTO orders (${columnList}) VALUES (${placeholders})`;
+          
+          // 使用insertValues，因为created_at在SQL中使用函数，不需要传值
+          await runAsync(sql, insertValues);
           break; // 成功插入，退出循环
         } catch (error) {
           // 如果是 UNIQUE 约束冲突且还有重试次数，则重试
@@ -625,6 +693,24 @@ router.get('/orders', async (req, res) => {
     const orderCreatedAts = orders.map(o => o.created_at);
     const orderCyclesMap = await findOrderCyclesBatch(orderCreatedAts);
 
+    // 批量获取配送地址信息
+    const deliveryAddressIds = orders
+      .filter(o => o.delivery_address_id)
+      .map(o => o.delivery_address_id);
+    const deliveryAddressesMap = new Map();
+    
+    if (deliveryAddressIds.length > 0) {
+      const uniqueAddressIds = [...new Set(deliveryAddressIds)];
+      const placeholders = uniqueAddressIds.map(() => '?').join(',');
+      const addresses = await allAsync(
+        `SELECT * FROM delivery_addresses WHERE id IN (${placeholders})`,
+        uniqueAddressIds
+      );
+      addresses.forEach(addr => {
+        deliveryAddressesMap.set(addr.id, addr);
+      });
+    }
+
     // 为每个订单添加详情和周期信息
     for (const order of orders) {
       // 从批量查询结果中获取订单项
@@ -644,6 +730,18 @@ router.get('/orders', async (req, res) => {
         order.cycle_start_time = null;
         order.cycle_end_time = null;
         order.isActiveCycle = isActiveCycle(null, activeCycle);
+      }
+      
+      // 添加配送地址信息
+      if (order.delivery_address_id) {
+        const address = deliveryAddressesMap.get(order.delivery_address_id);
+        if (address) {
+          order.delivery_address = {
+            id: address.id,
+            name: address.name,
+            description: address.description
+          };
+        }
       }
       
       // 检查订单是否已过期
@@ -702,6 +800,24 @@ router.get('/orders/by-phone', async (req, res) => {
     const orderCreatedAts = orders.map(o => o.created_at);
     const orderCyclesMap = await findOrderCyclesBatch(orderCreatedAts);
 
+    // 批量获取配送地址信息
+    const deliveryAddressIds = orders
+      .filter(o => o.delivery_address_id)
+      .map(o => o.delivery_address_id);
+    const deliveryAddressesMap = new Map();
+    
+    if (deliveryAddressIds.length > 0) {
+      const uniqueAddressIds = [...new Set(deliveryAddressIds)];
+      const placeholders = uniqueAddressIds.map(() => '?').join(',');
+      const addresses = await allAsync(
+        `SELECT * FROM delivery_addresses WHERE id IN (${placeholders})`,
+        uniqueAddressIds
+      );
+      addresses.forEach(addr => {
+        deliveryAddressesMap.set(addr.id, addr);
+      });
+    }
+
     // 为每个订单添加详情和周期信息
     for (const order of orders) {
       // 从批量查询结果中获取订单项
@@ -721,6 +837,18 @@ router.get('/orders/by-phone', async (req, res) => {
         order.cycle_start_time = null;
         order.cycle_end_time = null;
         order.isActiveCycle = isActiveCycle(null, activeCycle);
+      }
+      
+      // 添加配送地址信息
+      if (order.delivery_address_id) {
+        const address = deliveryAddressesMap.get(order.delivery_address_id);
+        if (address) {
+          order.delivery_address = {
+            id: address.id,
+            name: address.name,
+            description: address.description
+          };
+        }
       }
       
       // 检查订单是否已过期
@@ -757,6 +885,21 @@ router.get('/orders/:id', async (req, res) => {
       'SELECT * FROM order_items WHERE order_id = ?',
       [order.id]
     );
+
+    // 获取配送地址信息
+    if (order.delivery_address_id) {
+      const address = await getAsync(
+        'SELECT * FROM delivery_addresses WHERE id = ?',
+        [order.delivery_address_id]
+      );
+      if (address) {
+        order.delivery_address = {
+          id: address.id,
+          name: address.name,
+          description: address.description
+        };
+      }
+    }
 
     res.json({ success: true, order });
   } catch (error) {

@@ -36,6 +36,15 @@
       justify-content: center;
       pointer-events: auto;
     }
+    /* Toast 通知始终在最顶层，高于所有模态框 */
+    #toastContainer {
+      z-index: 10000 !important;
+    }
+    /* 系统公告横幅始终可见，高于模态框 */
+    #systemNoticeBanner {
+      z-index: 9998;
+      position: relative;
+    }
     .modal.active { 
       display: flex; 
     }
@@ -304,7 +313,7 @@
     <!-- 菜单页面 -->
     <div id="menuTab" class="hidden flex flex-col h-[calc(100vh-64px-60px)]">
       <!-- 系统公告滚动展示（包含折扣信息） -->
-      <div id="systemNoticeBanner" class="hidden bg-yellow-100 border-b border-yellow-300 px-4 py-2 overflow-hidden">
+      <div id="systemNoticeBanner" class="hidden bg-yellow-100 border-b border-yellow-300 px-4 py-2 overflow-hidden" style="z-index: 9998; position: relative;">
         <div class="flex items-center">
           <span class="text-yellow-800 font-semibold mr-3 flex-shrink-0">📢 Notice:</span>
           <div class="flex-1 overflow-hidden">
@@ -496,6 +505,24 @@
       </div>
       
       <div class="p-6 border-t border-gray-200 bg-gray-50">
+        <div id="deliveryAddressSection" class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="delivery_address">Delivery Address (Required)</label>
+          <select id="deliveryAddress" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+            <option value="" data-i18n="select_delivery_address">-- Select Delivery Address --</option>
+          </select>
+          <p class="text-xs text-gray-500 mt-1" data-i18n="delivery_address_hint">Select a delivery location for your order</p>
+        </div>
+        <div id="dineInInfoSection" class="mb-4 hidden">
+          <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div class="flex items-center space-x-2">
+              <span class="text-green-600">🍽️</span>
+              <div>
+                <p class="text-sm font-semibold text-green-900" data-i18n="dine_in_order">Dine-In Order</p>
+                <p class="text-xs text-green-700" id="dineInTableNumber">-</p>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="order_notes_optional">Order Notes (Optional)</label>
           <textarea id="orderNotes" rows="2" data-i18n-placeholder="order_notes_placeholder" placeholder="Any special requests or notes..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"></textarea>
@@ -608,8 +635,8 @@
     </div>
   </div>
 
-  <!-- Toast 容器 -->
-  <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+  <!-- Toast 容器 - 始终在顶部可见，高于所有模态框 -->
+  <div id="toastContainer" class="fixed top-4 right-4 space-y-2" style="z-index: 10000;"></div>
 
   <!-- 反馈/投诉按钮（常驻，可拖动） -->
   <button id="feedbackButton" 

@@ -399,6 +399,30 @@ async function initDatabase() {
       )
     `);
 
+    // 配送地址表
+    await runAsync(`
+      CREATE TABLE IF NOT EXISTS delivery_addresses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        sort_order INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+      )
+    `);
+
+    // 堂食二维码表
+    await runAsync(`
+      CREATE TABLE IF NOT EXISTS dine_in_qr_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        table_number TEXT UNIQUE NOT NULL,
+        qr_code_url TEXT NOT NULL,
+        created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+      )
+    `);
+
     // 创建索引
     await runAsync('CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(customer_phone)');
     await runAsync('CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)');
@@ -408,6 +432,7 @@ async function initDatabase() {
     await runAsync('CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at)');
     await runAsync('CREATE INDEX IF NOT EXISTS idx_verification_phone_code ON verification_codes(phone, code, used)');
     await runAsync('CREATE INDEX IF NOT EXISTS idx_verification_expires ON verification_codes(expires_at)');
+    await runAsync('CREATE INDEX IF NOT EXISTS idx_dine_in_qr_table ON dine_in_qr_codes(table_number)');
 
     console.log('数据库表初始化完成');
     
@@ -536,6 +561,24 @@ async function migrateDatabaseSchema() {
       console.log('自动迁移: 添加 orders.stripe_session_id 字段...');
       await runAsync('ALTER TABLE orders ADD COLUMN stripe_session_id TEXT DEFAULT NULL');
     }
+    
+    // 配送地址字段迁移
+    if (!ordersColumns.includes('delivery_address_id')) {
+      console.log('自动迁移: 添加 orders.delivery_address_id 字段...');
+      await runAsync('ALTER TABLE orders ADD COLUMN delivery_address_id INTEGER DEFAULT NULL');
+    }
+
+    // 添加订单类型字段（dine_in: 堂食, delivery: 外卖）
+    if (!ordersColumns.includes('order_type')) {
+      console.log('自动迁移: 添加 orders.order_type 字段...');
+      await runAsync('ALTER TABLE orders ADD COLUMN order_type TEXT DEFAULT \'delivery\'');
+    }
+
+    // 添加桌号字段（用于堂食订单）
+    if (!ordersColumns.includes('table_number')) {
+      console.log('自动迁移: 添加 orders.table_number 字段...');
+      await runAsync('ALTER TABLE orders ADD COLUMN table_number TEXT DEFAULT NULL');
+    }
 
     // 检查 users 表的字段
     const usersInfo = await getTableInfo('users');
@@ -574,6 +617,23 @@ async function migrateDatabaseSchema() {
       await runAsync('CREATE INDEX IF NOT EXISTS idx_balance_transactions_user ON balance_transactions(user_id)');
       await runAsync('CREATE INDEX IF NOT EXISTS idx_balance_transactions_order ON balance_transactions(order_id)');
       await runAsync('CREATE INDEX IF NOT EXISTS idx_balance_transactions_created ON balance_transactions(created_at)');
+    }
+
+    // 检查 delivery_addresses 表是否存在
+    const deliveryAddressesTableInfo = await allAsync("SELECT name FROM sqlite_master WHERE type='table' AND name='delivery_addresses'");
+    if (deliveryAddressesTableInfo.length === 0) {
+      console.log('自动迁移: 创建 delivery_addresses 表...');
+      await runAsync(`
+        CREATE TABLE IF NOT EXISTS delivery_addresses (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          description TEXT,
+          sort_order INTEGER DEFAULT 0,
+          status TEXT DEFAULT 'active',
+          created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+          updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+        )
+      `);
     } else {
       // 检查 balance_transactions 表是否有所有必要的列
       const balanceTransactionsInfo = await allAsync("PRAGMA table_info(balance_transactions)");

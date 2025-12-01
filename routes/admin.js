@@ -1207,6 +1207,348 @@ router.get('/qz-certificates', async (req, res) => {
   }
 });
 
+// ==================== 配送地址管理 ====================
+
+/**
+ * GET /api/admin/delivery-addresses
+ * Get all delivery addresses
+ * @returns {Object} Delivery addresses array
+ */
+router.get('/delivery-addresses', async (req, res) => {
+  try {
+    const addresses = await allAsync(
+      'SELECT * FROM delivery_addresses ORDER BY sort_order, id'
+    );
+    res.json({ success: true, addresses });
+  } catch (error) {
+    logger.error('获取配送地址失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取配送地址失败' });
+  }
+});
+
+/**
+ * POST /api/admin/delivery-addresses
+ * Create a new delivery address
+ * @body {string} name - Address name
+ * @body {string} [description] - Address description
+ * @body {number} [sort_order] - Sort order
+ * @body {string} [status] - Status (active/inactive)
+ * @returns {Object} Created delivery address
+ */
+router.post('/delivery-addresses', async (req, res) => {
+  try {
+    const { name, description, sort_order, status } = req.body;
+    
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: '地址名称不能为空' });
+    }
+    
+    await beginTransaction();
+    
+    try {
+      const result = await runAsync(
+        `INSERT INTO delivery_addresses (name, description, sort_order, status, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))`,
+        [name.trim(), description?.trim() || '', sort_order || 0, status || 'active']
+      );
+      
+      await commit();
+      
+      await logAction(req.session.adminId, 'CREATE', 'delivery_address', result.id, JSON.stringify({
+        name: name.trim(),
+        description: description?.trim() || ''
+      }), req);
+      
+      // 清除配送地址缓存
+      cache.delete('public:delivery-addresses');
+      
+      const address = await getAsync('SELECT * FROM delivery_addresses WHERE id = ?', [result.id]);
+      res.json({ success: true, message: '配送地址创建成功', address });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('创建配送地址失败', { error: error.message });
+    res.status(500).json({ success: false, message: '创建配送地址失败: ' + error.message });
+  }
+});
+
+/**
+ * PUT /api/admin/delivery-addresses/:id
+ * Update a delivery address
+ * @param {number} id - Address ID
+ * @body {string} name - Address name
+ * @body {string} [description] - Address description
+ * @body {number} [sort_order] - Sort order
+ * @body {string} [status] - Status (active/inactive)
+ * @returns {Object} Updated delivery address
+ */
+router.put('/delivery-addresses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, sort_order, status } = req.body;
+    
+    const oldAddress = await getAsync('SELECT * FROM delivery_addresses WHERE id = ?', [id]);
+    if (!oldAddress) {
+      return res.status(404).json({ success: false, message: '配送地址不存在' });
+    }
+    
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: '地址名称不能为空' });
+    }
+    
+    await beginTransaction();
+    
+    try {
+      await runAsync(
+        `UPDATE delivery_addresses 
+         SET name = ?, description = ?, sort_order = ?, status = ?, updated_at = datetime('now', 'localtime')
+         WHERE id = ?`,
+        [name.trim(), description?.trim() || '', sort_order || 0, status || 'active', id]
+      );
+      
+      await commit();
+      
+      await logAction(req.session.adminId, 'UPDATE', 'delivery_address', id, JSON.stringify({
+        old: oldAddress,
+        new: { name: name.trim(), description: description?.trim() || '', sort_order, status }
+      }), req);
+      
+      // 清除配送地址缓存
+      cache.delete('public:delivery-addresses');
+      
+      const address = await getAsync('SELECT * FROM delivery_addresses WHERE id = ?', [id]);
+      res.json({ success: true, message: '配送地址更新成功', address });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('更新配送地址失败', { error: error.message });
+    res.status(500).json({ success: false, message: '更新配送地址失败: ' + error.message });
+  }
+});
+
+/**
+ * DELETE /api/admin/delivery-addresses/:id
+ * Delete a delivery address
+ * @param {number} id - Address ID
+ * @returns {Object} Success message
+ */
+router.delete('/delivery-addresses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const address = await getAsync('SELECT * FROM delivery_addresses WHERE id = ?', [id]);
+    if (!address) {
+      return res.status(404).json({ success: false, message: '配送地址不存在' });
+    }
+    
+    // 检查是否有订单使用此地址
+    const ordersUsingAddress = await getAsync(
+      'SELECT COUNT(*) as count FROM orders WHERE delivery_address_id = ?',
+      [id]
+    );
+    
+    if (ordersUsingAddress && ordersUsingAddress.count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `无法删除：有 ${ordersUsingAddress.count} 个订单使用了此配送地址`
+      });
+    }
+    
+    await beginTransaction();
+    
+    try {
+      await runAsync('DELETE FROM delivery_addresses WHERE id = ?', [id]);
+      
+      await commit();
+      
+      await logAction(req.session.adminId, 'DELETE', 'delivery_address', id, JSON.stringify({
+        name: address.name
+      }), req);
+      
+      // 清除配送地址缓存
+      cache.delete('public:delivery-addresses');
+      
+      res.json({ success: true, message: '配送地址删除成功' });
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('删除配送地址失败', { error: error.message });
+    res.status(500).json({ success: false, message: '删除配送地址失败: ' + error.message });
+  }
+});
+
+// ==================== 现场扫码点单 ====================
+
+/**
+ * POST /api/admin/dine-in/qr-code
+ * Generate QR code for table number (dine-in ordering)
+ * @body {string} table_number - Table number
+ * @returns {Object} QR code URL and table information
+ */
+router.post('/dine-in/qr-code', async (req, res) => {
+  const { beginTransaction, commit, rollback } = require('../db/database');
+  
+  try {
+    const { table_number } = req.body;
+    
+    if (!table_number || !table_number.trim()) {
+      return res.status(400).json({ success: false, message: 'Table number is required' });
+    }
+    
+    const tableNum = table_number.trim();
+    
+    // 获取基础URL（用于生成二维码URL）
+    const domainSetting = await getAsync("SELECT value FROM settings WHERE key = 'domain'");
+    let baseUrl = process.env.BASE_URL || process.env.DOMAIN || domainSetting?.value;
+    
+    if (!baseUrl) {
+      // 如果没有配置域名，使用请求的origin
+      baseUrl = req.protocol + '://' + req.get('host');
+    }
+    
+    // 确保baseUrl包含协议
+    if (baseUrl && !baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+      baseUrl = `${req.protocol}://${baseUrl}`;
+    }
+    
+    // 生成扫码URL（包含桌号参数）- 使用简洁的URL，由server.js路由重定向到API
+    const qrCodeUrl = `${baseUrl}/dine-in?table=${encodeURIComponent(tableNum)}`;
+    
+    await beginTransaction();
+    
+    // 检查是否已存在该桌号的二维码
+    const existing = await getAsync('SELECT * FROM dine_in_qr_codes WHERE table_number = ?', [tableNum]);
+    
+    const tablePhone = `TABLE-${tableNum}`;
+    
+    if (existing) {
+      // 更新现有二维码
+      await runAsync(
+        'UPDATE dine_in_qr_codes SET qr_code_url = ?, updated_at = datetime("now", "localtime") WHERE table_number = ?',
+        [qrCodeUrl, tableNum]
+      );
+    } else {
+      // 创建新二维码记录
+      await runAsync(
+        'INSERT INTO dine_in_qr_codes (table_number, qr_code_url) VALUES (?, ?)',
+        [tableNum, qrCodeUrl]
+      );
+      
+      // 创建对应的桌号用户（如果不存在）
+      const existingUser = await getAsync('SELECT * FROM users WHERE phone = ?', [tablePhone]);
+      if (!existingUser) {
+        await runAsync(
+          'INSERT INTO users (phone, name, balance) VALUES (?, ?, 0)',
+          [tablePhone, `Table ${tableNum}`]
+        );
+      }
+    }
+    
+    // 记录日志
+    await logAction(req.session.adminId, 'CREATE', 'dine_in_qr_code', tableNum, JSON.stringify({
+      table_number: tableNum,
+      qr_code_url: qrCodeUrl
+    }), req);
+    
+    await commit();
+    
+    res.json({
+      success: true,
+      table_number: tableNum,
+      qr_code_url: qrCodeUrl,
+      message: 'QR code generated successfully'
+    });
+  } catch (error) {
+    await rollback();
+    logger.error('Failed to generate table QR code', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to generate QR code: ' + error.message });
+  }
+});
+
+/**
+ * GET /api/admin/dine-in/qr-codes
+ * Get all dine-in QR codes
+ * @returns {Object} QR codes array
+ */
+router.get('/dine-in/qr-codes', async (req, res) => {
+  try {
+    const qrCodes = await allAsync(
+      'SELECT * FROM dine_in_qr_codes ORDER BY created_at DESC'
+    );
+    
+    res.json({
+      success: true,
+      qr_codes: qrCodes || []
+    });
+  } catch (error) {
+    logger.error('Failed to get dine-in QR codes', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to get QR codes: ' + error.message });
+  }
+});
+
+/**
+ * DELETE /api/admin/dine-in/qr-code/:tableNumber
+ * Delete dine-in QR code and corresponding table user
+ * @param {string} tableNumber - Table number
+ * @returns {Object} Success message
+ */
+router.delete('/dine-in/qr-code/:tableNumber', async (req, res) => {
+  const { beginTransaction, commit, rollback } = require('../db/database');
+  
+  try {
+    const { tableNumber } = req.params;
+    
+    if (!tableNumber || !tableNumber.trim()) {
+      return res.status(400).json({ success: false, message: 'Table number is required' });
+    }
+    
+    const tableNum = tableNumber.trim();
+    const tablePhone = `TABLE-${tableNum}`;
+    
+    await beginTransaction();
+    
+    // 检查二维码是否存在
+    const qrCode = await getAsync('SELECT * FROM dine_in_qr_codes WHERE table_number = ?', [tableNum]);
+    
+    if (!qrCode) {
+      await rollback();
+      return res.status(404).json({ success: false, message: 'QR code not found' });
+    }
+    
+    // 删除二维码记录
+    await runAsync('DELETE FROM dine_in_qr_codes WHERE table_number = ?', [tableNum]);
+    
+    // 删除对应的桌号用户
+    const tableUser = await getAsync('SELECT * FROM users WHERE phone = ?', [tablePhone]);
+    if (tableUser) {
+      await runAsync('DELETE FROM users WHERE phone = ?', [tablePhone]);
+    }
+    
+    // 记录日志
+    await logAction(req.session.adminId, 'DELETE', 'dine_in_qr_code', tableNum, JSON.stringify({
+      table_number: tableNum,
+      deleted_user: !!tableUser
+    }), req);
+    
+    await commit();
+    
+    res.json({
+      success: true,
+      message: 'QR code and table user deleted successfully'
+    });
+  } catch (error) {
+    await rollback();
+    logger.error('Failed to delete dine-in QR code', { error: error.message, tableNumber: req.params.tableNumber });
+    res.status(500).json({ success: false, message: 'Failed to delete QR code: ' + error.message });
+  }
+});
+
 // ==================== 点单控制API ====================
 
 // 开放点单（供定时任务调用）
@@ -1500,41 +1842,71 @@ router.get('/orders', async (req, res) => {
       );
     }
 
-    // 批量获取订单详情和周期信息
-    if (orders.length > 0) {
-      // 批量获取订单项
-      const orderIds = orders.map(o => o.id);
-      const orderItemsMap = await batchGetOrderItems(orderIds);
+      // 批量获取订单详情和周期信息
+      if (orders.length > 0) {
+        // 批量获取订单项
+        const orderIds = orders.map(o => o.id);
+        const orderItemsMap = await batchGetOrderItems(orderIds);
 
-      // 批量查找订单所属的周期
-      const orderCreatedAts = orders.map(o => o.created_at);
-      const orderCyclesMap = await findOrderCyclesBatch(orderCreatedAts);
+        // 批量查找订单所属的周期
+        const orderCreatedAts = orders.map(o => o.created_at);
+        const orderCyclesMap = await findOrderCyclesBatch(orderCreatedAts);
 
-      // 为每个订单添加详情和周期信息
-      for (const order of orders) {
-        // 从批量查询结果中获取订单项
-        order.items = orderItemsMap.get(order.id) || [];
+        // 批量获取配送地址信息
+        const deliveryAddressIds = orders
+          .filter(o => o.delivery_address_id)
+          .map(o => o.delivery_address_id);
+        const deliveryAddressesMap = new Map();
         
-        // 从批量查询结果中获取周期信息
-        const orderCycle = orderCyclesMap.get(order.created_at);
-        if (orderCycle) {
-          order.cycle_id = orderCycle.id;
-          order.cycle_number = orderCycle.cycle_number;
-          order.cycle_start_time = orderCycle.start_time;
-          order.cycle_end_time = orderCycle.end_time;
-          order.isActiveCycle = isActiveCycle(orderCycle, activeCycle);
-        } else {
-          order.cycle_id = null;
-          order.cycle_number = null;
-          order.cycle_start_time = null;
-          order.cycle_end_time = null;
-          order.isActiveCycle = false;
+        if (deliveryAddressIds.length > 0) {
+          const uniqueAddressIds = [...new Set(deliveryAddressIds)];
+          const placeholders = uniqueAddressIds.map(() => '?').join(',');
+          const addresses = await allAsync(
+            `SELECT * FROM delivery_addresses WHERE id IN (${placeholders})`,
+            uniqueAddressIds
+          );
+          addresses.forEach(addr => {
+            deliveryAddressesMap.set(addr.id, addr);
+          });
         }
-        
-        // 检查订单是否已过期
-        order.isExpired = isOrderExpired(order, activeCycle, latestEndedCycle);
+
+        // 为每个订单添加详情和周期信息
+        for (const order of orders) {
+          // 从批量查询结果中获取订单项
+          order.items = orderItemsMap.get(order.id) || [];
+          
+          // 从批量查询结果中获取周期信息
+          const orderCycle = orderCyclesMap.get(order.created_at);
+          if (orderCycle) {
+            order.cycle_id = orderCycle.id;
+            order.cycle_number = orderCycle.cycle_number;
+            order.cycle_start_time = orderCycle.start_time;
+            order.cycle_end_time = orderCycle.end_time;
+            order.isActiveCycle = isActiveCycle(orderCycle, activeCycle);
+          } else {
+            order.cycle_id = null;
+            order.cycle_number = null;
+            order.cycle_start_time = null;
+            order.cycle_end_time = null;
+            order.isActiveCycle = false;
+          }
+          
+          // 添加配送地址信息
+          if (order.delivery_address_id) {
+            const address = deliveryAddressesMap.get(order.delivery_address_id);
+            if (address) {
+              order.delivery_address = {
+                id: address.id,
+                name: address.name,
+                description: address.description
+              };
+            }
+          }
+          
+          // 检查订单是否已过期
+          order.isExpired = isOrderExpired(order, activeCycle, latestEndedCycle);
+        }
       }
-    }
 
     res.json({ 
       success: true, 
@@ -1688,6 +2060,38 @@ async function archiveOldCycles() {
             [order.id]
           );
         }
+
+        // 批量获取配送地址信息
+        const deliveryAddressIds = orders
+          .filter(o => o.delivery_address_id)
+          .map(o => o.delivery_address_id);
+        const deliveryAddressesMap = new Map();
+        
+        if (deliveryAddressIds.length > 0) {
+          const uniqueAddressIds = [...new Set(deliveryAddressIds)];
+          const placeholders = uniqueAddressIds.map(() => '?').join(',');
+          const addresses = await allAsync(
+            `SELECT * FROM delivery_addresses WHERE id IN (${placeholders})`,
+            uniqueAddressIds
+          );
+          addresses.forEach(addr => {
+            deliveryAddressesMap.set(addr.id, addr);
+          });
+        }
+
+        // 为订单添加配送地址信息
+        for (const order of orders) {
+          if (order.delivery_address_id) {
+            const address = deliveryAddressesMap.get(order.delivery_address_id);
+            if (address) {
+              order.delivery_address = {
+                id: address.id,
+                name: address.name,
+                description: address.description
+              };
+            }
+          }
+        }
         
         // 生成CSV内容
         const csvRows = [];
@@ -1710,6 +2114,7 @@ async function archiveOldCycles() {
           'Order Number',
           'Customer Name',
           'Customer Phone',
+          'Delivery Address',
           'Order Status',
           'Product Name',
           'Quantity',
@@ -1742,10 +2147,16 @@ async function archiveOldCycles() {
                 'hot': 'Hot'
               };
               
+              // 格式化配送地址
+              const deliveryAddressText = order.delivery_address 
+                ? `${order.delivery_address.name}${order.delivery_address.description ? ` (${order.delivery_address.description})` : ''}`
+                : '';
+
               const row = [
                 `"${order.order_number || ''}"`,
                 `"${order.customer_name || ''}"`,
                 `"${order.customer_phone || ''}"`,
+                `"${deliveryAddressText.replace(/"/g, '""')}"`,
                 `"${order.status === 'pending' ? 'Pending Payment' : order.status === 'paid' ? 'Paid' : order.status === 'completed' ? 'Completed' : 'Cancelled'}"`,
                 `"${item.product_name || ''}"`,
                 item.quantity || 0,
@@ -1791,10 +2202,16 @@ async function archiveOldCycles() {
             }
           } else {
             // 如果没有商品详情，至少输出订单基本信息
+            // 格式化配送地址
+            const deliveryAddressText = order.delivery_address 
+              ? `${order.delivery_address.name}${order.delivery_address.description ? ` (${order.delivery_address.description})` : ''}`
+              : '';
+
             const row = [
               `"${order.order_number || ''}"`,
               `"${order.customer_name || ''}"`,
               `"${order.customer_phone || ''}"`,
+              `"${deliveryAddressText.replace(/"/g, '""')}"`,
               `"${order.status === 'pending' ? 'Pending Payment' : order.status === 'paid' ? 'Paid' : order.status === 'completed' ? 'Completed' : 'Cancelled'}"`,
               '""',
               '0',
@@ -2074,10 +2491,11 @@ router.get('/orders/export', async (req, res) => {
       else if (index === 12) column.width = 12; // 订单总金额
       else if (index === 13) column.width = 12; // 折扣金额
       else if (index === 14) column.width = 12; // 实付金额
+      else if (index === 3) column.width = 20; // 配送地址
       else if (index === 15) column.width = 20; // 订单备注
       else if (index === 16) column.width = 20; // 创建时间
       else if (index === 17) column.width = 20; // 更新时间
-      else if (index === 18) column.width = 40; // 付款截图链接
+      else if (index === 19) column.width = 40; // 付款截图链接
     });
 
     // 冰度标签映射
@@ -2171,7 +2589,7 @@ router.get('/orders/export', async (req, res) => {
 
           // 设置付款截图链接为超链接
           if (paymentLink) {
-            const linkCell = row.getCell(19);
+            const linkCell = row.getCell(20);
             linkCell.value = { text: paymentLink, hyperlink: paymentLink };
             linkCell.font = { color: { argb: 'FF0000FF' }, underline: true };
           }
@@ -2243,7 +2661,7 @@ router.get('/orders/export', async (req, res) => {
 
         // 设置付款截图链接为超链接
         if (paymentLink) {
-          const linkCell = row.getCell(19);
+          const linkCell = row.getCell(20);
           linkCell.value = { text: paymentLink, hyperlink: paymentLink };
           linkCell.font = { color: { argb: 'FF0000FF' }, underline: true };
         }
@@ -3024,6 +3442,7 @@ router.get('/users/balance', async (req, res) => {
         COALESCE(MAX(bt.created_at), u.created_at) as last_transaction_time
       FROM users u
       LEFT JOIN balance_transactions bt ON u.id = bt.user_id
+      WHERE u.phone NOT LIKE 'TABLE-%'
       GROUP BY u.id, u.phone, u.name, u.balance, u.created_at
       ORDER BY u.id DESC
     `);
@@ -3818,6 +4237,7 @@ router.get('/users', async (req, res) => {
       SELECT u.*, COUNT(o.id) as order_count, SUM(o.final_amount) as total_spent
       FROM users u
       LEFT JOIN orders o ON u.id = o.user_id
+      WHERE u.phone NOT LIKE 'TABLE-%'
       GROUP BY u.id
       ORDER BY u.created_at DESC
     `);

@@ -1268,6 +1268,9 @@ router.post('/user/logout', (req, res) => {
   delete req.session.userId;
   delete req.session.userPhone;
   delete req.session.userName;
+  // 清除堂食模式相关标记
+  delete req.session.isDineIn;
+  delete req.session.tableNumber;
   
   // 确保管理员信息被保留
   if (adminId) {

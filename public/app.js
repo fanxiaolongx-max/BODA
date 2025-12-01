@@ -214,6 +214,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
+  // 检查是否是扫码登录（堂食模式）
+  await checkDineInLogin();
+  
   // 直接显示主页面，无需登录
   await showMainPage();
   
@@ -553,6 +556,44 @@ let userSessionCheckInterval = null;
 // Session刷新定时器（rolling session）
 let userSessionRefreshInterval = null;
 
+// 堂食模式标记
+let isDineInMode = false;
+let tableNumber = null;
+
+// 检查是否是扫码登录（堂食模式）
+async function checkDineInLogin() {
+  try {
+    // 检查session中是否有堂食标记（通过检查用户信息）
+    const data = await apiGet('/auth/user/me', { showError: false });
+    
+    if (data && data.user) {
+      // 检查是否是桌号用户（phone格式：TABLE-桌号）
+      if (data.user.phone && data.user.phone.startsWith('TABLE-')) {
+        // 提取桌号
+        tableNumber = data.user.phone.replace('TABLE-', '');
+        isDineInMode = true;
+        
+        // 更新当前用户信息
+        currentUser = data.user;
+        updateLoginStatus();
+        
+        // 启动session检查
+        startUserSessionCheck();
+        
+        console.log('检测到堂食模式', { tableNumber, userId: data.user.id });
+        return; // 堂食模式已设置，直接返回
+      }
+      
+      // 如果不是桌号用户，清除堂食模式标记
+      isDineInMode = false;
+      tableNumber = null;
+    }
+  } catch (error) {
+    // 忽略错误，继续正常流程（用户未登录是正常情况）
+    // console.log('检查堂食登录失败（正常情况）:', error);
+  }
+}
+
 // 检查认证状态
 async function checkAuth() {
   try {
@@ -566,12 +607,26 @@ async function checkAuth() {
         const data = await response.json();
         if (data && data.user) {
           currentUser = data.user;
+          
+          // 检查是否是桌号用户（堂食模式）
+          if (data.user.phone && data.user.phone.startsWith('TABLE-')) {
+            tableNumber = data.user.phone.replace('TABLE-', '');
+            isDineInMode = true;
+          } else {
+            // 如果不是桌号用户，清除堂食模式标记
+            isDineInMode = false;
+            tableNumber = null;
+          }
+          
           updateLoginStatus();
           // 启动session检查和刷新
           startUserSessionCheck();
           startUserSessionRefresh();
         } else {
           currentUser = null;
+          // 清除堂食模式标记
+          isDineInMode = false;
+          tableNumber = null;
           updateLoginStatus();
           // 停止session检查
           stopUserSessionCheck();
@@ -587,11 +642,25 @@ async function checkAuth() {
       const data = await apiGet('/auth/user/me', { showError: false });
       if (data && data.user) {
         currentUser = data.user;
+        
+        // 检查是否是桌号用户（堂食模式）
+        if (data.user.phone && data.user.phone.startsWith('TABLE-')) {
+          tableNumber = data.user.phone.replace('TABLE-', '');
+          isDineInMode = true;
+        } else {
+          // 如果不是桌号用户，清除堂食模式标记
+          isDineInMode = false;
+          tableNumber = null;
+        }
+        
         updateLoginStatus();
         // 启动session检查
         startUserSessionCheck();
       } else {
         currentUser = null;
+        // 清除堂食模式标记
+        isDineInMode = false;
+        tableNumber = null;
         updateLoginStatus();
         // 停止session检查和刷新
         stopUserSessionCheck();
@@ -1078,6 +1147,17 @@ async function loginWithCode(phone, code, name, pin) {
 
     if (data.success) {
       currentUser = data.user;
+      
+      // 检查是否是桌号用户（堂食模式）
+      if (data.user.phone && data.user.phone.startsWith('TABLE-')) {
+        tableNumber = data.user.phone.replace('TABLE-', '');
+        isDineInMode = true;
+      } else {
+        // 如果不是桌号用户，清除堂食模式标记
+        isDineInMode = false;
+        tableNumber = null;
+      }
+      
       closeLoginModal();
       resetLoginState();
       updateLoginStatus();
@@ -1154,6 +1234,17 @@ async function loginWithoutCode(phone, name, pin) {
 
     if (data.success) {
       currentUser = data.user;
+      
+      // 检查是否是桌号用户（堂食模式）
+      if (data.user.phone && data.user.phone.startsWith('TABLE-')) {
+        tableNumber = data.user.phone.replace('TABLE-', '');
+        isDineInMode = true;
+      } else {
+        // 如果不是桌号用户，清除堂食模式标记
+        isDineInMode = false;
+        tableNumber = null;
+      }
+      
       closeLoginModal();
       resetLoginState();
       updateLoginStatus();
@@ -1231,6 +1322,9 @@ async function logout() {
     });
     currentUser = null;
     cart = [];
+    // 清除堂食模式标记
+    isDineInMode = false;
+    tableNumber = null;
     updateCartBadge();
     updateLoginStatus();
     showToast(t('logged_out'));
@@ -1240,6 +1334,9 @@ async function logout() {
     // 即使登出失败，也清除本地状态
     currentUser = null;
     cart = [];
+    // 清除堂食模式标记
+    isDineInMode = false;
+    tableNumber = null;
     updateCartBadge();
     updateLoginStatus();
     showTab('home'); // 登出后跳转到首页
@@ -1704,6 +1801,7 @@ async function showMainPage() {
   await loadCurrencyConfig();
   await loadCategories();
   await loadProducts();
+  await loadDeliveryAddresses(); // 加载配送地址列表
   updateOrderingStatus();
   updateCartBadge();
   
@@ -2672,6 +2770,54 @@ let scrollTimer = null;
 let touchStartY = 0;
 let touchStartTime = 0;
 
+// 配送地址列表
+let deliveryAddresses = [];
+
+// 加载配送地址列表
+async function loadDeliveryAddresses() {
+  try {
+    const data = await apiGet('/public/delivery-addresses', { showError: false });
+    if (data && data.success) {
+      deliveryAddresses = data.addresses || [];
+      updateDeliveryAddressSelect();
+    }
+  } catch (error) {
+    console.error('加载配送地址失败:', error);
+    deliveryAddresses = [];
+    updateDeliveryAddressSelect();
+  }
+}
+
+// 更新配送地址下拉框
+function updateDeliveryAddressSelect() {
+  const select = document.getElementById('deliveryAddress');
+  if (!select) return;
+  
+  // 保存当前选中的值
+  const currentValue = select.value;
+  
+  // 清空选项（保留第一个默认选项）
+  select.innerHTML = `<option value="">${t('select_delivery_address')}</option>`;
+  
+  // 只显示激活状态的配送地址
+  const activeAddresses = deliveryAddresses.filter(addr => addr.status === 'active');
+  
+  // 按排序顺序添加选项
+  activeAddresses
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    .forEach(address => {
+      const option = document.createElement('option');
+      option.value = address.id;
+      option.textContent = address.name + (address.description ? ` - ${address.description}` : '');
+      select.appendChild(option);
+    });
+  
+  // 恢复之前选中的值
+  if (currentValue) {
+    select.value = currentValue;
+  }
+}
+
 // 显示购物车
 async function showCart(event) {
   // 如果是滚动过程中，忽略点击
@@ -2686,6 +2832,39 @@ async function showCart(event) {
   if (cart.length === 0) {
     showToast(t('cart_empty'), 'warning');
     return;
+  }
+  
+  // 根据是否堂食模式决定是否加载配送地址
+  const deliveryAddressSection = document.getElementById('deliveryAddressSection');
+  const dineInInfoSection = document.getElementById('dineInInfoSection');
+  const dineInTableNumber = document.getElementById('dineInTableNumber');
+  
+  if (isDineInMode && tableNumber) {
+    // 堂食模式：隐藏配送地址选择，显示堂食信息
+    if (deliveryAddressSection) {
+      deliveryAddressSection.style.display = 'none';
+    }
+    if (dineInInfoSection) {
+      dineInInfoSection.classList.remove('hidden');
+    }
+    if (dineInTableNumber) {
+      dineInTableNumber.textContent = `${t('table_number_colon')} ${tableNumber}`;
+    }
+  } else {
+    // 外卖模式：显示配送地址选择，隐藏堂食信息
+    if (deliveryAddressSection) {
+      deliveryAddressSection.style.display = 'block';
+    }
+    if (dineInInfoSection) {
+      dineInInfoSection.classList.add('hidden');
+    }
+    
+    // 刷新配送地址列表（如果为空，重新加载）
+    if (deliveryAddresses.length === 0) {
+      await loadDeliveryAddresses();
+    } else {
+      updateDeliveryAddressSelect();
+    }
   }
   
   const container = document.getElementById('cartItems');
@@ -2885,6 +3064,25 @@ async function submitOrder() {
       }
     }
     
+    // 根据是否堂食模式决定配送地址和订单类型
+    let deliveryAddressId = null;
+    let orderType = 'delivery';
+    
+    if (isDineInMode && tableNumber) {
+      // 堂食模式：不需要配送地址，设置订单类型为堂食
+      orderType = 'dine_in';
+    } else {
+      // 外卖模式：必须选择配送地址
+      deliveryAddressId = document.getElementById('deliveryAddress')?.value || null;
+      
+      if (!deliveryAddressId) {
+        showToast(t('delivery_address_required') || 'Please select a delivery address', 'warning');
+        setButtonLoading(submitBtn, false);
+        clearTimeout(timeoutId);
+        return;
+      }
+    }
+    
     const orderData = {
       items: cart.map(item => ({
         product_id: item.product_id,
@@ -2913,7 +3111,10 @@ async function submitOrder() {
       })),
       customer_name: currentUser.name || '',
       notes: orderNotes,
-      use_balance: useBalance
+      use_balance: useBalance,
+      delivery_address_id: deliveryAddressId,
+      order_type: orderType,
+      table_number: isDineInMode ? tableNumber : null
     };
     
     // 使用统一的 API 封装（有超时保护和错误处理）
@@ -2958,10 +3159,14 @@ async function submitOrder() {
       showToast(message, 'success');
       cart = [];
       updateCartBadge();
-      // 清空备注输入框
+      // 清空备注输入框和配送地址选择
       const orderNotesInput = document.getElementById('orderNotes');
       if (orderNotesInput) {
         orderNotesInput.value = '';
+      }
+      const deliveryAddressSelect = document.getElementById('deliveryAddress');
+      if (deliveryAddressSelect) {
+        deliveryAddressSelect.value = '';
       }
       closeCart();
       showTab('orders');
@@ -3737,23 +3942,37 @@ function renderOrders(orders, isInitial = false) {
       const startTime = order.cycle_start_time ? new Date(order.cycle_start_time).toLocaleString('en-US') : 'N/A';
       const endTime = order.cycle_end_time ? new Date(order.cycle_end_time).toLocaleString('en-US') : t('ongoing');
       cycleInfo = `
-        <div class="mt-2 p-2 bg-blue-50 rounded text-xs">
-          <div class="text-gray-600">${t('cycle_id')} <span class="font-semibold">${order.cycle_id}</span> | ${t('cycle_number')}: <span class="font-semibold">${order.cycle_number || 'N/A'}</span></div>
-          <div class="text-gray-600 mt-1">${t('cycle_time')} ${startTime} - ${endTime}</div>
+        <div class="p-2 bg-gray-50 rounded text-xs border border-gray-200">
+          <div class="text-gray-700 font-semibold mb-1">📅 ${t('cycle_id')}: <span class="font-bold">${order.cycle_id}</span></div>
+          <div class="text-gray-600">${t('cycle_number')}: <span class="font-semibold">${order.cycle_number || 'N/A'}</span></div>
+          <div class="text-gray-600 mt-1">${t('cycle_time')}: ${startTime} - ${endTime}</div>
         </div>
       `;
     }
     
     return `
-    <div class="${expiredBgClass} rounded-xl shadow-md p-6 ${!isActiveCycle || isExpired ? 'opacity-75' : ''}">
-      <div class="flex justify-between items-start mb-4">
+    <div class="${expiredBgClass} rounded-xl shadow-md p-4 sm:p-6 ${!isActiveCycle || isExpired ? 'opacity-75' : ''}">
+      <!-- 订单头部：订单号和状态（移动端垂直布局，桌面端水平布局） -->
+      <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 gap-3">
         <div class="flex-1">
-          <h3 class="text-lg font-bold ${expiredClass}">${t('order_number_label')} ${order.order_number}</h3>
-          <p class="text-sm ${expiredClass || 'text-gray-500'}">${new Date(order.created_at).toLocaleString('en-US')}</p>
-          ${cycleInfo}
-          ${isExpired ? `<p class="text-sm text-red-600 font-semibold mt-1">⚠️ ${t('order_expired')}</p>` : ''}
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <h3 class="text-lg font-bold ${expiredClass}">${t('order_number_label')} ${order.order_number}</h3>
+            <!-- 移动端：状态标签显示在订单号右侧 -->
+            <div class="flex flex-col items-end space-y-1 sm:hidden">
+              <span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColors[order.status]}">
+                ${statusText[order.status]}
+              </span>
+              ${order.payment_method === 'stripe' && order.status === 'paid' && !order.payment_image ? `
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                  💳 ${t('online_payment_badge')}
+                </span>
+              ` : ''}
+            </div>
+          </div>
+          <p class="text-sm ${expiredClass || 'text-gray-500'} mb-2">${new Date(order.created_at).toLocaleString('en-US')}</p>
         </div>
-        <div class="flex flex-col items-end space-y-2">
+        <!-- 桌面端：状态标签显示在右侧 -->
+        <div class="hidden sm:flex sm:flex-col sm:items-end sm:space-y-2">
           <span class="px-3 py-1 rounded-full text-sm font-semibold ${statusColors[order.status]}">
             ${statusText[order.status]}
           </span>
@@ -3763,6 +3982,30 @@ function renderOrders(orders, isInitial = false) {
             </span>
           ` : ''}
         </div>
+      </div>
+      
+      <!-- 周期信息、订单类型、地址等信息（使用网格布局，移动端单列，桌面端可多列） -->
+      <div class="space-y-2 mb-4">
+        ${cycleInfo}
+        ${isExpired ? `<p class="text-sm text-red-600 font-semibold">⚠️ ${t('order_expired')}</p>` : ''}
+        ${order.order_type === 'dine_in' ? `
+          <div class="p-2 bg-blue-50 rounded text-xs border border-blue-200">
+            <div class="text-blue-700 font-semibold mb-1">🍽️ ${t('dine_in') || 'Dine-In'}:</div>
+            ${order.table_number ? `<div class="text-blue-900 font-medium">${t('table_number_colon')} ${order.table_number}</div>` : ''}
+          </div>
+        ` : ''}
+        ${order.delivery_address ? `
+          <div class="p-2 bg-green-50 rounded text-xs border border-green-200">
+            <div class="text-green-700 font-semibold mb-1">📍 ${t('delivery_address') || 'Delivery Address'}:</div>
+            <div class="text-green-900 font-medium">${order.delivery_address.name}</div>
+            ${order.delivery_address.description ? `<div class="text-green-700 mt-1">${order.delivery_address.description}</div>` : ''}
+          </div>
+        ` : ''}
+        ${!order.delivery_address && order.order_type !== 'dine_in' ? `
+          <div class="p-2 bg-green-50 rounded text-xs border border-green-200">
+            <div class="text-green-700 font-semibold mb-1">🚚 ${t('delivery') || 'Delivery'}</div>
+          </div>
+        ` : ''}
       </div>
       
       <div class="border-t border-gray-200 pt-4 mb-4 space-y-3">
@@ -4632,7 +4875,8 @@ function showToast(message, type = 'success') {
   if (!toastContainer) {
     toastContainer = document.createElement('div');
     toastContainer.id = 'toastContainer';
-    toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2';
+    toastContainer.className = 'fixed top-4 right-4 space-y-2';
+    toastContainer.style.zIndex = '10000'; // 确保在所有模态框之上
     document.body.appendChild(toastContainer);
   }
 

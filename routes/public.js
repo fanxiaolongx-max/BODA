@@ -7,6 +7,19 @@ const cache = require('../utils/cache');
 
 const router = express.Router();
 
+// HTML转义函数
+function escapeHtml(text) {
+  if (!text) return '';
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+
 // 缓存过期时间（5分钟）
 const CACHE_TTL = 5 * 60 * 1000;
 
@@ -336,129 +349,283 @@ router.get('/show-images', async (req, res) => {
 });
 
 /**
- * GET /api/public/digital-certificate.txt
- * Get QZ Tray digital certificate (compatible with original file path)
- * @returns {string} Certificate content as text/plain
+ * GET /api/public/dine-in/login
+ * Auto-login for dine-in customers by scanning QR code
+ * @query {string} table - Table number
+ * @returns {Object} Redirect to ordering page with auto-login
  */
-router.get('/digital-certificate.txt', async (req, res) => {
+router.get('/dine-in/login', async (req, res) => {
   try {
-    // 优先从数据库读取证书
-    const certSetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_certificate'");
+    const { table } = req.query;
     
-    if (certSetting && certSetting.value) {
-      res.setHeader('Content-Type', 'text/plain');
-      return res.send(certSetting.value);
+    if (!table || !table.trim()) {
+      return res.status(400).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Error</title>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 100vh;
+              margin: 0;
+              background: #f5f5f5;
+            }
+            .error-container {
+              background: white;
+              padding: 40px;
+              border-radius: 8px;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+              text-align: center;
+              max-width: 400px;
+            }
+            h1 {
+              color: #e74c3c;
+              margin-bottom: 20px;
+            }
+            p {
+              color: #666;
+              line-height: 1.6;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="error-container">
+            <h1>Invalid QR Code</h1>
+            <p>Table number parameter is missing. Please scan the QR code again.</p>
+          </div>
+        </body>
+        </html>
+      `);
     }
     
-    // 回退到文件系统（向后兼容）
-    const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
-    const certPath = path.join(DATA_DIR, 'public', 'digital-certificate.txt');
-    const fallbackCertPath = path.join(__dirname, '../public/digital-certificate.txt');
+    const tableNumber = table.trim();
     
-    const finalCertPath = fs.existsSync(certPath) ? certPath : fallbackCertPath;
+    // 检查桌号是否已由管理员创建（存在于 dine_in_qr_codes 表中）
+    const qrCode = await getAsync('SELECT * FROM dine_in_qr_codes WHERE table_number = ?', [tableNumber]);
     
-    if (fs.existsSync(finalCertPath)) {
-      res.setHeader('Content-Type', 'text/plain');
-      return res.sendFile(finalCertPath);
+    if (!qrCode) {
+      // 桌号不存在，不允许访问
+      logger.warn('Attempted to access non-existent table number', { tableNumber, ip: req.ip });
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Table Not Found</title>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 100vh;
+              margin: 0;
+              background: #f5f5f5;
+            }
+            .error-container {
+              background: white;
+              padding: 40px;
+              border-radius: 8px;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+              text-align: center;
+              max-width: 400px;
+            }
+            h1 {
+              color: #e74c3c;
+              margin-bottom: 20px;
+            }
+            p {
+              color: #666;
+              line-height: 1.6;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="error-container">
+            <h1>Table Not Found</h1>
+            <p>This table number (${escapeHtml(tableNumber)}) has not been registered. Please contact the administrator.</p>
+          </div>
+        </body>
+        </html>
+      `);
     }
     
-    // 如果都不存在，返回404
-    res.status(404).json({ success: false, message: '证书文件不存在' });
+    // 桌号已存在，创建或获取桌号用户（phone格式：TABLE-桌号）
+    const tablePhone = `TABLE-${tableNumber}`;
+    
+    // 检查用户是否存在
+    let tableUser = await getAsync('SELECT * FROM users WHERE phone = ?', [tablePhone]);
+    
+    if (!tableUser) {
+      // 创建新的桌号用户（只有桌号存在于二维码表中时才创建）
+      await runAsync(
+        `INSERT INTO users (phone, name, balance, created_at) 
+         VALUES (?, ?, 0, datetime('now', 'localtime'))`,
+        [tablePhone, `Table ${tableNumber}`]
+      );
+      tableUser = await getAsync('SELECT * FROM users WHERE phone = ?', [tablePhone]);
+      logger.info('Created table user (table verified)', { phone: tablePhone, tableNumber });
+    }
+    
+    // 获取用户session过期时间配置
+    const { getUserSessionTimeoutMs } = require('../utils/session-config');
+    const userTimeoutMs = await getUserSessionTimeoutMs();
+    
+    // 设置session（自动登录）
+    req.session.userId = tableUser.id;
+    req.session.userPhone = tableUser.phone;
+    req.session.userName = tableUser.name;
+    req.session._userLoginTime = Date.now();
+    req.session._userTimeoutMs = userTimeoutMs;
+    
+    // 设置堂食标记和桌号
+    req.session.isDineIn = true;
+    req.session.tableNumber = tableNumber;
+    
+    // 记录登录日志
+    const { logAction: logUserAction } = require('../utils/logger');
+    await logUserAction(null, 'USER_LOGIN', 'user', tableUser.id, JSON.stringify({
+      action: 'Table QR code login',
+      phone: tableUser.phone,
+      tableNumber: tableNumber,
+      loginMethod: 'dine_in_qr'
+    }), req);
+    
+    logger.info('Table QR code login successful', { phone: tablePhone, tableNumber, userId: tableUser.id });
+    
+    // 保存session并重定向到主页
+    req.session.save((err) => {
+      if (err) {
+        logger.error('Failed to save session', { error: err.message });
+        return res.status(500).send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Error</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                background: #f5f5f5;
+              }
+              .error-container {
+                background: white;
+                padding: 40px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                text-align: center;
+                max-width: 400px;
+              }
+              h1 {
+                color: #e74c3c;
+                margin-bottom: 20px;
+              }
+              p {
+                color: #666;
+                line-height: 1.6;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="error-container">
+              <h1>Login Failed</h1>
+              <p>System error, please try again later.</p>
+            </div>
+          </body>
+          </html>
+        `);
+      }
+      
+      // 重定向到主页（清除URL参数，使用session中的信息）
+      res.redirect('/');
+    });
   } catch (error) {
-    logger.error('获取QZ证书失败', { error: error.message });
-    res.status(500).json({ success: false, message: '获取证书失败' });
+    logger.error('Dine-in QR code login failed', { error: error.message, table: req.query.table });
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Error</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: #f5f5f5;
+          }
+          .error-container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+          }
+          h1 {
+            color: #e74c3c;
+            margin-bottom: 20px;
+          }
+          p {
+            color: #666;
+            line-height: 1.6;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="error-container">
+          <h1>Login Failed</h1>
+          <p>System error, please try again later.</p>
+        </div>
+      </body>
+      </html>
+    `);
   }
 });
 
 /**
- * GET /api/public/private-key.pem
- * Get QZ Tray private key (compatible with original file path)
- * @returns {string} Private key content as text/plain
+ * GET /api/public/delivery-addresses
+ * Get all active delivery addresses (for users to select)
+ * @returns {Object} Delivery addresses array
  */
-router.get('/private-key.pem', async (req, res) => {
+router.get('/delivery-addresses', async (req, res) => {
   try {
-    // 优先从数据库读取私钥
-    const keySetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_private_key'");
-    
-    if (keySetting && keySetting.value) {
-      res.setHeader('Content-Type', 'text/plain');
-      return res.send(keySetting.value);
+    // 尝试从缓存获取
+    const cacheKey = 'public:delivery-addresses';
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json({ success: true, addresses: cached });
     }
-    
-    // 回退到文件系统（向后兼容）
-    const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
-    const keyPath = path.join(DATA_DIR, 'public', 'private-key.pem');
-    const fallbackKeyPath = path.join(__dirname, '../public/private-key.pem');
-    
-    const finalKeyPath = fs.existsSync(keyPath) ? keyPath : fallbackKeyPath;
-    
-    if (fs.existsSync(finalKeyPath)) {
-      res.setHeader('Content-Type', 'text/plain');
-      return res.sendFile(finalKeyPath);
-    }
-    
-    // 如果都不存在，返回404
-    res.status(404).json({ success: false, message: '私钥文件不存在' });
-  } catch (error) {
-    logger.error('获取QZ私钥失败', { error: error.message });
-    res.status(500).json({ success: false, message: '获取私钥失败' });
-  }
-});
 
-/**
- * GET /api/public/qz-certificates
- * Get QZ Tray certificates (JSON format)
- * @returns {Object} Certificate and private key
- */
-router.get('/qz-certificates', async (req, res) => {
-  try {
-    const certSetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_certificate'");
-    const keySetting = await getAsync("SELECT value FROM settings WHERE key = 'qz_private_key'");
+    const addresses = await allAsync(
+      'SELECT * FROM delivery_addresses WHERE status = ? ORDER BY sort_order, id',
+      ['active']
+    );
     
-    // 如果数据库中有证书，直接返回
-    if (certSetting && certSetting.value && keySetting && keySetting.value) {
-      return res.json({
-        success: true,
-        certificate: certSetting.value,
-        privateKey: keySetting.value,
-        source: 'database'
-      });
-    }
+    // 存入缓存
+    cache.set(cacheKey, addresses, CACHE_TTL);
     
-    // 回退到文件系统
-    const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
-    const certPath = path.join(DATA_DIR, 'public', 'digital-certificate.txt');
-    const keyPath = path.join(DATA_DIR, 'public', 'private-key.pem');
-    const fallbackCertPath = path.join(__dirname, '../public/digital-certificate.txt');
-    const fallbackKeyPath = path.join(__dirname, '../public/private-key.pem');
-    
-    const finalCertPath = fs.existsSync(certPath) ? certPath : fallbackCertPath;
-    const finalKeyPath = fs.existsSync(keyPath) ? keyPath : fallbackKeyPath;
-    
-    let certificate = null;
-    let privateKey = null;
-    
-    if (fs.existsSync(finalCertPath)) {
-      certificate = fs.readFileSync(finalCertPath, 'utf8');
-    }
-    
-    if (fs.existsSync(finalKeyPath)) {
-      privateKey = fs.readFileSync(finalKeyPath, 'utf8');
-    }
-    
-    if (certificate && privateKey) {
-      return res.json({
-        success: true,
-        certificate,
-        privateKey,
-        source: 'filesystem'
-      });
-    }
-    
-    res.status(404).json({ success: false, message: '证书文件不存在' });
+    res.json({ success: true, addresses });
   } catch (error) {
-    logger.error('获取QZ证书失败', { error: error.message });
-    res.status(500).json({ success: false, message: '获取证书失败' });
+    logger.error('获取配送地址失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取配送地址失败' });
   }
 });
 
