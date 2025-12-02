@@ -422,8 +422,8 @@ router.post('/products', upload.single('image'), async (req, res) => {
       }
     }
 
-    // 处理甜度选项
-    let sugarLevelsJson = '["0","30","50","70","100"]';
+    // 处理甜度选项（默认空数组，表示不支持甜度选择）
+    let sugarLevelsJson = '[]';
     if (req.body.sugar_levels !== undefined) {
       const sugarLevelsValue = req.body.sugar_levels;
       if (sugarLevelsValue && sugarLevelsValue !== '' && sugarLevelsValue !== '[]') {
@@ -435,8 +435,8 @@ router.post('/products', upload.single('image'), async (req, res) => {
         } catch (e) {
           logger.error('Invalid sugar_levels format', { error: e.message, sugarLevelsValue });
         }
-      } else if (sugarLevelsValue === '[]') {
-        sugarLevelsJson = '[]'; // 不允许选择甜度
+      } else if (sugarLevelsValue === '[]' || sugarLevelsValue === '') {
+        sugarLevelsJson = '[]'; // 不支持甜度选择
       }
     }
     
@@ -462,8 +462,8 @@ router.post('/products', upload.single('image'), async (req, res) => {
       }
     }
     
-    // 处理冰度选项
-    let iceOptionsJson = '["normal","less","no","room","hot"]'; // 默认所有选项
+    // 处理冰度选项（默认空数组，表示不支持冰度选择）
+    let iceOptionsJson = '[]';
     if (req.body.ice_options !== undefined) {
       const iceOptionsValue = req.body.ice_options;
       if (iceOptionsValue && iceOptionsValue !== '' && iceOptionsValue !== '[]') {
@@ -474,10 +474,10 @@ router.post('/products', upload.single('image'), async (req, res) => {
           }
         } catch (e) {
           logger.error('Invalid ice_options format', { error: e.message, iceOptionsValue });
-          iceOptionsJson = '["normal","less","no","room","hot"]';
+          iceOptionsJson = '[]';
         }
-      } else if (iceOptionsValue === '[]') {
-        iceOptionsJson = '[]'; // 不允许选择冰度
+      } else if (iceOptionsValue === '[]' || iceOptionsValue === '') {
+        iceOptionsJson = '[]'; // 不支持冰度选择
       }
     }
 

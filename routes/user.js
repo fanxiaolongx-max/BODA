@@ -346,7 +346,7 @@ router.post('/orders', async (req, res) => {
           subtotal: subtotal,
           size: item.size || null,
           size_price: sizePrice || null, // 保存Size的基础价格
-          sugar_level: item.sugar_level || '100',
+          sugar_level: item.sugar_level || null, // 改为可选，不再默认 '100'
           // 保存包含价格信息的加料数组（优先使用 toppingsWithPrice，如果没有则使用 toppingNames）
           toppings: (toppingsWithPrice && toppingsWithPrice.length > 0) 
             ? JSON.stringify(toppingsWithPrice) 
@@ -1108,7 +1108,7 @@ router.put('/orders/:id', async (req, res) => {
           subtotal: subtotal,
           size: item.size || null,
           size_price: sizePrice || null, // 保存Size的基础价格
-          sugar_level: item.sugar_level || '100',
+          sugar_level: item.sugar_level || null, // 改为可选，不再默认 '100'
           // 保存包含价格信息的加料数组（优先使用 toppingsWithPrice，如果没有则使用 toppingNames）
           toppings: (toppingsWithPrice && toppingsWithPrice.length > 0) 
             ? JSON.stringify(toppingsWithPrice) 
@@ -1138,7 +1138,7 @@ router.put('/orders/:id', async (req, res) => {
         }
         if (orderItemsColumns.includes('sugar_level')) {
           insertFields.push('sugar_level');
-          insertValues.push(item.sugar_level || '100');
+          insertValues.push(item.sugar_level || null);
         }
         if (orderItemsColumns.includes('toppings')) {
           insertFields.push('toppings');

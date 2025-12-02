@@ -1991,8 +1991,11 @@ function renderProducts(products) {
         <button id="batchEditBtn" onclick="showBatchEditModal()" class="hidden px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
           ✏️ Batch Edit (<span id="selectedProductsCount">0</span>)
         </button>
-        <button onclick="showProductModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-          + Add Product
+        <button onclick="showProductModal(null, 'drink')" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+          + Add Drink
+        </button>
+        <button onclick="showProductModal(null, 'regular')" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+          + Add Regular Product
         </button>
       </div>
     </div>
@@ -2095,7 +2098,7 @@ function renderProducts(products) {
             <div id="currentImage" class="mt-2"></div>
           </div>
           
-          <div>
+          <div id="sizesSection">
             <label class="block text-sm font-medium text-gray-700 mb-2">Cup Sizes & Prices</label>
             <div id="sizesContainer" class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
               <div class="text-sm text-gray-600 mb-2">Add different cup sizes and their prices (e.g., Medium, Large)</div>
@@ -2106,8 +2109,8 @@ function renderProducts(products) {
             </div>
           </div>
           
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Sweetness Options (甜度选项)</label>
+          <div id="sugarLevelsSection">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Sweetness Options</label>
             <div id="sugarLevelsContainer" class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
               <div class="text-sm text-gray-600 mb-2">Add sweetness levels (e.g., 0%, 30%, 50%, 70%, 100%)</div>
               <div id="sugarLevelsList" class="space-y-2"></div>
@@ -2117,8 +2120,8 @@ function renderProducts(products) {
             </div>
           </div>
           
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Available Toppings (可选加料)</label>
+          <div id="toppingsSection">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Available Toppings</label>
             <div id="toppingsContainer" class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
               <div class="text-sm text-gray-600 mb-2">Add topping names and prices (e.g., Cheese 芝士: 20 LE, Boba 波霸: 20 LE)</div>
               <div id="toppingsList" class="space-y-2"></div>
@@ -2128,30 +2131,30 @@ function renderProducts(products) {
             </div>
           </div>
           
-          <div>
+          <div id="iceOptionsSection">
             <label class="block text-sm font-medium text-gray-700 mb-2">Available Ice Options</label>
             <div id="iceOptionsContainer" class="border border-gray-300 rounded-lg p-4 bg-gray-50">
               <div class="text-sm text-gray-600 mb-2">Select which ice level options are available for this product</div>
               <div id="iceOptionsList" class="space-y-2">
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="normal" checked>
-                  <span class="text-sm text-gray-700">Normal Ice 正常冰</span>
+                  <span class="text-sm text-gray-700">Normal Ice</span>
                 </label>
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="less" checked>
-                  <span class="text-sm text-gray-700">Less Ice 少冰</span>
+                  <span class="text-sm text-gray-700">Less Ice</span>
                 </label>
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="no" checked>
-                  <span class="text-sm text-gray-700">No Ice 去冰</span>
+                  <span class="text-sm text-gray-700">No Ice</span>
                 </label>
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="room" checked>
-                  <span class="text-sm text-gray-700">Room Temperature 常温</span>
+                  <span class="text-sm text-gray-700">Room Temperature</span>
                 </label>
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="hot" checked>
-                  <span class="text-sm text-gray-700">Hot 热</span>
+                  <span class="text-sm text-gray-700">Hot</span>
                 </label>
               </div>
               <div class="text-xs text-gray-500 mt-2">If no options are selected, customers cannot choose ice level for this product</div>
@@ -2176,7 +2179,8 @@ function renderProducts(products) {
 }
 
 // 菜品管理功能
-async function showProductModal(product = null) {
+// productType: 'drink' for drinks (with attributes), 'regular' for regular products (no attributes)
+async function showProductModal(product = null, productType = 'drink') {
   // 加载分类列表
   try {
     const data = await adminApiRequest(`${API_BASE}/admin/categories`);
@@ -2194,6 +2198,38 @@ async function showProductModal(product = null) {
   const modal = document.getElementById('productModal');
   const title = document.getElementById('productModalTitle');
   
+  // 获取属性配置区域的容器（使用section级别的ID）
+  const sizesSection = document.getElementById('sizesSection');
+  const sugarLevelsSection = document.getElementById('sugarLevelsSection');
+  const toppingsSection = document.getElementById('toppingsSection');
+  const iceOptionsSection = document.getElementById('iceOptionsSection');
+  
+  // 如果是编辑模式，根据商品现有配置判断类型
+  let isRegularProduct = false;
+  if (product) {
+    // 检查商品是否有任何属性配置
+    try {
+      const sizes = JSON.parse(product.sizes || '{}');
+      const sugarLevels = JSON.parse(product.sugar_levels || '[]');
+      const toppings = JSON.parse(product.available_toppings || '[]');
+      const iceOptions = JSON.parse(product.ice_options || '[]');
+      
+      const hasSizes = Object.keys(sizes).length > 0;
+      const hasSugarLevels = Array.isArray(sugarLevels) && sugarLevels.length > 0;
+      const hasToppings = Array.isArray(toppings) && toppings.length > 0;
+      const hasIceOptions = Array.isArray(iceOptions) && iceOptions.length > 0;
+      
+      // 如果没有任何属性配置，认为是普通商品
+      isRegularProduct = !hasSizes && !hasSugarLevels && !hasToppings && !hasIceOptions;
+    } catch (e) {
+      // 解析失败，认为是普通商品
+      isRegularProduct = true;
+    }
+  } else {
+    // 新建模式，根据 productType 参数判断
+    isRegularProduct = productType === 'regular';
+  }
+  
   if (product) {
     title.textContent = 'Edit Product';
     document.getElementById('productId').value = product.id;
@@ -2207,34 +2243,92 @@ async function showProductModal(product = null) {
     loadSizes(product.sizes || '{}');
     
     // 加载甜度选项
-    loadSugarLevels(product.sugar_levels || '["0","30","50","70","100"]');
+    loadSugarLevels(product.sugar_levels || '[]');
     
     // 加载可选加料 - 改为可编辑形式（类似甜度选项），完全独立，不依赖任何产品
     await loadAvailableToppings(product.available_toppings || '[]');
     
     // 加载冰度选项
-    loadIceOptions(product.ice_options || '["normal","less","no","room","hot"]');
+    loadIceOptions(product.ice_options || '[]');
     
     if (product.image_url) {
       document.getElementById('currentImage').innerHTML = 
         `<img src="${product.image_url}" class="w-32 h-32 object-cover rounded-lg">`;
     }
+    
+    // 编辑模式：根据商品类型显示/隐藏属性配置区域（在加载属性之后）
+    if (isRegularProduct) {
+      // 隐藏所有属性配置区域
+      if (sizesSection) sizesSection.style.display = 'none';
+      if (sugarLevelsSection) sugarLevelsSection.style.display = 'none';
+      if (toppingsSection) toppingsSection.style.display = 'none';
+      if (iceOptionsSection) iceOptionsSection.style.display = 'none';
+    } else {
+      // 显示所有属性配置区域
+      if (sizesSection) sizesSection.style.display = 'block';
+      if (sugarLevelsSection) sugarLevelsSection.style.display = 'block';
+      if (toppingsSection) toppingsSection.style.display = 'block';
+      if (iceOptionsSection) iceOptionsSection.style.display = 'block';
+    }
   } else {
-    title.textContent = 'Add Product';
-    // 清除productId字段，确保是添加而不是更新
-    document.getElementById('productId').value = '';
-    document.getElementById('productForm').reset();
-    // 再次确保productId被清除（reset可能不会清除隐藏字段）
-    document.getElementById('productId').value = '';
-    document.getElementById('currentImage').innerHTML = '';
-    document.getElementById('sizesList').innerHTML = '';
-    document.getElementById('sugarLevelsList').innerHTML = '';
-    document.getElementById('toppingsList').innerHTML = '';
-    // 重置冰度选项为全选
-    const iceCheckboxes = document.querySelectorAll('.ice-option-checkbox');
-    iceCheckboxes.forEach(cb => cb.checked = true);
-    // 加载默认甜度选项
-    loadSugarLevels('["0","30","50","70","100"]');
+    // 新建模式：根据商品类型设置标题和属性配置
+    if (isRegularProduct) {
+      title.textContent = 'Add Regular Product';
+      // 隐藏所有属性配置区域
+      if (sizesSection) sizesSection.style.display = 'none';
+      if (sugarLevelsSection) sugarLevelsSection.style.display = 'none';
+      if (toppingsSection) toppingsSection.style.display = 'none';
+      if (iceOptionsSection) iceOptionsSection.style.display = 'none';
+      
+      // 清空所有属性配置
+      document.getElementById('sizesList').innerHTML = '';
+      document.getElementById('sugarLevelsList').innerHTML = '';
+      document.getElementById('toppingsList').innerHTML = '';
+      // 取消所有冰度选项
+      const iceCheckboxes = document.querySelectorAll('.ice-option-checkbox');
+      iceCheckboxes.forEach(cb => cb.checked = false);
+      // 加载空甜度选项
+      loadSugarLevels('[]');
+    } else {
+      title.textContent = 'Add Drink';
+      // 显示所有属性配置区域
+      if (sizesSection) sizesSection.style.display = 'block';
+      if (sugarLevelsSection) sugarLevelsSection.style.display = 'block';
+      if (toppingsSection) toppingsSection.style.display = 'block';
+      if (iceOptionsSection) iceOptionsSection.style.display = 'block';
+      
+      // 清除productId字段，确保是添加而不是更新
+      document.getElementById('productId').value = '';
+      document.getElementById('productForm').reset();
+      // 再次确保productId被清除（reset可能不会清除隐藏字段）
+      document.getElementById('productId').value = '';
+      document.getElementById('currentImage').innerHTML = '';
+      document.getElementById('sizesList').innerHTML = '';
+      document.getElementById('sugarLevelsList').innerHTML = '';
+      document.getElementById('toppingsList').innerHTML = '';
+      // 重置冰度选项为全选
+      const iceCheckboxes = document.querySelectorAll('.ice-option-checkbox');
+      iceCheckboxes.forEach(cb => cb.checked = true);
+      // 加载空甜度选项（不再默认）
+      loadSugarLevels('[]');
+    }
+  }
+  
+  // 编辑模式：根据商品类型显示/隐藏属性配置区域
+  if (product) {
+    if (isRegularProduct) {
+      // 隐藏所有属性配置区域
+      if (sizesSection) sizesSection.style.display = 'none';
+      if (sugarLevelsSection) sugarLevelsSection.style.display = 'none';
+      if (toppingsSection) toppingsSection.style.display = 'none';
+      if (iceOptionsSection) iceOptionsSection.style.display = 'none';
+    } else {
+      // 显示所有属性配置区域
+      if (sizesSection) sizesSection.style.display = 'block';
+      if (sugarLevelsSection) sugarLevelsSection.style.display = 'block';
+      if (toppingsSection) toppingsSection.style.display = 'block';
+      if (iceOptionsSection) iceOptionsSection.style.display = 'block';
+    }
   }
   
   modal.classList.add('active');
@@ -2292,24 +2386,30 @@ function loadSugarLevels(sugarLevelsJson) {
   
   sugarLevelsList.innerHTML = '';
   
+  let sugarLevels = [];
   try {
-    const sugarLevels = typeof sugarLevelsJson === 'string' ? JSON.parse(sugarLevelsJson) : sugarLevelsJson;
-    if (Array.isArray(sugarLevels) && sugarLevels.length > 0) {
+    sugarLevels = typeof sugarLevelsJson === 'string' ? JSON.parse(sugarLevelsJson || '[]') : (sugarLevelsJson || []);
+    if (!Array.isArray(sugarLevels)) {
+      sugarLevels = [];
+    }
+    
+    if (sugarLevels.length > 0) {
       sugarLevels.forEach(level => {
-        addSugarLevelRow(level);
-      });
-    } else {
-      // 如果没有数据，添加默认值
-      ['0', '30', '50', '70', '100'].forEach(level => {
         addSugarLevelRow(level);
       });
     }
   } catch (e) {
     console.error('Failed to parse sugar_levels:', e);
-    // 解析失败时添加默认值
-    ['0', '30', '50', '70', '100'].forEach(level => {
-      addSugarLevelRow(level);
-    });
+    sugarLevels = [];
+  }
+  
+  // 如果为空数组，显示提示信息
+  if (sugarLevels.length === 0) {
+    sugarLevelsList.innerHTML += `
+      <div class="text-sm text-gray-500 italic p-2 bg-gray-50 rounded mb-2">
+        No sugar levels configured. This product will not show sweetness options to customers.
+      </div>
+    `;
   }
 }
 
@@ -2475,6 +2575,25 @@ function loadIceOptions(iceOptionsJson) {
   } catch (e) {
     console.error('Failed to parse ice_options:', e);
   }
+  
+  // 检查是否为空数组，显示提示信息
+  let finalIceOptions = [];
+  try {
+    finalIceOptions = typeof iceOptionsJson === 'string' ? JSON.parse(iceOptionsJson || '[]') : (iceOptionsJson || []);
+    if (!Array.isArray(finalIceOptions)) {
+      finalIceOptions = [];
+    }
+  } catch (e) {
+    finalIceOptions = [];
+  }
+  
+  if (finalIceOptions.length === 0) {
+    iceOptionsList.innerHTML += `
+      <div class="text-sm text-gray-500 italic p-2 bg-gray-50 rounded mb-2">
+        No ice options configured. This product will not show ice options to customers.
+      </div>
+    `;
+  }
 }
 
 async function saveProduct(e) {
@@ -2492,55 +2611,69 @@ async function saveProduct(e) {
   formData.append('category_id', document.getElementById('productCategory').value);
   formData.append('status', document.getElementById('productStatus').value);
   
-  // 收集杯型价格
-  const sizes = {};
-  const sizeRows = document.querySelectorAll('.size-row');
-  sizeRows.forEach(row => {
-    const sizeName = row.querySelector('.size-name').value.trim();
-    const sizePrice = row.querySelector('.size-price').value.trim();
-    if (sizeName && sizePrice) {
-      sizes[sizeName] = parseFloat(sizePrice);
-    }
-  });
-  const sizesJson = JSON.stringify(sizes);
-  formData.append('sizes', sizesJson);
-  console.log('Saving product with sizes:', sizesJson);
+  // 检查是否是普通商品（属性配置区域被隐藏）
+  const sizesSection = document.getElementById('sizesSection');
+  const isRegularProduct = sizesSection && sizesSection.style.display === 'none';
   
-  // 收集甜度选项
-  const sugarLevels = [];
-  const sugarLevelRows = document.querySelectorAll('.sugar-level-row');
-  sugarLevelRows.forEach(row => {
-    const level = row.querySelector('.sugar-level-value').value.trim();
-    if (level) {
-      sugarLevels.push(level);
-    }
-  });
-  formData.append('sugar_levels', JSON.stringify(sugarLevels));
-  console.log('Saving product with sugar_levels:', sugarLevels);
-  
-  // 收集可选加料（名称和价格形式，类似杯型价格）
-  const availableToppings = [];
-  const toppingRows = document.querySelectorAll('.topping-row');
-  toppingRows.forEach(row => {
-    const toppingName = row.querySelector('.topping-name').value.trim();
-    const toppingPrice = row.querySelector('.topping-price').value.trim();
-    if (toppingName) {
-      // 存储为对象格式 {name: "Cheese 芝士", price: 20}
-      const price = toppingPrice ? parseFloat(toppingPrice) : 0;
-      availableToppings.push({ name: toppingName, price: price });
-    }
-  });
-  formData.append('available_toppings', JSON.stringify(availableToppings));
-  console.log('Saving product with available_toppings:', availableToppings);
-  
-  // 收集冰度选项
-  const iceOptions = [];
-  const iceCheckboxes = document.querySelectorAll('.ice-option-checkbox:checked');
-  iceCheckboxes.forEach(checkbox => {
-    iceOptions.push(checkbox.value);
-  });
-  formData.append('ice_options', JSON.stringify(iceOptions));
-  console.log('Saving product with ice_options:', iceOptions);
+  if (isRegularProduct) {
+    // 普通商品：所有属性设置为空数组/空对象
+    formData.append('sizes', '{}');
+    formData.append('sugar_levels', '[]');
+    formData.append('available_toppings', '[]');
+    formData.append('ice_options', '[]');
+    console.log('Saving regular product with empty attributes');
+  } else {
+    // 饮品商品：收集属性配置
+    // 收集杯型价格
+    const sizes = {};
+    const sizeRows = document.querySelectorAll('.size-row');
+    sizeRows.forEach(row => {
+      const sizeName = row.querySelector('.size-name').value.trim();
+      const sizePrice = row.querySelector('.size-price').value.trim();
+      if (sizeName && sizePrice) {
+        sizes[sizeName] = parseFloat(sizePrice);
+      }
+    });
+    const sizesJson = JSON.stringify(sizes);
+    formData.append('sizes', sizesJson);
+    console.log('Saving product with sizes:', sizesJson);
+    
+    // 收集甜度选项
+    const sugarLevels = [];
+    const sugarLevelRows = document.querySelectorAll('.sugar-level-row');
+    sugarLevelRows.forEach(row => {
+      const level = row.querySelector('.sugar-level-value').value.trim();
+      if (level) {
+        sugarLevels.push(level);
+      }
+    });
+    formData.append('sugar_levels', JSON.stringify(sugarLevels));
+    console.log('Saving product with sugar_levels:', sugarLevels);
+    
+    // 收集可选加料（名称和价格形式，类似杯型价格）
+    const availableToppings = [];
+    const toppingRows = document.querySelectorAll('.topping-row');
+    toppingRows.forEach(row => {
+      const toppingName = row.querySelector('.topping-name').value.trim();
+      const toppingPrice = row.querySelector('.topping-price').value.trim();
+      if (toppingName) {
+        // 存储为对象格式 {name: "Cheese 芝士", price: 20}
+        const price = toppingPrice ? parseFloat(toppingPrice) : 0;
+        availableToppings.push({ name: toppingName, price: price });
+      }
+    });
+    formData.append('available_toppings', JSON.stringify(availableToppings));
+    console.log('Saving product with available_toppings:', availableToppings);
+    
+    // 收集冰度选项
+    const iceOptions = [];
+    const iceCheckboxes = document.querySelectorAll('.ice-option-checkbox:checked');
+    iceCheckboxes.forEach(checkbox => {
+      iceOptions.push(checkbox.value);
+    });
+    formData.append('ice_options', JSON.stringify(iceOptions));
+    console.log('Saving product with ice_options:', iceOptions);
+  }
   
   const imageFile = document.getElementById('productImage').files[0];
   if (imageFile) {
@@ -3410,11 +3543,18 @@ async function loadDineInQRCodeHistory() {
                 </a>
               </div>
             </div>
-            <button 
-              onclick="deleteDineInQRCode('${escapeHtml(qr.table_number)}')"
-              class="ml-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm transition-colors">
-              Delete
-            </button>
+            <div class="flex items-center space-x-2 ml-4">
+              <button 
+                onclick="viewQRCodeFromHistory('${escapeHtml(qr.table_number)}', '${escapeHtml(qr.qr_code_url)}')"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors">
+                📱 View QR Code
+              </button>
+              <button 
+                onclick="deleteDineInQRCode('${escapeHtml(qr.table_number)}')"
+                class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm transition-colors">
+                Delete
+              </button>
+            </div>
           </div>
         `;
       }).join('');
@@ -3425,6 +3565,96 @@ async function loadDineInQRCodeHistory() {
     console.error('Failed to load QR code history:', error);
     historyList.innerHTML = '<p class="text-red-500 text-sm text-center py-4">Failed to load QR code history</p>';
   }
+}
+
+// View QR code from history
+async function viewQRCodeFromHistory(tableNumber, qrCodeUrl) {
+  const qrCodeDisplayArea = document.getElementById('qrCodeDisplayArea');
+  const qrCodeContainer = document.getElementById('qrCodeContainer');
+  const displayTableNumber = document.getElementById('displayTableNumber');
+  
+  if (!qrCodeDisplayArea || !qrCodeContainer || !displayTableNumber) {
+    showToast('Page elements not found', 'error');
+    return;
+  }
+  
+  // 保存二维码数据（用于打印和下载）
+  currentQRCodeData = {
+    tableNumber: tableNumber,
+    qrCodeUrl: qrCodeUrl
+  };
+  
+  // 清空容器
+  qrCodeContainer.innerHTML = '';
+  
+  // 等待二维码库加载（最多等待5秒）
+  let attempts = 0;
+  const maxAttempts = 50; // 50次 * 100ms = 5秒
+  
+  const tryGenerateQR = () => {
+    attempts++;
+    
+    // 检查库是否已加载
+    if (typeof QRCode !== 'undefined' && typeof QRCode === 'function') {
+      try {
+        // qrcodejs库：new QRCode(element, options)
+        new QRCode(qrCodeContainer, {
+          text: qrCodeUrl,
+          width: 256,
+          height: 256,
+          colorDark: '#000000',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.H
+        });
+        
+        // 显示桌号
+        displayTableNumber.textContent = tableNumber;
+        
+        // 显示二维码区域
+        qrCodeDisplayArea.classList.remove('hidden');
+        
+        // 滚动到二维码显示区域
+        qrCodeDisplayArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        
+        showToast('QR code displayed successfully', 'success');
+        
+        return true; // 成功生成
+      } catch (qrError) {
+        console.error('Failed to generate QR code:', qrError);
+        showToast('Failed to display QR code: ' + (qrError.message || 'Unknown error'), 'error');
+        qrCodeContainer.innerHTML = '<p class="text-red-500 text-sm">Failed to display QR code: ' + (qrError.message || 'Unknown error') + '</p>';
+        return false;
+      }
+    } else if (attempts < maxAttempts) {
+      // 库还未加载，继续等待
+      if (attempts === 1) {
+        qrCodeContainer.innerHTML = '<p class="text-blue-500 text-sm">Loading QR code library, please wait...</p>';
+      } else if (attempts % 10 === 0) {
+        // 每1秒更新一次提示
+        qrCodeContainer.innerHTML = `<p class="text-blue-500 text-sm">Loading QR code library, please wait... (${attempts * 0.1}s)</p>`;
+      }
+      setTimeout(tryGenerateQR, 100);
+      return false;
+    } else {
+      // 超时，显示错误
+      qrCodeContainer.innerHTML = `
+        <div class="text-red-500 text-sm space-y-2 p-4">
+          <p class="font-semibold">QR code library loading failed</p>
+          <p class="text-xs">Possible reasons:</p>
+          <ul class="text-xs list-disc list-inside space-y-1">
+            <li>Network connection issue</li>
+            <li>CDN service unavailable</li>
+          </ul>
+          <p class="text-xs mt-2">Please refresh the page and try again.</p>
+        </div>
+      `;
+      showToast('QR code library loading failed, please refresh the page', 'error');
+      return false;
+    }
+  };
+  
+  // 开始尝试生成二维码
+  tryGenerateQR();
 }
 
 // Delete QR code

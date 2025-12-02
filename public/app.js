@@ -2313,11 +2313,17 @@ let allToppings = []; // 所有加料商品
 async function showProductDetail(product) {
   currentDetailProduct = product;
   selectedSize = null;
-  selectedSugar = '100';
+  selectedSugar = null; // 改为 null，不再默认 '100'
   selectedToppings = [];
   toppingPricesMap.clear(); // 重置加料价格映射
   selectedIce = null; // 重置冰度选择
   detailQuantity = 1; // 确保每次打开都重置为1
+  
+  // 重置所有区域为可见（让各个渲染函数决定是否隐藏）
+  document.getElementById('sizeSection').style.display = 'block';
+  document.getElementById('sugarSection').style.display = 'block';
+  document.getElementById('toppingSection').style.display = 'block';
+  document.getElementById('iceSection').style.display = 'block';
   
   // 加载所有产品（用于查找加料价格）
   // 不再依赖特定的加料产品，而是通过名称匹配所有产品
@@ -2370,6 +2376,7 @@ async function showProductDetail(product) {
 // 渲染杯型选择
 function renderSizeOptions(product) {
   const container = document.getElementById('sizeOptions');
+  const section = document.getElementById('sizeSection');
   let sizes = {};
   
   try {
@@ -2378,11 +2385,15 @@ function renderSizeOptions(product) {
     sizes = {};
   }
   
+  // 如果没有配置杯型，隐藏区域（使用商品基础价格）
   if (Object.keys(sizes).length === 0) {
-    // 使用翻译的默认值，但需要保存原始key以便后续查找
-    const defaultKey = '默认';
-    sizes = { [defaultKey]: product.price };
+    section.style.display = 'none';
+    selectedSize = null;
+    return;
   }
+  
+  // 显示区域并渲染选项
+  section.style.display = 'block';
   
   // 默认选中第一个杯型
   if (!selectedSize) {
@@ -2400,6 +2411,7 @@ function renderSizeOptions(product) {
 // 渲染甜度选择
 function renderSugarOptions(product) {
   const container = document.getElementById('sugarOptions');
+  const section = document.getElementById('sugarSection');
   let sugarLevels = [];
   
   try {
@@ -2408,9 +2420,15 @@ function renderSugarOptions(product) {
     sugarLevels = [];
   }
   
+  // 如果没有配置甜度选项，隐藏整个区域
   if (sugarLevels.length === 0) {
-    sugarLevels = ['0', '30', '50', '70', '100'];
+    section.style.display = 'none';
+    selectedSugar = null; // 清空选择
+    return;
   }
+  
+  // 显示区域并渲染选项
+  section.style.display = 'block';
   
   const sugarLabels = {
     '0': t('sugar_zero'),
@@ -2419,6 +2437,11 @@ function renderSugarOptions(product) {
     '70': t('sugar_less'),
     '100': t('sugar_regular')
   };
+  
+  // 默认选中第一个选项
+  if (!selectedSugar && sugarLevels.length > 0) {
+    selectedSugar = sugarLevels[0];
+  }
   
   container.innerHTML = sugarLevels.map(level => `
     <button onclick="selectSugar('${level}')" 
@@ -2472,10 +2495,15 @@ async function renderToppingOptions(product) {
     availableToppingNames = [];
   }
   
+  // 如果没有配置加料，隐藏整个区域
   if (availableToppingNames.length === 0) {
-    container.innerHTML = `<p class="text-sm text-gray-500">${t('no_toppings_available')}</p>`;
+    document.getElementById('toppingSection').style.display = 'none';
+    container.innerHTML = '';
     return;
   }
+  
+  // 显示区域
+  document.getElementById('toppingSection').style.display = 'block';
   
   // 加载所有产品以查找价格（通过名称匹配）
   let toppingPricesMap = new Map();
@@ -2543,21 +2571,23 @@ function selectSugar(level) {
 // 渲染冰度选择
 function renderIceOptions(product) {
   const container = document.getElementById('iceOptions');
+  const section = document.getElementById('iceSection');
   let iceOptions = [];
   
   try {
-    iceOptions = JSON.parse(product.ice_options || '["normal","less","no","room","hot"]');
+    iceOptions = JSON.parse(product.ice_options || '[]');
   } catch (e) {
-    iceOptions = ['normal', 'less', 'no', 'room', 'hot'];
+    iceOptions = [];
   }
   
   // 如果产品不允许选择冰度，隐藏整个区域
   if (iceOptions.length === 0) {
-    document.getElementById('iceSection').style.display = 'none';
+    section.style.display = 'none';
+    selectedIce = null;
     return;
   }
   
-  document.getElementById('iceSection').style.display = 'block';
+  section.style.display = 'block';
   
   const iceLabels = {
     'normal': t('ice_normal'),
@@ -2626,8 +2656,8 @@ function updateDetailPrice() {
     sizes = { '默认': currentDetailProduct.price };
   }
   
-  // 基础价格（杯型价格）
-  const basePrice = sizes[selectedSize] || currentDetailProduct.price;
+  // 基础价格（杯型价格，如果没有配置杯型或未选择，使用商品基础价格）
+  const basePrice = selectedSize && sizes[selectedSize] ? sizes[selectedSize] : currentDetailProduct.price;
   
   // 加料价格 - 优先使用配置的价格，如果没有则查找产品价格
   let toppingPrice = 0;
@@ -2657,7 +2687,21 @@ function updateDetailPrice() {
 
 // 从详情页加入购物车
 function addToCartFromDetail() {
-  if (!currentDetailProduct || !selectedSize) {
+  if (!currentDetailProduct) {
+    showToast(t('please_select_specs'), 'warning');
+    return;
+  }
+  
+  // 检查是否有必需的属性未选择（杯型是必需的，但如果商品没有配置杯型，则不要求）
+  let sizes = {};
+  try {
+    sizes = JSON.parse(currentDetailProduct.sizes || '{}');
+  } catch (e) {
+    sizes = {};
+  }
+  
+  // 如果商品配置了杯型，但没有选择，则提示
+  if (Object.keys(sizes).length > 0 && !selectedSize) {
     showToast(t('please_select_specs'), 'warning');
     return;
   }
@@ -2680,23 +2724,18 @@ function addToCartFromDetail() {
     return { name: toppingName, price: 0, id: null };
   }).filter(t => t);
   
-  // 获取杯型价格
-  let sizes = {};
-  try {
-    sizes = JSON.parse(currentDetailProduct.sizes || '{}');
-  } catch (e) {
-    sizes = { '默认': currentDetailProduct.price };
-  }
-  const sizePrice = sizes[selectedSize] || currentDetailProduct.price;
+  // 获取杯型价格（如果没有配置杯型，使用商品基础价格）
+  // 重用上面已声明的 sizes 变量
+  const sizePrice = selectedSize && sizes[selectedSize] ? sizes[selectedSize] : currentDetailProduct.price;
   
-  // 构建购物车项
+  // 构建购物车项（只包含已选择的属性）
   const cartItem = {
     product_id: currentDetailProduct.id,
     name: currentDetailProduct.name,
-    size: selectedSize,
+    size: selectedSize || null,
     size_price: sizePrice, // 保存Size的基础价格
-    sugar_level: selectedSugar,
-    ice_level: selectedIce || null, // 添加冰度选择
+    sugar_level: selectedSugar || null,
+    ice_level: selectedIce || null,
     toppings: selectedToppingItems,
     base_price: sizePrice,
     topping_price: selectedToppingItems.reduce((sum, t) => sum + t.price, 0),
@@ -2733,7 +2772,7 @@ function closeProductDetail() {
   document.getElementById('productDetailModal').classList.remove('active');
   currentDetailProduct = null;
   selectedSize = null;
-  selectedSugar = '100';
+  selectedSugar = null; // 改为 null
   selectedToppings = [];
   detailQuantity = 1;
 }
@@ -3236,6 +3275,11 @@ function showBottomTab(tabName) {
       updateProfilePage();
       break;
   }
+}
+
+// 确保函数在全局作用域中可用
+if (typeof window !== 'undefined') {
+  window.showBottomTab = showBottomTab;
 }
 
 // 加载新品展示图片

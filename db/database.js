@@ -170,9 +170,9 @@ async function initDatabase() {
         status TEXT DEFAULT 'active',
         sort_order INTEGER DEFAULT 0,
         sizes TEXT DEFAULT '{}',
-        sugar_levels TEXT DEFAULT '["0","30","50","70","100"]',
+        sugar_levels TEXT DEFAULT '[]',
         available_toppings TEXT DEFAULT '[]',
-        ice_options TEXT DEFAULT '["normal","less","no","room","hot"]',
+        ice_options TEXT DEFAULT '[]',
         created_at DATETIME DEFAULT (datetime('now', 'localtime')),
         updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -480,7 +480,7 @@ async function migrateDatabaseSchema() {
     
     if (!productColumns.includes('sugar_levels')) {
       console.log('自动迁移: 添加 products.sugar_levels 字段...');
-      await runAsync('ALTER TABLE products ADD COLUMN sugar_levels TEXT DEFAULT \'["0","30","50","70","100"]\'');
+      await runAsync('ALTER TABLE products ADD COLUMN sugar_levels TEXT DEFAULT \'[]\'');
     }
     
     if (!productColumns.includes('available_toppings')) {
@@ -490,7 +490,7 @@ async function migrateDatabaseSchema() {
     
     if (!productColumns.includes('ice_options')) {
       console.log('自动迁移: 添加 products.ice_options 字段...');
-      await runAsync('ALTER TABLE products ADD COLUMN ice_options TEXT DEFAULT \'["normal","less","no","room","hot"]\'');
+      await runAsync('ALTER TABLE products ADD COLUMN ice_options TEXT DEFAULT \'[]\'');
     }
 
     // 检查 order_items 表的字段
