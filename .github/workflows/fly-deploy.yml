@@ -1,14 +1,13 @@
-name: Fly Deploy
+name: Fly Deploy All Environments
 
 on:
   push:
     branches:
       - main
-      - dev
 
 jobs:
   deploy:
-    name: Deploy Fly App
+    name: Deploy 3 Fly Apps
     runs-on: ubuntu-latest
     concurrency: deploy-group
     steps:
@@ -16,19 +15,23 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Select Fly Config
-        id: config
+      - name: Deploy Production
         run: |
-          if [[ "${GITHUB_REF##*/}" == "main" ]]; then
-            echo "config=fly.boda-t0amgq.toml" >> $GITHUB_OUTPUT
-            echo "Deploying Production → boda-t0amgq"
-          else
-            echo "config=fly.boda-0mqtrq.toml" >> $GITHUB_OUTPUT
-            echo "Deploying Staging → boda-0mqtrq"
-          fi
+          echo "Deploying PROD → boda-t0amgq"
+          flyctl deploy -c fly.boda-t0amgq.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Deploy to Fly.io
+      - name: Deploy Staging
         run: |
-          flyctl deploy -c ${{ steps.config.outputs.config }} --remote-only
+          echo "Deploying STAGE → boda-0mqtrq"
+          flyctl deploy -c fly.boda-0mqtrq.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy Testing
+        run: |
+          echo "Deploying TEST → boda-3xyulq"
+          flyctl deploy -c fly.boda-3xyulq.toml --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
