@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title id="pageTitle">Ordering System</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link href="/dist/output.css" rel="stylesheet">
   <script src="/i18n.js"></script>
+  <!-- 拼音搜索库 -->
+  <script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.10.0/dist/index.umd.js"></script>
   <style>
     .fade-in { animation: fadeIn 0.3s ease-in; }
     @keyframes fadeIn {
@@ -138,6 +140,44 @@
       scroll-snap-align: start;
       flex-shrink: 0;
     }
+    /* 防止双击放大 */
+    html {
+      touch-action: manipulation;
+    }
+    /* 搜索框输入文字样式 */
+    #productSearchInput {
+      color: #111827 !important;
+      -webkit-text-fill-color: #111827 !important;
+      background-color: #ffffff !important;
+      -webkit-background-color: #ffffff !important;
+    }
+    #productSearchInput:focus {
+      color: #111827 !important;
+      -webkit-text-fill-color: #111827 !important;
+      background-color: #ffffff !important;
+    }
+    /* 确保搜索框容器始终可见 */
+    #productSearchContainer {
+      display: block !important;
+      opacity: 1 !important;
+      transform: none !important;
+      pointer-events: auto !important;
+    }
+    /* 限制点单内容仅支持上下滑动，禁止左右滑动 */
+    #productsScroll {
+      overflow-x: hidden !important;
+      touch-action: pan-y !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    #productsList {
+      overflow-x: hidden !important;
+      touch-action: pan-y !important;
+    }
+    #productsList > div {
+      overflow-x: hidden !important;
+      touch-action: pan-y !important;
+      max-width: 100% !important;
+    }
     #imageZoomSlider {
       -webkit-appearance: none;
       appearance: none;
@@ -258,7 +298,7 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center h-16">
           <div class="flex items-center space-x-3">
-            <span class="text-3xl">🧋</span>
+            <span class="text-3xl">🛒</span>
             <div>
               <h1 class="text-xl font-bold text-gray-900" data-i18n="app_name" data-store-name></h1>
               <p class="text-xs text-gray-500"><span data-i18n="welcome">Welcome</span>, <span id="userName"></span></p>
@@ -297,7 +337,7 @@
         <!-- 快速入口 -->
         <div class="grid grid-cols-2 gap-4 mb-6">
           <button onclick="showBottomTab('menu')" class="bg-gradient-to-r from-green-400 to-green-500 text-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
-            <div class="text-4xl mb-2">🧋</div>
+            <div class="text-4xl mb-2">🛒</div>
             <div class="font-bold text-lg" data-i18n="order_now">Order Now</div>
             <div class="text-sm opacity-90 mt-1" data-i18n="browse_menu">Browse Menu</div>
           </button>
@@ -315,7 +355,7 @@
       <!-- 系统公告滚动展示（包含折扣信息） -->
       <div id="systemNoticeBanner" class="hidden bg-yellow-100 border-b border-yellow-300 px-4 py-2 overflow-hidden" style="z-index: 9998; position: relative;">
         <div class="flex items-center">
-          <span class="text-yellow-800 font-semibold mr-3 flex-shrink-0">📢 Notice:</span>
+          <span class="text-yellow-800 font-semibold mr-3 flex-shrink-0">📢 <span data-i18n="system_notice">Notice</span>:</span>
           <div class="flex-1 overflow-hidden">
             <div id="noticeText" class="text-yellow-800 whitespace-nowrap animate-scroll"></div>
           </div>
@@ -323,7 +363,7 @@
       </div>
       
       <!-- 点单状态提示 -->
-      <div id="orderingStatus" class="px-4 py-2"></div>
+      <div id="orderingStatus" class="bg-green-100 border-b border-green-300 px-4 py-2 flex items-center" style="z-index: 9998; position: relative;"></div>
 
       <!-- 主内容区：左右分栏 -->
       <div class="flex flex-1 overflow-hidden">
@@ -334,8 +374,27 @@
         </div>
 
         <!-- 右侧商品列表 -->
-        <div class="flex-1 overflow-y-auto bg-white px-3 py-4" id="productsScroll">
-          <div id="productsList" class="space-y-4">
+        <div class="flex-1 overflow-y-auto overflow-x-hidden bg-white" id="productsScroll" style="touch-action: pan-y;">
+          <!-- 搜索框 -->
+          <div id="productSearchContainer" class="sticky top-0 z-20 bg-white border-b border-gray-200 px-3 py-2">
+            <div class="flex justify-center">
+              <div class="relative max-w-sm w-full">
+                <input 
+                  type="text" 
+                  id="productSearchInput" 
+                  placeholder="Search products..." 
+                  data-i18n-placeholder="search_products"
+                  class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors"
+                  oninput="handleProductSearch(this.value)"
+                  onfocus="clearSearchOnFocus()"
+                  autocomplete="off"
+                >
+              </div>
+            </div>
+          </div>
+          <div class="px-3 py-4">
+            <div id="productsList" class="space-y-4" style="overflow-x: hidden; touch-action: pan-y;">
+            </div>
           </div>
         </div>
       </div>
@@ -418,7 +477,7 @@
         <span class="text-xs" data-i18n="home">Home</span>
       </button>
       <button onclick="showBottomTab('menu')" id="menuNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-green-600 font-semibold">
-        <span class="text-xl">🧋</span>
+        <span class="text-xl">🛒</span>
         <span class="text-xs" data-i18n="order">Order</span>
       </button>
       <button onclick="showBottomTab('orders')" id="ordersNav" class="flex flex-col items-center space-y-1 px-4 py-2 text-gray-600">

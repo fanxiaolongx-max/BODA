@@ -10,6 +10,7 @@ let categories = [];
 let products = [];
 let cart = [];
 let selectedCategory = null;
+let searchKeyword = ''; // 搜索关键词
 let currentPaymentOrderId = null;
 let storeName = 'BOBA TEA'; // 商店名称，从设置中加载
 let currencySymbol = 'LE'; // 货币符号，从设置中加载
@@ -179,6 +180,22 @@ function clearLocalizedTextCache() {
 
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
+  // 防止双击放大（移动端）
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', function (event) {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) {
+      event.preventDefault();
+    }
+    lastTouchEnd = now;
+  }, false);
+  
+  // 防止双击放大（桌面端）
+  let lastClickTime = 0;
+  document.addEventListener('dblclick', function (event) {
+    event.preventDefault();
+  }, { passive: false });
+  
   // 初始化反馈按钮位置
   initFeedbackButtonPosition();
   
@@ -1939,9 +1956,169 @@ function renderProducts() {
   const container = document.getElementById('productsList');
   
   let filteredProducts = products;
+  
+  // 首先应用搜索过滤（支持模糊搜索和拼音搜索）
+  if (searchKeyword && searchKeyword.trim()) {
+    const keyword = searchKeyword.trim().toLowerCase();
+    
+    // 辅助函数：将中文转换为拼音（如果pinyin库可用）
+    const getPinyin = (text) => {
+      if (!text) return '';
+      try {
+        // 检查pinyin-pro库是否可用（UMD版本）
+        let pinyinFunc = null;
+        let pinyinLib = null;
+        
+        // 尝试多种可能的全局变量名和API
+        if (typeof pinyinPro !== 'undefined') {
+          pinyinLib = pinyinPro;
+        } else if (typeof window !== 'undefined' && typeof window.pinyinPro !== 'undefined') {
+          pinyinLib = window.pinyinPro;
+        } else if (typeof PinyinPro !== 'undefined') {
+          pinyinLib = PinyinPro;
+        } else if (typeof window !== 'undefined' && typeof window.PinyinPro !== 'undefined') {
+          pinyinLib = window.PinyinPro;
+        }
+        
+        if (pinyinLib) {
+          // 尝试多种可能的函数名
+          if (typeof pinyinLib.pinyin === 'function') {
+            pinyinFunc = pinyinLib.pinyin;
+          } else if (typeof pinyinLib === 'function') {
+            pinyinFunc = pinyinLib;
+          } else if (typeof pinyinLib.default === 'function') {
+            pinyinFunc = pinyinLib.default;
+          } else if (typeof pinyinLib.default === 'object' && typeof pinyinLib.default.pinyin === 'function') {
+            pinyinFunc = pinyinLib.default.pinyin;
+          }
+          
+          if (pinyinFunc) {
+            // 使用 pinyinPro.pinyin 转换，不带声调
+            const result = pinyinFunc(text, { 
+              toneType: 'none', 
+              type: 'all'
+            });
+            return result ? result.toLowerCase().replace(/\s+/g, '') : '';
+          }
+        }
+      } catch (e) {
+        // 如果库不可用，返回空字符串（静默失败，不影响搜索）
+        console.debug('拼音转换失败:', e);
+      }
+      return '';
+    };
+    
+    // 辅助函数：获取拼音首字母
+    const getPinyinInitials = (text) => {
+      if (!text) return '';
+      try {
+        let pinyinFunc = null;
+        let pinyinLib = null;
+        
+        // 尝试多种可能的全局变量名和API
+        if (typeof pinyinPro !== 'undefined') {
+          pinyinLib = pinyinPro;
+        } else if (typeof window !== 'undefined' && typeof window.pinyinPro !== 'undefined') {
+          pinyinLib = window.pinyinPro;
+        } else if (typeof PinyinPro !== 'undefined') {
+          pinyinLib = PinyinPro;
+        } else if (typeof window !== 'undefined' && typeof window.PinyinPro !== 'undefined') {
+          pinyinLib = window.PinyinPro;
+        }
+        
+        if (pinyinLib) {
+          // 尝试多种可能的函数名
+          if (typeof pinyinLib.pinyin === 'function') {
+            pinyinFunc = pinyinLib.pinyin;
+          } else if (typeof pinyinLib === 'function') {
+            pinyinFunc = pinyinLib;
+          } else if (typeof pinyinLib.default === 'function') {
+            pinyinFunc = pinyinLib.default;
+          } else if (typeof pinyinLib.default === 'object' && typeof pinyinLib.default.pinyin === 'function') {
+            pinyinFunc = pinyinLib.default.pinyin;
+          }
+          
+          if (pinyinFunc) {
+            // 先获取完整拼音，然后提取首字母
+            const fullPinyin = pinyinFunc(text, { toneType: 'none', type: 'all' });
+            if (fullPinyin) {
+              // 将拼音按空格分割，取每个词的首字母
+              const words = fullPinyin.trim().split(/\s+/);
+              const initials = words.map(word => word.charAt(0).toLowerCase()).join('');
+              return initials;
+            }
+          }
+        }
+      } catch (e) {
+        console.debug('拼音首字母转换失败:', e);
+      }
+      return '';
+    };
+    
+    // 辅助函数：检查文本是否匹配关键词（支持模糊搜索、拼音搜索和拼音首字母搜索）
+    const matchesKeyword = (text) => {
+      if (!text) return false;
+      const lowerText = text.toLowerCase();
+      
+      // 1. 直接文本匹配（模糊搜索）
+      if (lowerText.includes(keyword)) {
+        return true;
+      }
+      
+      // 2. 拼音搜索
+      try {
+        const textPinyin = getPinyin(text);
+        const keywordPinyin = getPinyin(keyword);
+        const textPinyinInitials = getPinyinInitials(text);
+        
+        // 如果文本有拼音，检查关键词是否匹配文本的拼音
+        // 支持：拼音关键词匹配中文文本的拼音
+        if (textPinyin && textPinyin.includes(keyword.replace(/\s+/g, ''))) {
+          return true;
+        }
+        
+        // 支持：中文关键词转换为拼音后匹配文本的拼音
+        if (keywordPinyin && textPinyin && textPinyin.includes(keywordPinyin.replace(/\s+/g, ''))) {
+          return true;
+        }
+        
+        // 支持：拼音首字母搜索（例如：输入 "nc" 匹配 "奶茶"）
+        if (textPinyinInitials && textPinyinInitials.includes(keyword.replace(/\s+/g, ''))) {
+          return true;
+        }
+        
+        // 支持：拼音关键词直接匹配文本的拼音（更精确的匹配）
+        if (/^[a-z\s]+$/i.test(keyword) && textPinyin && textPinyin.includes(keyword.replace(/\s+/g, ''))) {
+          return true;
+        }
+      } catch (e) {
+        // 拼音转换失败，忽略
+        console.debug('拼音搜索匹配失败:', e);
+      }
+      
+      return false;
+    };
+    
+    filteredProducts = filteredProducts.filter(p => {
+      // 获取本地化后的名称和描述
+      const localizedName = getLocalizedText(p.name);
+      const localizedDesc = getLocalizedText(p.description || '');
+      // 同时搜索原始名称（支持中英文混合）
+      const originalName = p.name || '';
+      const originalDesc = p.description || '';
+      
+      // 搜索名称和描述（支持模糊搜索和拼音搜索）
+      return matchesKeyword(localizedName) || 
+             matchesKeyword(localizedDesc) ||
+             matchesKeyword(originalName) ||
+             matchesKeyword(originalDesc);
+    });
+  }
+  
+  // 然后应用分类过滤
   if (selectedCategory !== null) {
     // 使用类型转换确保比较正确：SQLite返回的category_id可能是字符串或数字
-    filteredProducts = products.filter(p => {
+    filteredProducts = filteredProducts.filter(p => {
       const productCategoryId = p.category_id != null ? Number(p.category_id) : null;
       return productCategoryId === selectedCategory;
     });
@@ -1963,51 +2140,19 @@ function renderProducts() {
   }
   
   if (filteredProducts.length === 0) {
-    container.innerHTML = `<div class="col-span-full text-center py-12 text-gray-500">${t('no_products')}</div>`;
+    // 区分搜索无结果和正常无结果
+    const noResultMessage = searchKeyword && searchKeyword.trim() 
+      ? `<div class="col-span-full text-center py-12 text-gray-500">${t('no_search_results')}</div>`
+      : `<div class="col-span-full text-center py-12 text-gray-500">${t('no_products')}</div>`;
+    container.innerHTML = noResultMessage;
     return;
   }
   
-  // 按分类分组
-  const groupedProducts = {};
-  filteredProducts.forEach(product => {
-    const catName = product.category_name || 'Uncategorized';
-    if (!groupedProducts[catName]) {
-      groupedProducts[catName] = [];
-    }
-    groupedProducts[catName].push(product);
-  });
-  
-  // 获取分类排序信息，确保"其它"或"加料"分类在最后
-  const categoryMap = {};
-  categories.forEach(cat => {
-    categoryMap[cat.name] = cat.sort_order || 999;
-  });
-  
-  // 对分类进行排序，"其它"、"加料"等分类放在最后
-  const sortedCategories = Object.keys(groupedProducts).sort((a, b) => {
-    const aOrder = categoryMap[a] || 999;
-    const bOrder = categoryMap[b] || 999;
-    
-    // If contains "Other", "Toppings" keywords, put at the end
-    const aIsOther = a.includes('其它') || a.includes('加料') || a.includes('ADD') || a.includes('OTHER') || a.includes('Other') || a.includes('Toppings');
-    const bIsOther = b.includes('其它') || b.includes('加料') || b.includes('ADD') || b.includes('OTHER') || b.includes('Other') || b.includes('Toppings');
-    
-    if (aIsOther && !bIsOther) return 1;
-    if (!aIsOther && bIsOther) return -1;
-    
-    return aOrder - bOrder;
-  });
-  
   let html = '';
   
-  sortedCategories.forEach(catName => {
-    const prods = groupedProducts[catName];
-      html += `<div class="mb-4" id="category-${catName}">`;
-    if (selectedCategory === null) {
-      html += `<h3 class="text-sm font-bold text-gray-700 mb-3 px-2">${getLocalizedText(catName)}</h3>`;
-    }
-    
-    prods.forEach(product => {
+  // 如果有搜索关键词，不按分类分组，直接显示所有结果
+  if (searchKeyword && searchKeyword.trim()) {
+    filteredProducts.forEach(product => {
       // 解析杯型价格
       let sizes = {};
       try {
@@ -2024,19 +2169,24 @@ function renderProducts() {
       // 使用显示的最低价格来确定颜色（相同价格相同颜色）
       const priceForColor = minPrice;
       
+      // 获取商品分类名称
+      const categoryName = product.category_name || 'Uncategorized';
+      const localizedCategoryName = getLocalizedText(categoryName);
+      
       html += `
-        <div class="flex items-center p-3 bg-white hover:bg-gray-50 border-b border-gray-100">
+        <div class="flex items-center p-3 bg-white hover:bg-gray-50 border-b border-gray-100" style="overflow-x: hidden; touch-action: pan-y;">
           <!-- 商品图片 -->
           <div class="w-20 h-20 flex-shrink-0 mr-3">
             ${product.image_url ? 
               `<img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover rounded-lg">` :
-              `<div class="w-full h-full bg-gradient-to-br from-orange-100 to-yellow-100 rounded-lg flex items-center justify-center text-3xl">🧋</div>`
+              `<div class="w-full h-full bg-gradient-to-br from-orange-100 to-yellow-100 rounded-lg flex items-center justify-center text-3xl">📦</div>`
             }
           </div>
           
           <!-- 商品信息 -->
           <div class="flex-1 min-w-0">
             <h4 class="text-sm font-bold text-gray-900 line-clamp-1">${getLocalizedText(product.name)}</h4>
+            <span class="inline-block text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full mt-1">${localizedCategoryName}</span>
             ${product.description && !product.description.includes('支持多种') ? 
               `<p class="text-xs text-gray-500 mt-1 line-clamp-1">${getLocalizedText(product.description)}</p>` : 
               ''}
@@ -2055,14 +2205,190 @@ function renderProducts() {
         </div>
       `;
     });
+  } else {
+    // 按分类分组
+    const groupedProducts = {};
+    filteredProducts.forEach(product => {
+      const catName = product.category_name || 'Uncategorized';
+      if (!groupedProducts[catName]) {
+        groupedProducts[catName] = [];
+      }
+      groupedProducts[catName].push(product);
+    });
     
-    html += '</div>';
-  });
+    // 获取分类排序信息，确保"其它"或"加料"分类在最后
+    const categoryMap = {};
+    categories.forEach(cat => {
+      categoryMap[cat.name] = cat.sort_order || 999;
+    });
+    
+    // 对分类进行排序，"其它"、"加料"等分类放在最后
+    const sortedCategories = Object.keys(groupedProducts).sort((a, b) => {
+      const aOrder = categoryMap[a] || 999;
+      const bOrder = categoryMap[b] || 999;
+      
+      // If contains "Other", "Toppings" keywords, put at the end
+      const aIsOther = a.includes('其它') || a.includes('加料') || a.includes('ADD') || a.includes('OTHER') || a.includes('Other') || a.includes('Toppings');
+      const bIsOther = b.includes('其它') || b.includes('加料') || b.includes('ADD') || b.includes('OTHER') || b.includes('Other') || b.includes('Toppings');
+      
+      if (aIsOther && !bIsOther) return 1;
+      if (!aIsOther && bIsOther) return -1;
+      
+      return aOrder - bOrder;
+    });
+    
+    sortedCategories.forEach(catName => {
+      const prods = groupedProducts[catName];
+      html += `<div class="mb-4" id="category-${catName}">`;
+      if (selectedCategory === null) {
+        html += `<h3 class="text-sm font-bold text-gray-700 mb-3 px-2">${getLocalizedText(catName)}</h3>`;
+      }
+      
+      prods.forEach(product => {
+        // 解析杯型价格
+        let sizes = {};
+        try {
+          sizes = JSON.parse(product.sizes || '{}');
+        } catch (e) {
+          sizes = {};
+        }
+        
+        // 获取最低价格（用于显示和颜色）
+        const prices = Object.values(sizes);
+        const minPrice = prices.length > 0 ? Math.min(...prices) : product.price;
+        const hasMultipleSizes = prices.length > 1;
+        
+        // 使用显示的最低价格来确定颜色（相同价格相同颜色）
+        const priceForColor = minPrice;
+        
+        html += `
+          <div class="flex items-center p-3 bg-white hover:bg-gray-50 border-b border-gray-100">
+            <!-- 商品图片 -->
+            <div class="w-20 h-20 flex-shrink-0 mr-3">
+              ${product.image_url ? 
+                `<img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover rounded-lg">` :
+                `<div class="w-full h-full bg-gradient-to-br from-orange-100 to-yellow-100 rounded-lg flex items-center justify-center text-3xl">📦</div>`
+              }
+            </div>
+            
+            <!-- 商品信息 -->
+            <div class="flex-1 min-w-0">
+              <h4 class="text-sm font-bold text-gray-900 line-clamp-1">${getLocalizedText(product.name)}</h4>
+              ${product.description && !product.description.includes('支持多种') ? 
+                `<p class="text-xs text-gray-500 mt-1 line-clamp-1">${getLocalizedText(product.description)}</p>` : 
+                ''}
+              <div class="flex items-center justify-between mt-2">
+                <div>
+                  <span class="${getPriceColor(priceForColor)} font-bold text-base">${formatPrice(minPrice)}</span>
+                  ${hasMultipleSizes ? `<span class="text-xs text-gray-500 ml-1">${t('starting_from')}</span>` : ''}
+                </div>
+                <button onclick='showProductDetail(${JSON.stringify(product).replace(/'/g, "&apos;")})' 
+                        class="px-4 py-1.5 ${currentSettings.ordering_open === 'true' ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'} text-white font-semibold rounded-full transition text-xs"
+                        ${currentSettings.ordering_open !== 'true' ? 'disabled' : ''}>
+                  ${currentSettings.ordering_open === 'true' ? t('select') : t('closed')}
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      html += '</div>';
+    });
+  }
   
   container.innerHTML = html || `<div class="text-center py-12 text-gray-500">${t('no_products_chinese')}</div>`;
   
   // 设置滚动监听，实现左侧分类自动高亮
-  setupCategoryScrollHighlight();
+  if (searchKeyword && searchKeyword.trim()) {
+    // 搜索模式下：高亮包含搜索结果的分类
+    highlightSearchResultCategories(filteredProducts);
+  } else {
+    // 非搜索模式：使用滚动高亮
+    setupCategoryScrollHighlight();
+  }
+}
+
+// 高亮搜索结果相关的分类
+function highlightSearchResultCategories(filteredProducts) {
+  if (!filteredProducts || filteredProducts.length === 0) {
+    // 无搜索结果，清除所有高亮
+    const navButtons = document.querySelectorAll('.category-nav-btn');
+    navButtons.forEach(btn => {
+      btn.classList.remove('bg-white', 'text-green-600', 'font-semibold', 'border-l-3', 'border-green-600');
+      btn.classList.add('text-gray-600', 'hover:bg-gray-100');
+    });
+    return;
+  }
+  
+  // 收集搜索结果中的所有分类
+  const resultCategories = new Set();
+  filteredProducts.forEach(product => {
+    if (product.category_name) {
+      resultCategories.add(product.category_name);
+    }
+  });
+  
+  // 高亮包含搜索结果的分类
+  const navButtons = document.querySelectorAll('.category-nav-btn');
+  navButtons.forEach(btn => {
+    const btnText = btn.textContent.trim();
+    let shouldHighlight = false;
+    
+    // 检查按钮对应的分类是否在搜索结果中
+    resultCategories.forEach(catName => {
+      const matchedCategory = categories.find(cat => cat.name === catName);
+      if (matchedCategory) {
+        const localizedName = getLocalizedText(matchedCategory.name);
+        const shortName = localizedName.length > 8 ? localizedName.substring(0, 8) + '...' : localizedName;
+        if (btnText === localizedName || btnText === shortName || btnText === t('all')) {
+          shouldHighlight = true;
+        }
+      }
+    });
+    
+    // 更新按钮样式
+    if (shouldHighlight) {
+      btn.classList.add('bg-white', 'text-green-600', 'font-semibold', 'border-l-3', 'border-green-600');
+      btn.classList.remove('text-gray-600', 'hover:bg-gray-100');
+    } else {
+      btn.classList.remove('bg-white', 'text-green-600', 'font-semibold', 'border-l-3', 'border-green-600');
+      btn.classList.add('text-gray-600', 'hover:bg-gray-100');
+    }
+  });
+}
+
+// 处理商品搜索
+function handleProductSearch(keyword) {
+  searchKeyword = keyword;
+  
+  // 重新渲染商品列表
+  renderProducts();
+  
+  // 滚动到顶部
+  const productsScroll = document.getElementById('productsScroll');
+  if (productsScroll) {
+    productsScroll.scrollTop = 0;
+  }
+}
+
+// 点击搜索框时自动清除内容
+function clearSearchOnFocus() {
+  const searchInput = document.getElementById('productSearchInput');
+  if (searchInput && searchInput.value && searchInput.value.trim()) {
+    // 如果搜索框有内容，点击时清除
+    searchInput.value = '';
+    handleProductSearch('');
+  }
+}
+
+// 清除搜索（保留此函数以便其他地方调用）
+function clearProductSearch() {
+  const searchInput = document.getElementById('productSearchInput');
+  if (searchInput) {
+    searchInput.value = '';
+    handleProductSearch('');
+  }
 }
 
 // 设置分类滚动高亮（使用 Intersection Observer API - 业界推荐方案）
@@ -2287,10 +2613,10 @@ async function updateOrderingStatus() {
     const isOpen = currentSettings.ordering_open === 'true';
     
     if (isOpen) {
-      container.className = 'mb-6 p-4 rounded-lg bg-green-100 border border-green-300 text-green-800';
+      container.className = 'bg-green-100 border-b border-green-300 text-green-800 flex items-center px-4 py-2';
       container.innerHTML = t('ordering_open_welcome');
     } else {
-      container.className = 'mb-6 p-4 rounded-lg bg-yellow-100 border border-yellow-300 text-yellow-800';
+      container.className = 'bg-yellow-100 border-b border-yellow-300 text-yellow-800 flex items-center px-4 py-2';
       container.innerHTML = t('ordering_closed_notification');
     }
   } catch (error) {

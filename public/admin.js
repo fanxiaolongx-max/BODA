@@ -10372,7 +10372,7 @@ async function loadShowcaseImages() {
         
         return `
         <div class="bg-gray-50 rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow">
-          <div class="relative aspect-[4/5] bg-gray-200">
+          <div class="relative aspect-[4/5] bg-gray-200 w-full">
             <img 
               src="${safeUrl}" 
               alt="Showcase ${index + 1}" 
@@ -10380,11 +10380,11 @@ async function loadShowcaseImages() {
               onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22500%22%3E%3Crect fill=%22%23f3f4f6%22 width=%22400%22 height=%22500%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%239ca3af%22 font-family=%22sans-serif%22 font-size=%2218%22%3EImage%3C/text%3E%3C/svg%3E'"
             >
           </div>
-          <div class="p-4">
-            <p class="text-sm text-gray-600 mb-2 truncate" title="${displayFilename}">${displayFilename}</p>
+          <div class="p-3">
+            <p class="text-xs text-gray-600 mb-2 truncate" title="${displayFilename}">${displayFilename}</p>
             <button 
               onclick="deleteShowcaseImage('${safeFilename}')" 
-              class="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+              class="w-full px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-xs"
             >
               🗑️ Delete
             </button>
@@ -10401,76 +10401,171 @@ async function loadShowcaseImages() {
   }
 }
 
-// 处理图片选择
+// 存储选中的图片文件
+let selectedShowcaseFiles = [];
+
+// 处理图片选择（支持多选）
 function handleShowcaseImageSelect(event) {
-  const file = event.target.files[0];
-  const fileNameSpan = document.getElementById('showcaseImageFileName');
+  const files = Array.from(event.target.files || []);
+  const previewContainer = document.getElementById('selectedImagesPreview');
+  const previewList = document.getElementById('selectedImagesList');
   const uploadBtn = document.getElementById('uploadShowcaseImageBtn');
+  const countSpan = document.getElementById('selectedImageCount');
   
-  if (file) {
+  if (files.length === 0) {
+    selectedShowcaseFiles = [];
+    previewContainer.classList.add('hidden');
+    uploadBtn.style.display = 'none';
+    return;
+  }
+  
+  // 验证所有文件
+  const validFiles = [];
+  const errors = [];
+  
+  files.forEach((file, index) => {
     // 验证文件类型
     const allowedTypes = /image\/(jpeg|jpg|png|gif|webp)/;
     if (!allowedTypes.test(file.type)) {
-      showToast('Please select a valid image file (JPG, PNG, GIF, WebP)', 'error');
-      event.target.value = '';
+      errors.push(`${file.name}: Invalid file type`);
       return;
     }
     
     // 验证文件大小（10MB）
     if (file.size > 10 * 1024 * 1024) {
-      showToast('Image size must be less than 10MB', 'error');
-      event.target.value = '';
+      errors.push(`${file.name}: File size exceeds 10MB`);
       return;
     }
     
-    fileNameSpan.textContent = file.name;
-    uploadBtn.style.display = 'inline-block';
-  } else {
-    fileNameSpan.textContent = '';
-    uploadBtn.style.display = 'none';
-  }
-}
-
-// 上传展示图片
-async function uploadShowcaseImage() {
-  const fileInput = document.getElementById('showcaseImageInput');
-  const uploadBtn = document.getElementById('uploadShowcaseImageBtn');
+    validFiles.push(file);
+  });
   
-  if (!fileInput.files || fileInput.files.length === 0) {
-    showToast('Please select an image file', 'error');
+  // 显示错误信息
+  if (errors.length > 0) {
+    showToast(errors.join('; '), 'error');
+  }
+  
+  // 如果没有有效文件，清空选择
+  if (validFiles.length === 0) {
+    event.target.value = '';
+    selectedShowcaseFiles = [];
+    previewContainer.classList.add('hidden');
+    uploadBtn.style.display = 'none';
     return;
   }
   
-  const file = fileInput.files[0];
+  selectedShowcaseFiles = validFiles;
+  
+  // 显示选中数量
+  countSpan.textContent = validFiles.length;
+  
+  // 显示预览
+  previewList.innerHTML = validFiles.map((file, index) => {
+    const reader = new FileReader();
+    const previewId = `preview-${index}-${Date.now()}`;
+    
+    reader.onload = (e) => {
+      const img = document.getElementById(previewId);
+      if (img) {
+        img.src = e.target.result;
+      }
+    };
+    reader.readAsDataURL(file);
+    
+    return `
+      <div class="relative bg-gray-100 rounded-lg overflow-hidden">
+        <div class="aspect-[4/5] bg-gray-200">
+          <img 
+            id="${previewId}" 
+            src="" 
+            alt="${escapeHtml(file.name)}" 
+            class="w-full h-full object-cover"
+          >
+        </div>
+        <div class="p-2 bg-white border-t border-gray-200">
+          <p class="text-xs text-gray-600 truncate" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</p>
+          <p class="text-xs text-gray-400">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  previewContainer.classList.remove('hidden');
+  uploadBtn.style.display = 'inline-block';
+}
+
+// 上传展示图片
+// 批量上传展示图片
+async function uploadShowcaseImages() {
+  if (!selectedShowcaseFiles || selectedShowcaseFiles.length === 0) {
+    showToast('Please select at least one image file', 'error');
+    return;
+  }
+  
+  const uploadBtn = document.getElementById('uploadShowcaseImageBtn');
+  const fileInput = document.getElementById('showcaseImageInput');
   
   try {
     setButtonLoading(uploadBtn, true);
     
-    const formData = new FormData();
-    formData.append('image', file);
+    let successCount = 0;
+    let failCount = 0;
+    const errors = [];
     
-    const response = await fetch(`${API_BASE}/admin/showcase-images`, {
-      method: 'POST',
-      credentials: 'include',
-      body: formData
-    });
-    
-    const data = await response.json();
-    setButtonLoading(uploadBtn, false);
-    
-    if (data.success) {
-      showToast('Image uploaded successfully', 'success');
-      fileInput.value = '';
-      document.getElementById('showcaseImageFileName').textContent = '';
-      uploadBtn.style.display = 'none';
-      loadShowcaseImages();
-    } else {
-      showToast(data.message || 'Upload failed', 'error');
+    // 逐个上传图片
+    for (let i = 0; i < selectedShowcaseFiles.length; i++) {
+      const file = selectedShowcaseFiles[i];
+      
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+        
+        const response = await fetch(`${API_BASE}/admin/showcase-images`, {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          successCount++;
+        } else {
+          failCount++;
+          errors.push(`${file.name}: ${data.message || 'Upload failed'}`);
+        }
+      } catch (error) {
+        failCount++;
+        errors.push(`${file.name}: ${error.message}`);
+      }
     }
-  } catch (error) {
-    console.error('上传展示图片失败:', error);
+    
     setButtonLoading(uploadBtn, false);
-    showToast('Upload failed', 'error');
+    
+    // 显示上传结果
+    if (successCount > 0) {
+      showToast(`Successfully uploaded ${successCount} image(s)${failCount > 0 ? `, ${failCount} failed` : ''}`, 
+                failCount > 0 ? 'warning' : 'success');
+      
+      if (errors.length > 0) {
+        console.error('Upload errors:', errors);
+      }
+    } else {
+      showToast('All uploads failed: ' + (errors[0] || 'Unknown error'), 'error');
+    }
+    
+    // 清空选择
+    selectedShowcaseFiles = [];
+    fileInput.value = '';
+    document.getElementById('selectedImagesPreview').classList.add('hidden');
+    document.getElementById('uploadShowcaseImageBtn').style.display = 'none';
+    
+    // 刷新图片列表
+    await loadShowcaseImages();
+  } catch (error) {
+    console.error('批量上传展示图片失败:', error);
+    setButtonLoading(uploadBtn, false);
+    showToast('Upload failed: ' + error.message, 'error');
   }
 }
 

@@ -578,24 +578,49 @@
             
             <!-- 上传图片区域 -->
             <div class="bg-white rounded-xl shadow-md p-6 mb-6">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">Upload New Image</h3>
-              <div class="flex items-center space-x-4">
-                <input type="file" id="showcaseImageInput" accept="image/*" class="hidden" onchange="handleShowcaseImageSelect(event)">
+              <h3 class="text-lg font-semibold text-gray-900 mb-4">Upload Images</h3>
+              
+              <!-- 建议尺寸说明 -->
+              <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div class="flex items-start">
+                  <span class="text-xl mr-3">💡</span>
+                  <div class="flex-1">
+                    <p class="text-sm font-semibold text-blue-900 mb-2">Recommended Image Specifications:</p>
+                    <ul class="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                      <li><strong>Aspect Ratio:</strong> 4:5 (Width:Height)</li>
+                      <li><strong>Recommended Sizes:</strong> 512×640px, 1024×1280px, or 1536×1920px</li>
+                      <li><strong>Formats:</strong> JPG, PNG, GIF, WebP</li>
+                      <li><strong>File Size:</strong> Max 10MB per image</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="flex items-center space-x-4 mb-4">
+                <input type="file" id="showcaseImageInput" accept="image/*" multiple class="hidden" onchange="handleShowcaseImageSelect(event)">
                 <button onclick="document.getElementById('showcaseImageInput').click()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                  📤 Select Image
+                  📤 Select Images
                 </button>
-                <span id="showcaseImageFileName" class="text-sm text-gray-600"></span>
-                <button id="uploadShowcaseImageBtn" onclick="uploadShowcaseImage()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition" style="display: none;">
-                  Upload
+                <button id="uploadShowcaseImageBtn" onclick="uploadShowcaseImages()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition" style="display: none;">
+                  📤 Upload Selected (<span id="selectedImageCount">0</span>)
                 </button>
               </div>
-              <p class="text-sm text-gray-500 mt-2">Supported formats: JPG, PNG, GIF, WebP (Max 10MB)</p>
+              
+              <!-- 选中的图片列表预览 -->
+              <div id="selectedImagesPreview" class="hidden mt-4">
+                <p class="text-sm font-semibold text-gray-700 mb-2">Selected Images:</p>
+                <div id="selectedImagesList" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  <!-- 预览项将动态添加 -->
+                </div>
+              </div>
+              
+              <p class="text-sm text-gray-500 mt-2">You can select multiple images at once. Supported formats: JPG, PNG, GIF, WebP (Max 10MB per image)</p>
             </div>
             
             <!-- 图片列表 -->
             <div class="bg-white rounded-xl shadow-md p-6">
               <h3 class="text-lg font-semibold text-gray-900 mb-4">Current Images</h3>
-              <div id="showcaseImagesList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div id="showcaseImagesList" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 <div class="text-center text-gray-500 py-8">Loading...</div>
               </div>
             </div>
