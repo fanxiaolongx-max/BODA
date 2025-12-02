@@ -7755,5 +7755,155 @@ router.get('/developer/test-report', requireSuperAdmin, async (req, res) => {
   }
 });
 
+// ==================== 展示图片管理 ====================
+
+// 配置展示图片上传
+const showcaseStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    // 优先使用 DATA_DIR/show（持久化），如果不存在则回退到项目根目录（兼容性）
+    const SHOW_DIR = path.join(DATA_DIR, 'show');
+    const FALLBACK_SHOW_DIR = path.join(__dirname, '../show');
+    const showDir = fs.existsSync(SHOW_DIR) ? SHOW_DIR : FALLBACK_SHOW_DIR;
+    
+    if (!fs.existsSync(showDir)) {
+      fs.mkdirSync(showDir, { recursive: true });
+    }
+    cb(null, showDir);
+  },
+  filename: (req, file, cb) => {
+    // 保持原始文件名，但添加时间戳前缀避免冲突
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext);
+    // 清理文件名，只保留字母、数字、连字符和下划线
+    const cleanBaseName = baseName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    cb(null, `${timestamp}-${cleanBaseName}${ext}`);
+  }
+});
+
+const showcaseUpload = multer({
+  storage: showcaseStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image formats are supported'));
+    }
+  }
+});
+
+/**
+ * GET /api/admin/showcase-images
+ * Get list of showcase images
+ */
+router.get('/showcase-images', async (req, res) => {
+  try {
+    // 优先使用 DATA_DIR/show（持久化），如果不存在则回退到项目根目录（兼容性）
+    const SHOW_DIR = path.join(DATA_DIR, 'show');
+    const FALLBACK_SHOW_DIR = path.join(__dirname, '../show');
+    const showDir = fs.existsSync(SHOW_DIR) ? SHOW_DIR : FALLBACK_SHOW_DIR;
+    
+    // 检查目录是否存在
+    if (!fs.existsSync(showDir)) {
+      return res.json({ success: true, images: [] });
+    }
+    
+    const files = fs.readdirSync(showDir);
+    const images = files
+      .filter(file => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
+      .map(file => ({
+        filename: file,
+        url: `/show/${file}`
+      }))
+      .sort(); // 按文件名排序
+    
+    res.json({ success: true, images });
+  } catch (error) {
+    logger.error('获取展示图片列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to get showcase images' });
+  }
+});
+
+/**
+ * POST /api/admin/showcase-images
+ * Upload a new showcase image
+ */
+router.post('/showcase-images', showcaseUpload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image file provided' });
+    }
+    
+    const filename = req.file.filename;
+    const url = `/show/${filename}`;
+    
+    await logAction(req.session.adminId, 'CREATE', 'showcase_image', null, JSON.stringify({
+      filename: filename,
+      url: url
+    }), req);
+    
+    res.json({ 
+      success: true, 
+      message: 'Image uploaded successfully',
+      image: {
+        filename: filename,
+        url: url
+      }
+    });
+  } catch (error) {
+    logger.error('上传展示图片失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to upload image: ' + error.message });
+  }
+});
+
+/**
+ * DELETE /api/admin/showcase-images/:filename
+ * Delete a showcase image
+ */
+router.delete('/showcase-images/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    
+    // 验证文件名（防止路径遍历攻击）
+    if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
+      return res.status(400).json({ success: false, message: 'Invalid filename' });
+    }
+    
+    // 优先使用 DATA_DIR/show（持久化），如果不存在则回退到项目根目录（兼容性）
+    const SHOW_DIR = path.join(DATA_DIR, 'show');
+    const FALLBACK_SHOW_DIR = path.join(__dirname, '../show');
+    const showDir = fs.existsSync(SHOW_DIR) ? SHOW_DIR : FALLBACK_SHOW_DIR;
+    const filePath = path.join(showDir, filename);
+    
+    // 验证文件路径安全性（防止路径遍历）
+    const resolvedPath = path.resolve(filePath);
+    const resolvedShowDir = path.resolve(showDir);
+    if (!resolvedPath.startsWith(resolvedShowDir)) {
+      return res.status(400).json({ success: false, message: 'Invalid file path' });
+    }
+    
+    // 检查文件是否存在
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: 'Image not found' });
+    }
+    
+    // 删除文件
+    fs.unlinkSync(filePath);
+    
+    await logAction(req.session.adminId, 'DELETE', 'showcase_image', null, JSON.stringify({
+      filename: filename
+    }), req);
+    
+    res.json({ success: true, message: 'Image deleted successfully' });
+  } catch (error) {
+    logger.error('删除展示图片失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to delete image: ' + error.message });
+  }
+});
+
 module.exports = router;
 

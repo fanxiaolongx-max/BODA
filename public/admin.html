@@ -391,6 +391,9 @@
           <a href="#" onclick="switchTab('dine-in-qr')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
             📱 Dine-In QR Code
           </a>
+          <a href="#" onclick="switchTab('showcase-images')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            🖼️ Showcase Images
+          </a>
           <a href="#" onclick="switchTab('settings')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
             ⚙️ Settings
           </a>
@@ -569,6 +572,35 @@
         <div id="categoriesTab" class="tab-content hidden"></div>
         <div id="discountsTab" class="tab-content hidden"></div>
         <div id="delivery-addressesTab" class="tab-content hidden"></div>
+        <div id="showcase-imagesTab" class="tab-content hidden">
+          <div class="p-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Showcase Images Management</h2>
+            
+            <!-- 上传图片区域 -->
+            <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+              <h3 class="text-lg font-semibold text-gray-900 mb-4">Upload New Image</h3>
+              <div class="flex items-center space-x-4">
+                <input type="file" id="showcaseImageInput" accept="image/*" class="hidden" onchange="handleShowcaseImageSelect(event)">
+                <button onclick="document.getElementById('showcaseImageInput').click()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                  📤 Select Image
+                </button>
+                <span id="showcaseImageFileName" class="text-sm text-gray-600"></span>
+                <button id="uploadShowcaseImageBtn" onclick="uploadShowcaseImage()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition" style="display: none;">
+                  Upload
+                </button>
+              </div>
+              <p class="text-sm text-gray-500 mt-2">Supported formats: JPG, PNG, GIF, WebP (Max 10MB)</p>
+            </div>
+            
+            <!-- 图片列表 -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+              <h3 class="text-lg font-semibold text-gray-900 mb-4">Current Images</h3>
+              <div id="showcaseImagesList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div class="text-center text-gray-500 py-8">Loading...</div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div id="dine-in-qrTab" class="tab-content hidden">
           <div class="p-6">
             <h2 class="text-2xl font-bold text-gray-900 mb-6">Dine-In QR Code Management</h2>

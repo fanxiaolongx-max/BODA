@@ -658,6 +658,9 @@ function switchTab(tabName) {
     case 'dine-in-qr':
       loadDineInQRCodeHistory();
       break;
+    case 'showcase-images':
+      loadShowcaseImages();
+      break;
     case 'delivery-addresses':
       loadDeliveryAddresses();
       break;
@@ -10340,6 +10343,157 @@ function stopOrderNotification() {
   } catch (error) {
     // 停止失败不影响其他功能
     console.log('停止订单通知失败（不影响功能）:', error);
+  }
+}
+
+// ==================== 展示图片管理功能 ====================
+
+// 加载展示图片列表
+async function loadShowcaseImages() {
+  const container = document.getElementById('showcaseImagesList');
+  if (!container) return;
+  
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/showcase-images`);
+    
+    if (data.success) {
+      const images = data.images || [];
+      
+      if (images.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-500 py-8 col-span-full">No showcase images. Upload images to display on the home page.</div>';
+        return;
+      }
+      
+      container.innerHTML = images.map((img, index) => {
+        // 转义文件名中的特殊字符，防止XSS和JavaScript注入
+        const safeFilename = escapeHtml(img.filename).replace(/'/g, "\\'");
+        const displayFilename = escapeHtml(img.filename);
+        const safeUrl = escapeHtml(img.url);
+        
+        return `
+        <div class="bg-gray-50 rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow">
+          <div class="relative aspect-[4/5] bg-gray-200">
+            <img 
+              src="${safeUrl}" 
+              alt="Showcase ${index + 1}" 
+              class="w-full h-full object-cover"
+              onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22500%22%3E%3Crect fill=%22%23f3f4f6%22 width=%22400%22 height=%22500%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%239ca3af%22 font-family=%22sans-serif%22 font-size=%2218%22%3EImage%3C/text%3E%3C/svg%3E'"
+            >
+          </div>
+          <div class="p-4">
+            <p class="text-sm text-gray-600 mb-2 truncate" title="${displayFilename}">${displayFilename}</p>
+            <button 
+              onclick="deleteShowcaseImage('${safeFilename}')" 
+              class="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+            >
+              🗑️ Delete
+            </button>
+          </div>
+        </div>
+      `;
+      }).join('');
+    } else {
+      container.innerHTML = '<div class="text-center text-red-500 py-8 col-span-full">Failed to load images</div>';
+    }
+  } catch (error) {
+    console.error('加载展示图片失败:', error);
+    container.innerHTML = '<div class="text-center text-red-500 py-8 col-span-full">Failed to load images</div>';
+  }
+}
+
+// 处理图片选择
+function handleShowcaseImageSelect(event) {
+  const file = event.target.files[0];
+  const fileNameSpan = document.getElementById('showcaseImageFileName');
+  const uploadBtn = document.getElementById('uploadShowcaseImageBtn');
+  
+  if (file) {
+    // 验证文件类型
+    const allowedTypes = /image\/(jpeg|jpg|png|gif|webp)/;
+    if (!allowedTypes.test(file.type)) {
+      showToast('Please select a valid image file (JPG, PNG, GIF, WebP)', 'error');
+      event.target.value = '';
+      return;
+    }
+    
+    // 验证文件大小（10MB）
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Image size must be less than 10MB', 'error');
+      event.target.value = '';
+      return;
+    }
+    
+    fileNameSpan.textContent = file.name;
+    uploadBtn.style.display = 'inline-block';
+  } else {
+    fileNameSpan.textContent = '';
+    uploadBtn.style.display = 'none';
+  }
+}
+
+// 上传展示图片
+async function uploadShowcaseImage() {
+  const fileInput = document.getElementById('showcaseImageInput');
+  const uploadBtn = document.getElementById('uploadShowcaseImageBtn');
+  
+  if (!fileInput.files || fileInput.files.length === 0) {
+    showToast('Please select an image file', 'error');
+    return;
+  }
+  
+  const file = fileInput.files[0];
+  
+  try {
+    setButtonLoading(uploadBtn, true);
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    const response = await fetch(`${API_BASE}/admin/showcase-images`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+    
+    const data = await response.json();
+    setButtonLoading(uploadBtn, false);
+    
+    if (data.success) {
+      showToast('Image uploaded successfully', 'success');
+      fileInput.value = '';
+      document.getElementById('showcaseImageFileName').textContent = '';
+      uploadBtn.style.display = 'none';
+      loadShowcaseImages();
+    } else {
+      showToast(data.message || 'Upload failed', 'error');
+    }
+  } catch (error) {
+    console.error('上传展示图片失败:', error);
+    setButtonLoading(uploadBtn, false);
+    showToast('Upload failed', 'error');
+  }
+}
+
+// 删除展示图片
+async function deleteShowcaseImage(filename) {
+  if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+    return;
+  }
+  
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/showcase-images/${encodeURIComponent(filename)}`, {
+      method: 'DELETE'
+    });
+    
+    if (data.success) {
+      showToast('Image deleted successfully', 'success');
+      loadShowcaseImages();
+    } else {
+      showToast(data.message || 'Delete failed', 'error');
+    }
+  } catch (error) {
+    console.error('删除展示图片失败:', error);
+    showToast('Delete failed', 'error');
   }
 }
 
