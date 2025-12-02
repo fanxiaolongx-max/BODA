@@ -10035,25 +10035,32 @@ try {
 // 请求并初始化音频权限（需要在用户交互时调用）
 async function initAudioContext() {
   try {
-    if (audioContext) {
+    // 如果已经存在且状态是 running，直接返回
+    if (audioContext && audioContext.state === 'running') {
       return audioContext;
     }
     
-    // 创建 AudioContext
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    // 创建 AudioContext（延迟创建，只在需要时创建）
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
     
     // 如果状态是 suspended，需要用户交互来恢复
     if (audioContext.state === 'suspended') {
-      // 尝试恢复（需要用户交互）
-      await audioContext.resume();
+      // 不尝试自动恢复，等待用户交互
+      // 这避免了 "AudioContext was not allowed to start" 错误
+      console.log('音频上下文已创建，状态: suspended - 等待用户交互后启动');
+      return audioContext; // 返回 suspended 状态的 context，等待用户交互后恢复
+    } else if (audioContext.state === 'running') {
+      audioContextPermissionGranted = true;
+      console.log('音频权限已初始化，状态:', audioContext.state);
     }
     
-    audioContextPermissionGranted = true;
-    console.log('音频权限已初始化，状态:', audioContext.state);
     return audioContext;
   } catch (error) {
     console.error('初始化音频权限失败:', error);
     audioContextPermissionGranted = false;
+    // 不返回 null，而是返回一个标记，让调用者知道需要用户交互
     return null;
   }
 }
@@ -10294,12 +10301,9 @@ async function startOrderNotification() {
     
     console.log('正在启动订单通知...');
     
-    // 初始化音频上下文（在用户交互后）
-    try {
-      await initAudioContext();
-    } catch (e) {
-      console.warn('音频初始化失败，但将继续尝试:', e);
-    }
+    // 初始化音频上下文（延迟到用户交互后，不在这里主动初始化）
+    // 音频上下文将在用户首次与页面交互时自动初始化
+    // 这避免了 "AudioContext was not allowed to start" 错误
     
     // 初始化：检查最近5分钟的订单（但只记录，不通知）
     await checkNewOrders(true).then(() => {
