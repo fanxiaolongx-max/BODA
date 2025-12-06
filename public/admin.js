@@ -679,6 +679,9 @@ function switchTab(tabName) {
     case 'logs':
       loadLogs();
       break;
+    case 'api-management':
+      loadApiManagement();
+      break;
     case 'about':
       loadAboutPage();
       break;
@@ -4208,6 +4211,37 @@ async function loadSettingsPage() {
               </div>
               
               <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔌 Custom API Token</h3>
+                <p class="text-sm text-gray-600 mb-4">Set an API token for custom API authentication. This token is only used for custom APIs and does not affect other system APIs.</p>
+                
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
+                    <div class="flex items-center space-x-2">
+                      <input type="password" id="customApiToken" 
+                             class="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                             placeholder="Enter API token (leave empty to disable)"
+                             value="">
+                      <input type="hidden" id="customApiTokenOriginal" value="${settings.custom_api_token || ''}">
+                      <button type="button" onclick="toggleCustomApiTokenVisibility()" 
+                              class="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm">
+                        <span id="customApiTokenToggleText">Show</span>
+                      </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">
+                      Use this token in custom APIs that require authentication. 
+                      Pass it via <code class="bg-gray-100 px-1 rounded">X-API-Token</code> header, 
+                      <code class="bg-gray-100 px-1 rounded">Authorization: Bearer &lt;token&gt;</code> header, 
+                      or <code class="bg-gray-100 px-1 rounded">?token=&lt;token&gt;</code> query parameter.
+                    </p>
+                    <p class="text-xs text-yellow-600 mt-2">
+                      <strong>Note:</strong> This token only applies to custom APIs. Other system APIs are not affected.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">Logging Settings</h3>
                 
                 <div class="mb-4">
@@ -4597,6 +4631,17 @@ async function loadSettingsPage() {
         loadReceivedBackups();
         loadBlockedIps();
         loadQZCertificates();
+        // 初始化自定义API Token显示
+        const customApiToken = settings.custom_api_token || '';
+        const customApiTokenInput = document.getElementById('customApiToken');
+        const customApiTokenOriginal = document.getElementById('customApiTokenOriginal');
+        if (customApiTokenInput && customApiTokenOriginal) {
+          customApiTokenOriginal.value = customApiToken;
+          if (customApiToken) {
+            customApiTokenInput.value = maskApiToken(customApiToken);
+            customApiTokenInput.type = 'password';
+          }
+        }
       }, 100);
     } else {
       container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
@@ -4700,7 +4745,27 @@ async function saveSettings(e) {
     user_progressive_delay_enabled: userProgressiveDelayEnabled ? 'true' : 'false',
     // IP rate limiting
     ip_rate_limit_attempts: ipRateLimitAttempts,
-    ip_rate_limit_window_minutes: ipRateLimitWindowMinutes
+    ip_rate_limit_window_minutes: ipRateLimitWindowMinutes,
+    // Custom API Token (only for custom APIs)
+    custom_api_token: (() => {
+      const tokenInput = document.getElementById('customApiToken');
+      const originalInput = document.getElementById('customApiTokenOriginal');
+      if (!tokenInput) return '';
+      
+      let apiToken = tokenInput.value.trim();
+      
+      // 如果当前值是掩码值（前3个字符+星号），使用原始值
+      if (apiToken && apiToken.endsWith('***') && originalInput && originalInput.value) {
+        apiToken = originalInput.value;
+      }
+      
+      // 如果输入为空，检查是否有原始值（用户可能想保持原值）
+      if (!apiToken && originalInput && originalInput.value) {
+        apiToken = originalInput.value;
+      }
+      
+      return apiToken;
+    })()
   };
   
   try {
@@ -6453,6 +6518,345 @@ function debounceFilterLogsByIP(value) {
 }
 
 // 加载关于页面
+// 加载API管理页面
+async function loadApiManagement() {
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/custom-apis`);
+    
+    if (data.success) {
+      // 渲染系统API列表
+      const systemApisBody = document.getElementById('systemApisTableBody');
+      if (systemApisBody) {
+        if (data.data.systemApis && data.data.systemApis.length > 0) {
+          systemApisBody.innerHTML = data.data.systemApis.map(api => `
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">${api.path}</td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-semibold rounded ${
+                  api.method === 'GET' ? 'bg-green-100 text-green-800' :
+                  api.method === 'POST' ? 'bg-blue-100 text-blue-800' :
+                  api.method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
+                  api.method === 'DELETE' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }">${api.method}</span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-semibold rounded ${
+                  api.requires_token ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'
+                }">${api.requires_token ? 'Yes' : 'No'}</span>
+              </td>
+              <td class="px-6 py-4 text-sm text-gray-500">${api.description || '-'}</td>
+            </tr>
+          `).join('');
+        } else {
+          systemApisBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No system APIs</td></tr>';
+        }
+      }
+
+      // 渲染自定义API列表
+      const customApisBody = document.getElementById('customApisTableBody');
+      if (customApisBody) {
+        if (data.data.customApis && data.data.customApis.length > 0) {
+          customApisBody.innerHTML = data.data.customApis.map(api => `
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${api.name}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">/api/custom${api.path}</td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-semibold rounded ${
+                  api.method === 'GET' ? 'bg-green-100 text-green-800' :
+                  api.method === 'POST' ? 'bg-blue-100 text-blue-800' :
+                  api.method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
+                  api.method === 'DELETE' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }">${api.method}</span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-semibold rounded ${
+                  api.requires_token ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'
+                }">${api.requires_token ? 'Yes' : 'No'}</span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-semibold rounded ${
+                  api.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                }">${api.status === 'active' ? 'Active' : 'Inactive'}</span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <button onclick="editApi(${api.id})" class="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
+                <button onclick="deleteApi(${api.id})" class="text-red-600 hover:text-red-900">Delete</button>
+              </td>
+            </tr>
+          `).join('');
+        } else {
+          customApisBody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No custom APIs. Click "Add Custom API" to create one.</td></tr>';
+        }
+      }
+    }
+  } catch (error) {
+    console.error('加载API管理页面失败:', error);
+    showToast('Failed to load API management: ' + (error.data?.message || error.message), 'error');
+  }
+}
+
+// JSONEditor 实例
+let jsonEditorInstance = null;
+
+// 初始化 JSONEditor
+async function initJSONEditor(containerId, initialContent = null) {
+  // 如果编辑器已存在，先销毁
+  if (jsonEditorInstance) {
+    try {
+      jsonEditorInstance.destroy();
+    } catch (e) {
+      console.warn('Failed to destroy existing editor:', e);
+    }
+    jsonEditorInstance = null;
+  }
+  
+  const container = document.getElementById(containerId);
+  if (!container) {
+    console.error('JSONEditor container not found:', containerId);
+    return;
+  }
+  
+  try {
+    // 动态导入 vanilla-jsoneditor
+    const { createJSONEditor } = await import('https://cdn.jsdelivr.net/npm/vanilla-jsoneditor@latest/standalone.js');
+    
+    // 解析初始内容
+    let content = { text: '{}' };
+    if (initialContent) {
+      try {
+        const parsed = typeof initialContent === 'string' ? JSON.parse(initialContent) : initialContent;
+        content = { json: parsed };
+      } catch (e) {
+        content = { text: initialContent };
+      }
+    }
+    
+    // 创建编辑器
+    jsonEditorInstance = createJSONEditor({
+      target: container,
+      props: {
+        content,
+        mode: 'tree', // 默认使用树形视图
+        onChange: (updatedContent) => {
+          // 更新隐藏的 textarea 用于表单提交
+          const textarea = document.getElementById('apiResponseContent');
+          if (textarea) {
+            try {
+              if (updatedContent.json) {
+                textarea.value = JSON.stringify(updatedContent.json, null, 2);
+              } else if (updatedContent.text) {
+                textarea.value = updatedContent.text;
+              }
+            } catch (e) {
+              console.warn('Failed to update textarea:', e);
+            }
+          }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Failed to initialize JSONEditor:', error);
+    showToast('Failed to load JSON editor. Please refresh the page.', 'error');
+  }
+}
+
+// 显示API模态框
+async function showApiModal(apiId = null) {
+  const modal = document.getElementById('apiModal');
+  const form = document.getElementById('apiForm');
+  const title = document.getElementById('apiModalTitle');
+  
+  // 重置表单
+  form.reset();
+  document.getElementById('apiId').value = '';
+  document.getElementById('apiRequiresToken').checked = false;
+  document.getElementById('apiStatus').value = 'active';
+  
+  if (apiId) {
+    // 编辑模式
+    title.textContent = 'Edit Custom API';
+    // 先显示模态框，然后加载数据并初始化编辑器
+    modal.classList.add('active');
+    await loadApiForEdit(apiId);
+  } else {
+    // 新增模式
+    title.textContent = 'Add Custom API';
+    // 显示模态框
+    modal.classList.add('active');
+    // 设置默认JSON并初始化编辑器
+    const defaultJson = {
+      success: true,
+      data: "example"
+    };
+    await initJSONEditor('apiResponseContentEditor', JSON.stringify(defaultJson, null, 2));
+    document.getElementById('apiResponseContent').value = JSON.stringify(defaultJson, null, 2);
+  }
+}
+
+// 加载API数据用于编辑
+async function loadApiForEdit(apiId) {
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/custom-apis`);
+    
+    if (data.success) {
+      const api = data.data.customApis.find(a => a.id === apiId);
+      if (api) {
+        document.getElementById('apiId').value = api.id;
+        document.getElementById('apiName').value = api.name;
+        document.getElementById('apiPath').value = api.path;
+        document.getElementById('apiMethod').value = api.method;
+        document.getElementById('apiRequiresToken').checked = api.requires_token;
+        document.getElementById('apiDescription').value = api.description || '';
+        document.getElementById('apiStatus').value = api.status;
+        
+        // 初始化 JSONEditor 并加载数据
+        await initJSONEditor('apiResponseContentEditor', api.response_content);
+        document.getElementById('apiResponseContent').value = api.response_content;
+      }
+    }
+  } catch (error) {
+    console.error('加载API数据失败:', error);
+    showToast('Failed to load API data: ' + (error.data?.message || error.message), 'error');
+  }
+}
+
+// 关闭API模态框
+function closeApiModal(event) {
+  if (event) {
+    // 如果点击的是模态框背景，关闭模态框
+    if (event.target === event.currentTarget) {
+      const modal = document.getElementById('apiModal');
+      modal.classList.remove('active');
+      // 清理编辑器实例
+      if (jsonEditorInstance) {
+        try {
+          jsonEditorInstance.destroy();
+        } catch (e) {
+          console.warn('Failed to destroy editor:', e);
+        }
+        jsonEditorInstance = null;
+      }
+    }
+  } else {
+    // 直接调用关闭
+    const modal = document.getElementById('apiModal');
+    if (modal) {
+      modal.classList.remove('active');
+    }
+    // 清理编辑器实例
+    if (jsonEditorInstance) {
+      try {
+        jsonEditorInstance.destroy();
+      } catch (e) {
+        console.warn('Failed to destroy editor:', e);
+      }
+      jsonEditorInstance = null;
+    }
+  }
+}
+
+// 编辑API
+function editApi(apiId) {
+  showApiModal(apiId);
+}
+
+// 删除API
+async function deleteApi(apiId) {
+  if (!confirm('Are you sure you want to delete this API?')) {
+    return;
+  }
+  
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/custom-apis/${apiId}`, {
+      method: 'DELETE'
+    });
+    
+    if (data.success) {
+      showToast('API deleted successfully', 'success');
+      loadApiManagement();
+    }
+  } catch (error) {
+    console.error('删除API失败:', error);
+    showToast('Failed to delete API: ' + (error.data?.message || error.message), 'error');
+  }
+}
+
+// 处理API表单提交
+document.addEventListener('DOMContentLoaded', () => {
+  const apiForm = document.getElementById('apiForm');
+  if (apiForm) {
+    apiForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const apiId = document.getElementById('apiId').value;
+      // 获取Response Content（从隐藏的 textarea，由 JSONEditor 的 onChange 更新）
+      let responseContent = document.getElementById('apiResponseContent').value;
+      
+      // 如果 textarea 为空，尝试从编辑器获取
+      if (!responseContent && jsonEditorInstance) {
+        try {
+          const content = jsonEditorInstance.get();
+          if (content.json) {
+            responseContent = JSON.stringify(content.json, null, 2);
+          } else if (content.text) {
+            responseContent = content.text;
+          }
+        } catch (e) {
+          console.warn('Failed to get content from editor:', e);
+        }
+      }
+      
+      const formData = {
+        name: document.getElementById('apiName').value,
+        path: document.getElementById('apiPath').value,
+        method: document.getElementById('apiMethod').value,
+        requires_token: document.getElementById('apiRequiresToken').checked,
+        response_content: responseContent,
+        description: document.getElementById('apiDescription').value,
+        status: document.getElementById('apiStatus').value
+      };
+      
+      // 验证JSON格式
+      try {
+        JSON.parse(formData.response_content);
+      } catch (e) {
+        showToast('Response content must be valid JSON: ' + e.message, 'error');
+        return;
+      }
+      
+      try {
+        let data;
+        if (apiId) {
+          // 更新
+          data = await adminApiRequest(`${API_BASE}/admin/custom-apis/${apiId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+          });
+        } else {
+          // 创建
+          data = await adminApiRequest(`${API_BASE}/admin/custom-apis`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+          });
+        }
+        
+        if (data.success) {
+          showToast(apiId ? 'API updated successfully' : 'API created successfully', 'success');
+          closeApiModal();
+          loadApiManagement();
+        }
+      } catch (error) {
+        console.error('保存API失败:', error);
+        showToast('Failed to save API: ' + (error.data?.message || error.message), 'error');
+      }
+    });
+  }
+});
+
 function loadAboutPage() {
   const container = document.getElementById('aboutTab');
   const version = '2.2.0';
@@ -7974,6 +8378,991 @@ async function loadQZCertificates() {
   } catch (error) {
     console.error('Load QZ certificates status failed:', error);
     statusContainer.innerHTML = '<p class="text-sm text-red-600">Failed to load certificate status</p>';
+  }
+}
+
+// 保存当前表格视图的原始JSON数据（用于展开时获取完整数据）
+let currentTableJsonData = null;
+
+// 切换Response Content编辑器视图（表格/JSON）
+// 注意：toggleResponseContentEditor 函数已移除，因为只使用树形视图
+
+// 将JSON对象渲染为表格（支持多层嵌套）
+function renderResponseContentTable(jsonObj, container = null, parentKey = '', level = 0) {
+  const tableContainer = container || document.getElementById('responseContentTableContainer');
+  if (!tableContainer) return;
+  
+  if (level === 0) {
+    tableContainer.innerHTML = '';
+  }
+  
+  // 处理根级别是数组的情况
+  if (level === 0 && Array.isArray(jsonObj)) {
+    // 根级别是数组，创建一个包装对象来渲染
+    const wrapperObj = { '[root]': jsonObj };
+    // 确保 currentTableJsonData 保存的是原始数组
+    if (!currentTableJsonData || !Array.isArray(currentTableJsonData)) {
+      currentTableJsonData = jsonObj;
+    }
+    renderResponseContentTable(wrapperObj, container, '', level);
+    return;
+  }
+  
+  if (!jsonObj || typeof jsonObj !== 'object') {
+    return;
+  }
+  
+  const keys = Object.keys(jsonObj);
+  const indentClass = level > 0 ? `ml-${level * 4}` : '';
+  const bgColor = level % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+  
+  keys.forEach((key) => {
+    const value = jsonObj[key];
+    const fullKey = parentKey ? `${parentKey}.${key}` : key;
+    const rowId = `row-${fullKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
+    const isNested = (typeof value === 'object' && value !== null && !Array.isArray(value)) || Array.isArray(value);
+    const isExpanded = isNested && (window.expandedKeys && window.expandedKeys.has(fullKey));
+    
+    // 创建行容器
+    const rowWrapper = document.createElement('div');
+    rowWrapper.className = `response-content-row-wrapper ${indentClass}`;
+    rowWrapper.setAttribute('data-full-key', fullKey);
+    rowWrapper.setAttribute('data-level', level);
+    
+    // 创建主行
+    const row = document.createElement('div');
+    row.className = `flex items-center space-x-2 p-2 ${bgColor} rounded border border-gray-200`;
+    row.id = rowId;
+    
+    // 缩进指示器（用于嵌套）
+    let indentHtml = '';
+    if (level > 0) {
+      indentHtml = `<div class="flex items-center" style="width: ${level * 20}px;">
+        <div class="w-px h-6 bg-gray-300"></div>
+      </div>`;
+    }
+    
+    // 展开/折叠按钮（用于嵌套对象和数组）
+    let expandBtn = '';
+    if (isNested) {
+      const itemCount = Array.isArray(value) ? value.length : Object.keys(value).length;
+      const typeLabel = Array.isArray(value) ? 'Array' : 'Object';
+      expandBtn = `
+        <button type="button" 
+                onclick="toggleResponseContentNested('${fullKey}')" 
+                class="px-2 py-1 text-xs rounded transition ${isExpanded ? 'bg-blue-200 text-blue-800' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
+                id="expand-btn-${fullKey.replace(/[^a-zA-Z0-9]/g, '-')}">
+          ${isExpanded ? '▼' : '▶'} ${typeLabel} (${itemCount})
+        </button>
+      `;
+    }
+    
+    let valueInput = '';
+    let deleteBtn = `<button type="button" onclick="removeResponseContentRow('${fullKey}')" 
+                            class="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200">Delete</button>`;
+    
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      // 嵌套对象
+      if (isExpanded) {
+        // 已展开，值输入框显示为只读提示
+        valueInput = `
+          <span class="text-xs text-gray-500 italic">Nested object (expanded below)</span>
+        `;
+      } else {
+        // 未展开，显示展开按钮和JSON预览
+        const preview = JSON.stringify(value).substring(0, 50);
+        valueInput = `
+          ${expandBtn}
+          <span class="text-xs text-gray-400 ml-2">${preview}${JSON.stringify(value).length > 50 ? '...' : ''}</span>
+        `;
+      }
+    } else       if (Array.isArray(value)) {
+        // 数组
+        if (isExpanded) {
+          // 已展开，值输入框显示为只读提示
+          valueInput = `
+            <span class="text-xs text-gray-500 italic">Array (expanded below)</span>
+          `;
+        } else {
+          // 未展开，显示展开按钮和数组预览
+          const preview = JSON.stringify(value).substring(0, 50);
+          valueInput = `
+            ${expandBtn}
+            <span class="text-xs text-gray-400 ml-2">${preview}${JSON.stringify(value).length > 50 ? '...' : ''}</span>
+          `;
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        // 嵌套对象（已经在上面处理了）
+      } else {
+      // 简单值
+      const inputType = typeof value === 'number' ? 'number' : 
+                       typeof value === 'boolean' ? 'checkbox' : 'text';
+      
+      if (inputType === 'checkbox') {
+        valueInput = `
+          <div class="flex items-center space-x-2">
+            <input type="checkbox" 
+                   data-key="${fullKey}"
+                   data-parent-key="${parentKey}"
+                   onchange="updateResponseContentValue('${fullKey}', this.checked)"
+                   ${value ? 'checked' : ''}
+                   class="w-4 h-4 text-blue-600 border-gray-300 rounded">
+            <span class="text-xs text-gray-500">${value ? 'true' : 'false'}</span>
+          </div>
+        `;
+      } else {
+        const escapedValue = typeof value === 'string' ? value.replace(/"/g, '&quot;').replace(/'/g, '&#39;') : value;
+        valueInput = `
+          <input type="${inputType}" 
+                 data-key="${fullKey}"
+                 data-parent-key="${parentKey}"
+                 onchange="updateResponseContentValue('${fullKey}', this.value)"
+                 value="${escapedValue}"
+                 class="flex-1 px-2 py-1 border border-gray-300 rounded text-sm">
+        `;
+      }
+    }
+    
+    row.innerHTML = `
+      ${indentHtml}
+      <div class="flex-1 flex items-center space-x-2">
+        <input type="text" 
+               data-key="${fullKey}"
+               data-parent-key="${parentKey}"
+               value="${key.replace(/"/g, '&quot;')}"
+               onchange="renameResponseContentKey('${fullKey}', this.value)"
+               class="w-32 px-2 py-1 border border-gray-300 rounded text-sm font-medium">
+        <span class="text-gray-400">:</span>
+        ${valueInput}
+      </div>
+      ${deleteBtn}
+    `;
+    
+    rowWrapper.appendChild(row);
+    
+    // 如果是嵌套对象/数组且已展开，递归渲染子项
+    if (isNested && isExpanded) {
+      const childrenContainer = document.createElement('div');
+      childrenContainer.className = 'nested-children ml-4';
+      childrenContainer.id = `children-${fullKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
+      childrenContainer.setAttribute('data-parent-key', fullKey);
+      
+      if (Array.isArray(value)) {
+        // 数组：渲染每个元素
+        value.forEach((item, index) => {
+          const itemKey = `${fullKey}[${index}]`;
+          // 为数组元素创建包装对象
+          const itemObj = {};
+          if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+            // 数组元素是对象，直接展开
+            Object.assign(itemObj, item);
+          } else {
+            // 数组元素是简单值，使用索引作为键（格式：[0], [1]等）
+            itemObj[`[${index}]`] = item;
+          }
+          renderResponseContentTable(itemObj, childrenContainer, itemKey, level + 1);
+        });
+        // 添加数组元素按钮
+        const addItemBtn = document.createElement('button');
+        addItemBtn.type = 'button';
+        addItemBtn.className = 'mt-2 px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition';
+        addItemBtn.textContent = '+ Add Array Item';
+        addItemBtn.onclick = () => addResponseContentArrayItem(fullKey);
+        childrenContainer.appendChild(addItemBtn);
+      } else {
+        // 对象：递归渲染
+        renderResponseContentTable(value, childrenContainer, fullKey, level + 1);
+        // 添加对象字段按钮
+        const addFieldBtn = document.createElement('button');
+        addFieldBtn.type = 'button';
+        addFieldBtn.className = 'mt-2 px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition';
+        addFieldBtn.textContent = '+ Add Field';
+        addFieldBtn.onclick = () => addResponseContentNestedField(fullKey);
+        childrenContainer.appendChild(addFieldBtn);
+      }
+      
+      rowWrapper.appendChild(childrenContainer);
+    }
+    
+    tableContainer.appendChild(rowWrapper);
+  });
+  
+  // 初始化展开状态集合
+  if (!window.expandedKeys) {
+    window.expandedKeys = new Set();
+  }
+}
+
+// 更新Response Content的值
+function updateResponseContentValue(key, value) {
+  // 更新data-key属性，以便tableToJson能正确识别
+  const row = document.querySelector(`#row-${key.replace(/\./g, '-')}`);
+  if (row) {
+    const keyInput = row.querySelector('input[data-key]');
+    if (keyInput) {
+      keyInput.setAttribute('data-key', key);
+    }
+  }
+  
+  // 延迟更新保存的JSON数据（避免频繁更新）
+  if (window.updateJsonDataTimeout) {
+    clearTimeout(window.updateJsonDataTimeout);
+  }
+  window.updateJsonDataTimeout = setTimeout(() => {
+    try {
+      const updatedJson = tableToJson();
+      currentTableJsonData = JSON.parse(updatedJson);
+    } catch (e) {
+      console.warn('Failed to update saved JSON data:', e);
+    }
+  }, 500);
+}
+
+// 重命名Response Content的键
+function renameResponseContentKey(oldKey, newKey) {
+  if (!newKey || !newKey.trim()) {
+    // 如果新键名为空，恢复旧值
+    const row = document.querySelector(`#row-${oldKey.replace(/\./g, '-')}`);
+    if (row) {
+      const keyInput = row.querySelector('input[data-key]');
+      if (keyInput) {
+        keyInput.value = oldKey;
+      }
+    }
+    return;
+  }
+  
+  // 更新行的ID和data-key属性
+  const row = document.querySelector(`#row-${oldKey.replace(/\./g, '-')}`);
+  if (row) {
+    row.id = `row-${newKey.replace(/\./g, '-')}`;
+    const keyInput = row.querySelector('input[data-key]');
+    if (keyInput) {
+      keyInput.setAttribute('data-key', newKey);
+    }
+  }
+  
+  // 延迟更新保存的JSON数据（避免频繁更新）
+  if (window.updateJsonDataTimeout) {
+    clearTimeout(window.updateJsonDataTimeout);
+  }
+  window.updateJsonDataTimeout = setTimeout(() => {
+    try {
+      const updatedJson = tableToJson();
+      currentTableJsonData = JSON.parse(updatedJson);
+    } catch (e) {
+      console.warn('Failed to update saved JSON data:', e);
+    }
+  }, 500);
+}
+
+// 删除Response Content的行
+function removeResponseContentRow(key) {
+  if (!confirm(`Are you sure you want to delete "${key}"?`)) {
+    return;
+  }
+  
+  const rowId = `row-${key.replace(/[^a-zA-Z0-9]/g, '-')}`;
+  const row = document.getElementById(rowId);
+  if (row) {
+    row.remove();
+  }
+}
+
+// 添加Response Content的新行（根级别）
+function addResponseContentRow() {
+  const newKey = prompt('Enter field name:');
+  if (!newKey || !newKey.trim()) return;
+  
+  // 获取当前JSON
+  const currentJson = tableToJson();
+  try {
+    const jsonObj = currentJson ? JSON.parse(currentJson) : {};
+    jsonObj[newKey.trim()] = '';
+    
+    // 重新渲染表格
+    renderResponseContentTable(jsonObj);
+  } catch (e) {
+    showToast('Failed to add field: ' + e.message, 'error');
+  }
+}
+
+// 切换嵌套对象/数组的展开/折叠
+function toggleResponseContentNested(fullKey) {
+  if (!window.expandedKeys) {
+    window.expandedKeys = new Set();
+  }
+  
+  const rowWrapper = document.querySelector(`[data-full-key="${fullKey}"]`);
+  if (!rowWrapper) {
+    console.error('Row wrapper not found for key:', fullKey);
+    return;
+  }
+  
+  const childrenContainerId = `children-${fullKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
+  const childrenContainer = document.getElementById(childrenContainerId);
+  const expandBtnId = `expand-btn-${fullKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
+  const expandBtn = document.getElementById(expandBtnId);
+  
+  // 检查是否已展开（通过检查子容器是否存在）
+  const isExpanded = childrenContainer !== null && childrenContainer.parentNode === rowWrapper;
+  
+  if (isExpanded) {
+    // 折叠：直接移除子容器
+    window.expandedKeys.delete(fullKey);
+    if (childrenContainer) {
+      childrenContainer.remove();
+    }
+    if (expandBtn) {
+      const typeLabel = expandBtn.textContent.includes('Array') ? 'Array' : 'Object';
+      const itemCount = expandBtn.textContent.match(/\((\d+)\)/)?.[1] || '0';
+      expandBtn.className = 'px-2 py-1 text-xs rounded transition bg-gray-100 text-gray-700 hover:bg-gray-200';
+      expandBtn.innerHTML = `▶ ${typeLabel} (${itemCount})`;
+    }
+  } else {
+    // 展开：获取当前JSON数据，找到对应的值，然后只渲染子项
+    // 先检查是否已经有子容器（防止重复创建）
+    if (childrenContainer && childrenContainer.parentNode === rowWrapper) {
+      // 已经存在，不需要重复创建
+      window.expandedKeys.add(fullKey);
+      return;
+    }
+    
+    window.expandedKeys.add(fullKey);
+    
+    // 获取当前JSON数据（优先使用保存的原始数据，如果没有则从表格转换）
+    let jsonObj = null;
+    if (currentTableJsonData) {
+      // 使用保存的原始JSON数据
+      jsonObj = JSON.parse(JSON.stringify(currentTableJsonData)); // 深拷贝
+    } else {
+      // 从表格转换，同时合并未展开的数据
+      try {
+        // 先尝试从JSON编辑器获取（如果存在）
+        const jsonView = document.getElementById('apiResponseContentJsonView');
+        if (jsonView && !jsonView.classList.contains('hidden')) {
+          const jsonContent = document.getElementById('apiResponseContent').value;
+          if (jsonContent) {
+            jsonObj = JSON.parse(jsonContent);
+            currentTableJsonData = JSON.parse(JSON.stringify(jsonObj)); // 保存
+          }
+        }
+        
+        // 如果JSON编辑器没有数据，从表格转换
+        if (!jsonObj) {
+          const currentJson = tableToJson();
+          jsonObj = JSON.parse(currentJson);
+          // 保存转换后的数据
+          currentTableJsonData = JSON.parse(JSON.stringify(jsonObj));
+        }
+      } catch (e) {
+        console.error('Failed to get JSON data:', e);
+        showToast('Failed to expand: Cannot get current data', 'error');
+        window.expandedKeys.delete(fullKey);
+        return;
+      }
+    }
+    
+    try {
+      // 解析fullKey路径（支持点号和数组索引，如 "data.items[0].name"）
+      let targetValue = jsonObj;
+      
+      // 特殊处理 [root] 键（根级别数组）
+      if (fullKey === '[root]') {
+        // 如果 jsonObj 是数组，直接使用
+        if (Array.isArray(jsonObj)) {
+          targetValue = jsonObj;
+        } else if (jsonObj && typeof jsonObj === 'object' && jsonObj['[root]']) {
+          // 如果 jsonObj 是包装对象，提取 [root] 的值
+          targetValue = jsonObj['[root]'];
+        } else {
+          console.error('Cannot find [root] value, jsonObj:', jsonObj);
+          window.expandedKeys.delete(fullKey);
+          return;
+        }
+      } else {
+        // 使用正则表达式解析路径（处理 "key1.key2[0].key3" 这样的格式）
+        const pathParts = fullKey.match(/([^.[\]]+)|(\[\d+\])/g) || [];
+        
+        for (let i = 0; i < pathParts.length; i++) {
+          const part = pathParts[i];
+          
+          if (part.startsWith('[') && part.endsWith(']')) {
+            // 数组索引，如 [0]
+            const indexStr = part.substring(1, part.length - 1);
+            // 检查是否是数字索引
+            if (!isNaN(indexStr)) {
+              const index = parseInt(indexStr);
+              if (Array.isArray(targetValue) && targetValue[index] !== undefined) {
+                targetValue = targetValue[index];
+              } else {
+                console.error('Cannot find array value at index:', index, 'for path:', fullKey, 'current value:', targetValue);
+                window.expandedKeys.delete(fullKey);
+                return;
+              }
+            } else {
+              // 不是数字索引，可能是特殊键如 [root]
+              if (part === '[root]' && targetValue && typeof targetValue === 'object' && targetValue['[root]'] !== undefined) {
+                targetValue = targetValue['[root]'];
+              } else {
+                console.error('Invalid array index:', part, 'for path:', fullKey);
+                window.expandedKeys.delete(fullKey);
+                return;
+              }
+            }
+          } else {
+            // 对象键
+            if (targetValue && typeof targetValue === 'object' && targetValue !== null && targetValue[part] !== undefined) {
+              targetValue = targetValue[part];
+            } else {
+              console.error('Cannot find object key:', part, 'for path:', fullKey, 'current value:', targetValue);
+              window.expandedKeys.delete(fullKey);
+              return;
+            }
+          }
+        }
+      }
+      
+      // 创建子容器
+      const level = parseInt(rowWrapper.getAttribute('data-level') || '0');
+      const newChildrenContainer = document.createElement('div');
+      newChildrenContainer.className = 'nested-children ml-4';
+      newChildrenContainer.id = childrenContainerId;
+      newChildrenContainer.setAttribute('data-parent-key', fullKey);
+      
+      // 渲染子项
+      if (Array.isArray(targetValue)) {
+        // 数组：渲染每个元素
+        targetValue.forEach((item, index) => {
+          const itemKey = `${fullKey}[${index}]`;
+          const itemObj = {};
+          if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+            Object.assign(itemObj, item);
+          } else {
+            itemObj[`[${index}]`] = item;
+          }
+          renderResponseContentTable(itemObj, newChildrenContainer, itemKey, level + 1);
+        });
+        // 添加数组元素按钮
+        const addItemBtn = document.createElement('button');
+        addItemBtn.type = 'button';
+        addItemBtn.className = 'mt-2 px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition';
+        addItemBtn.textContent = '+ Add Array Item';
+        addItemBtn.onclick = () => addResponseContentArrayItem(fullKey);
+        newChildrenContainer.appendChild(addItemBtn);
+      } else if (typeof targetValue === 'object' && targetValue !== null) {
+        // 对象：递归渲染
+        renderResponseContentTable(targetValue, newChildrenContainer, fullKey, level + 1);
+        // 添加对象字段按钮
+        const addFieldBtn = document.createElement('button');
+        addFieldBtn.type = 'button';
+        addFieldBtn.className = 'mt-2 px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition';
+        addFieldBtn.textContent = '+ Add Field';
+        addFieldBtn.onclick = () => addResponseContentNestedField(fullKey);
+        newChildrenContainer.appendChild(addFieldBtn);
+      } else {
+        // 不是对象也不是数组，无法展开
+        console.warn('Cannot expand non-object/non-array value:', targetValue);
+        window.expandedKeys.delete(fullKey);
+        return;
+      }
+      
+      // 插入子容器到行包装器
+      rowWrapper.appendChild(newChildrenContainer);
+      
+      // 更新展开按钮
+      if (expandBtn) {
+        const typeLabel = Array.isArray(targetValue) ? 'Array' : 'Object';
+        const itemCount = Array.isArray(targetValue) ? targetValue.length : Object.keys(targetValue).length;
+        expandBtn.className = 'px-2 py-1 text-xs rounded transition bg-blue-200 text-blue-800';
+        expandBtn.innerHTML = `▼ ${typeLabel} (${itemCount})`;
+      }
+      
+      // 不要在这里更新保存的JSON数据，因为tableToJson可能无法正确获取未展开的数据
+      // 数据更新会在用户修改值时进行
+    } catch (e) {
+      console.error('Failed to expand nested content:', e);
+      showToast('Failed to expand: ' + e.message, 'error');
+      // 回滚展开状态
+      window.expandedKeys.delete(fullKey);
+      // 如果创建了子容器，移除它
+      const createdContainer = document.getElementById(childrenContainerId);
+      if (createdContainer) {
+        createdContainer.remove();
+      }
+    }
+  }
+}
+
+// 添加嵌套对象的字段
+function addResponseContentNestedField(parentKey) {
+  const newFieldName = prompt('Enter field name:');
+  if (!newFieldName || !newFieldName.trim()) return;
+  
+  // 获取当前JSON
+  const currentJson = tableToJson();
+  try {
+    const jsonObj = JSON.parse(currentJson);
+    const keys = parentKey.split('.');
+    let target = jsonObj;
+    
+    // 导航到父对象
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (key.includes('[') && key.includes(']')) {
+        const arrayKey = key.substring(0, key.indexOf('['));
+        const index = parseInt(key.substring(key.indexOf('[') + 1, key.indexOf(']')));
+        target = target[arrayKey][index];
+      } else {
+        target = target[key];
+      }
+    }
+    
+    // 添加新字段
+    target[newFieldName.trim()] = '';
+    
+    // 重新渲染表格
+    renderResponseContentTable(jsonObj);
+    
+    // 确保父对象保持展开
+    if (!window.expandedKeys) {
+      window.expandedKeys = new Set();
+    }
+    window.expandedKeys.add(parentKey);
+  } catch (e) {
+    showToast('Failed to add field: ' + e.message, 'error');
+  }
+}
+
+// 添加数组元素
+function addResponseContentArrayItem(parentKey) {
+  // 获取当前JSON
+  const currentJson = tableToJson();
+  try {
+    const jsonObj = JSON.parse(currentJson);
+    const keys = parentKey.split('.');
+    let target = jsonObj;
+    
+    // 导航到父数组
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (key.includes('[') && key.includes(']')) {
+        const arrayKey = key.substring(0, key.indexOf('['));
+        const index = parseInt(key.substring(key.indexOf('[') + 1, key.indexOf(']')));
+        target = target[arrayKey][index];
+      } else {
+        target = target[key];
+      }
+    }
+    
+    // 添加新元素
+    if (Array.isArray(target)) {
+      target.push('');
+    }
+    
+    // 重新渲染表格
+    renderResponseContentTable(jsonObj);
+    
+    // 确保父数组保持展开
+    if (!window.expandedKeys) {
+      window.expandedKeys = new Set();
+    }
+    window.expandedKeys.add(parentKey);
+  } catch (e) {
+    showToast('Failed to add array item: ' + e.message, 'error');
+  }
+}
+
+// 将表格视图转换为JSON（支持多层嵌套）
+// 对于未展开的部分，从保存的原始数据中获取
+function tableToJson() {
+  const container = document.getElementById('responseContentTableContainer');
+  if (!container) {
+    // 如果没有表格容器，返回保存的数据或空对象
+    if (currentTableJsonData) {
+      return JSON.stringify(currentTableJsonData);
+    }
+    return '{}';
+  }
+  
+  // 如果有保存的原始数据，先使用它作为基础
+  let baseJson = {};
+  if (currentTableJsonData) {
+    baseJson = JSON.parse(JSON.stringify(currentTableJsonData));
+  }
+  
+  const result = baseJson;
+  
+  // 递归处理行包装器，只更新已展开或已修改的部分
+  function processRowWrapper(wrapper, parentObj, parentFullKey = '') {
+    const fullKey = wrapper.getAttribute('data-full-key');
+    const level = parseInt(wrapper.getAttribute('data-level') || '0');
+    const row = wrapper.querySelector('.flex.items-center');
+    if (!row) return;
+    
+    // 获取键名（从第一个input）
+    const keyInputs = row.querySelectorAll('input[data-key]');
+    if (keyInputs.length === 0) return;
+    
+    const keyInput = keyInputs[0];
+    let key = keyInput.value.trim();
+    
+    // 处理数组索引键名（如 "[0]"）
+    let isArrayIndex = false;
+    if (key.startsWith('[') && key.endsWith(']')) {
+      isArrayIndex = true;
+    }
+    
+    if (!key && !isArrayIndex) return;
+    
+    // 检查是否有展开的子项
+    const childrenContainer = wrapper.querySelector('.nested-children');
+    let value = null;
+    
+    if (childrenContainer) {
+      // 有子项，需要递归构建
+      const childrenRows = childrenContainer.querySelectorAll('.response-content-row-wrapper');
+      
+      if (isArrayIndex || (childrenRows.length > 0 && childrenRows[0].querySelector('input[data-key]')?.value.trim().startsWith('['))) {
+        // 数组：按顺序收集所有子项的值
+        value = [];
+        childrenRows.forEach((childRow) => {
+          const childValue = {};
+          processRowWrapper(childRow, childValue, fullKey);
+          
+          // 提取值
+          const childKeys = Object.keys(childValue);
+          if (childKeys.length === 1 && childKeys[0].startsWith('[')) {
+            // 简单数组元素
+            const elementValue = childValue[childKeys[0]];
+            if (elementValue !== undefined && elementValue !== null) {
+              value.push(elementValue);
+            }
+          } else if (childKeys.length > 0) {
+            // 对象数组元素 - 如果只有一个键且是数组索引，提取值；否则使用整个对象
+            if (childKeys.length === 1 && childKeys[0].startsWith('[')) {
+              value.push(childValue[childKeys[0]]);
+            } else {
+              value.push(childValue);
+            }
+          } else {
+            // 空值，尝试获取简单值
+            const simpleValue = getValueFromRow(childRow);
+            if (simpleValue !== null && simpleValue !== undefined) {
+              value.push(simpleValue);
+            }
+          }
+        });
+      } else {
+        // 对象：递归处理所有子项
+        value = {};
+        childrenRows.forEach(childRow => {
+          processRowWrapper(childRow, value, fullKey);
+        });
+      }
+    } else {
+      // 没有子项，获取简单值（从输入框）
+      value = getValueFromRow(wrapper);
+    }
+    
+    // 设置值到父对象（使用路径设置）
+    if (value !== null) {
+      setValueByFullKey(result, fullKey, value);
+    }
+  }
+  
+  // 通过完整键路径设置值
+  function setValueByFullKey(obj, fullKey, value) {
+    // 使用正则表达式解析路径（处理 "key1.key2[0].key3" 这样的格式）
+    const pathParts = fullKey.match(/([^.[\]]+)|(\[\d+\])/g) || [];
+    
+    if (pathParts.length === 0) return;
+    
+    let current = obj;
+    
+    // 遍历路径的每一部分（除了最后一部分）
+    for (let i = 0; i < pathParts.length - 1; i++) {
+      const part = pathParts[i];
+      
+      if (part.startsWith('[') && part.endsWith(']')) {
+        // 数组索引
+        const index = parseInt(part.substring(1, part.length - 1));
+        // 如果当前不是数组，需要先创建数组
+        if (!Array.isArray(current)) {
+          // 这种情况不应该发生，因为路径应该是连续的
+          console.warn('Unexpected array index in path:', fullKey, 'at part:', part);
+          return;
+        }
+        // 确保数组索引存在
+        if (current[index] === undefined) {
+          // 检查下一个部分是否是数组索引
+          const nextPart = pathParts[i + 1];
+          if (nextPart && nextPart.startsWith('[') && nextPart.endsWith(']')) {
+            current[index] = [];
+          } else {
+            current[index] = {};
+          }
+        }
+        current = current[index];
+      } else {
+        // 对象键
+        if (!current[part]) {
+          // 检查下一个部分是否是数组索引
+          const nextPart = pathParts[i + 1];
+          if (nextPart && nextPart.startsWith('[') && nextPart.endsWith(']')) {
+            current[part] = [];
+          } else {
+            current[part] = {};
+          }
+        } else if (typeof current[part] !== 'object' || current[part] === null) {
+          // 如果当前值不是对象，需要替换为对象
+          const nextPart = pathParts[i + 1];
+          if (nextPart && nextPart.startsWith('[') && nextPart.endsWith(']')) {
+            current[part] = [];
+          } else {
+            current[part] = {};
+          }
+        }
+        current = current[part];
+      }
+    }
+    
+    // 设置最后一个键的值
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart.startsWith('[') && lastPart.endsWith(']')) {
+      // 数组索引
+      const index = parseInt(lastPart.substring(1, lastPart.length - 1));
+      if (!Array.isArray(current)) {
+        // 如果当前不是数组，需要找到父数组
+        // 这种情况不应该发生，但为了安全起见
+        console.warn('Cannot set array index, current is not array:', fullKey);
+        return;
+      }
+      // 确保数组足够大
+      while (current.length <= index) {
+        current.push(undefined);
+      }
+      current[index] = value;
+    } else {
+      // 对象键
+      current[lastPart] = value;
+    }
+  }
+  
+  // 处理所有根级别的行
+  const rootRows = container.querySelectorAll('.response-content-row-wrapper[data-level="0"]');
+  if (rootRows.length === 0) {
+    // 如果没有根级别的行，返回保存的数据或空对象
+    if (currentTableJsonData) {
+      // 如果保存的数据是数组，直接返回
+      if (Array.isArray(currentTableJsonData)) {
+        return JSON.stringify(currentTableJsonData);
+      }
+      return JSON.stringify(currentTableJsonData);
+    }
+    return '{}';
+  }
+  
+  // 检查根级别是否是数组（通过检查是否有 [root] 键）
+  const rootRow = rootRows[0];
+  const rootKeyInput = rootRow.querySelector('input[data-key]');
+  const isRootArray = rootKeyInput && rootKeyInput.value.trim() === '[root]';
+  
+  if (isRootArray) {
+    // 根级别是数组，需要特殊处理
+    // 先处理根行，构建基础结构
+    processRowWrapper(rootRow, result);
+    
+    // 从结果中提取数组
+    const rootValue = result['[root]'];
+    if (Array.isArray(rootValue)) {
+      return JSON.stringify(rootValue);
+    } else if (rootValue !== undefined && rootValue !== null) {
+      // 如果值存在但不是数组，尝试转换
+      return JSON.stringify(rootValue);
+    }
+    
+    // 如果处理失败，尝试从保存的数据中获取并合并已修改的部分
+    if (currentTableJsonData && Array.isArray(currentTableJsonData)) {
+      // 使用保存的数组作为基础，然后合并已修改的元素
+      const mergedArray = JSON.parse(JSON.stringify(currentTableJsonData));
+      
+      // 尝试从表格中提取已修改的数组元素
+      const childrenContainer = rootRow.querySelector('.nested-children');
+      if (childrenContainer) {
+        const childrenRows = childrenContainer.querySelectorAll('.response-content-row-wrapper');
+        childrenRows.forEach((childRow, index) => {
+          const childValue = {};
+          processRowWrapper(childRow, childValue, '[root]');
+          
+          // 提取值并更新到数组中
+          const childKeys = Object.keys(childValue);
+          if (childKeys.length === 1 && childKeys[0].startsWith('[')) {
+            const elementValue = childValue[childKeys[0]];
+            if (elementValue !== undefined && elementValue !== null) {
+              mergedArray[index] = elementValue;
+            }
+          } else if (childKeys.length > 0) {
+            // 对象数组元素
+            if (childKeys.length === 1 && childKeys[0].startsWith('[')) {
+              mergedArray[index] = childValue[childKeys[0]];
+            } else {
+              mergedArray[index] = childValue;
+            }
+          }
+        });
+      }
+      
+      return JSON.stringify(mergedArray);
+    }
+    
+    // 如果都没有，返回空数组
+    return '[]';
+  } else {
+    // 普通对象，正常处理
+    rootRows.forEach(wrapper => {
+      processRowWrapper(wrapper, result);
+    });
+  }
+  
+  // 如果结果只有一个 [root] 键且值是数组，返回数组
+  if (Object.keys(result).length === 1 && result['[root]'] && Array.isArray(result['[root]'])) {
+    return JSON.stringify(result['[root]']);
+  }
+  
+  return JSON.stringify(result);
+}
+
+// 通过完整键路径获取值
+function getValueByFullKey(obj, fullKey) {
+  if (!fullKey) return obj;
+  
+  // 使用正则表达式解析路径（处理 "key1.key2[0].key3" 这样的格式）
+  const pathParts = fullKey.match(/([^.[\]]+)|(\[\d+\])/g) || [];
+  
+  let current = obj;
+  for (let i = 0; i < pathParts.length; i++) {
+    const part = pathParts[i];
+    
+    if (part.startsWith('[') && part.endsWith(']')) {
+      // 数组索引
+      const index = parseInt(part.substring(1, part.length - 1));
+      if (Array.isArray(current) && current[index] !== undefined) {
+        current = current[index];
+      } else {
+        return undefined;
+      }
+    } else {
+      // 对象键
+      if (current && typeof current === 'object' && current[part] !== undefined) {
+        current = current[part];
+      } else {
+        return undefined;
+      }
+    }
+  }
+  
+  return current;
+}
+
+// 从行中获取值
+function getValueFromRow(rowWrapper) {
+  const row = rowWrapper.querySelector('.flex.items-center');
+  if (!row) return null;
+  
+  const valueCheckbox = row.querySelector('input[type="checkbox"][data-key]');
+  const valueInputs = row.querySelectorAll('input[data-key]');
+  
+  if (valueCheckbox) {
+    return valueCheckbox.checked;
+  } else if (valueInputs.length > 1) {
+    const valueInput = valueInputs[1];
+    const inputValue = valueInput.value.trim();
+    
+    if (valueInput.type === 'number') {
+      return inputValue === '' ? null : parseFloat(inputValue);
+    } else if (inputValue === 'true' || inputValue === 'false') {
+      return inputValue === 'true';
+    } else if (!isNaN(inputValue) && inputValue !== '') {
+      return parseFloat(inputValue);
+    } else {
+      return inputValue;
+    }
+  }
+  
+  return null;
+}
+
+// 设置嵌套值（处理点号分隔的键）- 已废弃，使用processRowWrapper代替
+function setNestedValue(obj, keys, value) {
+  // 这个函数已被processRowWrapper替代，保留用于兼容性
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    let key = keys[i];
+    
+    // 处理数组索引
+    if (key.includes('[') && key.includes(']')) {
+      const arrayKey = key.substring(0, key.indexOf('['));
+      const index = parseInt(key.substring(key.indexOf('[') + 1, key.indexOf(']')));
+      
+      if (!current[arrayKey]) {
+        current[arrayKey] = [];
+      }
+      if (!current[arrayKey][index]) {
+        current[arrayKey][index] = {};
+      }
+      current = current[arrayKey][index];
+    } else {
+      if (!current[key] || typeof current[key] !== 'object') {
+        current[key] = {};
+      }
+      current = current[key];
+    }
+  }
+  
+  const lastKey = keys[keys.length - 1];
+  if (lastKey.includes('[') && lastKey.includes(']')) {
+    const arrayKey = lastKey.substring(0, lastKey.indexOf('['));
+    const index = parseInt(lastKey.substring(lastKey.indexOf('[') + 1, lastKey.indexOf(']')));
+    if (!current[arrayKey]) {
+      current[arrayKey] = [];
+    }
+    current[arrayKey][index] = value;
+  } else {
+    current[lastKey] = value;
+  }
+}
+
+// 切换自定义API Token显示/隐藏
+function toggleCustomApiTokenVisibility() {
+  const tokenInput = document.getElementById('customApiToken');
+  const toggleText = document.getElementById('customApiTokenToggleText');
+  const originalToken = document.getElementById('customApiTokenOriginal')?.value || '';
+  
+  if (!tokenInput) return;
+  
+  const currentValue = tokenInput.value;
+  const isPassword = tokenInput.type === 'password';
+  
+  if (isPassword) {
+    // 显示明文
+    // 如果当前值是掩码值（前3个字符+星号），则显示原始值
+    if (originalToken && currentValue && currentValue.length > 3 && currentValue.endsWith('***')) {
+      tokenInput.value = originalToken;
+    }
+    tokenInput.type = 'text';
+    toggleText.textContent = 'Hide';
+  } else {
+    // 隐藏为密码
+    // 如果当前值是原始值，保存到隐藏字段，然后显示掩码
+    if (originalToken && currentValue === originalToken) {
+      tokenInput.value = maskApiToken(originalToken);
+    } else if (currentValue && !currentValue.endsWith('***')) {
+      // 用户修改了token，保存新值
+      document.getElementById('customApiTokenOriginal').value = currentValue;
+    }
+    tokenInput.type = 'password';
+    toggleText.textContent = 'Show';
   }
 }
 

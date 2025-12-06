@@ -446,6 +446,10 @@ async function initDatabase() {
     // 迁移系统设置（检查并创建缺失的设置项）
     const { migrateSettings } = require('./migrate-settings');
     await migrateSettings();
+    
+    // 迁移自定义API表
+    const { migrateCustomApis } = require('./migrate-custom-apis');
+    await migrateCustomApis();
   } catch (error) {
     console.error('数据库表初始化失败:', error);
     console.error('错误堆栈:', error.stack);

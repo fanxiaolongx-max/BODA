@@ -7905,5 +7905,241 @@ router.delete('/showcase-images/:filename', async (req, res) => {
   }
 });
 
+// ==================== 自定义API管理 ====================
+
+/**
+ * GET /api/admin/custom-apis
+ * 获取所有API列表（包括系统API和自定义API）
+ */
+router.get('/custom-apis', requireAuth, async (req, res) => {
+  try {
+    // 获取所有自定义API
+    const customApis = await allAsync(`
+      SELECT id, name, path, method, requires_token, response_content, description, status, created_at, updated_at
+      FROM custom_apis
+      ORDER BY created_at DESC
+    `);
+
+    // 获取所有系统API路由信息
+    const systemApis = [];
+    
+    // 从路由文件中提取API信息
+    const routes = [
+      { path: '/api/auth/login', method: 'POST', requires_token: false, description: '管理员登录' },
+      { path: '/api/auth/logout', method: 'POST', requires_token: true, description: '管理员登出' },
+      { path: '/api/admin/dashboard', method: 'GET', requires_token: true, description: '获取仪表盘数据' },
+      { path: '/api/admin/orders', method: 'GET', requires_token: true, description: '获取订单列表' },
+      { path: '/api/admin/products', method: 'GET', requires_token: true, description: '获取产品列表' },
+      { path: '/api/admin/categories', method: 'GET', requires_token: true, description: '获取分类列表' },
+      { path: '/api/admin/users', method: 'GET', requires_token: true, description: '获取用户列表' },
+      { path: '/api/public/menu', method: 'GET', requires_token: false, description: '获取公开菜单' },
+      { path: '/api/public/settings', method: 'GET', requires_token: false, description: '获取公开设置' },
+      { path: '/api/user/profile', method: 'GET', requires_token: true, description: '获取用户资料' },
+      { path: '/api/user/orders', method: 'GET', requires_token: true, description: '获取用户订单' },
+    ];
+
+    // 遍历所有注册的路由（从app._router中获取）
+    // 注意：这需要访问Express的内部路由结构，可能不可靠
+    // 所以我们使用预定义的列表
+
+    res.json({
+      success: true,
+      data: {
+        systemApis: routes.map(route => ({
+          ...route,
+          type: 'system',
+          id: `system-${route.path}-${route.method}`
+        })),
+        customApis: customApis.map(api => ({
+          ...api,
+          type: 'custom',
+          requires_token: api.requires_token === 1
+        }))
+      }
+    });
+  } catch (error) {
+    logger.error('获取API列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to get API list: ' + error.message });
+  }
+});
+
+/**
+ * POST /api/admin/custom-apis
+ * 创建自定义API
+ */
+router.post('/custom-apis', requireAuth, [
+  body('name').notEmpty().withMessage('API名称不能为空'),
+  body('path').notEmpty().withMessage('API路径不能为空'),
+  body('method').isIn(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']).withMessage('请求方法无效'),
+  body('response_content').notEmpty().withMessage('返回内容不能为空'),
+  validate
+], async (req, res) => {
+  try {
+    const { name, path, method, requires_token, response_content, description, status } = req.body;
+
+    // 验证路径格式
+    if (!path.startsWith('/')) {
+      return res.status(400).json({ success: false, message: '路径必须以 / 开头' });
+    }
+
+    // 检查路径是否已存在
+    const existing = await getAsync('SELECT id FROM custom_apis WHERE path = ?', [path]);
+    if (existing) {
+      return res.status(400).json({ success: false, message: '该路径已存在' });
+    }
+
+    // 验证返回内容是否为有效的JSON
+    try {
+      JSON.parse(response_content);
+    } catch (e) {
+      return res.status(400).json({ success: false, message: '返回内容必须是有效的JSON格式' });
+    }
+
+    // 插入数据库
+    const result = await runAsync(`
+      INSERT INTO custom_apis (name, path, method, requires_token, response_content, description, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      name,
+      path,
+      method || 'GET',
+      requires_token ? 1 : 0,
+      response_content,
+      description || null,
+      status || 'active'
+    ]);
+
+    await logAction(req.session.adminId, 'CREATE', 'custom_api', result.id.toString(), JSON.stringify({
+      name,
+      path,
+      method
+    }), req);
+
+    // 重新加载自定义API路由
+    const { reloadCustomApiRoutes } = require('../utils/custom-api-router');
+    await reloadCustomApiRoutes();
+
+    res.json({
+      success: true,
+      message: '自定义API创建成功',
+      data: { id: result.id }
+    });
+  } catch (error) {
+    logger.error('创建自定义API失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to create custom API: ' + error.message });
+  }
+});
+
+/**
+ * PUT /api/admin/custom-apis/:id
+ * 更新自定义API
+ */
+router.put('/custom-apis/:id', requireAuth, [
+  body('name').notEmpty().withMessage('API名称不能为空'),
+  body('path').notEmpty().withMessage('API路径不能为空'),
+  body('method').isIn(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']).withMessage('请求方法无效'),
+  body('response_content').notEmpty().withMessage('返回内容不能为空'),
+  validate
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, path, method, requires_token, response_content, description, status } = req.body;
+
+    // 检查API是否存在
+    const existing = await getAsync('SELECT id FROM custom_apis WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'API不存在' });
+    }
+
+    // 验证路径格式
+    if (!path.startsWith('/')) {
+      return res.status(400).json({ success: false, message: '路径必须以 / 开头' });
+    }
+
+    // 检查路径是否被其他API使用
+    const pathConflict = await getAsync('SELECT id FROM custom_apis WHERE path = ? AND id != ?', [path, id]);
+    if (pathConflict) {
+      return res.status(400).json({ success: false, message: '该路径已被其他API使用' });
+    }
+
+    // 验证返回内容是否为有效的JSON
+    try {
+      JSON.parse(response_content);
+    } catch (e) {
+      return res.status(400).json({ success: false, message: '返回内容必须是有效的JSON格式' });
+    }
+
+    // 更新数据库
+    await runAsync(`
+      UPDATE custom_apis
+      SET name = ?, path = ?, method = ?, requires_token = ?, response_content = ?, description = ?, status = ?, updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `, [
+      name,
+      path,
+      method || 'GET',
+      requires_token ? 1 : 0,
+      response_content,
+      description || null,
+      status || 'active',
+      id
+    ]);
+
+    await logAction(req.session.adminId, 'UPDATE', 'custom_api', id, JSON.stringify({
+      name,
+      path,
+      method
+    }), req);
+
+    // 重新加载自定义API路由
+    const { reloadCustomApiRoutes } = require('../utils/custom-api-router');
+    await reloadCustomApiRoutes();
+
+    res.json({
+      success: true,
+      message: '自定义API更新成功'
+    });
+  } catch (error) {
+    logger.error('更新自定义API失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to update custom API: ' + error.message });
+  }
+});
+
+/**
+ * DELETE /api/admin/custom-apis/:id
+ * 删除自定义API
+ */
+router.delete('/custom-apis/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 检查API是否存在
+    const existing = await getAsync('SELECT id, name, path FROM custom_apis WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'API不存在' });
+    }
+
+    // 删除数据库记录
+    await runAsync('DELETE FROM custom_apis WHERE id = ?', [id]);
+
+    await logAction(req.session.adminId, 'DELETE', 'custom_api', id, JSON.stringify({
+      name: existing.name,
+      path: existing.path
+    }), req);
+
+    // 重新加载自定义API路由
+    const { reloadCustomApiRoutes } = require('../utils/custom-api-router');
+    await reloadCustomApiRoutes();
+
+    res.json({
+      success: true,
+      message: '自定义API删除成功'
+    });
+  } catch (error) {
+    logger.error('删除自定义API失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to delete custom API: ' + error.message });
+  }
+});
+
 module.exports = router;
 

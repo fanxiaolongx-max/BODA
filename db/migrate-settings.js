@@ -53,7 +53,9 @@ async function migrateSettings() {
       { key: 'ip_rate_limit_window_minutes', value: '15', description: 'IP速率限制时间窗口（分钟），在此时间窗口内计算失败次数' },
       // QZ Tray 证书设置（用于静默打印）
       { key: 'qz_certificate', value: '', description: 'QZ Tray 数字证书（用于静默打印，可通过管理界面上传）' },
-      { key: 'qz_private_key', value: '', description: 'QZ Tray 私钥（用于静默打印，可通过管理界面上传）' }
+      { key: 'qz_private_key', value: '', description: 'QZ Tray 私钥（用于静默打印，可通过管理界面上传）' },
+      // 自定义API Token（仅用于自定义API验证，不影响其他业务）
+      { key: 'custom_api_token', value: '', description: '自定义API Token（仅用于自定义API身份验证，可通过X-API-Token头或Authorization: Bearer传递）' }
     ];
 
     let addedCount = 0;

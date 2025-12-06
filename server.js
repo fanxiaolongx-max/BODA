@@ -356,6 +356,10 @@ app.get('/dine-in', (req, res) => {
 
 app.use('/api/public', publicRoutes);
 
+// 初始化自定义API路由器（在public路由之后，以便自定义API可以覆盖）
+const { initCustomApiRouter } = require('./utils/custom-api-router');
+initCustomApiRouter(app);
+
 // QZ Tray 证书路由（在静态文件服务之前，优先从数据库读取）
 // 这样可以确保即使文件不存在，也能从数据库获取证书
 app.get('/digital-certificate.txt', async (req, res, next) => {
