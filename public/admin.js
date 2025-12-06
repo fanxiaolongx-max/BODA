@@ -7706,11 +7706,47 @@ async function restoreBackup(fileName) {
   try {
     showGlobalLoading('Restoring database... This may take a moment.');
     
-    const data = await adminApiRequest(`${API_BASE}/admin/backup/restore`, {
+    // 直接使用 fetch 而不是 adminApiRequest，避免响应体被重复读取
+    const response = await fetch(`${API_BASE}/admin/backup/restore`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fileName })
     });
+    
+    // 检查响应状态
+    if (!response.ok) {
+      let errorMessage = `Restore failed with status ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch (e) {
+        // 如果无法解析JSON，尝试读取文本（但只能读取一次）
+        try {
+          // 使用 response.clone() 来避免重复读取问题
+          const clonedResponse = response.clone();
+          const errorText = await clonedResponse.text();
+          errorMessage = errorText || errorMessage;
+        } catch (e2) {
+          // 如果都失败了，使用默认错误消息
+        }
+      }
+      hideGlobalLoading();
+      showToast(errorMessage, 'error');
+      return;
+    }
+    
+    // 解析成功响应
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      hideGlobalLoading();
+      showToast('Failed to parse server response', 'error');
+      console.error('Failed to parse response:', e);
+      return;
+    }
+    
     hideGlobalLoading();
     
     if (data.success) {
@@ -7724,7 +7760,7 @@ async function restoreBackup(fileName) {
   } catch (error) {
     hideGlobalLoading();
     console.error('Restore backup failed:', error);
-    showToast('Restore failed', 'error');
+    showToast(error.message || 'Restore failed', 'error');
   }
 }
 
@@ -9477,9 +9513,44 @@ async function restoreReceivedBackup(id) {
   try {
     showGlobalLoading('Restoring backup...');
     
-    const data = await adminApiRequest(`${API_BASE}/admin/remote-backup/received/${id}/restore`, {
-      method: 'POST'
+    // 直接使用 fetch 而不是 adminApiRequest，避免响应体被重复读取
+    const response = await fetch(`${API_BASE}/admin/remote-backup/received/${id}/restore`, {
+      method: 'POST',
+      credentials: 'include'
     });
+    
+    // 检查响应状态
+    if (!response.ok) {
+      let errorMessage = `Restore failed with status ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch (e) {
+        // 如果无法解析JSON，尝试读取文本
+        try {
+          const clonedResponse = response.clone();
+          const errorText = await clonedResponse.text();
+          errorMessage = errorText || errorMessage;
+        } catch (e2) {
+          // 如果都失败了，使用默认错误消息
+        }
+      }
+      hideGlobalLoading();
+      showToast(errorMessage, 'error');
+      return;
+    }
+    
+    // 解析成功响应
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      hideGlobalLoading();
+      showToast('Failed to parse server response', 'error');
+      console.error('Failed to parse response:', e);
+      return;
+    }
+    
     hideGlobalLoading();
     
     if (data.success) {
@@ -9493,7 +9564,7 @@ async function restoreReceivedBackup(id) {
   } catch (error) {
     hideGlobalLoading();
     console.error('Restore received backup failed:', error);
-    showToast('Restore failed', 'error');
+    showToast(error.message || 'Restore failed', 'error');
   }
 }
 
