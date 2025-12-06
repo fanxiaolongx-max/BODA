@@ -8141,5 +8141,61 @@ router.delete('/custom-apis/:id', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/admin/custom-apis/:id/logs
+ * 获取指定自定义API的日志列表
+ */
+router.get('/custom-apis/:id/logs', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // 检查API是否存在
+    const api = await getAsync('SELECT id, name FROM custom_apis WHERE id = ?', [id]);
+    if (!api) {
+      return res.status(404).json({ success: false, message: 'API不存在' });
+    }
+
+    // 获取日志总数
+    const totalResult = await getAsync(
+      'SELECT COUNT(*) as total FROM custom_api_logs WHERE api_id = ?',
+      [id]
+    );
+    const total = totalResult.total;
+
+    // 获取日志列表
+    const logs = await allAsync(`
+      SELECT 
+        id, request_method, request_path, request_headers, request_query, request_body,
+        response_status, response_body, response_time_ms, ip_address, user_agent, error_message, created_at
+      FROM custom_api_logs
+      WHERE api_id = ?
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `, [id, parseInt(limit), offset]);
+
+    res.json({
+      success: true,
+      data: {
+        logs: logs.map(log => ({
+          ...log,
+          request_headers: typeof log.request_headers === 'string' ? JSON.parse(log.request_headers) : log.request_headers,
+          request_query: typeof log.request_query === 'string' ? JSON.parse(log.request_query) : log.request_query,
+          request_body: typeof log.request_body === 'string' ? JSON.parse(log.request_body) : log.request_body,
+          response_body: typeof log.response_body === 'string' ? JSON.parse(log.response_body) : log.response_body
+        })),
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    logger.error('获取API日志失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to get API logs: ' + error.message });
+  }
+});
+
 module.exports = router;
 

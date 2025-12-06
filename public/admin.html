@@ -1394,6 +1394,41 @@
     </div>
   </div>
 
+  <!-- API日志查看模态框 -->
+  <div id="apiLogsModal" class="modal" onclick="closeApiLogsModal(event)">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-bold text-gray-900" id="apiLogsModalTitle">API Logs</h3>
+        <button onclick="closeApiLogsModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+      <div id="apiLogsContent" class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Path</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time (ms)</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+            </tr>
+          </thead>
+          <tbody id="apiLogsTableBody" class="bg-white divide-y divide-gray-200">
+            <!-- 日志列表将在这里动态加载 -->
+          </tbody>
+        </table>
+      </div>
+      <div class="mt-4 flex justify-between items-center">
+        <div class="text-sm text-gray-600" id="apiLogsPaginationInfo"></div>
+        <div class="flex space-x-2">
+          <button onclick="loadApiLogsPage('prev')" id="apiLogsPrevBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Previous</button>
+          <button onclick="loadApiLogsPage('next')" id="apiLogsNextBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 全局 Loading 遮罩 -->
   <div id="globalLoading" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div class="bg-white rounded-lg p-6 flex flex-col items-center space-y-4">

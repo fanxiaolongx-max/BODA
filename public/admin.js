@@ -6581,6 +6581,7 @@ async function loadApiManagement() {
                 }">${api.status === 'active' ? 'Active' : 'Inactive'}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <button onclick="viewApiLogs(${api.id})" class="text-green-600 hover:text-green-900 mr-3">📋 Logs</button>
                 <button onclick="editApi(${api.id})" class="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
                 <button onclick="deleteApi(${api.id})" class="text-red-600 hover:text-red-900">Delete</button>
               </td>
@@ -6781,6 +6782,193 @@ async function deleteApi(apiId) {
     console.error('删除API失败:', error);
     showToast('Failed to delete API: ' + (error.data?.message || error.message), 'error');
   }
+}
+
+// API日志查看相关变量
+let currentApiLogsApiId = null;
+let currentApiLogsPage = 1;
+let currentApiLogsTotalPages = 1;
+
+// 查看API日志
+async function viewApiLogs(apiId) {
+  currentApiLogsApiId = apiId;
+  currentApiLogsPage = 1;
+  
+  // 获取API名称
+  try {
+    const apiData = await adminApiRequest(`${API_BASE}/admin/custom-apis`);
+    if (apiData.success && apiData.data.customApis) {
+      const api = apiData.data.customApis.find(a => a.id === apiId);
+      if (api) {
+        document.getElementById('apiLogsModalTitle').textContent = `API Logs - ${api.name}`;
+      }
+    }
+  } catch (error) {
+    console.error('获取API信息失败:', error);
+  }
+  
+  await loadApiLogs();
+  document.getElementById('apiLogsModal').classList.add('active');
+}
+
+// 关闭API日志模态框
+function closeApiLogsModal(event) {
+  if (event && event.target !== event.currentTarget) {
+    return;
+  }
+  document.getElementById('apiLogsModal').classList.remove('active');
+  currentApiLogsApiId = null;
+  currentApiLogsPage = 1;
+}
+
+// 加载API日志
+async function loadApiLogs() {
+  if (!currentApiLogsApiId) return;
+  
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/custom-apis/${currentApiLogsApiId}/logs?page=${currentApiLogsPage}&limit=20`);
+    
+    if (data.success) {
+      const logs = data.data.logs;
+      currentApiLogsTotalPages = data.data.totalPages;
+      
+      // 更新分页信息
+      document.getElementById('apiLogsPaginationInfo').textContent = 
+        `Page ${currentApiLogsPage} of ${currentApiLogsTotalPages} (Total: ${data.data.total})`;
+      
+      // 更新分页按钮
+      document.getElementById('apiLogsPrevBtn').disabled = currentApiLogsPage <= 1;
+      document.getElementById('apiLogsNextBtn').disabled = currentApiLogsPage >= currentApiLogsTotalPages;
+      
+      // 渲染日志列表
+      const logsTableBody = document.getElementById('apiLogsTableBody');
+      if (logs.length === 0) {
+        logsTableBody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No logs found</td></tr>';
+      } else {
+        // 存储日志数据到全局变量，使用索引访问
+        if (!window.apiLogsData) {
+          window.apiLogsData = {};
+        }
+        
+        logsTableBody.innerHTML = logs.map((log, index) => {
+          const logId = `log-${log.id || index}`;
+          const dataKey = `${currentApiLogsApiId}-${currentApiLogsPage}-${index}`;
+          window.apiLogsData[dataKey] = log;
+          
+          return `
+            <tr class="hover:bg-gray-50" id="${logId}">
+              <td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">${log.created_at || '-'}</td>
+              <td class="px-4 py-2 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-semibold rounded ${
+                  log.request_method === 'GET' ? 'bg-green-100 text-green-800' :
+                  log.request_method === 'POST' ? 'bg-blue-100 text-blue-800' :
+                  log.request_method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
+                  log.request_method === 'DELETE' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }">${log.request_method || '-'}</span>
+              </td>
+              <td class="px-4 py-2 text-xs font-mono text-gray-700 max-w-xs truncate" title="${(log.request_path || '-').replace(/"/g, '&quot;')}">${log.request_path || '-'}</td>
+              <td class="px-4 py-2 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-semibold rounded ${
+                  log.response_status >= 200 && log.response_status < 300 ? 'bg-green-100 text-green-800' :
+                  log.response_status >= 400 && log.response_status < 500 ? 'bg-yellow-100 text-yellow-800' :
+                  log.response_status >= 500 ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }">${log.response_status || '-'}</span>
+              </td>
+              <td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">${log.response_time_ms ? log.response_time_ms + 'ms' : '-'}</td>
+              <td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">${log.ip_address || '-'}</td>
+              <td class="px-4 py-2">
+                <button onclick="showLogDetails('${dataKey}')" 
+                        class="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 hover:bg-blue-50 rounded">View</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+  } catch (error) {
+    console.error('加载API日志失败:', error);
+    showToast('Failed to load API logs: ' + (error.data?.message || error.message), 'error');
+  }
+}
+
+// 加载日志分页
+async function loadApiLogsPage(direction) {
+  if (direction === 'prev' && currentApiLogsPage > 1) {
+    currentApiLogsPage--;
+  } else if (direction === 'next' && currentApiLogsPage < currentApiLogsTotalPages) {
+    currentApiLogsPage++;
+  }
+  await loadApiLogs();
+}
+
+// 显示日志详情
+function showLogDetails(dataKey) {
+  if (!window.apiLogsData || !window.apiLogsData[dataKey]) {
+    showToast('Log data not found', 'error');
+    return;
+  }
+  
+  const log = window.apiLogsData[dataKey];
+  
+  // 创建详情模态框
+  const detailsModal = document.createElement('div');
+  detailsModal.className = 'modal active';
+  detailsModal.onclick = function(e) {
+    if (e.target === detailsModal) {
+      detailsModal.remove();
+    }
+  };
+  
+  const detailsHtml = `
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-bold text-gray-900">Log Details</h3>
+        <button onclick="this.closest('.modal').remove()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">Request Headers</h4>
+          <pre class="p-3 bg-gray-100 rounded text-xs overflow-x-auto max-h-40 overflow-y-auto">${JSON.stringify(log.request_headers || {}, null, 2)}</pre>
+        </div>
+        ${log.request_query && Object.keys(log.request_query).length > 0 ? `
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">Query Parameters</h4>
+          <pre class="p-3 bg-gray-100 rounded text-xs overflow-x-auto max-h-40 overflow-y-auto">${JSON.stringify(log.request_query, null, 2)}</pre>
+        </div>
+        ` : ''}
+        ${log.request_body && log.request_body !== '{}' && JSON.stringify(log.request_body) !== '{}' ? `
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">Request Body</h4>
+          <pre class="p-3 bg-gray-100 rounded text-xs overflow-x-auto max-h-40 overflow-y-auto">${JSON.stringify(log.request_body, null, 2)}</pre>
+        </div>
+        ` : ''}
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">Response Body</h4>
+          <pre class="p-3 bg-gray-100 rounded text-xs overflow-x-auto max-h-60 overflow-y-auto">${JSON.stringify(log.response_body || {}, null, 2)}</pre>
+        </div>
+        ${log.error_message ? `
+        <div>
+          <h4 class="text-sm font-semibold text-red-700 mb-2">Error Message</h4>
+          <div class="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700">${log.error_message}</div>
+        </div>
+        ` : ''}
+        ${log.user_agent ? `
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">User Agent</h4>
+          <p class="text-xs text-gray-600 break-all">${log.user_agent}</p>
+        </div>
+        ` : ''}
+      </div>
+      <div class="mt-4 flex justify-end">
+        <button onclick="this.closest('.modal').remove()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Close</button>
+      </div>
+    </div>
+  `;
+  
+  detailsModal.innerHTML = detailsHtml;
+  document.body.appendChild(detailsModal);
 }
 
 // 处理API表单提交

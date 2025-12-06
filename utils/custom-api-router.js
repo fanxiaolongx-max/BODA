@@ -1,5 +1,5 @@
 const express = require('express');
-const { getAsync } = require('../db/database');
+const { getAsync, runAsync } = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
 const { logger } = require('./logger');
 
@@ -113,8 +113,30 @@ function initCustomApiRouter(app) {
         logger.debug('自定义API验证通过', { path: req.path, method: req.method });
       }
 
+      // 记录请求开始时间
+      const startTime = Date.now();
+      
+      // 收集请求信息
+      const requestHeaders = { ...req.headers };
+      // 隐藏敏感信息（如 token）
+      if (requestHeaders['x-api-token']) {
+        requestHeaders['x-api-token'] = '***';
+      }
+      if (requestHeaders['X-API-Token']) {
+        requestHeaders['X-API-Token'] = '***';
+      }
+      if (requestHeaders['authorization']) {
+        requestHeaders['authorization'] = requestHeaders['authorization'].replace(/Bearer\s+.*/, 'Bearer ***');
+      }
+      
+      const requestQuery = JSON.stringify(req.query || {});
+      const requestBody = JSON.stringify(req.body || {});
+      
       // 解析并返回响应内容
       let responseData;
+      let responseStatus = 200;
+      let errorMessage = null;
+      
       try {
         responseData = JSON.parse(api.response_content);
       } catch (e) {
@@ -136,6 +158,15 @@ function initCustomApiRouter(app) {
         responseData = replacePlaceholders(responseData, req);
       }
 
+      // 计算响应时间
+      const responseTime = Date.now() - startTime;
+      const responseBody = JSON.stringify(responseData);
+      
+      // 记录日志到数据库（异步，不阻塞响应）
+      logApiRequest(api.id, requestMethod, req.path, requestHeaders, requestQuery, requestBody, responseStatus, responseBody, responseTime, req.ip, req.get('user-agent'), null).catch(err => {
+        logger.error('记录API日志失败', { error: err.message, apiId: api.id });
+      });
+
       res.json(responseData);
     } catch (error) {
       logger.error('执行自定义API失败', {
@@ -143,6 +174,44 @@ function initCustomApiRouter(app) {
         method: req.method,
         error: error.message
       });
+      
+      // 记录错误日志（如果找到了API）
+      let requestPath = req.path.replace('/api/custom', '') || '/';
+      if (!requestPath.startsWith('/')) {
+        requestPath = '/' + requestPath;
+      }
+      const requestMethod = req.method.toUpperCase();
+      
+      const api = await getAsync(`
+        SELECT id FROM custom_apis
+        WHERE path = ? AND method = ? AND status = 'active'
+      `, [requestPath, requestMethod]).catch(() => null);
+      
+      if (api) {
+        const requestHeaders = { ...req.headers };
+        if (requestHeaders['x-api-token']) requestHeaders['x-api-token'] = '***';
+        if (requestHeaders['X-API-Token']) requestHeaders['X-API-Token'] = '***';
+        if (requestHeaders['authorization']) {
+          requestHeaders['authorization'] = requestHeaders['authorization'].replace(/Bearer\s+.*/, 'Bearer ***');
+        }
+        
+        logApiRequest(
+          api.id,
+          req.method.toUpperCase(),
+          req.path,
+          requestHeaders,
+          JSON.stringify(req.query || {}),
+          JSON.stringify(req.body || {}),
+          error.status || 500,
+          JSON.stringify({ success: false, message: error.message }),
+          0,
+          req.ip,
+          req.get('user-agent'),
+          error.message
+        ).catch(err => {
+          logger.error('记录API错误日志失败', { error: err.message });
+        });
+      }
       
       if (error.status === 401) {
         res.status(401).json({ success: false, message: '需要身份验证' });
@@ -176,6 +245,37 @@ function replacePlaceholders(obj, req) {
     return result;
   }
   return obj;
+}
+
+/**
+ * 记录API请求日志到数据库
+ */
+async function logApiRequest(apiId, requestMethod, requestPath, requestHeaders, requestQuery, requestBody, responseStatus, responseBody, responseTime, ipAddress, userAgent, errorMessage) {
+  try {
+    const currentTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    await runAsync(`
+      INSERT INTO custom_api_logs (
+        api_id, request_method, request_path, request_headers, request_query, request_body,
+        response_status, response_body, response_time_ms, ip_address, user_agent, error_message, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      apiId,
+      requestMethod,
+      requestPath,
+      JSON.stringify(requestHeaders),
+      requestQuery,
+      requestBody,
+      responseStatus,
+      responseBody,
+      responseTime,
+      ipAddress,
+      userAgent,
+      errorMessage,
+      currentTime
+    ]);
+  } catch (error) {
+    logger.error('记录API日志失败', { error: error.message, apiId });
+  }
 }
 
 /**

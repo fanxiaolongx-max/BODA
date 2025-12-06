@@ -450,6 +450,10 @@ async function initDatabase() {
     // 迁移自定义API表
     const { migrateCustomApis } = require('./migrate-custom-apis');
     await migrateCustomApis();
+    
+    // 迁移自定义API日志表
+    const { migrateCustomApiLogs } = require('./migrate-custom-api-logs');
+    await migrateCustomApiLogs();
   } catch (error) {
     console.error('数据库表初始化失败:', error);
     console.error('错误堆栈:', error.stack);
