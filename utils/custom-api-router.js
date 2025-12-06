@@ -3,6 +3,20 @@ const { getAsync, runAsync } = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
 const { logger } = require('./logger');
 
+/**
+ * 获取当前本地时间字符串（格式：YYYY-MM-DD HH:mm:ss）
+ */
+function getCurrentLocalTimeString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 let appInstance = null;
 
 /**
@@ -252,7 +266,8 @@ function replacePlaceholders(obj, req) {
  */
 async function logApiRequest(apiId, requestMethod, requestPath, requestHeaders, requestQuery, requestBody, responseStatus, responseBody, responseTime, ipAddress, userAgent, errorMessage) {
   try {
-    const currentTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    // 使用本地时间，而不是UTC时间
+    const currentTime = getCurrentLocalTimeString();
     await runAsync(`
       INSERT INTO custom_api_logs (
         api_id, request_method, request_path, request_headers, request_query, request_body,
