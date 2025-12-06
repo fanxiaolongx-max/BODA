@@ -135,8 +135,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // 请求解析
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ extended: true, limit: '500mb' }));
 
 // Session配置
 // 自动检测 HTTPS：如果设置了 trust proxy，会根据 X-Forwarded-Proto 自动判断

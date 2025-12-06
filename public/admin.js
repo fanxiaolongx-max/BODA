@@ -7855,8 +7855,15 @@ async function uploadBackupFile() {
         const errorData = await response.json();
         errorMessage = errorData.message || errorMessage;
       } catch (e) {
-        const errorText = await response.text();
-        errorMessage = errorText || errorMessage;
+        // 如果无法解析JSON，尝试读取文本（但只能读取一次）
+        try {
+          // 使用 response.clone() 来避免重复读取问题
+          const clonedResponse = response.clone();
+          const errorText = await clonedResponse.text();
+          errorMessage = errorText || errorMessage;
+        } catch (e2) {
+          // 如果都失败了，使用默认错误消息
+        }
       }
       hideGlobalLoading();
       statusDiv.innerHTML = `<p class="text-red-600 text-sm">✗ ${errorMessage}</p>`;
