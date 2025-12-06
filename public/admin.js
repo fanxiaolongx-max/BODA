@@ -6620,7 +6620,7 @@ async function initJSONEditor(containerId, initialContent = null) {
   
   try {
     // 动态导入 vanilla-jsoneditor
-    const { createJSONEditor } = await import('https://cdn.jsdelivr.net/npm/vanilla-jsoneditor@latest/standalone.js');
+    const { createJSONEditor } = await import('/js/vanilla-jsoneditor.js');
     
     // 解析初始内容
     let content = { text: '{}' };

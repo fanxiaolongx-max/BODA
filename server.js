@@ -32,6 +32,7 @@ app.use(helmet({
       connectSrc: [
         "'self'", 
         "https://api.stripe.com",
+        "https://cdn.jsdelivr.net",
         // QZ Tray WebSocket 连接（本地服务）
         // 安全连接 (wss://)
         "wss://localhost:8181",
