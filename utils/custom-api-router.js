@@ -172,6 +172,20 @@ function initCustomApiRouter(app) {
         responseData = replacePlaceholders(responseData, req);
       }
 
+      // 提取过滤参数（排除分页和控制参数）
+      const filterParams = {};
+      const excludeParams = ['page', 'pageSize', 'format'];
+      Object.keys(req.query || {}).forEach(key => {
+        if (!excludeParams.includes(key) && req.query[key] !== undefined && req.query[key] !== '') {
+          filterParams[key] = req.query[key];
+        }
+      });
+
+      // 应用过滤（如果有过滤条件）
+      if (Object.keys(filterParams).length > 0) {
+        responseData = applyFilter(responseData, filterParams);
+      }
+
       // 处理分页参数
       const page = req.query.page ? parseInt(req.query.page, 10) : null;
       const pageSize = req.query.pageSize ? parseInt(req.query.pageSize, 10) : null;
@@ -269,6 +283,92 @@ function replacePlaceholders(obj, req) {
     return result;
   }
   return obj;
+}
+
+/**
+ * 应用过滤条件
+ * @param {*} data - 响应数据（可能是数组或对象）
+ * @param {Object} filterParams - 过滤参数对象，例如 { category: '中餐厅', keyword: '川味' }
+ * @returns {*} 过滤后的数据
+ */
+function applyFilter(data, filterParams) {
+  // 如果数据是数组，直接过滤
+  if (Array.isArray(data)) {
+    return filterArray(data, filterParams);
+  }
+  
+  // 如果数据是对象，检查是否有 data 字段是数组
+  if (data && typeof data === 'object' && Array.isArray(data.data)) {
+    const filteredData = filterArray(data.data, filterParams);
+    return {
+      ...data,
+      data: filteredData
+    };
+  }
+  
+  // 如果数据不是数组也不是包含 data 数组的对象，返回原始数据
+  return data;
+}
+
+/**
+ * 过滤数组数据
+ * @param {Array} array - 要过滤的数组
+ * @param {Object} filterParams - 过滤参数
+ * @returns {Array} 过滤后的数组
+ */
+function filterArray(array, filterParams) {
+  const keyword = filterParams.keyword;
+  const fieldFilters = {};
+  
+  // 分离关键词和其他字段过滤
+  Object.keys(filterParams).forEach(key => {
+    if (key !== 'keyword') {
+      fieldFilters[key] = filterParams[key];
+    }
+  });
+
+  return array.filter(item => {
+    // 先应用字段过滤
+    let matchesFieldFilters = true;
+    if (Object.keys(fieldFilters).length > 0) {
+      matchesFieldFilters = Object.keys(fieldFilters).every(filterKey => {
+        const filterValue = String(fieldFilters[filterKey]).toLowerCase();
+        const itemValue = item[filterKey];
+        
+        if (itemValue === undefined || itemValue === null) {
+          return false;
+        }
+        
+        // 将值转换为字符串并转为小写进行比较（支持包含匹配）
+        const itemValueStr = String(itemValue).toLowerCase();
+        return itemValueStr.includes(filterValue);
+      });
+    }
+
+    // 如果字段过滤不匹配，直接返回false
+    if (!matchesFieldFilters) {
+      return false;
+    }
+
+    // 如果有关键词，在所有字段中搜索
+    if (keyword) {
+      const keywordLower = String(keyword).toLowerCase();
+      const itemValues = Object.values(item || {});
+      
+      // 检查是否在任何字段中包含关键词
+      const matchesKeyword = itemValues.some(value => {
+        if (value === null || value === undefined) {
+          return false;
+        }
+        const valueStr = String(value).toLowerCase();
+        return valueStr.includes(keywordLower);
+      });
+      
+      return matchesKeyword;
+    }
+
+    return true;
+  });
 }
 
 /**
@@ -371,5 +471,7 @@ async function reloadCustomApiRoutes() {
 
 module.exports = {
   initCustomApiRouter,
-  reloadCustomApiRoutes
+  reloadCustomApiRoutes,
+  applyPagination, // 导出用于测试
+  applyFilter // 导出用于测试
 };

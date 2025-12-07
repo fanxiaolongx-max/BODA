@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">22% </span>
+                <span class="strong">7% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>22/100</span>
+                <span class='fraction'>7/100</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">22.95% </span>
+                <span class="strong">1.63% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>14/61</span>
+                <span class='fraction'>1/61</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">16.66% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>2/12</span>
+                <span class='fraction'>0/12</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">22.22% </span>
+                <span class="strong">7.07% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>22/99</span>
+                <span class='fraction'>7/99</span>
             </div>
         
             
@@ -360,17 +360,17 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -533,12 +533,12 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -643,18 +643,18 @@ const DATA_DIR = fs.existsSync('/data') ? <span class="branch-0 cbranch-no" titl
 /**
  * 获取邮件配置
  */
-async function getEmailConfig() {
-  try {
-    const smtpHost = await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_host'");
-    const smtpPort = await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_port'");
-    const smtpSecure = await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_secure'");
-    const smtpUser = await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_user'");
-    const smtpPassword = await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_password'");
-    const emailFrom = await getAsync("SELECT value FROM settings WHERE key = 'email_from'");
-    const emailTo = await getAsync("SELECT value FROM settings WHERE key = 'email_to'");
-    const emailEnabled = await getAsync("SELECT value FROM settings WHERE key = 'email_enabled'");
+async function <span class="fstat-no" title="function not covered" >getEmailConfig(</span>) {
+<span class="cstat-no" title="statement not covered" >  try {</span>
+    const smtpHost = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_host'");</span>
+    const smtpPort = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_port'");</span>
+    const smtpSecure = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_secure'");</span>
+    const smtpUser = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_user'");</span>
+    const smtpPassword = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'email_smtp_password'");</span>
+    const emailFrom = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'email_from'");</span>
+    const emailTo = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'email_to'");</span>
+    const emailEnabled = <span class="cstat-no" title="statement not covered" >await getAsync("SELECT value FROM settings WHERE key = 'email_enabled'");</span>
 &nbsp;
-    return {
+<span class="cstat-no" title="statement not covered" >    return {</span>
       enabled: emailEnabled?.value === 'true',
       host: smtpHost?.value || '',
       port: parseInt(smtpPort?.value || '587', 10),
@@ -816,13 +816,13 @@ async function <span class="fstat-no" title="function not covered" >sendEmail(</
  * @param {number} cycleId - 周期ID
  * @param {string} excelFilePath - Excel文件路径
  */
-async function sendCycleExportEmail(cycleId, excelFilePath) {
-  try {
-    const config = await getEmailConfig();
+async function <span class="fstat-no" title="function not covered" >sendCycleExportEmail(</span>cycleId, excelFilePath) {
+<span class="cstat-no" title="statement not covered" >  try {</span>
+    const config = <span class="cstat-no" title="statement not covered" >await getEmailConfig();</span>
     
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (!config.enabled) {
-      logger.info('邮件功能未启用，跳过邮件发送');
-      return { success: false, message: '邮件功能未启用' };
+<span class="cstat-no" title="statement not covered" >    if (!config.enabled) {</span>
+<span class="cstat-no" title="statement not covered" >      logger.info('邮件功能未启用，跳过邮件发送');</span>
+<span class="cstat-no" title="statement not covered" >      return { success: false, message: '邮件功能未启用' };</span>
     }
 &nbsp;
     // 获取商店名称
@@ -922,7 +922,7 @@ module.exports = {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-22T16:03:46.068Z
+                at 2025-12-07T14:36:27.639Z
             </div>
         <script src="../prettify.js"></script>
         <script>
