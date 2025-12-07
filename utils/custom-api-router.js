@@ -172,6 +172,16 @@ function initCustomApiRouter(app) {
         responseData = replacePlaceholders(responseData, req);
       }
 
+      // 处理分页参数
+      const page = req.query.page ? parseInt(req.query.page, 10) : null;
+      const pageSize = req.query.pageSize ? parseInt(req.query.pageSize, 10) : null;
+      const format = req.query.format || 'object'; // 'object' 返回 {data, total, hasMore}，'array' 只返回数组
+      
+      // 如果提供了分页参数，进行分页处理
+      if (page !== null && pageSize !== null && page > 0 && pageSize > 0) {
+        responseData = applyPagination(responseData, page, pageSize, format === 'array');
+      }
+
       // 计算响应时间
       const responseTime = Date.now() - startTime;
       const responseBody = JSON.stringify(responseData);
@@ -259,6 +269,63 @@ function replacePlaceholders(obj, req) {
     return result;
   }
   return obj;
+}
+
+/**
+ * 应用分页处理
+ * @param {*} data - 响应数据（可能是数组或对象）
+ * @param {number} page - 页码（从1开始）
+ * @param {number} pageSize - 每页大小
+ * @param {boolean} returnArrayOnly - 如果为true，只返回数组；否则返回带元数据的对象
+ * @returns {*} 分页后的数据
+ */
+function applyPagination(data, page, pageSize, returnArrayOnly = false) {
+  // 如果数据是数组，直接分页
+  if (Array.isArray(data)) {
+    const total = data.length;
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginatedData = data.slice(startIndex, endIndex);
+    
+    // 如果只需要返回数组，直接返回
+    if (returnArrayOnly) {
+      return paginatedData;
+    }
+    
+    // 否则返回带元数据的分页格式
+    const hasMore = endIndex < total;
+    return {
+      data: paginatedData,
+      total: total,
+      hasMore: hasMore
+    };
+  }
+  
+  // 如果数据是对象，检查是否有 data 字段是数组
+  if (data && typeof data === 'object' && Array.isArray(data.data)) {
+    const total = data.total !== undefined ? data.total : data.data.length;
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginatedData = data.data.slice(startIndex, endIndex);
+    
+    // 如果只需要返回数组，直接返回数组
+    if (returnArrayOnly) {
+      return paginatedData;
+    }
+    
+    // 否则返回带元数据的分页格式，保留原有的其他字段
+    const hasMore = endIndex < (data.total !== undefined ? data.total : data.data.length);
+    return {
+      ...data,
+      data: paginatedData,
+      total: total,
+      hasMore: hasMore
+    };
+  }
+  
+  // 如果数据不是数组也不是包含 data 数组的对象，返回原始数据
+  // 这样保持向后兼容性
+  return data;
 }
 
 /**
