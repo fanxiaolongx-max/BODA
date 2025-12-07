@@ -4773,7 +4773,7 @@ router.get('/logs', async (req, res) => {
       details,     // Details字段模糊匹配
       start_date,  // 开始日期（YYYY-MM-DD格式）
       end_date,    // 结束日期（YYYY-MM-DD格式）
-      days = 3     // 如果没有指定日期范围，默认显示最近3天
+      days = 30    // 如果没有指定日期范围，默认显示最近30天
     } = req.query;
     const offset = (page - 1) * limit;
 

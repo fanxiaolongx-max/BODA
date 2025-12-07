@@ -6041,7 +6041,7 @@ let logsFilterState = {
   limit: 30,       // 每页条数
   start_date: '',  // 开始日期
   end_date: '',    // 结束日期
-  days: 3,         // 默认显示最近3天（如果未指定日期范围）
+  days: 30,        // 默认显示最近30天（如果未指定日期范围）
   action: '',
   operator: '',
   target_type: '',
