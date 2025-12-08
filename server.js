@@ -228,9 +228,60 @@ const loginLimiter = rateLimit({
 // 支持 fly.io 持久化卷：如果 /data 目录存在，使用 /data，否则使用本地目录
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 
-// 静态文件服务（使用绝对路径，确保部署时路径正确）
+// 自定义静态文件中间件，添加CORS头和正确的Content-Type
+const staticWithCORS = (root, options = {}) => {
+  const staticMiddleware = express.static(root, {
+    ...options,
+    setHeaders: (res, filePath, stat) => {
+      // 获取文件扩展名
+      const ext = path.extname(filePath).toLowerCase();
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
+      
+      if (imageExtensions.includes(ext)) {
+        // 添加CORS头
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        
+        // 设置正确的Content-Type
+        const mimeTypes = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+          '.svg': 'image/svg+xml',
+          '.bmp': 'image/bmp',
+          '.ico': 'image/x-icon'
+        };
+        
+        const contentType = mimeTypes[ext] || 'image/jpeg';
+        res.setHeader('Content-Type', contentType);
+      }
+    }
+  });
+  
+  return (req, res, next) => {
+    // 处理OPTIONS预检请求
+    if (req.method === 'OPTIONS') {
+      const ext = path.extname(req.path).toLowerCase();
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
+      if (imageExtensions.includes(ext)) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        return res.status(200).end();
+      }
+    }
+    
+    // 执行静态文件服务
+    staticMiddleware(req, res, next);
+  };
+};
+
+// 静态文件服务（使用自定义中间件，添加CORS支持）
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
+app.use('/uploads', staticWithCORS(path.join(DATA_DIR, 'uploads')));
 
 // show 目录：优先使用 DATA_DIR/show（持久化），如果不存在则回退到项目根目录（兼容性）
 const SHOW_DIR = path.join(DATA_DIR, 'show');
@@ -265,10 +316,10 @@ if (!fs.existsSync(SHOW_DIR)) {
 
 // 使用 DATA_DIR/show（如果存在），否则回退到项目根目录
 const actualShowDir = fs.existsSync(SHOW_DIR) ? SHOW_DIR : FALLBACK_SHOW_DIR;
-app.use('/show', express.static(actualShowDir));
+app.use('/show', staticWithCORS(actualShowDir));
 
 // 确保必要目录存在
-['uploads', 'uploads/products', 'uploads/payments', 'logs', 'show'].forEach(dir => {
+['uploads', 'uploads/products', 'uploads/payments', 'uploads/custom-api-images', 'logs', 'show'].forEach(dir => {
   const dirPath = path.join(DATA_DIR, dir);
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });

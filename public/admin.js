@@ -3,6 +3,194 @@ if (typeof API_BASE === 'undefined') {
   var API_BASE = '/api';
 }
 
+// 上传自定义API图片函数（提前定义，确保全局可用）
+window.uploadApiImage = async function uploadApiImage() {
+  console.log('=== uploadApiImage 函数开始执行 ===');
+  
+  const fileInput = document.getElementById('apiImageUpload');
+  const statusDiv = document.getElementById('apiImageUploadStatus');
+  
+  console.log('元素查找结果:', {
+    fileInput: fileInput ? '找到' : '未找到',
+    statusDiv: statusDiv ? '找到' : '未找到',
+    fileInputElement: fileInput,
+    statusDivElement: statusDiv
+  });
+  
+  if (!fileInput) {
+    console.error('找不到文件输入元素 apiImageUpload');
+    showToast('找不到文件输入元素，请刷新页面重试', 'error');
+    return;
+  }
+  
+  if (!fileInput.files || !fileInput.files[0]) {
+    console.warn('未选择文件');
+    showToast('请选择要上传的图片', 'error');
+    return;
+  }
+  
+  const selectedFile = fileInput.files[0];
+  console.log('选择的文件信息:', {
+    name: selectedFile.name,
+    size: selectedFile.size,
+    type: selectedFile.type
+  });
+  
+  const file = fileInput.files[0];
+  const formData = new FormData();
+  formData.append('image', file);
+  
+  // 显示上传状态
+  if (statusDiv) {
+    statusDiv.classList.remove('hidden');
+    statusDiv.className = 'mt-2 text-sm text-blue-600';
+    statusDiv.textContent = '正在上传...';
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/admin/custom-apis/upload-image`, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: formData,
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success && data.image) {
+      const imageUrl = data.image.url;
+      
+      // 显示成功状态和链接
+      if (statusDiv) {
+        statusDiv.className = 'mt-2 text-sm';
+        statusDiv.innerHTML = `
+          <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+            <div class="text-green-800 font-medium mb-2">✓ 上传成功！</div>
+            <div class="text-sm text-gray-700 mb-2">
+              <span class="font-medium">图片链接：</span>
+              <code class="bg-gray-100 px-2 py-1 rounded text-xs break-all">${imageUrl}</code>
+            </div>
+            <button onclick="navigator.clipboard.writeText('${imageUrl}').then(() => { if(typeof showToast === 'function') showToast('链接已复制', 'success'); else alert('链接已复制'); })" 
+                    class="text-xs text-blue-600 hover:text-blue-800 underline">
+              复制链接
+            </button>
+          </div>
+        `;
+      }
+      
+      // 清空文件输入
+      fileInput.value = '';
+      
+      // 检查是否有JSON内容，如果有则提示是否插入
+      const textarea = document.getElementById('apiResponseContent');
+      if (textarea && textarea.value) {
+        try {
+          const jsonContent = JSON.parse(textarea.value);
+          
+          // 检查是否存在image字段
+          let hasImageField = false;
+          function checkImageField(obj) {
+            if (Array.isArray(obj)) {
+              obj.forEach(item => {
+                if (typeof item === 'object' && item !== null) {
+                  if (item.image !== undefined) {
+                    hasImageField = true;
+                  }
+                  checkImageField(item);
+                }
+              });
+            } else if (typeof obj === 'object' && obj !== null) {
+              if (obj.image !== undefined) {
+                hasImageField = true;
+              }
+              Object.keys(obj).forEach(key => {
+                if (typeof obj[key] === 'object' && obj[key] !== null) {
+                  checkImageField(obj[key]);
+                }
+              });
+            }
+          }
+          checkImageField(jsonContent);
+          
+          if (hasImageField) {
+            // 提示用户是否插入
+            const shouldInsert = confirm(`检测到JSON中包含 image 字段，是否自动将所有 image 字段更新为：\n${imageUrl}\n\n点击"确定"更新所有 image 字段，点击"取消"仅复制链接。`);
+            
+            if (shouldInsert) {
+              // 递归更新所有image字段
+              function updateImageField(obj, url) {
+                if (Array.isArray(obj)) {
+                  obj.forEach(item => {
+                    if (typeof item === 'object' && item !== null) {
+                      if (item.image !== undefined) {
+                        item.image = url;
+                      }
+                      updateImageField(item, url);
+                    }
+                  });
+                } else if (typeof obj === 'object' && obj !== null) {
+                  if (obj.image !== undefined) {
+                    obj.image = url;
+                  }
+                  Object.keys(obj).forEach(key => {
+                    if (typeof obj[key] === 'object' && obj[key] !== null) {
+                      updateImageField(obj[key], url);
+                    }
+                  });
+                }
+              }
+              
+              updateImageField(jsonContent, imageUrl);
+              
+              // 更新textarea和JSON编辑器
+              const updatedJsonString = JSON.stringify(jsonContent, null, 2);
+              textarea.value = updatedJsonString;
+              
+              // 更新JSON编辑器显示
+              if (typeof jsonEditorInstance !== 'undefined' && jsonEditorInstance) {
+                try {
+                  jsonEditorInstance.set(jsonContent);
+                  if (typeof showToast === 'function') {
+                    showToast('所有 image 字段已更新', 'success');
+                  }
+                } catch (e) {
+                  console.warn('更新JSON编辑器失败:', e);
+                  if (typeof showToast === 'function') {
+                    showToast('image 字段已更新，请检查JSON编辑器', 'success');
+                  }
+                }
+              } else {
+                if (typeof showToast === 'function') {
+                  showToast('image 字段已更新', 'success');
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // JSON格式无效，不提示插入
+          console.warn('JSON格式无效，跳过自动插入:', e);
+        }
+      }
+      
+    } else {
+      throw new Error(data.message || '上传失败');
+    }
+  } catch (error) {
+    console.error('上传图片失败:', error);
+    if (statusDiv) {
+      statusDiv.className = 'mt-2 text-sm text-red-600';
+      statusDiv.textContent = '上传失败: ' + (error.message || '未知错误');
+    }
+    if (typeof showToast === 'function') {
+      showToast('上传图片失败: ' + (error.message || '未知错误'), 'error');
+    } else {
+      alert('上传图片失败: ' + (error.message || '未知错误'));
+    }
+  }
+};
+
 // 统一的API请求处理函数（处理401自动跳转）
 async function adminApiRequest(url, options = {}) {
   try {
@@ -333,6 +521,46 @@ document.addEventListener('DOMContentLoaded', () => {
       await saveRemoteBackupConfig();
     });
   }
+  
+  // 使用事件委托绑定自定义API图片上传按钮（在文档级别，确保始终有效）
+  // 使用capture阶段捕获事件，确保在其他处理器之前执行
+  document.addEventListener('click', async (e) => {
+    // 检查是否点击了上传按钮或其内部元素
+    const uploadBtn = e.target.closest('#apiImageUploadBtn');
+    if (uploadBtn) {
+      console.log('检测到上传按钮点击事件', {
+        target: e.target,
+        currentTarget: e.currentTarget,
+        uploadBtn: uploadBtn,
+        hasFunction: typeof window.uploadApiImage === 'function',
+        eventPhase: e.eventPhase
+      });
+      
+      // 阻止事件冒泡，防止触发模态框的关闭事件
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      
+      console.log('准备调用 uploadApiImage 函数');
+      
+      if (typeof window.uploadApiImage === 'function') {
+        try {
+          await window.uploadApiImage();
+          console.log('uploadApiImage 调用完成');
+        } catch (error) {
+          console.error('uploadApiImage 调用出错:', error);
+          showToast('上传失败: ' + error.message, 'error');
+        }
+      } else {
+        console.error('uploadApiImage 函数未定义', {
+          windowUploadApiImage: typeof window.uploadApiImage,
+          uploadApiImage: typeof uploadApiImage
+        });
+        showToast('上传功能未初始化，请刷新页面', 'error');
+      }
+      return false; // 额外确保阻止默认行为
+    }
+  }, true); // 使用capture阶段，在其他事件处理器之前执行
 });
 
 // 检查认证状态
@@ -6675,6 +6903,8 @@ async function showApiModal(apiId = null) {
   document.getElementById('apiRequiresToken').checked = false;
   document.getElementById('apiStatus').value = 'active';
   
+  // 上传按钮事件已在DOMContentLoaded中使用全局事件委托绑定，无需在此处绑定
+  
   if (apiId) {
     // 编辑模式
     title.textContent = 'Edit Custom API';
@@ -6762,6 +6992,8 @@ function closeApiModal(event) {
 function editApi(apiId) {
   showApiModal(apiId);
 }
+
+// 上传自定义API图片函数已在文件开头定义，此处保留注释以避免重复定义
 
 // 删除API
 async function deleteApi(apiId) {

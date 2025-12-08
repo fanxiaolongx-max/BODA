@@ -1312,7 +1312,7 @@
 
   <!-- API管理模态框 -->
   <div id="apiModal" class="modal" onclick="closeApiModal(event)">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 p-6" onclick="event.stopPropagation()">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 p-6" onclick="event.stopPropagation()" id="apiModalContent">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-xl font-bold text-gray-900" id="apiModalTitle">Add Custom API</h3>
         <button onclick="closeApiModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
@@ -1355,6 +1355,24 @@
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Response Content (JSON) *</label>
+          
+          <!-- 图片上传工具 -->
+          <div class="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <label class="block text-sm font-medium text-gray-700 mb-2">📷 上传图片到 image 字段</label>
+            <div class="flex items-center space-x-2">
+              <input type="file" id="apiImageUpload" accept="image/*" 
+                     class="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+              <button type="button" id="apiImageUploadBtn"
+                      class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                      onclick="console.log('按钮onclick被触发'); if(typeof window.uploadApiImage === 'function') { window.uploadApiImage(); } else { alert('uploadApiImage函数未定义'); }">
+                上传
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              上传成功后生成图片链接，如果JSON中包含 image 字段，会提示是否自动更新
+            </p>
+            <div id="apiImageUploadStatus" class="mt-2 text-sm hidden"></div>
+          </div>
           
           <!-- JSON编辑器容器 -->
           <div id="apiResponseContentEditor" style="height: 400px; border: 1px solid #d1d5db; border-radius: 0.5rem;"></div>

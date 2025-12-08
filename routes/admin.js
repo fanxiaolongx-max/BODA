@@ -7796,6 +7796,40 @@ const showcaseUpload = multer({
   }
 });
 
+// 配置自定义API图片上传
+const customApiImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(DATA_DIR, 'uploads/custom-api-images');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname).toLowerCase();
+    // 生成随机字符串确保唯一性（8位）
+    const randomStr = Math.random().toString(36).substring(2, 10);
+    // 只使用时间戳和随机字符串，保持文件名简洁
+    cb(null, `${timestamp}-${randomStr}${ext}`);
+  }
+});
+
+const customApiImageUpload = multer({
+  storage: customApiImageStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image formats are supported'));
+    }
+  }
+});
+
 /**
  * GET /api/admin/showcase-images
  * Get list of showcase images
@@ -8102,6 +8136,46 @@ router.put('/custom-apis/:id', requireAuth, [
   } catch (error) {
     logger.error('更新自定义API失败', { error: error.message });
     res.status(500).json({ success: false, message: 'Failed to update custom API: ' + error.message });
+  }
+});
+
+/**
+ * POST /api/admin/custom-apis/upload-image
+ * 上传自定义API图片
+ */
+router.post('/custom-apis/upload-image', requireAuth, customApiImageUpload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image file provided' });
+    }
+    
+    const filename = req.file.filename;
+    
+    // 获取完整的URL（包含协议和域名）
+    // 优先检查代理头（适用于反向代理场景）
+    const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+    const host = req.get('x-forwarded-host') || req.get('host') || req.headers.host;
+    const fullUrl = `${protocol}://${host}/uploads/custom-api-images/${filename}`;
+    const relativeUrl = `/uploads/custom-api-images/${filename}`;
+    
+    await logAction(req.session.adminId, 'CREATE', 'custom_api_image', null, JSON.stringify({
+      filename: filename,
+      url: fullUrl,
+      relativeUrl: relativeUrl
+    }), req);
+    
+    res.json({ 
+      success: true, 
+      message: 'Image uploaded successfully',
+      image: {
+        filename: filename,
+        url: fullUrl, // 返回完整URL
+        relativeUrl: relativeUrl // 也返回相对URL供需要时使用
+      }
+    });
+  } catch (error) {
+    logger.error('上传自定义API图片失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to upload image: ' + error.message });
   }
 });
 
