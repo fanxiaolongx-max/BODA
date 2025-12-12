@@ -104,25 +104,72 @@ async function migrateCustomApiFields() {
           }
           
           // 迁移每个item
-          // 先收集所有现有ID，确保新ID不重复
-          const existingIds = new Set(items.map(item => item.id).filter(id => id !== undefined && id !== null));
+          // UUID格式的正则表达式（8-4-4-4-12格式）
+          const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          
+          // 先收集所有现有ID（包括UUID和数字ID），确保新ID不重复
+          const existingIds = new Set();
+          const existingUUIDs = new Set();
+          const existingNumberIds = new Set();
+          
+          items.forEach(item => {
+            const id = item.id;
+            if (id !== undefined && id !== null) {
+              const idStr = String(id);
+              if (UUID_REGEX.test(idStr)) {
+                // UUID格式的ID
+                existingIds.add(idStr);
+                existingUUIDs.add(idStr);
+              } else if (/^\d+$/.test(idStr)) {
+                // 数字格式的ID
+                const numId = parseInt(idStr, 10);
+                existingIds.add(numId);
+                existingNumberIds.add(numId);
+              } else {
+                // 其他格式，也保留
+                existingIds.add(idStr);
+              }
+            }
+          });
+          
           let nextId = 1;
           const getNextUniqueId = () => {
-            while (existingIds.has(nextId)) {
+            while (existingNumberIds.has(nextId)) {
               nextId++;
             }
-            existingIds.add(nextId);
+            existingNumberIds.add(nextId);
             return nextId++;
           };
           
           const migratedItems = items.map((item, index) => {
             const migrated = {};
             
-            // id: 必填，优先使用现有id，如果重复则生成新ID
-            if (item.id !== undefined && item.id !== null && !existingIds.has(item.id)) {
-              migrated.id = item.id;
-              existingIds.add(item.id);
+            // id: 必填，优先使用现有id
+            // 如果id是UUID格式，直接保留（不修改）
+            // 如果id是数字格式，保留但确保不重复
+            // 如果没有id或id无效，生成新的数字ID（仅用于向后兼容）
+            if (item.id !== undefined && item.id !== null) {
+              const idStr = String(item.id);
+              if (UUID_REGEX.test(idStr)) {
+                // UUID格式，直接保留（这是博客文章的全局唯一ID，绝对不能修改）
+                migrated.id = idStr;
+              } else if (/^\d+$/.test(idStr)) {
+                // 数字格式，保留但确保不重复
+                const numId = parseInt(idStr, 10);
+                if (!existingNumberIds.has(numId)) {
+                  migrated.id = numId;
+                  existingNumberIds.add(numId);
+                } else {
+                  // 如果数字ID重复，生成新的数字ID（这种情况不应该发生，但为了安全起见）
+                  migrated.id = getNextUniqueId();
+                  console.warn(`  API ID ${api.id}: 检测到重复的数字ID ${numId}，已生成新ID ${migrated.id}`);
+                }
+              } else {
+                // 其他格式，保留原值
+                migrated.id = item.id;
+              }
             } else {
+              // 没有id，生成新的数字ID（仅用于向后兼容，新系统应该使用UUID）
               migrated.id = getNextUniqueId();
             }
             
