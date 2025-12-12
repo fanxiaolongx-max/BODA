@@ -617,9 +617,22 @@
       try {
         const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
         if (response && response.success) {
-          displayPosts(response.data || []);
+          const posts = response.data || [];
+          console.log('获取文章列表成功，文章数:', posts.length);
+          // 按分类统计
+          const byCategory = {};
+          posts.forEach(p => {
+            const cat = p.category || '无分类';
+            byCategory[cat] = (byCategory[cat] || 0) + 1;
+          });
+          console.log('文章分类统计:', byCategory);
+          displayPosts(posts);
+        } else {
+          console.error('获取文章列表失败:', response);
+          document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
         }
       } catch (error) {
+        console.error('加载文章列表异常:', error);
         document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
       }
     }
@@ -632,14 +645,19 @@
         return;
       }
 
+      console.log('displayPosts 接收到的文章数:', posts.length);
+
       // 按分类分组
       const postsByCategory = {};
       const seenIds = new Set(); // 前端再次去重，确保不显示重复
+      let skippedCount = 0;
       
       for (const post of posts) {
         const postId = String(post.id || '');
         // 如果已存在相同id，跳过（防止重复显示）
         if (postId && seenIds.has(postId)) {
+          skippedCount++;
+          console.warn('跳过重复ID的文章:', { id: postId, category: post.category, name: post.name });
           continue;
         }
         seenIds.add(postId);
@@ -650,6 +668,13 @@
         }
         postsByCategory[category].push(post);
       }
+
+      console.log('显示文章统计:', {
+        总接收: posts.length,
+        去重后: seenIds.size,
+        跳过重复: skippedCount,
+        分类数: Object.keys(postsByCategory).length
+      });
 
       // 生成HTML：按分类分组显示
       let html = '';

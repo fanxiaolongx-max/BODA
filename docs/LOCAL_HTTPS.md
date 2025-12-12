@@ -59,15 +59,28 @@ USE_STANDARD_HTTPS_PORT=true
 
 #### 选项1：使用标准443端口（推荐）
 
-```bash
-# macOS/Linux 需要使用 sudo（因为443端口需要root权限）
-sudo npm start
+**重要：必须使用 `export` 导出环境变量，然后使用 `sudo -E` 保留环境变量！**
 
-# 或者使用 sudo -E 保留环境变量
+```bash
+# 方法1：一行命令（推荐）
+export USE_LOCAL_HTTPS=true USE_STANDARD_HTTPS_PORT=true && sudo -E npm start
+
+# 方法2：分步执行
+export USE_LOCAL_HTTPS=true
+export USE_STANDARD_HTTPS_PORT=true
 sudo -E npm start
+
+# 方法3：直接在sudo命令中设置环境变量
+sudo -E env USE_LOCAL_HTTPS=true USE_STANDARD_HTTPS_PORT=true npm start
 ```
 
+**注意：**
+- ❌ **错误**：`USE_LOCAL_HTTPS=true sudo npm start` （环境变量不会传递）
+- ✅ **正确**：`export USE_LOCAL_HTTPS=true && sudo -E npm start` （环境变量会传递）
+
 服务器会在 `https://localhost` 或 `https://boba.app` 启动（无需指定端口）。
+
+如果看到 "无法绑定443端口" 的警告，说明权限不足，请确保使用 `sudo`。
 
 #### 选项2：使用自定义端口（无需root权限）
 

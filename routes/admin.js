@@ -8100,10 +8100,82 @@ router.put('/custom-apis/:id', requireAuth, [
     }
 
     // 验证返回内容是否为有效的JSON
+    let parsedContent;
     try {
-      JSON.parse(response_content);
+      parsedContent = JSON.parse(response_content);
     } catch (e) {
       return res.status(400).json({ success: false, message: '返回内容必须是有效的JSON格式' });
+    }
+
+    // 保护文章ID：如果这是GET方法的API（可能包含博客文章），需要保护文章的ID不被修改
+    if (method === 'GET' || method === undefined || !method) {
+      try {
+        // 获取原始API数据
+        const originalApi = await getAsync(
+          'SELECT response_content FROM custom_apis WHERE id = ?',
+          [id]
+        );
+        
+        if (originalApi && originalApi.response_content) {
+          const originalContent = JSON.parse(originalApi.response_content);
+          
+          // 检查是否是数组格式或包含data数组的对象格式
+          let originalItems = [];
+          let newItems = [];
+          
+          if (Array.isArray(originalContent)) {
+            originalItems = originalContent;
+            newItems = Array.isArray(parsedContent) ? parsedContent : [];
+          } else if (originalContent.data && Array.isArray(originalContent.data)) {
+            originalItems = originalContent.data;
+            newItems = (parsedContent.data && Array.isArray(parsedContent.data)) ? parsedContent.data : [];
+          }
+          
+          // 如果有文章数据，保护ID
+          if (originalItems.length > 0 && newItems.length > 0) {
+            const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            
+            // 创建原始ID映射（基于name/title匹配，因为ID可能被修改）
+            const originalIdMap = new Map();
+            originalItems.forEach(item => {
+              const key = String(item.name || item.title || '').toLowerCase();
+              if (item.id && UUID_REGEX.test(String(item.id))) {
+                originalIdMap.set(key, item.id);
+              }
+            });
+            
+            // 恢复被修改的ID
+            let hasIdChanged = false;
+            newItems.forEach((item, index) => {
+              const key = String(item.name || item.title || '').toLowerCase();
+              const originalId = originalIdMap.get(key);
+              
+              if (originalId) {
+                const currentId = String(item.id || '');
+                // 如果ID被修改了（不是UUID或与原始ID不同），恢复原始ID
+                if (!UUID_REGEX.test(currentId) || currentId !== originalId) {
+                  item.id = originalId;
+                  hasIdChanged = true;
+                }
+              }
+            });
+            
+            // 如果有ID被恢复，更新parsedContent
+            if (hasIdChanged) {
+              if (Array.isArray(parsedContent)) {
+                parsedContent = newItems;
+              } else {
+                parsedContent.data = newItems;
+              }
+              response_content = JSON.stringify(parsedContent);
+              logger.info('API Management更新时保护了文章ID', { apiId: id });
+            }
+          }
+        }
+      } catch (e) {
+        // 如果保护ID时出错，记录警告但继续保存（不阻止用户操作）
+        logger.warn('保护文章ID时出错，继续保存', { error: e.message, apiId: id });
+      }
     }
 
     // 更新数据库

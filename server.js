@@ -592,49 +592,57 @@ async function startServer() {
           ? parseInt(process.env.HTTPS_PORT) 
           : (process.env.USE_STANDARD_HTTPS_PORT === 'true' ? 443 : PORT);
         
+        // 调试信息：显示端口选择逻辑
+        if (process.env.USE_STANDARD_HTTPS_PORT === 'true' && httpsPort !== 443) {
+          logger.warn('USE_STANDARD_HTTPS_PORT=true 但未使用443端口', { 
+            httpsPort, 
+            HTTPS_PORT: process.env.HTTPS_PORT,
+            USE_STANDARD_HTTPS_PORT: process.env.USE_STANDARD_HTTPS_PORT 
+          });
+        }
+        
+        // 启动 HTTPS 服务器的辅助函数
+        const startHttpsServer = (port) => {
+          const httpsServer = https.createServer(httpsOptions, app);
+          
+          // 监听错误事件，处理端口绑定失败的情况
+          httpsServer.on('error', (err) => {
+            // 如果443端口绑定失败（通常是因为权限不足），回退到PORT
+            if (port === 443 && err.code === 'EACCES') {
+              logger.warn('无法绑定443端口（需要root权限），回退到端口' + PORT);
+              console.log(`\n⚠️  无法绑定443端口（需要root权限）`);
+              console.log(`💡 提示：使用 sudo -E 运行以保留环境变量，或设置 HTTPS_PORT=${PORT} 使用非特权端口\n`);
+              
+              // 关闭当前server，使用PORT端口重新启动
+              httpsServer.close();
+              startHttpsServer(PORT);
+            } else {
+              logger.error('HTTPS服务器启动失败', { error: err.message, port });
+              throw err;
+            }
+          });
+          
+          // 监听成功事件
+          httpsServer.listen(port, HOST, () => {
+            logger.info(`服务器运行在 https://${HOST}:${port} (本地 HTTPS)`);
+            console.log(`\n=================================`);
+            console.log(`📱 BOBA TEA Ordering System`);
+            console.log(`🔒 服务器: https://${HOST}:${port} (本地 HTTPS)`);
+            if (port === 443) {
+              console.log(`🌐 访问地址: https://localhost 或 https://boba.app`);
+            }
+            const portSuffix = port === 443 ? '' : ':' + port;
+            console.log(`👤 管理后台: https://${HOST}${portSuffix}/admin.html`);
+            console.log(`🛒 用户端: https://${HOST}${portSuffix}/index.html`);
+            console.log(`📝 默认管理员: admin / admin123`);
+            console.log(`=================================\n`);
+          });
+          
+          return httpsServer;
+        };
+        
         // 启动 HTTPS 服务器
-        server = https.createServer(httpsOptions, app);
-        
-        // 监听错误事件，处理端口绑定失败的情况
-        server.on('error', (err) => {
-          // 如果443端口绑定失败（通常是因为权限不足），回退到PORT
-          if (httpsPort === 443 && err.code === 'EACCES') {
-            logger.warn('无法绑定443端口（需要root权限），回退到端口' + PORT);
-            console.log(`\n⚠️  无法绑定443端口（需要root权限）`);
-            console.log(`💡 提示：使用 sudo 运行或设置 HTTPS_PORT=${PORT} 使用非特权端口\n`);
-            
-            // 使用PORT端口重新启动
-            server = https.createServer(httpsOptions, app).listen(PORT, HOST, () => {
-              logger.info(`服务器运行在 https://${HOST}:${PORT} (本地 HTTPS)`);
-              console.log(`\n=================================`);
-              console.log(`📱 BOBA TEA Ordering System`);
-              console.log(`🔒 服务器: https://${HOST}:${PORT} (本地 HTTPS)`);
-              console.log(`👤 管理后台: https://${HOST}:${PORT}/admin.html`);
-              console.log(`🛒 用户端: https://${HOST}:${PORT}/index.html`);
-              console.log(`📝 默认管理员: admin / admin123`);
-              console.log(`=================================\n`);
-            });
-          } else {
-            logger.error('HTTPS服务器启动失败', { error: err.message });
-            throw err;
-          }
-        });
-        
-        // 监听成功事件
-        server.listen(httpsPort, HOST, () => {
-          logger.info(`服务器运行在 https://${HOST}:${httpsPort} (本地 HTTPS)`);
-          console.log(`\n=================================`);
-          console.log(`📱 BOBA TEA Ordering System`);
-          console.log(`🔒 服务器: https://${HOST}:${httpsPort} (本地 HTTPS)`);
-          if (httpsPort === 443) {
-            console.log(`🌐 访问地址: https://localhost 或 https://boba.app`);
-          }
-          const portSuffix = httpsPort === 443 ? '' : ':' + httpsPort;
-          console.log(`👤 管理后台: https://${HOST}${portSuffix}/admin.html`);
-          console.log(`🛒 用户端: https://${HOST}${portSuffix}/index.html`);
-          console.log(`📝 默认管理员: admin / admin123`);
-          console.log(`=================================\n`);
-        });
+        server = startHttpsServer(httpsPort);
       } else {
         logger.warn('本地 HTTPS 证书文件不存在，使用 HTTP 启动');
         logger.warn(`证书路径: ${certPath}`);

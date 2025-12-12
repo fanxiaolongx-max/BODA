@@ -6826,8 +6826,8 @@ async function loadApiManagement() {
   }
 }
 
-// 备份自定义API
-async function backupCustomApis() {
+// 备份自定义API（确保全局作用域）
+window.backupCustomApis = async function backupCustomApis() {
   try {
     showToast('正在备份自定义API...', 'info');
     
@@ -6867,8 +6867,8 @@ async function backupCustomApis() {
   }
 }
 
-// 恢复自定义API
-async function restoreCustomApis() {
+// 恢复自定义API（确保全局作用域）
+window.restoreCustomApis = async function restoreCustomApis() {
   try {
     // 创建文件输入元素
     const input = document.createElement('input');
