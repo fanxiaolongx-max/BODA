@@ -836,60 +836,175 @@
       form.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // 切换编辑器模式
-    async function switchEditorMode(mode) {
-      currentEditorMode = mode;
+    // 切换编辑器模式（全局函数，供HTML调用）
+    window.switchEditorMode = async function switchEditorMode(mode) {
       const markdownContainer = document.getElementById('markdownEditorContainer');
       const htmlContainer = document.getElementById('htmlEditorContainer');
+      
+      // 保存当前编辑器内容到临时变量（在切换前）
+      let currentContent = '';
+      
+      if (currentEditorMode === 'html' && quillEditor) {
+        // 当前是HTML模式，保存HTML内容
+        currentContent = quillEditor.root.innerHTML;
+      } else if (currentEditorMode === 'markdown' && simpleMDE) {
+        // 当前是Markdown模式，保存Markdown内容
+        currentContent = simpleMDE.value();
+      } else if (currentEditorMode === 'markdown') {
+        // Markdown模式但simpleMDE未初始化，从textarea获取
+        const textarea = document.getElementById('postContent');
+        if (textarea) {
+          currentContent = textarea.value;
+        }
+      }
+      
+      // 更新当前模式
+      currentEditorMode = mode;
       
       if (mode === 'markdown') {
         markdownContainer.style.display = 'block';
         htmlContainer.style.display = 'none';
         
+        // 确保SimpleMDE已初始化
+        if (!simpleMDE) {
+          simpleMDE = new SimpleMDE({
+            element: document.getElementById('postContent'),
+            spellChecker: false,
+            placeholder: '输入Markdown内容...'
+          });
+        }
+        
         // 如果切换到Markdown，将HTML内容转换为Markdown显示
-        if (quillEditor) {
-          const htmlContent = quillEditor.root.innerHTML;
-          if (simpleMDE && htmlContent) {
-            // 简单转换：移除HTML标签，保留文本
-            const markdownContent = htmlContent
-              .replace(/<h2>/g, '## ')
-              .replace(/<\/h2>/g, '\n\n')
-              .replace(/<h1>/g, '# ')
-              .replace(/<\/h1>/g, '\n\n')
-              .replace(/<h3>/g, '### ')
-              .replace(/<\/h3>/g, '\n\n')
-              .replace(/<p>/g, '')
-              .replace(/<\/p>/g, '\n\n')
-              .replace(/<br>/g, '\n')
-              .replace(/<[^>]+>/g, '')
-              .trim();
+        if (currentContent) {
+          if (currentContent.trim().startsWith('<')) {
+            // HTML内容，转换为Markdown
+            const markdownContent = htmlToMarkdown(currentContent);
             simpleMDE.value(markdownContent);
+          } else {
+            // 已经是Markdown内容，直接使用
+            simpleMDE.value(currentContent);
           }
+        } else {
+          // 没有内容，清空
+          simpleMDE.value('');
         }
       } else {
+        // HTML模式
         markdownContainer.style.display = 'none';
         htmlContainer.style.display = 'block';
         
         // 初始化Quill编辑器（如果还没有初始化）
         if (!quillEditor) {
           await initQuillEditor();
+          // 等待Quill完全初始化
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         // 如果切换到HTML，将Markdown内容转换为HTML
-        if (simpleMDE && quillEditor) {
-          const markdownContent = simpleMDE.value();
-          if (markdownContent) {
-            // 如果内容看起来像HTML，直接使用
-            if (markdownContent.trim().startsWith('<')) {
-              quillEditor.root.innerHTML = markdownContent;
-            } else {
-              // 否则，简单转换：将Markdown换行转换为HTML段落
-              const htmlContent = '<p>' + markdownContent.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
-              quillEditor.root.innerHTML = htmlContent;
-            }
+        if (currentContent && quillEditor) {
+          if (currentContent.trim().startsWith('<')) {
+            // 已经是HTML内容，直接使用
+            quillEditor.root.innerHTML = currentContent;
+          } else {
+            // Markdown内容，转换为HTML
+            const htmlContent = markdownToHtml(currentContent);
+            quillEditor.root.innerHTML = htmlContent;
           }
+        } else if (quillEditor) {
+          // 没有内容，清空
+          quillEditor.root.innerHTML = '';
         }
       }
+    }
+    
+    // HTML转Markdown的辅助函数
+    function htmlToMarkdown(html) {
+      if (!html) return '';
+      
+      let markdown = html
+        // 标题
+        .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
+        .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
+        .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n')
+        .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n\n')
+        .replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n\n')
+        .replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n\n')
+        // 粗体和斜体
+        .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+        .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
+        .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+        .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
+        // 链接
+        .replace(/<a[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gi, '[$2]($1)')
+        // 图片
+        .replace(/<img[^>]*src=["']([^"']*)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi, '![$2]($1)')
+        .replace(/<img[^>]*src=["']([^"']*)["'][^>]*>/gi, '![]($1)')
+        // 列表
+        .replace(/<ul[^>]*>/gi, '')
+        .replace(/<\/ul>/gi, '\n')
+        .replace(/<ol[^>]*>/gi, '')
+        .replace(/<\/ol>/gi, '\n')
+        .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
+        // 代码块
+        .replace(/<pre[^>]*><code[^>]*>(.*?)<\/code><\/pre>/gis, '```\n$1\n```\n')
+        .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
+        // 段落和换行
+        .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
+        .replace(/<br[^>]*>/gi, '\n')
+        .replace(/<div[^>]*>(.*?)<\/div>/gis, '$1\n')
+        // 移除所有剩余的HTML标签
+        .replace(/<[^>]+>/g, '')
+        // 清理多余的空行
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      
+      return markdown;
+    }
+    
+    // Markdown转HTML的辅助函数
+    function markdownToHtml(markdown) {
+      if (!markdown) return '';
+      
+      // 如果已经是HTML，直接返回
+      if (markdown.trim().startsWith('<')) {
+        return markdown;
+      }
+      
+      let html = markdown
+        // 标题
+        .replace(/^###### (.*?)$/gm, '<h6>$1</h6>')
+        .replace(/^##### (.*?)$/gm, '<h5>$1</h5>')
+        .replace(/^#### (.*?)$/gm, '<h4>$1</h4>')
+        .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.*?)$/gm, '<h1>$1</h1>')
+        // 粗体和斜体
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        // 链接
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+        // 图片
+        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
+        // 代码块
+        .replace(/```([^`]+)```/gs, '<pre><code>$1</code></pre>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        // 列表
+        .replace(/^\- (.*?)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+        // 段落（处理双换行）
+        .split(/\n\n+/)
+        .map(para => {
+          para = para.trim();
+          if (!para) return '';
+          // 如果已经是HTML标签，不包装
+          if (para.match(/^<(h[1-6]|ul|ol|pre|code|div)/)) {
+            return para;
+          }
+          return '<p>' + para.replace(/\n/g, '<br>') + '</p>';
+        })
+        .join('\n');
+      
+      return html;
     }
     
     // 初始化Quill HTML编辑器
