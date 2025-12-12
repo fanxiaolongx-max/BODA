@@ -48,24 +48,49 @@ mkcert boba.local
 # 启用本地 HTTPS
 USE_LOCAL_HTTPS=true
 
-# 可选：自定义 HTTPS 端口（默认 3443）
-HTTPS_PORT=3443
+# 使用标准HTTPS端口443（需要root权限）
+USE_STANDARD_HTTPS_PORT=true
+
+# 或者自定义 HTTPS 端口（如果不想使用443）
+# HTTPS_PORT=3443
 ```
 
 ### 5. 启动服务器
 
+#### 选项1：使用标准443端口（推荐）
+
 ```bash
+# macOS/Linux 需要使用 sudo（因为443端口需要root权限）
+sudo npm start
+
+# 或者使用 sudo -E 保留环境变量
+sudo -E npm start
+```
+
+服务器会在 `https://localhost` 或 `https://boba.app` 启动（无需指定端口）。
+
+#### 选项2：使用自定义端口（无需root权限）
+
+```bash
+# 设置自定义端口
+export HTTPS_PORT=3443
 npm start
 ```
 
-服务器会在 `https://localhost:3443` 启动（或你指定的端口）。
+服务器会在 `https://localhost:3443` 启动。
 
 ## 环境变量说明
 
 - `USE_LOCAL_HTTPS`: 设置为 `true` 或 `1` 启用本地 HTTPS
-- `HTTPS_PORT`: 可选，HTTPS 端口号（默认 3443）
+- `USE_STANDARD_HTTPS_PORT`: 设置为 `true` 使用标准443端口（需要root权限）
+- `HTTPS_PORT`: 可选，自定义 HTTPS 端口号（如果未设置且USE_STANDARD_HTTPS_PORT=false，默认使用3000）
 - `NODE_ENV`: 如果设置为 `production`，即使设置了 `USE_LOCAL_HTTPS` 也不会使用本地证书
 - `FLY_APP_NAME`: 如果存在（Fly.io 环境），不会使用本地证书
+
+**端口优先级**：
+1. 如果设置了 `HTTPS_PORT`，使用该端口
+2. 如果设置了 `USE_STANDARD_HTTPS_PORT=true`，使用443端口（需要root权限）
+3. 否则使用 `PORT` 环境变量或默认3000端口
 
 ## 安全说明
 
@@ -86,8 +111,21 @@ npm start
    - 优先使用：`boba.app.pem` 和 `boba.app-key.pem`（Stripe 验证通过）
    - 备选：`boba.local.pem` 和 `boba.local-key.pem`（仅本地测试）
 2. 访问地址：
-   - 使用 boba.app：`https://boba.app:3000` 或 `https://localhost:3000`
-   - 使用 boba.local：`https://boba.local:3000` 或 `https://localhost:3000`
+   - 使用443端口：`https://boba.app` 或 `https://localhost`（无需指定端口）
+   - 使用自定义端口：`https://boba.app:3443` 或 `https://localhost:3443`
 3. 如果证书文件不存在，服务器会自动使用 HTTP 启动
-4. 线上环境（Fly.io）会自动使用 Fly.io 的 HTTPS 证书，无需配置
+4. 如果443端口绑定失败（权限不足），会自动回退到PORT端口（默认3000）
+5. 线上环境（Fly.io）会自动使用 Fly.io 的 HTTPS 证书，无需配置
+
+## 使用443端口的优势
+
+- ✅ 标准HTTPS端口，访问时无需指定端口号
+- ✅ 更符合生产环境的访问方式
+- ✅ 浏览器地址栏更简洁（`https://localhost` 而不是 `https://localhost:3000`）
+
+## 注意事项
+
+- 443端口需要root权限，macOS/Linux需要使用 `sudo` 运行
+- 如果无法绑定443端口，系统会自动回退到PORT端口（默认3000）
+- Windows系统可能需要以管理员身份运行
 

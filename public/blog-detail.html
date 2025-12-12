@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文章详情 - DevBlog</title>
+  <link rel="stylesheet" href="/css/blog.css">
+  <style>
+    /* 阅读进度条 */
+    .reading-progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(to right, #ec4899, #9333ea);
+      z-index: 100;
+      transition: width 0.1s ease;
+    }
+  </style>
+</head>
+<body class="blog-detail-page">
+  <!-- 阅读进度条 -->
+  <div class="reading-progress" id="readingProgress"></div>
+
+  <!-- 导航栏 -->
+  <nav class="blog-detail-nav">
+    <a href="/blog.html" class="blog-detail-back">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 12H5M12 19l-7-7 7-7"/>
+      </svg>
+      返回首页
+    </a>
+  </nav>
+
+  <!-- 文章内容 -->
+  <article class="blog-detail-article">
+    <header class="blog-detail-header">
+      <div class="blog-detail-meta" id="articleMeta">
+        <span id="articleDate"></span>
+        <span>•</span>
+        <span id="articleViews">0 阅读</span>
+        <span>•</span>
+        <span id="readingTime">约 0 分钟阅读</span>
+      </div>
+      <h1 class="blog-detail-title" id="articleTitle">加载中...</h1>
+      <div id="shareButtons"></div>
+    </header>
+
+    <div class="blog-detail-image" id="articleImage" style="display: none;">
+      <img id="articleImageImg" src="" alt="">
+    </div>
+
+    <div class="blog-detail-content" id="articleContent">
+      <div class="blog-loading">加载中...</div>
+    </div>
+
+    <div class="blog-detail-tags" id="articleTags" style="display: none;"></div>
+  </article>
+
+  <!-- 评论区域 -->
+  <section class="blog-comments-section">
+    <h2 class="blog-comments-title">评论</h2>
+    
+    <!-- 评论表单 -->
+    <form class="blog-comment-form" id="commentForm" onsubmit="submitComment(event)">
+      <div class="blog-comment-form-group">
+        <label class="blog-comment-form-label" for="commentAuthorName">姓名 *</label>
+        <input 
+          type="text" 
+          id="commentAuthorName" 
+          class="blog-comment-form-input" 
+          required
+          placeholder="请输入您的姓名"
+        >
+      </div>
+      <div class="blog-comment-form-group">
+        <label class="blog-comment-form-label" for="commentAuthorEmail">邮箱 *</label>
+        <input 
+          type="email" 
+          id="commentAuthorEmail" 
+          class="blog-comment-form-input" 
+          required
+          placeholder="请输入您的邮箱"
+        >
+      </div>
+      <div class="blog-comment-form-group">
+        <label class="blog-comment-form-label" for="commentContent">评论内容 *</label>
+        <textarea 
+          id="commentContent" 
+          class="blog-comment-form-textarea" 
+          required
+          placeholder="请输入您的评论"
+        ></textarea>
+      </div>
+      <button type="submit" class="blog-btn blog-btn-primary">提交评论</button>
+    </form>
+
+    <!-- 评论列表 -->
+    <div class="blog-comment-list" id="commentsList">
+      <div class="blog-loading">加载中...</div>
+    </div>
+
+    <!-- 评论分页 -->
+    <div class="blog-pagination" id="commentsPagination"></div>
+  </section>
+
+  <!-- 脚本 -->
+  <script src="/utils/blog.js"></script>
+  <script src="/utils/markdown.js"></script>
+  <script>
+    // 验证并修复图片URL
+    function validateImageUrl(url) {
+      if (!url) return '';
+      
+      // 如果是相对路径，直接返回
+      if (url.startsWith('/') || url.startsWith('./')) {
+        return url;
+      }
+      
+      // 如果是http/https，返回
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+      }
+      
+      // 如果是data URI，返回
+      if (url.startsWith('data:')) {
+        return url;
+      }
+      
+      // 默认添加/uploads前缀
+      return '/uploads/' + url;
+    }
+    let currentPost = null;
+    let currentPostId = null;
+    let commentsPage = 1;
+    const commentsPageSize = 10;
+
+    // 获取URL参数
+    function getUrlParam(name) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name);
+    }
+
+    // 加载文章详情
+    async function loadPost() {
+      const slug = getUrlParam('slug');
+      if (!slug) {
+        document.getElementById('articleContent').innerHTML = '<div class="blog-empty">文章不存在</div>';
+        return;
+      }
+
+      try {
+        const response = await getPost(slug);
+        if (response.success && response.data) {
+          currentPost = response.data;
+          currentPostId = response.data.id;
+          displayPost(response.data);
+          loadComments(1);
+        } else {
+          document.getElementById('articleContent').innerHTML = '<div class="blog-empty">文章不存在</div>';
+        }
+      } catch (error) {
+        console.error('加载文章失败:', error);
+        document.getElementById('articleContent').innerHTML = '<div class="blog-empty">加载失败: ' + escapeHtml(error.message) + '</div>';
+      }
+    }
+
+    // 显示文章
+    async function displayPost(post) {
+      // 标题
+      document.getElementById('articleTitle').textContent = post.name || post.title || '未命名';
+      document.title = (post.name || post.title || '未命名') + ' - DevBlog';
+
+      // Meta信息
+      const date = formatDate(post.createdAt || post.created_at);
+      const views = post.views || 0;
+      const contentLength = (post.htmlContent || '').length;
+      const readingTime = Math.ceil(contentLength / 500);
+      
+      document.getElementById('articleDate').textContent = date;
+      document.getElementById('articleViews').textContent = views + ' 阅读';
+      document.getElementById('readingTime').textContent = `约 ${readingTime} 分钟阅读`;
+
+      // 图片
+      if (post.image) {
+        document.getElementById('articleImage').style.display = 'block';
+        const imageUrl = validateImageUrl(post.image);
+        document.getElementById('articleImageImg').src = imageUrl;
+        document.getElementById('articleImageImg').alt = post.name || post.title || '';
+        // 添加错误处理
+        document.getElementById('articleImageImg').onerror = function() {
+          this.style.display = 'none';
+          document.getElementById('articleImage').style.display = 'none';
+        };
+      }
+
+      // 内容（统一使用htmlContent）
+      const contentDiv = document.getElementById('articleContent');
+      if (post.htmlContent) {
+        contentDiv.innerHTML = post.htmlContent;
+        // 处理HTML内容中的图片
+        const images = contentDiv.querySelectorAll('img');
+        images.forEach(img => {
+          const originalSrc = img.getAttribute('src');
+          if (originalSrc) {
+            img.src = validateImageUrl(originalSrc);
+            img.onerror = function() {
+              this.style.display = 'none';
+            };
+          }
+        });
+      } else {
+        // 如果没有htmlContent，显示所有字段内容
+        renderPostFields(post, contentDiv);
+      }
+
+      // 标签
+      const tags = post.tags || [];
+      if (tags.length > 0) {
+        const tagsDiv = document.getElementById('articleTags');
+        tagsDiv.style.display = 'flex';
+        tagsDiv.innerHTML = tags.map(tag => {
+          const tagName = typeof tag === 'string' ? tag : tag.name;
+          return `<a href="/blog.html" class="blog-detail-tag">#${escapeHtml(tagName)}</a>`;
+        }).join('');
+      }
+
+      // 分享按钮
+      const shareUrl = window.location.href;
+      const shareTitle = post.name || post.title || '';
+      const shareText = post.excerpt || post.description || '';
+      
+      document.getElementById('shareButtons').innerHTML = `
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+          <button class="blog-btn blog-btn-secondary" onclick="shareToWeibo('${shareUrl}', '${shareTitle}')" style="font-size: 0.875rem; padding: 0.5rem 1rem;">分享到微博</button>
+          <button class="blog-btn blog-btn-secondary" onclick="copyLink('${shareUrl}')" style="font-size: 0.875rem; padding: 0.5rem 1rem;">复制链接</button>
+        </div>
+      `;
+
+      // 更新阅读进度
+      updateReadingProgress();
+    }
+
+    // 更新阅读进度
+    function updateReadingProgress() {
+      const progressBar = document.getElementById('readingProgress');
+      const article = document.querySelector('.blog-detail-article');
+      
+      function updateProgress() {
+        const windowHeight = window.innerHeight;
+        const documentHeight = document.documentElement.scrollHeight;
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const scrollableHeight = documentHeight - windowHeight;
+        const progress = scrollableHeight > 0 ? (scrollTop / scrollableHeight) * 100 : 0;
+        progressBar.style.width = progress + '%';
+      }
+
+      window.addEventListener('scroll', updateProgress);
+      updateProgress();
+    }
+
+    // 加载评论
+    async function loadComments(page = 1) {
+      if (!currentPostId) return;
+
+      try {
+        const response = await getComments(currentPostId, {
+          page,
+          pageSize: commentsPageSize
+        });
+
+        if (response.success) {
+          displayComments(response.comments || []);
+          displayCommentsPagination(response);
+          commentsPage = page;
+        }
+      } catch (error) {
+        console.error('加载评论失败:', error);
+        document.getElementById('commentsList').innerHTML = '<div class="blog-empty">加载评论失败</div>';
+      }
+    }
+
+    // 显示评论
+    function displayComments(comments) {
+      const list = document.getElementById('commentsList');
+
+      if (!comments || comments.length === 0) {
+        list.innerHTML = '<div class="blog-empty">暂无评论，快来发表第一条评论吧！</div>';
+        return;
+      }
+
+      list.innerHTML = comments.map(comment => {
+        const date = formatDateTime(comment.createdAt || comment.created_at);
+        return `
+          <div class="blog-comment">
+            <div class="blog-comment-author">${escapeHtml(comment.authorName)}</div>
+            <div class="blog-comment-date">${date}</div>
+            <div class="blog-comment-content">${escapeHtml(comment.content)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 显示评论分页
+    function displayCommentsPagination(data) {
+      const pagination = document.getElementById('commentsPagination');
+      const totalPages = data.totalPages || 1;
+
+      if (totalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+      }
+
+      let html = '';
+      if (commentsPage > 1) {
+        html += `<a href="#" class="blog-pagination-btn" onclick="loadComments(${commentsPage - 1}); return false;">上一页</a>`;
+      }
+      for (let i = 1; i <= totalPages; i++) {
+        if (i === commentsPage) {
+          html += `<span class="blog-pagination-btn active">${i}</span>`;
+        } else {
+          html += `<a href="#" class="blog-pagination-btn" onclick="loadComments(${i}); return false;">${i}</a>`;
+        }
+      }
+      if (commentsPage < totalPages) {
+        html += `<a href="#" class="blog-pagination-btn" onclick="loadComments(${commentsPage + 1}); return false;">下一页</a>`;
+      }
+
+      pagination.innerHTML = html;
+    }
+
+    // 提交评论
+    async function submitComment(event) {
+      event.preventDefault();
+
+      if (!currentPostId) {
+        showToast('文章ID不存在', 'error');
+        return;
+      }
+
+      const authorName = document.getElementById('commentAuthorName').value.trim();
+      const authorEmail = document.getElementById('commentAuthorEmail').value.trim();
+      const content = document.getElementById('commentContent').value.trim();
+
+      if (!authorName || !authorEmail || !content) {
+        showToast('请填写所有必填项', 'error');
+        return;
+      }
+
+      try {
+        const response = await createComment(currentPostId, {
+          authorName,
+          authorEmail,
+          content
+        });
+
+        if (response.success) {
+          showToast('评论已提交，等待审核', 'success');
+          document.getElementById('commentForm').reset();
+          // 重新加载评论（虽然新评论需要审核，但可以刷新列表）
+          loadComments(commentsPage);
+        } else {
+          showToast(response.message || '提交评论失败', 'error');
+        }
+      } catch (error) {
+        console.error('提交评论失败:', error);
+        showToast('提交评论失败: ' + error.message, 'error');
+      }
+    }
+
+    // 分享到微博
+    function shareToWeibo(url, title) {
+      const shareUrl = `https://service.weibo.com/share/share.php?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
+      window.open(shareUrl, '_blank', 'width=600,height=400');
+    }
+
+    // 复制链接
+    function copyLink(url) {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showToast('链接已复制到剪贴板', 'success');
+        }).catch(() => {
+          fallbackCopyLink(url);
+        });
+      } else {
+        fallbackCopyLink(url);
+      }
+    }
+
+    function fallbackCopyLink(url) {
+      const textarea = document.createElement('textarea');
+      textarea.value = url;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast('链接已复制到剪贴板', 'success');
+      } catch (err) {
+        showToast('复制失败，请手动复制', 'error');
+      }
+      document.body.removeChild(textarea);
+    }
+
+    // 渲染文章的所有字段
+    function renderPostFields(post, container) {
+      // 排除一些内部字段
+      const excludeFields = ['_sourceApiName', '_originalData', 'id', 'slug', 'category', 'published', 'views', 'createdAt', 'created_at', 'updatedAt', 'updated_at'];
+      
+      let html = '<div class="post-fields">';
+      
+      // 如果有原始数据，优先显示原始数据的所有字段
+      if (post._originalData) {
+        html += '<h2 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem; color: #374151;">文章详情</h2>';
+        html += '<div style="display: grid; gap: 1rem;">';
+        
+        Object.keys(post._originalData).forEach(key => {
+          if (excludeFields.includes(key)) return;
+          
+          const value = post._originalData[key];
+          if (value === null || value === undefined) return;
+          
+          html += renderField(key, value);
+        });
+        
+        html += '</div>';
+      } else {
+        // 否则显示post对象的所有字段
+        html += '<h2 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem; color: #374151;">文章详情</h2>';
+        html += '<div style="display: grid; gap: 1rem;">';
+        
+        Object.keys(post).forEach(key => {
+          if (excludeFields.includes(key)) return;
+          
+          const value = post[key];
+          if (value === null || value === undefined || value === '') return;
+          
+          html += renderField(key, value);
+        });
+        
+        html += '</div>';
+      }
+      
+      html += '</div>';
+      container.innerHTML = html;
+    }
+    
+    // 渲染单个字段
+    function renderField(key, value) {
+      const fieldName = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+      
+      let valueHtml = '';
+      
+      if (typeof value === 'object' && value !== null) {
+        if (Array.isArray(value)) {
+          valueHtml = `<div style="padding-left: 1rem;">
+            ${value.map(item => {
+              if (typeof item === 'object') {
+                return `<div style="margin-bottom: 0.5rem; padding: 0.5rem; background: #f9fafb; border-radius: 0.25rem;">
+                  ${Object.keys(item).map(k => `<div><strong>${k}:</strong> ${escapeHtml(String(item[k]))}</div>`).join('')}
+                </div>`;
+              }
+              return `<div style="margin-bottom: 0.25rem;">${escapeHtml(String(item))}</div>`;
+            }).join('')}
+          </div>`;
+        } else {
+          valueHtml = `<div style="padding: 0.75rem; background: #f9fafb; border-radius: 0.25rem; font-family: monospace; font-size: 0.875rem;">
+            ${Object.keys(value).map(k => `<div><strong>${k}:</strong> ${escapeHtml(String(value[k]))}</div>`).join('')}
+          </div>`;
+        }
+      } else if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/'))) {
+        // 如果是URL，检查是否是图片
+        if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(value)) {
+          valueHtml = `<div>
+            <img src="${validateImageUrl(value)}" alt="${fieldName}" style="max-width: 100%; height: auto; border-radius: 0.5rem; margin-top: 0.5rem;" onerror="this.style.display='none';">
+            <div style="margin-top: 0.25rem; font-size: 0.875rem; color: #6b7280;">${escapeHtml(value)}</div>
+          </div>`;
+        } else {
+          valueHtml = `<a href="${escapeHtml(value)}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">${escapeHtml(value)}</a>`;
+        }
+      } else {
+        valueHtml = escapeHtml(String(value));
+      }
+      
+      return `
+        <div style="padding: 1rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.5rem;">
+          <div style="font-weight: 600; color: #374151; margin-bottom: 0.5rem; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em;">${escapeHtml(fieldName)}</div>
+          <div style="color: #1f2937; word-break: break-word;">${valueHtml}</div>
+        </div>
+      `;
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', () => {
+      loadPost();
+    });
+  </script>
+</body>
+</html>

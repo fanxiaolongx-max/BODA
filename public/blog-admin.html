@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>博客管理 - DevBlog</title>
+  <link rel="stylesheet" href="/css/blog.css">
+  <style>
+    .admin-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+    .admin-tabs {
+      display: flex;
+      gap: 1rem;
+      border-bottom: 2px solid #e5e7eb;
+      margin-bottom: 2rem;
+    }
+    .admin-tab {
+      padding: 0.75rem 1.5rem;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      font-weight: 500;
+      color: #6b7280;
+      transition: all 0.3s;
+    }
+    .admin-tab.active {
+      color: #9333ea;
+      border-bottom-color: #9333ea;
+    }
+    .admin-tab-content {
+      display: none;
+    }
+    .admin-tab-content.active {
+      display: block;
+    }
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .admin-table th {
+      background: linear-gradient(to right, rgba(236, 72, 153, 0.1), rgba(147, 51, 234, 0.1));
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      color: #171717;
+    }
+    .admin-table td {
+      padding: 1rem;
+      border-top: 1px solid #f3f4f6;
+    }
+    .admin-table tr:hover {
+      background: rgba(147, 51, 234, 0.05);
+    }
+    .admin-table tr.category-header-row:hover {
+      background: linear-gradient(to right, rgba(236, 72, 153, 0.15), rgba(147, 51, 234, 0.15));
+    }
+    .admin-table tr.category-header-row + tr {
+      border-top: 2px solid rgba(147, 51, 234, 0.2);
+    }
+    .admin-form {
+      background: white;
+      padding: 2rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 2rem;
+    }
+    .admin-form-group {
+      margin-bottom: 1.5rem;
+    }
+    .admin-form-label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+      color: #374151;
+    }
+    .admin-form-input,
+    .admin-form-textarea,
+    .admin-form-select {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      font-size: 0.875rem;
+    }
+    .admin-form-textarea {
+      min-height: 200px;
+      font-family: monospace;
+    }
+    .admin-form-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .admin-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .admin-btn-small {
+      padding: 0.375rem 0.75rem;
+      font-size: 0.875rem;
+      border-radius: 0.375rem;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .admin-btn-edit {
+      background: #3b82f6;
+      color: white;
+    }
+    .admin-btn-edit:hover {
+      background: #2563eb;
+    }
+    .admin-btn-delete {
+      background: #ef4444;
+      color: white;
+    }
+    .admin-btn-delete:hover {
+      background: #dc2626;
+    }
+    .admin-btn-approve {
+      background: #10b981;
+      color: white;
+    }
+    .admin-btn-approve:hover {
+      background: #059669;
+    }
+    .markdown-editor {
+      min-height: 400px;
+    }
+    
+    /* SimpleMDE 工具栏样式修复 */
+    .editor-toolbar {
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem 0.375rem 0 0;
+      background: #f9fafb;
+      padding: 0.5rem;
+    }
+    
+    .editor-toolbar a {
+      color: #374151;
+      border: 1px solid transparent;
+      border-radius: 0.25rem;
+      padding: 0.375rem 0.5rem;
+      margin: 0 0.125rem;
+      display: inline-block;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    
+    .editor-toolbar a:hover {
+      background: #e5e7eb;
+      border-color: #d1d5db;
+      color: #111827;
+    }
+    
+    .editor-toolbar a.active {
+      background: #9333ea;
+      color: white;
+      border-color: #9333ea;
+    }
+    
+    .editor-toolbar i.separator {
+      display: inline-block;
+      width: 0;
+      border-left: 1px solid #d1d5db;
+      border-right: 1px solid #d1d5db;
+      color: transparent;
+      text-indent: -10000px;
+      margin: 0 0.5rem;
+      height: 1.5rem;
+    }
+    
+    .editor-toolbar a.fa {
+      font-family: FontAwesome;
+      font-style: normal;
+      font-weight: normal;
+      text-decoration: none;
+    }
+    
+    .CodeMirror {
+      border: 1px solid #d1d5db;
+      border-top: none;
+      border-radius: 0 0 0.375rem 0.375rem;
+      font-size: 0.875rem;
+      min-height: 400px;
+    }
+    
+    .editor-preview {
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      padding: 1rem;
+      background: white;
+    }
+    
+    .editor-preview-side {
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      padding: 1rem;
+      background: white;
+    }
+  </style>
+  <!-- Font Awesome for SimpleMDE toolbar icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+  <!-- SimpleMDE Markdown Editor -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css">
+  <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
+  <!-- Quill HTML Editor -->
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+</head>
+<body class="blog-page">
+  <div class="admin-container">
+    <div class="admin-header">
+      <div>
+        <h1 style="font-size: 2rem; font-weight: bold; background: linear-gradient(to right, #ec4899, #9333ea); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+          博客管理
+        </h1>
+        <p style="color: #6b7280; margin-top: 0.5rem;">管理文章、分类、标签和评论</p>
+      </div>
+      <div>
+        <a href="/blog.html" class="blog-btn blog-btn-secondary">返回博客</a>
+      </div>
+    </div>
+
+    <!-- 标签页 -->
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="switchTab('posts', this)">文章</button>
+      <button class="admin-tab" onclick="switchTab('categories', this)">分类</button>
+      <button class="admin-tab" onclick="switchTab('tags', this)">标签</button>
+      <button class="admin-tab" onclick="switchTab('comments', this)">评论</button>
+    </div>
+
+    <!-- 文章管理 -->
+    <div id="tab-posts" class="admin-tab-content active">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>文章管理</h2>
+        <button class="blog-btn blog-btn-primary" onclick="showPostForm()">新建文章</button>
+      </div>
+
+      <!-- 文章表单 -->
+      <div id="postForm" class="admin-form" style="display: none;">
+        <h3 id="postFormTitle">新建文章</h3>
+        <form id="postFormElement" onsubmit="savePost(event)">
+          <input type="hidden" id="postId">
+          <div class="admin-form-group">
+            <label class="admin-form-label" for="postName">文章名称 *</label>
+            <input type="text" id="postName" class="admin-form-input" required>
+          </div>
+          <div class="admin-form-group">
+            <label class="admin-form-label" for="postSlug">Slug</label>
+            <input type="text" id="postSlug" class="admin-form-input" placeholder="留空自动生成">
+          </div>
+          <div class="admin-form-group">
+            <label class="admin-form-label" for="postExcerpt">摘要</label>
+            <textarea id="postExcerpt" class="admin-form-input" rows="3"></textarea>
+          </div>
+          <div class="admin-form-group">
+            <label class="admin-form-label" for="postImage">图片URL</label>
+            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+              <input type="text" id="postImage" class="admin-form-input" style="flex: 1;" placeholder="输入图片URL或点击上传按钮上传图片">
+              <button type="button" class="blog-btn blog-btn-secondary" onclick="document.getElementById('imageUploadInput').click()" style="white-space: nowrap;">
+                <i class="fa fa-upload" style="margin-right: 0.25rem;"></i>上传图片
+              </button>
+            </div>
+            <input type="file" id="imageUploadInput" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+            <div id="imageUploadProgress" style="display: none; margin-top: 0.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div style="flex: 1; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
+                  <div id="imageUploadProgressBar" style="height: 100%; background: #9333ea; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <span id="imageUploadStatus" style="font-size: 0.875rem; color: #6b7280;">上传中...</span>
+              </div>
+            </div>
+            <div id="imagePreview" style="margin-top: 0.5rem; display: none;">
+              <img id="imagePreviewImg" src="" alt="预览" style="max-width: 200px; max-height: 200px; border-radius: 0.375rem; border: 1px solid #d1d5db;">
+            </div>
+          </div>
+          <div class="admin-form-group">
+            <label class="admin-form-label" for="postApiName">API/分类 *</label>
+            <select id="postApiName" class="admin-form-select" required onchange="onApiNameChange()">
+              <option value="">请选择API（分类）</option>
+            </select>
+            <p class="text-xs text-gray-500 mt-1">选择文章所属的API，API名称将作为文章分类</p>
+          </div>
+          <div class="admin-form-group" id="fieldMappingInfo" style="display: none;">
+            <div class="text-sm text-blue-600">
+              <p>此API已配置字段映射，文章将根据映射规则保存到对应字段</p>
+            </div>
+          </div>
+          <div class="admin-form-group">
+            <label class="admin-form-label" for="postTags">标签（用逗号分隔）</label>
+            <input type="text" id="postTags" class="admin-form-input" placeholder="标签1, 标签2">
+          </div>
+          <div class="admin-form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <label class="admin-form-label" for="postContent" style="margin-bottom: 0;">内容 *</label>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size: 0.875rem; color: #6b7280;">编辑模式：</span>
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                  <input type="radio" name="editorMode" value="markdown" checked onchange="switchEditorMode('markdown')">
+                  <span>Markdown</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                  <input type="radio" name="editorMode" value="html" onchange="switchEditorMode('html')">
+                  <span>HTML</span>
+                </label>
+              </div>
+            </div>
+            <div id="markdownEditorContainer">
+              <textarea id="postContent" class="admin-form-textarea markdown-editor"></textarea>
+            </div>
+            <div id="htmlEditorContainer" style="display: none;">
+              <div id="postHtmlContent" style="min-height: 400px;"></div>
+            </div>
+          </div>
+          <div class="admin-form-group">
+            <div class="admin-form-checkbox">
+              <input type="checkbox" id="postPublished">
+              <label for="postPublished">发布</label>
+            </div>
+          </div>
+          <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="blog-btn blog-btn-primary">保存</button>
+            <button type="button" class="blog-btn blog-btn-secondary" onclick="hidePostForm()">取消</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 文章列表 -->
+      <div style="background: white; border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>标题</th>
+              <th>分类</th>
+              <th>状态</th>
+              <th>阅读量</th>
+              <th>日期</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="postsTableBody">
+            <tr><td colspan="6" class="blog-loading">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 分类管理 -->
+    <div id="tab-categories" class="admin-tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>分类管理</h2>
+        <button class="blog-btn blog-btn-primary" onclick="showCategoryForm()">新建分类</button>
+      </div>
+
+      <div id="categoryForm" class="admin-form" style="display: none;">
+        <h3 id="categoryFormTitle">新建分类</h3>
+        <form id="categoryFormElement" onsubmit="saveCategory(event)">
+          <input type="hidden" id="categoryId">
+          <div class="admin-form-group">
+            <label class="admin-form-label" for="categoryName">分类名称 *</label>
+            <input type="text" id="categoryName" class="admin-form-input" required>
+            <p class="text-xs text-gray-500 mt-1">此名称将显示在博客分类列表中</p>
+          </div>
+          <div class="admin-form-group">
+            <label class="admin-form-label" for="categoryPath">分类路径/描述 *</label>
+            <input type="text" id="categoryPath" class="admin-form-input" required placeholder="/category-name">
+            <p class="text-xs text-gray-500 mt-1">路径必须以 / 开头，将作为分类的描述信息</p>
+          </div>
+          <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="blog-btn blog-btn-primary">保存</button>
+            <button type="button" class="blog-btn blog-btn-secondary" onclick="hideCategoryForm()">取消</button>
+          </div>
+        </form>
+      </div>
+
+      <div style="background: white; border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>路径/描述</th>
+              <th>文章数</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="categoriesTableBody">
+            <tr><td colspan="4" class="blog-loading">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 标签管理 -->
+    <div id="tab-tags" class="admin-tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>标签管理</h2>
+        <button class="blog-btn blog-btn-primary" onclick="showTagForm()">新建标签</button>
+      </div>
+
+      <div id="tagForm" class="admin-form" style="display: none;">
+        <h3>新建标签</h3>
+        <form onsubmit="saveTag(event)">
+          <div class="admin-form-group">
+            <label class="admin-form-label" for="tagName">标签名称 *</label>
+            <input type="text" id="tagName" class="admin-form-input" required>
+          </div>
+          <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="blog-btn blog-btn-primary">保存</button>
+            <button type="button" class="blog-btn blog-btn-secondary" onclick="hideTagForm()">取消</button>
+          </div>
+        </form>
+      </div>
+
+      <div style="background: white; border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>文章数</th>
+            </tr>
+          </thead>
+          <tbody id="tagsTableBody">
+            <tr><td colspan="2" class="blog-loading">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 评论管理 -->
+    <div id="tab-comments" class="admin-tab-content">
+      <h2>评论管理</h2>
+      <div style="background: white; border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>文章</th>
+              <th>作者</th>
+              <th>内容</th>
+              <th>状态</th>
+              <th>日期</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="commentsTableBody">
+            <tr><td colspan="6" class="blog-loading">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="/utils/blog.js"></script>
+  <script>
+    const BLOG_ADMIN_API = '/api/blog-admin';
+    let simpleMDE = null;
+    let quillEditor = null;
+    let currentEditorMode = 'markdown'; // 'markdown' or 'html'
+    let availableApis = [];
+
+    // 加载API列表
+    async function loadApis() {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/apis`);
+        if (response && response.success) {
+          availableApis = response.data || [];
+          updateApiSelect();
+        }
+      } catch (error) {
+        console.error('加载API列表失败:', error);
+      }
+    }
+
+    // 更新API选择下拉框
+    function updateApiSelect() {
+      const select = document.getElementById('postApiName');
+      if (!select) return;
+      
+      const currentValue = select.value;
+      select.innerHTML = '<option value="">请选择API（分类）</option>';
+      
+      availableApis.forEach(api => {
+        const option = document.createElement('option');
+        option.value = api.name;
+        option.textContent = `${api.name} (${api.path})`;
+        select.appendChild(option);
+      });
+      
+      if (currentValue) {
+        select.value = currentValue;
+      }
+    }
+
+    // API选择改变时的处理
+    async function onApiNameChange() {
+      const apiName = document.getElementById('postApiName').value;
+      const mappingInfo = document.getElementById('fieldMappingInfo');
+      
+      if (!apiName) {
+        mappingInfo.style.display = 'none';
+        return;
+      }
+      
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/apis/${encodeURIComponent(apiName)}/field-mapping`);
+        if (response && response.success && response.data) {
+          mappingInfo.style.display = 'block';
+          mappingInfo.innerHTML = `
+            <div class="text-sm text-blue-600">
+              <p>此API已配置字段映射，文章将根据映射规则保存到对应字段</p>
+              <details class="mt-2">
+                <summary class="cursor-pointer text-xs">查看字段映射</summary>
+                <pre class="text-xs mt-2 p-2 bg-gray-100 rounded">${JSON.stringify(response.data, null, 2)}</pre>
+              </details>
+            </div>
+          `;
+        } else {
+          mappingInfo.style.display = 'none';
+        }
+      } catch (error) {
+        mappingInfo.style.display = 'none';
+      }
+    }
+
+    // 切换标签页
+    function switchTab(tabName, tabButton = null) {
+      // 隐藏所有标签页内容
+      document.querySelectorAll('.admin-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.admin-tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+
+      // 显示选中的标签页
+      const tabContent = document.getElementById(`tab-${tabName}`);
+      if (tabContent) {
+        tabContent.classList.add('active');
+      }
+
+      // 激活对应的标签按钮
+      if (tabButton) {
+        tabButton.classList.add('active');
+      } else {
+        // 如果没有提供按钮，通过查找包含对应文本的按钮来激活
+        const buttons = document.querySelectorAll('.admin-tab');
+        buttons.forEach(btn => {
+          const text = btn.textContent.trim();
+          if ((tabName === 'posts' && text === '文章') ||
+              (tabName === 'categories' && text === '分类') ||
+              (tabName === 'tags' && text === '标签') ||
+              (tabName === 'comments' && text === '评论')) {
+            btn.classList.add('active');
+          }
+        });
+      }
+
+      // 加载对应数据
+      if (tabName === 'posts') {
+        loadPosts();
+        loadApis(); // 加载API列表
+      } else if (tabName === 'categories') {
+        loadCategories();
+      } else if (tabName === 'tags') {
+        loadTags();
+      } else if (tabName === 'comments') {
+        loadComments();
+      }
+    }
+
+    // API请求封装（带认证）
+    async function adminApiRequest(url, options = {}) {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+          },
+          credentials: 'include'
+        });
+
+        if (response.status === 401) {
+          showToast('请先登录', 'error');
+          window.location.href = '/admin.html';
+          return null;
+        }
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message || '请求失败');
+        }
+        return data;
+      } catch (error) {
+        console.error('API请求失败:', error);
+        showToast('请求失败: ' + error.message, 'error');
+        throw error;
+      }
+    }
+
+    // 加载文章列表
+    async function loadPosts() {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
+        if (response && response.success) {
+          displayPosts(response.data || []);
+        }
+      } catch (error) {
+        document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+      }
+    }
+
+    // 显示文章列表（按分类分组）
+    function displayPosts(posts) {
+      const tbody = document.getElementById('postsTableBody');
+      if (!posts || posts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">暂无文章</td></tr>';
+        return;
+      }
+
+      // 按分类分组
+      const postsByCategory = {};
+      const seenIds = new Set(); // 前端再次去重，确保不显示重复
+      
+      for (const post of posts) {
+        const postId = String(post.id || '');
+        // 如果已存在相同id，跳过（防止重复显示）
+        if (postId && seenIds.has(postId)) {
+          continue;
+        }
+        seenIds.add(postId);
+        
+        const category = post.category || post._sourceApiName || '无分类';
+        if (!postsByCategory[category]) {
+          postsByCategory[category] = [];
+        }
+        postsByCategory[category].push(post);
+      }
+
+      // 生成HTML：按分类分组显示
+      let html = '';
+      const sortedCategories = Object.keys(postsByCategory).sort();
+      
+      for (const category of sortedCategories) {
+        const categoryPosts = postsByCategory[category];
+        
+        // 分类标题行
+        html += `
+          <tr class="category-header-row" style="background: linear-gradient(to right, rgba(236, 72, 153, 0.1), rgba(147, 51, 234, 0.1)); font-weight: 600;">
+            <td colspan="6" style="padding: 0.75rem 1rem;">
+              <span style="color: #9333ea;">📁 ${escapeHtml(category)}</span>
+              <span style="color: #6b7280; font-size: 0.875rem; font-weight: normal; margin-left: 0.5rem;">
+                (${categoryPosts.length} 篇文章)
+              </span>
+            </td>
+          </tr>
+        `;
+        
+        // 该分类下的文章
+        for (const post of categoryPosts) {
+          const date = formatDate(post.createdAt || post.created_at);
+          html += `
+            <tr>
+              <td>${escapeHtml(post.name || post.title || '未命名')}</td>
+              <td>${escapeHtml(category)}</td>
+              <td>${post.published ? '<span style="color: #10b981;">已发布</span>' : '<span style="color: #f59e0b;">草稿</span>'}</td>
+              <td>${post.views || 0}</td>
+              <td>${date}</td>
+              <td>
+                <div class="admin-actions">
+                  <button class="admin-btn-small admin-btn-edit" onclick="editPost('${post.id}')">编辑</button>
+                  <button class="admin-btn-small admin-btn-delete" onclick="deletePost('${post.id}')">删除</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }
+      }
+
+      tbody.innerHTML = html;
+    }
+
+    // 显示文章表单
+    async function showPostForm(post = null) {
+      const form = document.getElementById('postForm');
+      const formTitle = document.getElementById('postFormTitle');
+      
+      // 确保API列表已加载
+      if (availableApis.length === 0) {
+        loadApis().then(() => {
+          showPostForm(post);
+        });
+        return;
+      }
+      
+      // 重置表单
+      document.getElementById('postId').value = '';
+      document.getElementById('postName').value = '';
+      document.getElementById('postSlug').value = '';
+      document.getElementById('postExcerpt').value = '';
+      document.getElementById('postImage').value = '';
+      updateImagePreview('');
+      document.getElementById('postTags').value = '';
+      document.getElementById('postPublished').checked = true;
+      
+      if (post) {
+        formTitle.textContent = '编辑文章';
+        document.getElementById('postId').value = post.id || '';
+        document.getElementById('postName').value = post.name || post.title || '';
+        document.getElementById('postSlug').value = post.slug || '';
+        document.getElementById('postExcerpt').value = post.excerpt || post.description || '';
+        const imageUrl = post.image || '';
+        document.getElementById('postImage').value = imageUrl;
+        updateImagePreview(imageUrl);
+        document.getElementById('postApiName').value = post.category || post._sourceApiName || '';
+        document.getElementById('postTags').value = Array.isArray(post.tags) ? post.tags.map(t => typeof t === 'string' ? t : t.name).join(', ') : '';
+        document.getElementById('postPublished').checked = post.published !== false; // 默认为true
+        
+        // 触发API选择改变事件
+        setTimeout(() => {
+          onApiNameChange();
+        }, 100);
+        
+        // 设置htmlContent（统一使用htmlContent）
+        const htmlContent = post.htmlContent || (post._originalData ? (post._originalData.htmlContent || '') : '');
+        
+        // 判断内容类型并设置编辑器模式
+        if (htmlContent && htmlContent.trim().startsWith('<')) {
+          // HTML内容，切换到HTML编辑器
+          document.querySelector('input[name="editorMode"][value="html"]').checked = true;
+          await switchEditorMode('html');
+          
+          // 等待Quill编辑器初始化后设置内容
+          if (quillEditor) {
+            quillEditor.root.innerHTML = htmlContent;
+          } else {
+            // 如果Quill还没加载，等待一下再试
+            setTimeout(async () => {
+              if (!quillEditor) {
+                await initQuillEditor();
+              }
+              if (quillEditor) {
+                quillEditor.root.innerHTML = htmlContent;
+              }
+            }, 500);
+          }
+        } else {
+          // Markdown内容或空内容，使用Markdown编辑器
+          document.querySelector('input[name="editorMode"][value="markdown"]').checked = true;
+          await switchEditorMode('markdown');
+          
+          // 初始化Markdown编辑器
+          if (!simpleMDE) {
+            simpleMDE = new SimpleMDE({
+              element: document.getElementById('postContent'),
+              spellChecker: false,
+              placeholder: '输入Markdown内容...'
+            });
+          }
+          // 如果有htmlContent，简单转换为Markdown显示（移除HTML标签）
+          if (htmlContent) {
+            const markdownContent = htmlContent
+              .replace(/<h2>/g, '## ')
+              .replace(/<\/h2>/g, '\n\n')
+              .replace(/<p>/g, '')
+              .replace(/<\/p>/g, '\n\n')
+              .replace(/<br>/g, '\n')
+              .replace(/<[^>]+>/g, '');
+            simpleMDE.value(markdownContent.trim());
+          } else {
+            simpleMDE.value('');
+          }
+        }
+      } else {
+        formTitle.textContent = '新建文章';
+        document.getElementById('postFormElement').reset();
+        document.getElementById('postId').value = '';
+        document.getElementById('postApiName').value = '';
+        
+        // 重置编辑器模式为Markdown
+        document.querySelector('input[name="editorMode"][value="markdown"]').checked = true;
+        await switchEditorMode('markdown');
+        
+        if (simpleMDE) {
+          simpleMDE.value('');
+        } else {
+          simpleMDE = new SimpleMDE({
+            element: document.getElementById('postContent'),
+            spellChecker: false,
+            placeholder: '输入Markdown内容...'
+          });
+        }
+        document.getElementById('fieldMappingInfo').style.display = 'none';
+      }
+      
+      form.style.display = 'block';
+      form.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // 切换编辑器模式
+    async function switchEditorMode(mode) {
+      currentEditorMode = mode;
+      const markdownContainer = document.getElementById('markdownEditorContainer');
+      const htmlContainer = document.getElementById('htmlEditorContainer');
+      
+      if (mode === 'markdown') {
+        markdownContainer.style.display = 'block';
+        htmlContainer.style.display = 'none';
+        
+        // 如果切换到Markdown，将HTML内容转换为Markdown显示
+        if (quillEditor) {
+          const htmlContent = quillEditor.root.innerHTML;
+          if (simpleMDE && htmlContent) {
+            // 简单转换：移除HTML标签，保留文本
+            const markdownContent = htmlContent
+              .replace(/<h2>/g, '## ')
+              .replace(/<\/h2>/g, '\n\n')
+              .replace(/<h1>/g, '# ')
+              .replace(/<\/h1>/g, '\n\n')
+              .replace(/<h3>/g, '### ')
+              .replace(/<\/h3>/g, '\n\n')
+              .replace(/<p>/g, '')
+              .replace(/<\/p>/g, '\n\n')
+              .replace(/<br>/g, '\n')
+              .replace(/<[^>]+>/g, '')
+              .trim();
+            simpleMDE.value(markdownContent);
+          }
+        }
+      } else {
+        markdownContainer.style.display = 'none';
+        htmlContainer.style.display = 'block';
+        
+        // 初始化Quill编辑器（如果还没有初始化）
+        if (!quillEditor) {
+          await initQuillEditor();
+        }
+        
+        // 如果切换到HTML，将Markdown内容转换为HTML
+        if (simpleMDE && quillEditor) {
+          const markdownContent = simpleMDE.value();
+          if (markdownContent) {
+            // 如果内容看起来像HTML，直接使用
+            if (markdownContent.trim().startsWith('<')) {
+              quillEditor.root.innerHTML = markdownContent;
+            } else {
+              // 否则，简单转换：将Markdown换行转换为HTML段落
+              const htmlContent = '<p>' + markdownContent.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+              quillEditor.root.innerHTML = htmlContent;
+            }
+          }
+        }
+      }
+    }
+    
+    // 初始化Quill HTML编辑器
+    function initQuillEditor() {
+      // 检查Quill是否已加载
+      if (typeof Quill === 'undefined') {
+        console.error('Quill未加载，等待加载...');
+        // 等待Quill加载
+        return new Promise((resolve) => {
+          const checkQuill = setInterval(() => {
+            if (typeof Quill !== 'undefined') {
+              clearInterval(checkQuill);
+              initQuillEditorInternal();
+              resolve();
+            }
+          }, 100);
+          setTimeout(() => {
+            clearInterval(checkQuill);
+            if (typeof Quill === 'undefined') {
+              showToast('HTML编辑器加载失败，请刷新页面重试', 'error');
+            }
+            resolve();
+          }, 5000);
+        });
+      } else {
+        initQuillEditorInternal();
+      }
+    }
+    
+    function initQuillEditorInternal() {
+      if (typeof Quill === 'undefined') {
+        return;
+      }
+      
+      const editorContainer = document.getElementById('postHtmlContent');
+      if (!editorContainer) {
+        console.error('编辑器容器不存在');
+        return;
+      }
+      
+      // 如果已经初始化，先销毁
+      if (quillEditor) {
+        try {
+          quillEditor = null;
+        } catch (e) {
+          console.warn('销毁编辑器时出错:', e);
+        }
+      }
+      
+      // 清空容器内容（Quill会在容器内创建编辑器）
+      editorContainer.innerHTML = '';
+      
+      try {
+        // 创建Quill编辑器
+        quillEditor = new Quill('#postHtmlContent', {
+          theme: 'snow',
+          modules: {
+            toolbar: [
+              [{ 'header': [1, 2, 3, false] }],
+              ['bold', 'italic', 'underline', 'strike'],
+              [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+              [{ 'color': [] }, { 'background': [] }],
+              [{ 'align': [] }],
+              ['link', 'image'],
+              ['blockquote', 'code-block'],
+              ['clean']
+            ]
+          },
+          placeholder: '输入HTML内容...'
+        });
+        console.log('Quill编辑器初始化成功');
+      } catch (error) {
+        console.error('初始化Quill编辑器失败:', error);
+        showToast('HTML编辑器初始化失败: ' + error.message, 'error');
+      }
+    }
+    
+    // 隐藏文章表单
+    function hidePostForm() {
+      document.getElementById('postForm').style.display = 'none';
+    }
+
+    // 保存文章
+    async function savePost(event) {
+      event.preventDefault();
+      
+      const id = document.getElementById('postId').value;
+      const name = document.getElementById('postName').value.trim();
+      const slug = document.getElementById('postSlug').value.trim();
+      const excerpt = document.getElementById('postExcerpt').value.trim();
+      const image = document.getElementById('postImage').value.trim();
+      const apiName = document.getElementById('postApiName').value.trim();
+      const tagsStr = document.getElementById('postTags').value.trim();
+      
+      // 获取htmlContent（统一使用htmlContent字段）
+      let htmlContent = '';
+      
+      if (currentEditorMode === 'html' && quillEditor) {
+        htmlContent = quillEditor.root.innerHTML;
+      } else {
+        // Markdown模式：将Markdown转换为HTML
+        const markdownContent = simpleMDE ? simpleMDE.value() : document.getElementById('postContent').value;
+        if (markdownContent) {
+          // 如果内容看起来像HTML，直接使用
+          if (markdownContent.trim().startsWith('<')) {
+            htmlContent = markdownContent;
+          } else {
+            // 否则，简单处理：将Markdown换行转换为HTML段落
+            htmlContent = '<p>' + markdownContent.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+          }
+        }
+      }
+      
+      const published = document.getElementById('postPublished').checked;
+
+      if (!name) {
+        showToast('请填写文章名称', 'error');
+        return;
+      }
+
+      if (!apiName) {
+        showToast('请选择API（分类）', 'error');
+        return;
+      }
+
+      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+
+      try {
+        // 直接使用id（id现在是全局唯一的UUID）
+        const url = id ? `${BLOG_ADMIN_API}/posts/${id}` : `${BLOG_ADMIN_API}/posts`;
+        const method = id ? 'PUT' : 'POST';
+        
+        const response = await adminApiRequest(url, {
+          method,
+          body: JSON.stringify({
+            name,
+            slug: slug || undefined,
+            excerpt,
+            image: image || undefined,
+            apiName: apiName, // 使用apiName而不是category
+            tags,
+            htmlContent: htmlContent || undefined,
+            published
+          })
+        });
+
+        if (response && response.success) {
+          showToast(id ? '文章更新成功' : '文章创建成功', 'success');
+          window.currentEditingPost = null; // 清除当前编辑的文章
+          hidePostForm();
+          loadPosts();
+        }
+      } catch (error) {
+        console.error('保存文章失败:', error);
+        showToast('保存文章失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+
+    // 编辑文章
+    async function editPost(id) {
+      try {
+        console.log('编辑文章，ID:', id);
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
+        console.log('获取文章列表响应:', response);
+        
+        if (response && response.success && response.data) {
+          // 直接使用id匹配（id现在是全局唯一的UUID）
+          const post = response.data.find(p => {
+            const pId = String(p.id || '');
+            const searchId = String(id || '');
+            return pId === searchId;
+          });
+          
+          console.log('找到的文章:', post);
+          
+          if (post) {
+            // 保存当前文章对象，用于后续保存时使用
+            window.currentEditingPost = post;
+            showPostForm(post);
+            // 切换到文章标签页
+            switchTab('posts');
+          } else {
+            console.error('未找到文章，ID:', id, '可用文章ID:', response.data.map(p => p.id));
+            showToast('未找到要编辑的文章', 'error');
+          }
+        } else {
+          console.error('获取文章列表失败:', response);
+          showToast('获取文章列表失败', 'error');
+        }
+      } catch (error) {
+        console.error('加载文章失败:', error);
+        showToast('加载文章失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+
+    // 删除文章
+    async function deletePost(id) {
+      if (!confirm('确定要删除这篇文章吗？')) {
+        return;
+      }
+
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts/${id}`, {
+          method: 'DELETE'
+        });
+
+        if (response && response.success) {
+          showToast('文章删除成功', 'success');
+          loadPosts();
+        }
+      } catch (error) {
+        console.error('删除文章失败:', error);
+      }
+    }
+
+    // 分类管理函数
+    async function loadCategories() {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/categories`);
+        if (response && response.success) {
+          const tbody = document.getElementById('categoriesTableBody');
+          const categories = response.data || [];
+          if (categories.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="blog-empty">暂无分类</td></tr>';
+          } else {
+            tbody.innerHTML = categories.map(cat => `
+              <tr>
+                <td>${escapeHtml(cat.name)}</td>
+                <td>${escapeHtml(cat.description || cat.path || '')}</td>
+                <td>${cat.postCount || 0}</td>
+                <td>
+                  <div class="admin-actions">
+                    <button class="admin-btn-small admin-btn-edit" onclick="editCategory(${cat.id})">编辑</button>
+                    <button class="admin-btn-small admin-btn-delete" onclick="deleteCategory(${cat.id})">删除</button>
+                  </div>
+                </td>
+              </tr>
+            `).join('');
+          }
+        }
+      } catch (error) {
+        document.getElementById('categoriesTableBody').innerHTML = '<tr><td colspan="4" class="blog-empty">加载失败</td></tr>';
+      }
+    }
+
+    function showCategoryForm(category = null) {
+      const form = document.getElementById('categoryForm');
+      const formTitle = document.getElementById('categoryFormTitle');
+      
+      if (category) {
+        formTitle.textContent = '编辑分类';
+        document.getElementById('categoryId').value = category.id;
+        document.getElementById('categoryName').value = category.name || '';
+        document.getElementById('categoryPath').value = category.description || category.path || '';
+      } else {
+        formTitle.textContent = '新建分类';
+        document.getElementById('categoryFormElement').reset();
+        document.getElementById('categoryId').value = '';
+      }
+      
+      form.style.display = 'block';
+      form.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function hideCategoryForm() {
+      document.getElementById('categoryForm').style.display = 'none';
+      document.getElementById('categoryFormElement').reset();
+      document.getElementById('categoryId').value = '';
+    }
+
+    async function saveCategory(event) {
+      event.preventDefault();
+      const id = document.getElementById('categoryId').value;
+      const name = document.getElementById('categoryName').value.trim();
+      const path = document.getElementById('categoryPath').value.trim();
+
+      if (!name || !path) {
+        showToast('请填写所有必填项', 'error');
+        return;
+      }
+
+      if (!path.startsWith('/')) {
+        showToast('路径必须以 / 开头', 'error');
+        return;
+      }
+
+      try {
+        const url = id ? `${BLOG_ADMIN_API}/categories/${id}` : `${BLOG_ADMIN_API}/categories`;
+        const method = id ? 'PUT' : 'POST';
+        
+        const response = await adminApiRequest(url, {
+          method,
+          body: JSON.stringify({ name, path })
+        });
+
+        if (response && response.success) {
+          showToast(id ? '分类更新成功' : '分类创建成功', 'success');
+          hideCategoryForm();
+          loadCategories();
+        }
+      } catch (error) {
+        console.error('保存分类失败:', error);
+        showToast('保存分类失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+
+    async function editCategory(id) {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/categories`);
+        if (response && response.success) {
+          const category = response.data.find(c => c.id === id);
+          if (category) {
+            showCategoryForm(category);
+          }
+        }
+      } catch (error) {
+        console.error('加载分类失败:', error);
+      }
+    }
+
+    async function deleteCategory(id) {
+      if (!confirm('确定要删除这个分类吗？如果有文章使用此分类，删除将失败。')) {
+        return;
+      }
+
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/categories/${id}`, {
+          method: 'DELETE'
+        });
+
+        if (response && response.success) {
+          showToast('分类删除成功', 'success');
+          loadCategories();
+        }
+      } catch (error) {
+        console.error('删除分类失败:', error);
+        showToast('删除分类失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+
+    // 标签管理函数
+    async function loadTags() {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/tags`);
+        if (response && response.success) {
+          const tbody = document.getElementById('tagsTableBody');
+          const tags = response.data || [];
+          if (tags.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" class="blog-empty">暂无标签</td></tr>';
+          } else {
+            tbody.innerHTML = tags.map(tag => `
+              <tr>
+                <td>${escapeHtml(tag.name)}</td>
+                <td>${tag.postCount || 0}</td>
+              </tr>
+            `).join('');
+          }
+        }
+      } catch (error) {
+        document.getElementById('tagsTableBody').innerHTML = '<tr><td colspan="2" class="blog-empty">加载失败</td></tr>';
+      }
+    }
+
+    function showTagForm() {
+      document.getElementById('tagForm').style.display = 'block';
+    }
+
+    function hideTagForm() {
+      document.getElementById('tagForm').style.display = 'none';
+      document.getElementById('tagForm').querySelector('form').reset();
+    }
+
+    async function saveTag(event) {
+      event.preventDefault();
+      const name = document.getElementById('tagName').value.trim();
+
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/tags`, {
+          method: 'POST',
+          body: JSON.stringify({ name })
+        });
+
+        if (response && response.success) {
+          showToast('标签创建成功', 'success');
+          hideTagForm();
+          loadTags();
+        }
+      } catch (error) {
+        console.error('创建标签失败:', error);
+      }
+    }
+
+    // 评论管理函数
+    async function loadComments() {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/comments`);
+        if (response && response.success) {
+          const tbody = document.getElementById('commentsTableBody');
+          const comments = response.data || [];
+          if (comments.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">暂无评论</td></tr>';
+          } else {
+            tbody.innerHTML = comments.map(comment => {
+              const date = formatDateTime(comment.createdAt || comment.created_at);
+              return `
+                <tr>
+                  <td>${escapeHtml(comment.postName || '')}</td>
+                  <td>${escapeHtml(comment.authorName)}</td>
+                  <td>${escapeHtml(truncate(comment.content, 50))}</td>
+                  <td>${comment.approved ? '<span style="color: #10b981;">已审核</span>' : '<span style="color: #f59e0b;">待审核</span>'}</td>
+                  <td>${date}</td>
+                  <td>
+                    <div class="admin-actions">
+                      ${!comment.approved ? `<button class="admin-btn-small admin-btn-approve" onclick="approveComment('${comment.id}')">审核</button>` : ''}
+                      <button class="admin-btn-small admin-btn-delete" onclick="deleteComment('${comment.id}')">删除</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('');
+          }
+        }
+      } catch (error) {
+        document.getElementById('commentsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+      }
+    }
+
+    async function approveComment(id) {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/comments/${id}/approve`, {
+          method: 'PUT',
+          body: JSON.stringify({ approved: true })
+        });
+
+        if (response && response.success) {
+          showToast('评论已审核通过', 'success');
+          loadComments();
+        }
+      } catch (error) {
+        console.error('审核评论失败:', error);
+      }
+    }
+
+    async function deleteComment(id) {
+      if (!confirm('确定要删除这条评论吗？')) {
+        return;
+      }
+
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/comments/${id}`, {
+          method: 'DELETE'
+        });
+
+        if (response && response.success) {
+          showToast('评论删除成功', 'success');
+          loadComments();
+        }
+      } catch (error) {
+        console.error('删除评论失败:', error);
+      }
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', () => {
+      loadPosts();
+      loadApis(); // 加载API列表
+      
+      // 监听图片URL输入框变化，实时更新预览
+      const postImageInput = document.getElementById('postImage');
+      if (postImageInput) {
+        postImageInput.addEventListener('input', function() {
+          updateImagePreview(this.value);
+        });
+        
+        // 初始化时也检查一次
+        updateImagePreview(postImageInput.value);
+      }
+    });
+    
+    /**
+     * 处理图片上传
+     */
+    async function handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (!file) {
+        return;
+      }
+      
+      // 验证文件类型
+      if (!file.type.startsWith('image/')) {
+        alert('请选择图片文件');
+        event.target.value = '';
+        return;
+      }
+      
+      // 验证文件大小（10MB）
+      if (file.size > 10 * 1024 * 1024) {
+        alert('图片文件大小不能超过10MB');
+        event.target.value = '';
+        return;
+      }
+      
+      // 显示上传进度
+      const progressDiv = document.getElementById('imageUploadProgress');
+      const progressBar = document.getElementById('imageUploadProgressBar');
+      const statusSpan = document.getElementById('imageUploadStatus');
+      
+      progressDiv.style.display = 'block';
+      progressBar.style.width = '0%';
+      statusSpan.textContent = '上传中...';
+      
+      try {
+        // 创建FormData
+        const formData = new FormData();
+        formData.append('image', file);
+        
+        // 发送上传请求
+        const response = await fetch('/api/admin/custom-apis/upload-image', {
+          method: 'POST',
+          body: formData,
+          credentials: 'same-origin' // 包含cookie用于身份验证
+        });
+        
+        // 模拟上传进度
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+          progress += 10;
+          if (progress < 90) {
+            progressBar.style.width = progress + '%';
+          }
+        }, 100);
+        
+        const result = await response.json();
+        clearInterval(progressInterval);
+        
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || '上传失败');
+        }
+        
+        // 上传成功
+        progressBar.style.width = '100%';
+        statusSpan.textContent = '上传成功！';
+        
+        // 获取完整URL（根据当前请求域名）
+        const imageUrl = result.image.url;
+        
+        // 填充到图片URL输入框
+        document.getElementById('postImage').value = imageUrl;
+        
+        // 更新预览
+        updateImagePreview(imageUrl);
+        
+        // 2秒后隐藏进度条
+        setTimeout(() => {
+          progressDiv.style.display = 'none';
+          progressBar.style.width = '0%';
+        }, 2000);
+        
+        // 清空文件输入框，允许重复上传同一文件
+        event.target.value = '';
+        
+      } catch (error) {
+        console.error('图片上传失败:', error);
+        progressBar.style.width = '0%';
+        statusSpan.textContent = '上传失败: ' + error.message;
+        statusSpan.style.color = '#ef4444';
+        
+        setTimeout(() => {
+          progressDiv.style.display = 'none';
+          statusSpan.style.color = '#6b7280';
+        }, 3000);
+        
+        event.target.value = '';
+      }
+    }
+    
+    /**
+     * 更新图片预览
+     */
+    function updateImagePreview(imageUrl) {
+      const previewDiv = document.getElementById('imagePreview');
+      const previewImg = document.getElementById('imagePreviewImg');
+      
+      if (imageUrl && imageUrl.trim()) {
+        previewImg.src = imageUrl;
+        previewDiv.style.display = 'block';
+      } else {
+        previewDiv.style.display = 'none';
+      }
+    }
+  </script>
+</body>
+</html>

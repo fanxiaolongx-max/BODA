@@ -8219,6 +8219,177 @@ router.delete('/custom-apis/:id', requireAuth, async (req, res) => {
 });
 
 /**
+ * POST /api/admin/custom-apis/backup
+ * 备份所有自定义API数据
+ */
+router.post('/custom-apis/backup', requireAuth, async (req, res) => {
+  try {
+    // 获取所有自定义API数据
+    const apis = await allAsync(`
+      SELECT id, name, path, method, requires_token, response_content, description, status, created_at, updated_at
+      FROM custom_apis
+      ORDER BY id ASC
+    `);
+
+    // 构建备份数据
+    const backupData = {
+      version: '1.0',
+      backupTime: new Date().toISOString(),
+      apiCount: apis.length,
+      apis: apis.map(api => ({
+        ...api,
+        requires_token: api.requires_token === 1 || api.requires_token === '1' ? 1 : 0
+      }))
+    };
+
+    await logAction(req.session.adminId, 'BACKUP', 'custom_api', null, JSON.stringify({
+      apiCount: apis.length
+    }), req);
+
+    res.json({
+      success: true,
+      message: '备份成功',
+      data: backupData
+    });
+  } catch (error) {
+    logger.error('备份自定义API失败', { error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: '备份失败: ' + error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/admin/custom-apis/restore
+ * 恢复自定义API数据（会清空现有数据）
+ */
+router.post('/custom-apis/restore', requireAuth, [
+  body('backupData').notEmpty().withMessage('备份数据不能为空'),
+  validate
+], async (req, res) => {
+  try {
+    const { backupData } = req.body;
+
+    // 验证备份数据格式
+    if (!backupData || typeof backupData !== 'object') {
+      return res.status(400).json({ 
+        success: false, 
+        message: '备份数据格式无效' 
+      });
+    }
+
+    if (!backupData.apis || !Array.isArray(backupData.apis)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '备份数据中缺少API列表' 
+      });
+    }
+
+    // 开始事务
+    await beginTransaction();
+
+    try {
+      // 1. 删除所有现有自定义API
+      await runAsync('DELETE FROM custom_apis');
+
+      // 2. 插入备份数据中的所有API
+      let restoredCount = 0;
+      for (const api of backupData.apis) {
+        // 验证必需字段
+        if (!api.name || !api.path || !api.method || !api.response_content) {
+          logger.warn('跳过无效的API数据', { api });
+          continue;
+        }
+
+        // 验证response_content是否为有效JSON
+        try {
+          JSON.parse(api.response_content);
+        } catch (e) {
+          logger.warn('跳过response_content无效的API', { apiId: api.id, apiName: api.name });
+          continue;
+        }
+
+        // 转换日期格式：ISO格式转SQLite datetime格式
+        let createdAt = api.created_at;
+        let updatedAt = api.updated_at;
+        
+        if (createdAt) {
+          // 如果是ISO格式，转换为SQLite格式
+          if (createdAt.includes('T')) {
+            createdAt = createdAt.replace('T', ' ').substring(0, 19);
+          }
+        } else {
+          // 使用当前时间
+          const now = new Date();
+          createdAt = now.toISOString().replace('T', ' ').substring(0, 19);
+        }
+        
+        if (updatedAt) {
+          // 如果是ISO格式，转换为SQLite格式
+          if (updatedAt.includes('T')) {
+            updatedAt = updatedAt.replace('T', ' ').substring(0, 19);
+          }
+        } else {
+          // 使用当前时间
+          const now = new Date();
+          updatedAt = now.toISOString().replace('T', ' ').substring(0, 19);
+        }
+
+        // 插入API（不保留原ID，使用新的自增ID）
+        await runAsync(`
+          INSERT INTO custom_apis (name, path, method, requires_token, response_content, description, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          api.name,
+          api.path,
+          api.method || 'GET',
+          api.requires_token ? 1 : 0,
+          api.response_content,
+          api.description || null,
+          api.status || 'active',
+          createdAt,
+          updatedAt
+        ]);
+        restoredCount++;
+      }
+
+      // 提交事务
+      await commit();
+
+      // 重新加载自定义API路由
+      const { reloadCustomApiRoutes } = require('../utils/custom-api-router');
+      await reloadCustomApiRoutes();
+
+      await logAction(req.session.adminId, 'RESTORE', 'custom_api', null, JSON.stringify({
+        backupTime: backupData.backupTime,
+        originalCount: backupData.apiCount,
+        restoredCount: restoredCount
+      }), req);
+
+      res.json({
+        success: true,
+        message: `恢复成功，已恢复 ${restoredCount} 个API`,
+        data: {
+          restoredCount,
+          originalCount: backupData.apiCount
+        }
+      });
+    } catch (error) {
+      // 回滚事务
+      await rollback();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('恢复自定义API失败', { error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: '恢复失败: ' + error.message 
+    });
+  }
+});
+
+/**
  * GET /api/admin/custom-apis/:id/logs
  * 获取指定自定义API的日志列表
  */

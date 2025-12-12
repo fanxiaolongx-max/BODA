@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>博客 - DevBlog</title>
+  <link rel="stylesheet" href="/css/blog.css">
+  <style>
+    /* 粒子背景效果 */
+    .particles-background {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .particle {
+      position: absolute;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(147, 51, 234, 0.1));
+      animation: float 20s infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      33% { transform: translate(30px, -30px) rotate(120deg); }
+      66% { transform: translate(-20px, 20px) rotate(240deg); }
+    }
+  </style>
+</head>
+<body class="blog-page">
+  <!-- 粒子背景 -->
+  <div class="particles-background" id="particles"></div>
+
+  <!-- 导航栏 -->
+  <nav class="blog-nav">
+    <div class="blog-nav-content">
+      <a href="/blog.html" class="blog-logo">
+        <div class="blog-logo-icon">B</div>
+        <span>DevBlog.</span>
+      </a>
+      <div class="blog-nav-actions">
+        <div class="blog-search">
+          <input 
+            type="text" 
+            class="blog-search-input" 
+            id="searchInput"
+            placeholder="搜索文章..."
+            onkeypress="handleSearchKeyPress(event)"
+          >
+        </div>
+        <a href="/blog-admin.html" class="blog-btn blog-btn-secondary" style="font-size: 0.875rem; padding: 0.5rem 1rem;">管理</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 首页标题区域 -->
+  <section class="blog-hero">
+    <h1>用技术构建<span style="background: linear-gradient(to right, #ec4899, #9333ea); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">未来。</span></h1>
+    <p>全栈开发者的思考沉淀。专注于 React, Next.js, 以及现代化的 UI 设计。</p>
+    <div class="blog-hero-actions">
+      <a href="#posts" class="blog-btn blog-btn-primary">浏览文章</a>
+      <a href="#archive" class="blog-btn blog-btn-secondary">文章归档</a>
+    </div>
+  </section>
+
+  <!-- 文章列表 -->
+  <section id="posts" class="blog-posts-section">
+    <div class="blog-posts-grid" id="postsGrid">
+      <div class="blog-loading">加载中...</div>
+    </div>
+    <div class="blog-pagination" id="pagination"></div>
+  </section>
+
+  <!-- 分类和标签 -->
+  <section class="blog-taxonomy-section">
+    <div class="blog-taxonomy-grid">
+      <div class="blog-taxonomy-card">
+        <h2 class="blog-taxonomy-title">分类</h2>
+        <div class="blog-taxonomy-list" id="categoriesList">
+          <div class="blog-loading">加载中...</div>
+        </div>
+      </div>
+      <div class="blog-taxonomy-card">
+        <h2 class="blog-taxonomy-title">标签</h2>
+        <div class="blog-taxonomy-list" id="tagsList">
+          <div class="blog-loading">加载中...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 页脚 -->
+  <footer class="blog-footer">
+    <div class="blog-footer-content">
+      <div class="blog-footer-text">© 2024 DevBlog. All rights reserved.</div>
+      <div class="blog-footer-links">
+        <a href="/feed.xml" class="blog-footer-link" title="RSS 订阅">RSS</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- 脚本 -->
+  <script src="/utils/blog.js"></script>
+  <script>
+    // 当前页码
+    let currentPage = 1;
+    const pageSize = 6;
+    let totalPages = 1;
+    let currentCategory = null;
+    let currentTag = null;
+    let currentSearch = null;
+
+    // 初始化粒子背景
+    function initParticles() {
+      const container = document.getElementById('particles');
+      const particleCount = 50;
+      
+      for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        const size = Math.random() * 100 + 50;
+        particle.style.width = size + 'px';
+        particle.style.height = size + 'px';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.top = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 20 + 's';
+        particle.style.opacity = Math.random() * 0.3 + 0.1;
+        container.appendChild(particle);
+      }
+    }
+
+    // 加载文章列表
+    async function loadPosts(page = 1) {
+      try {
+        const options = {
+          page,
+          pageSize,
+          published: 'true'
+        };
+        
+        if (currentCategory) {
+          options.category = currentCategory;
+        }
+        if (currentTag) {
+          options.tag = currentTag;
+        }
+        if (currentSearch) {
+          options.search = currentSearch;
+        }
+        
+        const response = await getPosts(options);
+        
+        if (response.success) {
+          displayPosts(response.data);
+          currentPage = response.pagination.currentPage;
+          totalPages = response.pagination.totalPages;
+          displayPagination();
+        } else {
+          showToast('加载文章失败', 'error');
+        }
+      } catch (error) {
+        console.error('加载文章失败:', error);
+        showToast('加载文章失败: ' + error.message, 'error');
+        document.getElementById('postsGrid').innerHTML = '<div class="blog-empty">加载失败，请刷新重试</div>';
+      }
+    }
+
+    // 显示文章列表
+    function displayPosts(posts) {
+      const grid = document.getElementById('postsGrid');
+      
+      if (!posts || posts.length === 0) {
+        grid.innerHTML = '<div class="blog-empty">暂无文章</div>';
+        return;
+      }
+      
+      grid.innerHTML = posts.map((post, index) => {
+        const imageUrl = post.image || '';
+        const excerpt = truncate(post.excerpt || post.description || '', 100);
+        const date = formatDate(post.createdAt || post.created_at);
+        const category = post.category || (post.categoryRelation && post.categoryRelation.name) || '';
+        const tags = post.tags || [];
+        
+        return `
+          <article class="blog-post-card" style="animation-delay: ${index * 0.1}s">
+            <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" class="blog-post-image">
+              ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHtml(post.name || post.title || '')}" loading="lazy">` : '<div style="width:100%;height:100%;background:linear-gradient(to bottom right, #f5f5f5, #e5e5e5);"></div>'}
+            </a>
+            <div style="padding: 0 0.5rem 0.5rem;">
+              <div class="blog-post-meta">
+                ${category ? `<a href="#" class="blog-post-category" onclick="filterByCategory('${escapeHtml(category)}'); return false;">${escapeHtml(category)}</a>` : ''}
+                ${tags.slice(0, 3).map(tag => {
+                  const tagName = typeof tag === 'string' ? tag : tag.name;
+                  return `<a href="#" class="blog-post-tag" onclick="filterByTag('${escapeHtml(tagName)}'); return false;">#${escapeHtml(tagName)}</a>`;
+                }).join('')}
+                <span class="blog-post-date">${date}</span>
+              </div>
+              <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" class="blog-post-title">
+                ${escapeHtml(post.name || post.title || '未命名')}
+              </a>
+              ${excerpt ? `<p class="blog-post-excerpt">${escapeHtml(excerpt)}</p>` : ''}
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    // 显示分页
+    function displayPagination() {
+      const pagination = document.getElementById('pagination');
+      
+      if (totalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+      }
+      
+      let html = '';
+      
+      // 上一页
+      if (currentPage > 1) {
+        html += `<a href="#" class="blog-pagination-btn" onclick="loadPosts(${currentPage - 1}); return false;">上一页</a>`;
+      } else {
+        html += `<span class="blog-pagination-btn" style="opacity: 0.5; cursor: not-allowed;">上一页</span>`;
+      }
+      
+      // 页码
+      for (let i = 1; i <= totalPages; i++) {
+        if (i === currentPage) {
+          html += `<span class="blog-pagination-btn active">${i}</span>`;
+        } else {
+          html += `<a href="#" class="blog-pagination-btn" onclick="loadPosts(${i}); return false;">${i}</a>`;
+        }
+      }
+      
+      // 下一页
+      if (currentPage < totalPages) {
+        html += `<a href="#" class="blog-pagination-btn" onclick="loadPosts(${currentPage + 1}); return false;">下一页</a>`;
+      } else {
+        html += `<span class="blog-pagination-btn" style="opacity: 0.5; cursor: not-allowed;">下一页</span>`;
+      }
+      
+      pagination.innerHTML = html;
+    }
+
+    // 加载分类
+    async function loadCategories() {
+      try {
+        const response = await getCategories();
+        if (response.success) {
+          displayCategories(response.data);
+        }
+      } catch (error) {
+        console.error('加载分类失败:', error);
+      }
+    }
+
+    // 显示分类
+    function displayCategories(categories) {
+      const list = document.getElementById('categoriesList');
+      
+      if (!categories || categories.length === 0) {
+        list.innerHTML = '<span style="color: #9ca3af;">暂无分类</span>';
+        return;
+      }
+      
+      list.innerHTML = categories.map(cat => {
+        const count = cat.postCount || 0;
+        return `<a href="#" class="blog-taxonomy-item" onclick="filterByCategory('${escapeHtml(cat.name)}'); return false;">${escapeHtml(cat.name)} (${count})</a>`;
+      }).join('');
+    }
+
+    // 加载标签
+    async function loadTags() {
+      try {
+        const response = await getTags();
+        if (response.success) {
+          displayTags(response.data);
+        }
+      } catch (error) {
+        console.error('加载标签失败:', error);
+      }
+    }
+
+    // 显示标签
+    function displayTags(tags) {
+      const list = document.getElementById('tagsList');
+      
+      if (!tags || tags.length === 0) {
+        list.innerHTML = '<span style="color: #9ca3af;">暂无标签</span>';
+        return;
+      }
+      
+      list.innerHTML = tags.map(tag => {
+        const count = tag.postCount || 0;
+        return `<a href="#" class="blog-taxonomy-item" onclick="filterByTag('${escapeHtml(tag.name)}'); return false;">#${escapeHtml(tag.name)} (${count})</a>`;
+      }).join('');
+    }
+
+    // 按分类筛选
+    function filterByCategory(category) {
+      currentCategory = category;
+      currentTag = null;
+      currentSearch = null;
+      currentPage = 1;
+      loadPosts(1);
+      showToast(`筛选分类: ${category}`, 'info');
+    }
+
+    // 按标签筛选
+    function filterByTag(tag) {
+      currentTag = tag;
+      currentCategory = null;
+      currentSearch = null;
+      currentPage = 1;
+      loadPosts(1);
+      showToast(`筛选标签: ${tag}`, 'info');
+    }
+
+    // 搜索
+    function handleSearchKeyPress(event) {
+      if (event.key === 'Enter') {
+        const query = event.target.value.trim();
+        if (query) {
+          currentSearch = query;
+          currentCategory = null;
+          currentTag = null;
+          currentPage = 1;
+          loadPosts(1);
+          showToast(`搜索: ${query}`, 'info');
+        } else {
+          // 清除搜索
+          currentSearch = null;
+          currentPage = 1;
+          loadPosts(1);
+        }
+      }
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', () => {
+      initParticles();
+      loadPosts(1);
+      loadCategories();
+      loadTags();
+      
+      // 滚动到文章区域
+      document.querySelector('a[href="#posts"]')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.getElementById('posts').scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+  </script>
+</body>
+</html>

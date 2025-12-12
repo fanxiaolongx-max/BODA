@@ -80,6 +80,8 @@ pm2 delete boda   # 删除
 
 ### 4. 使用Nginx反向代理（推荐）
 
+**重要：如果使用小程序访问图片，必须在 Nginx 配置中添加 CORS 支持！**
+
 ```nginx
 # /etc/nginx/sites-available/boda
 server {
@@ -91,6 +93,64 @@ server {
     # ssl_certificate /path/to/cert.pem;
     # ssl_certificate_key /path/to/key.pem;
 
+    # 增加上传文件大小限制
+    client_max_body_size 10M;
+
+    # ==================== 图片上传目录 CORS 配置（小程序必需） ====================
+    location /uploads/ {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        # CORS 响应头（小程序必需）
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods 'GET, HEAD, OPTIONS' always;
+        add_header Access-Control-Allow-Headers '*' always;
+
+        # 处理 OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin * always;
+            add_header Access-Control-Allow-Methods 'GET, HEAD, OPTIONS' always;
+            add_header Access-Control-Allow-Headers '*' always;
+            add_header Access-Control-Max-Age 1728000;
+            add_header Content-Type 'text/plain; charset=utf-8';
+            add_header Content-Length 0;
+            return 204;
+        }
+    }
+
+    # ==================== show 目录 CORS 配置 ====================
+    location /show/ {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # CORS 响应头
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods 'GET, HEAD, OPTIONS' always;
+        add_header Access-Control-Allow-Headers '*' always;
+
+        if ($request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin * always;
+            add_header Access-Control-Allow-Methods 'GET, HEAD, OPTIONS' always;
+            add_header Access-Control-Allow-Headers '*' always;
+            add_header Access-Control-Max-Age 1728000;
+            add_header Content-Type 'text/plain; charset=utf-8';
+            add_header Content-Length 0;
+            return 204;
+        }
+    }
+
+    # ==================== 其他路径（默认配置） ====================
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -102,13 +162,6 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
     }
-
-    # 静态文件缓存
-    location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ {
-        proxy_pass http://localhost:3000;
-        expires 30d;
-        add_header Cache-Control "public, immutable";
-    }
 }
 ```
 
@@ -118,6 +171,8 @@ sudo ln -s /etc/nginx/sites-available/boda /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
+
+**详细说明请参考：[Nginx CORS 配置指南](./NGINX_CORS_CONFIG.md)**
 
 ### 5. 防火墙配置
 

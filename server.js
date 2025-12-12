@@ -25,10 +25,10 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com", "https://cdn.jsdelivr.net"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.quilljs.com", "https://maxcdn.bootstrapcdn.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com", "https://cdn.jsdelivr.net", "https://cdn.quilljs.com"],
       scriptSrcAttr: ["'unsafe-inline'"], // 允许内联事件处理器（onclick等）
-      imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net"],
+      imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net", "https:", "http:"],
       connectSrc: [
         "'self'", 
         "https://api.stripe.com",
@@ -61,7 +61,7 @@ app.use(helmet({
         "ws://localhost.qz.io:8384",
         "ws://localhost.qz.io:8485"
       ],
-      fontSrc: ["'self'", "https://cdn.jsdelivr.net"],
+      fontSrc: ["'self'", "https://cdn.jsdelivr.net", "https://cdn.quilljs.com", "https://maxcdn.bootstrapcdn.com"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
       frameSrc: ["'self'", "blob:", "https://js.stripe.com"], // 允许同源iframe、blob URL 和 Stripe Elements iframe
@@ -247,10 +247,10 @@ const staticWithCORS = (root, options = {}) => {
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
       
       if (imageExtensions.includes(ext)) {
-        // 添加CORS头
+        // 添加CORS头（满足小程序需求）
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', '*');
         
         // 设置正确的Content-Type
         const mimeTypes = {
@@ -276,9 +276,10 @@ const staticWithCORS = (root, options = {}) => {
       const ext = path.extname(req.path).toLowerCase();
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
       if (imageExtensions.includes(ext)) {
+        // 处理OPTIONS预检请求（满足小程序需求）
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', '*');
         return res.status(200).end();
       }
     }
@@ -387,12 +388,16 @@ const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 const publicRoutes = require('./routes/public');
 const externalRoutes = require('./routes/external');
+const blogRoutes = require('./routes/blog');
+const blogAdminRoutes = require('./routes/blog-admin');
 
 // 注册路由
 app.use('/api/auth', loginLimiter, authRoutes);
 app.use('/api/admin', adminApiLimiter, adminRoutes); // 使用更宽松的管理员API限流器
 app.use('/api/user', apiLimiter, userRoutes);
 app.use('/api/external', externalApiLimiter, externalRoutes); // 外部API路由（自定义API管理）
+app.use('/api/blog', apiLimiter, blogRoutes); // 博客前端API路由
+app.use('/api/blog-admin', adminApiLimiter, blogAdminRoutes); // 博客管理API路由（需要身份验证）
 
 // 堂食扫码登录路由（在public路由之前，提供简洁的URL）
 app.get('/dine-in', (req, res) => {
@@ -581,17 +586,52 @@ async function startServer() {
           key: fs.readFileSync(keyPath)
         };
         
-        // 如果未指定 HTTPS 端口，使用与 HTTP 相同的端口（3000）
-        const httpsPort = process.env.HTTPS_PORT ? parseInt(process.env.HTTPS_PORT) : PORT;
+        // HTTPS端口：优先使用环境变量，其次使用443（标准HTTPS端口），最后回退到PORT
+        // 注意：443端口需要root权限，如果无法绑定会自动回退
+        const httpsPort = process.env.HTTPS_PORT 
+          ? parseInt(process.env.HTTPS_PORT) 
+          : (process.env.USE_STANDARD_HTTPS_PORT === 'true' ? 443 : PORT);
         
         // 启动 HTTPS 服务器
-        server = https.createServer(httpsOptions, app).listen(httpsPort, HOST, () => {
+        server = https.createServer(httpsOptions, app);
+        
+        // 监听错误事件，处理端口绑定失败的情况
+        server.on('error', (err) => {
+          // 如果443端口绑定失败（通常是因为权限不足），回退到PORT
+          if (httpsPort === 443 && err.code === 'EACCES') {
+            logger.warn('无法绑定443端口（需要root权限），回退到端口' + PORT);
+            console.log(`\n⚠️  无法绑定443端口（需要root权限）`);
+            console.log(`💡 提示：使用 sudo 运行或设置 HTTPS_PORT=${PORT} 使用非特权端口\n`);
+            
+            // 使用PORT端口重新启动
+            server = https.createServer(httpsOptions, app).listen(PORT, HOST, () => {
+              logger.info(`服务器运行在 https://${HOST}:${PORT} (本地 HTTPS)`);
+              console.log(`\n=================================`);
+              console.log(`📱 BOBA TEA Ordering System`);
+              console.log(`🔒 服务器: https://${HOST}:${PORT} (本地 HTTPS)`);
+              console.log(`👤 管理后台: https://${HOST}:${PORT}/admin.html`);
+              console.log(`🛒 用户端: https://${HOST}:${PORT}/index.html`);
+              console.log(`📝 默认管理员: admin / admin123`);
+              console.log(`=================================\n`);
+            });
+          } else {
+            logger.error('HTTPS服务器启动失败', { error: err.message });
+            throw err;
+          }
+        });
+        
+        // 监听成功事件
+        server.listen(httpsPort, HOST, () => {
           logger.info(`服务器运行在 https://${HOST}:${httpsPort} (本地 HTTPS)`);
           console.log(`\n=================================`);
           console.log(`📱 BOBA TEA Ordering System`);
           console.log(`🔒 服务器: https://${HOST}:${httpsPort} (本地 HTTPS)`);
-          console.log(`👤 管理后台: https://${HOST}:${httpsPort}/admin.html`);
-          console.log(`🛒 用户端: https://${HOST}:${httpsPort}/index.html`);
+          if (httpsPort === 443) {
+            console.log(`🌐 访问地址: https://localhost 或 https://boba.app`);
+          }
+          const portSuffix = httpsPort === 443 ? '' : ':' + httpsPort;
+          console.log(`👤 管理后台: https://${HOST}${portSuffix}/admin.html`);
+          console.log(`🛒 用户端: https://${HOST}${portSuffix}/index.html`);
           console.log(`📝 默认管理员: admin / admin123`);
           console.log(`=================================\n`);
         });

@@ -825,9 +825,17 @@
           <div class="p-6">
             <div class="flex justify-between items-center mb-6">
               <h2 class="text-2xl font-bold text-gray-900">API Management</h2>
-              <button onclick="showApiModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                ➕ Add Custom API
-              </button>
+              <div class="flex gap-2">
+                <button onclick="backupCustomApis()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+                  💾 备份自定义API
+                </button>
+                <button onclick="restoreCustomApis()" class="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
+                  📥 恢复自定义API
+                </button>
+                <button onclick="showApiModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                  ➕ Add Custom API
+                </button>
+              </div>
             </div>
 
             <!-- 自定义API列表 -->

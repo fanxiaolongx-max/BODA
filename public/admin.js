@@ -6826,6 +6826,137 @@ async function loadApiManagement() {
   }
 }
 
+// 备份自定义API
+async function backupCustomApis() {
+  try {
+    showToast('正在备份自定义API...', 'info');
+    
+    const response = await adminApiRequest(`${API_BASE}/admin/custom-apis/backup`, {
+      method: 'POST'
+    });
+
+    if (response.success && response.data) {
+      // 将数据转换为JSON字符串
+      const jsonString = JSON.stringify(response.data, null, 2);
+      
+      // 创建Blob对象
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      
+      // 生成文件名（包含时间戳）
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const fileName = `custom-apis-backup-${timestamp}.json`;
+      
+      // 创建下载链接
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showToast(`备份成功！已导出 ${response.data.apiCount} 个API`, 'success');
+    } else {
+      showToast('备份失败: ' + (response.message || '未知错误'), 'error');
+    }
+  } catch (error) {
+    console.error('备份自定义API失败:', error);
+    showToast('备份失败: ' + (error.message || '未知错误'), 'error');
+  }
+}
+
+// 恢复自定义API
+async function restoreCustomApis() {
+  try {
+    // 创建文件输入元素
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.style.display = 'none';
+    
+    input.onchange = async (event) => {
+      const file = event.target.files[0];
+      if (!file) {
+        return;
+      }
+
+      // 验证文件类型
+      if (!file.name.endsWith('.json')) {
+        showToast('请选择JSON格式的备份文件', 'error');
+        return;
+      }
+
+      // 读取文件内容
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const fileContent = e.target.result;
+          const backupData = JSON.parse(fileContent);
+
+          // 验证备份数据格式
+          if (!backupData.apis || !Array.isArray(backupData.apis)) {
+            showToast('备份文件格式无效：缺少API列表', 'error');
+            return;
+          }
+
+          // 显示确认对话框
+          const confirmed = confirm(
+            `⚠️ 警告：恢复操作将清空当前所有自定义API数据！\n\n` +
+            `备份信息：\n` +
+            `- 备份时间：${backupData.backupTime || '未知'}\n` +
+            `- API数量：${backupData.apiCount || backupData.apis.length}\n\n` +
+            `确定要继续吗？`
+          );
+
+          if (!confirmed) {
+            return;
+          }
+
+          showToast('正在恢复自定义API...', 'info');
+
+          // 调用恢复API
+          const response = await adminApiRequest(`${API_BASE}/admin/custom-apis/restore`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ backupData })
+          });
+
+          if (response.success) {
+            showToast(
+              `恢复成功！已恢复 ${response.data.restoredCount} 个API`,
+              'success'
+            );
+            // 刷新API列表
+            loadApiManagement();
+          } else {
+            showToast('恢复失败: ' + (response.message || '未知错误'), 'error');
+          }
+        } catch (error) {
+          console.error('解析备份文件失败:', error);
+          showToast('备份文件格式错误: ' + error.message, 'error');
+        }
+      };
+
+      reader.onerror = () => {
+        showToast('读取文件失败', 'error');
+      };
+
+      reader.readAsText(file);
+    };
+
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
+  } catch (error) {
+    console.error('恢复自定义API失败:', error);
+    showToast('恢复失败: ' + (error.message || '未知错误'), 'error');
+  }
+}
+
 // JSONEditor 实例
 let jsonEditorInstance = null;
 
