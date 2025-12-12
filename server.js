@@ -225,6 +225,15 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// 外部API限流器（用于自定义API管理接口）
+const externalApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15分钟
+  max: 100, // 外部API限制100个请求（建议值）
+  message: { success: false, message: '请求过于频繁，请稍后再试', code: 'RATE_LIMIT' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // 支持 fly.io 持久化卷：如果 /data 目录存在，使用 /data，否则使用本地目录
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 
@@ -377,11 +386,13 @@ const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 const publicRoutes = require('./routes/public');
+const externalRoutes = require('./routes/external');
 
 // 注册路由
 app.use('/api/auth', loginLimiter, authRoutes);
 app.use('/api/admin', adminApiLimiter, adminRoutes); // 使用更宽松的管理员API限流器
 app.use('/api/user', apiLimiter, userRoutes);
+app.use('/api/external', externalApiLimiter, externalRoutes); // 外部API路由（自定义API管理）
 
 // 堂食扫码登录路由（在public路由之前，提供简洁的URL）
 app.get('/dine-in', (req, res) => {

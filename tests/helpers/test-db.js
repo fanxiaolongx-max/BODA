@@ -314,6 +314,8 @@ function clearTestDatabase() {
         });
       };
 
+      deleteTable('custom_api_logs');
+      deleteTable('custom_apis');
       deleteTable('order_items');
       deleteTable('orders');
       deleteTable('logs');

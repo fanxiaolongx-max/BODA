@@ -454,6 +454,10 @@ async function initDatabase() {
     // 迁移自定义API日志表
     const { migrateCustomApiLogs } = require('./migrate-custom-api-logs');
     await migrateCustomApiLogs();
+    
+    // 迁移自定义API字段结构（统一字段格式）
+    const { migrateCustomApiFields } = require('./migrate-custom-api-fields');
+    await migrateCustomApiFields();
   } catch (error) {
     console.error('数据库表初始化失败:', error);
     console.error('错误堆栈:', error.stack);

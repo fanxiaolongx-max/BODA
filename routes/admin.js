@@ -8090,10 +8090,13 @@ router.put('/custom-apis/:id', requireAuth, [
       return res.status(400).json({ success: false, message: '路径必须以 / 开头' });
     }
 
-    // 检查路径是否被其他API使用
-    const pathConflict = await getAsync('SELECT id FROM custom_apis WHERE path = ? AND id != ?', [path, id]);
+    // 检查路径和方法组合是否被其他API使用
+    const pathConflict = await getAsync(
+      'SELECT id FROM custom_apis WHERE path = ? AND method = ? AND id != ?', 
+      [path, method || 'GET', id]
+    );
     if (pathConflict) {
-      return res.status(400).json({ success: false, message: '该路径已被其他API使用' });
+      return res.status(400).json({ success: false, message: '该路径和方法组合已被其他API使用' });
     }
 
     // 验证返回内容是否为有效的JSON
