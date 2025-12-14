@@ -180,19 +180,40 @@ router.post('/posts', requireAuth, [
   validate
 ], async (req, res) => {
   try {
+    // name和title保持一致
+    const nameValue = req.body.name || req.body.title || '未命名';
+    // excerpt和description保持一致
+    const excerptValue = req.body.excerpt || req.body.description || '';
     const postData = {
       id: req.body.id,
-      name: req.body.name,
-      title: req.body.title || req.body.name,
+      name: nameValue,
+      title: nameValue, // name和title保持一致
       slug: req.body.slug,
-      htmlContent: req.body.htmlContent || '',
-      excerpt: req.body.excerpt || '',
-      description: req.body.description || '',
+      excerpt: excerptValue,
+      description: excerptValue, // description和excerpt保持一致
       image: req.body.image || null,
-      apiName: req.body.apiName, // API名称作为分类
-      tags: Array.isArray(req.body.tags) ? req.body.tags : (req.body.tags ? req.body.tags.split(',').map(t => t.trim()) : []),
+      apiName: req.body.apiName, // API名称（用于确定数据存储位置）
+      category: req.body.category || req.body.apiName, // 分类/标签（用于博客展示，默认使用apiName）
+      // tags字段已废弃，使用category作为标签
       published: req.body.published !== undefined ? req.body.published : false
     };
+    
+    // 特殊字段（二手市场和租房酒店）
+    if (req.body.price !== undefined) postData.price = req.body.price;
+    if (req.body.rooms !== undefined) postData.rooms = req.body.rooms;
+    if (req.body.area !== undefined) postData.area = req.body.area;
+    if (req.body.views !== undefined) postData.views = parseInt(req.body.views) || 0;
+    
+    // 处理特殊类别的数据
+    if (req.body._specialData !== undefined) {
+      postData._specialData = req.body._specialData;
+      // 特殊类别不使用htmlContent
+    } else {
+      // 普通类别才使用htmlContent
+      postData.htmlContent = req.body.htmlContent || '';
+    }
+    
+    if (req.body._specialType !== undefined) postData._specialType = req.body._specialType;
     
     const post = await createBlogPost(postData);
     
@@ -239,20 +260,66 @@ router.put('/posts/:id', requireAuth, [
     const { id } = req.params;
     const updateData = {};
     
-    if (req.body.name !== undefined) updateData.name = req.body.name;
-    if (req.body.title !== undefined) updateData.title = req.body.title;
+    // name和title保持一致
+    if (req.body.name !== undefined) {
+      updateData.name = req.body.name;
+      updateData.title = req.body.name; // title与name保持一致
+    } else if (req.body.title !== undefined) {
+      updateData.name = req.body.title;
+      updateData.title = req.body.title; // name与title保持一致
+    }
     if (req.body.slug !== undefined) updateData.slug = req.body.slug;
-    if (req.body.htmlContent !== undefined) updateData.htmlContent = req.body.htmlContent;
-    if (req.body.excerpt !== undefined) updateData.excerpt = req.body.excerpt;
-    if (req.body.description !== undefined) updateData.description = req.body.description;
+    // excerpt和description保持一致
+    if (req.body.excerpt !== undefined) {
+      updateData.excerpt = req.body.excerpt;
+      updateData.description = req.body.excerpt; // description和excerpt保持一致
+    } else if (req.body.description !== undefined) {
+      updateData.excerpt = req.body.description;
+      updateData.description = req.body.description; // description和excerpt保持一致
+    }
     if (req.body.image !== undefined) updateData.image = req.body.image;
     if (req.body.apiName !== undefined) updateData.apiName = req.body.apiName; // 支持更改分类（API）
-    if (req.body.tags !== undefined) {
-      updateData.tags = Array.isArray(req.body.tags) 
-        ? req.body.tags 
-        : (req.body.tags ? req.body.tags.split(',').map(t => t.trim()) : []);
+    if (req.body.category !== undefined) updateData.category = req.body.category; // 分类/标签字段
+    
+    // 特殊字段（二手市场和租房酒店）
+    if (req.body.price !== undefined) updateData.price = req.body.price;
+    if (req.body.rooms !== undefined) updateData.rooms = req.body.rooms;
+    if (req.body.area !== undefined) updateData.area = req.body.area;
+    if (req.body.views !== undefined) updateData.views = parseInt(req.body.views) || 0;
+    
+    // 处理特殊类别的数据
+    // 注意：second-hand 和 rentals 虽然需要特殊字段，但仍然需要 htmlContent
+    const needsSpecialDataOnly = req.body._specialType && 
+      (req.body._specialType === 'weather' || req.body._specialType === 'exchange-rate' || req.body._specialType === 'translation');
+    
+    if (req.body._specialData !== undefined) {
+      updateData._specialData = req.body._specialData;
+      // 只有 weather、exchange-rate、translation 不使用 htmlContent
+      // second-hand 和 rentals 仍然需要 htmlContent
+      if (!needsSpecialDataOnly && req.body.htmlContent !== undefined) {
+        updateData.htmlContent = req.body.htmlContent;
+      }
+    } else {
+      // 普通类别才使用htmlContent
+      if (req.body.htmlContent !== undefined) updateData.htmlContent = req.body.htmlContent;
     }
+    
+    if (req.body._specialType !== undefined) updateData._specialType = req.body._specialType;
+    // tags字段已废弃，使用category作为标签
     if (req.body.published !== undefined) updateData.published = req.body.published;
+    
+    // 处理特殊类别的数据
+    if (req.body._specialData !== undefined) updateData._specialData = req.body._specialData;
+    if (req.body._specialType !== undefined) updateData._specialType = req.body._specialType;
+    
+    // 添加调试日志
+    logger.info('更新文章请求', {
+      postId: id,
+      hasSpecialData: !!updateData._specialData,
+      specialType: updateData._specialType,
+      apiName: updateData.apiName,
+      specialDataKeys: updateData._specialData ? Object.keys(updateData._specialData) : []
+    });
     
     const post = await updateBlogPost(id, updateData);
     

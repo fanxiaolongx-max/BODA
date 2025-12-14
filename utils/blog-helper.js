@@ -3,6 +3,32 @@ const { logger } = require('./logger');
 const { v4: uuidv4 } = require('uuid');
 
 /**
+ * 获取当前本地时间的 ISO 格式字符串
+ * 使用 Node.js 的时区设置（通过 TZ 环境变量，如 Africa/Cairo）
+ * @returns {string} ISO 格式的时间字符串（YYYY-MM-DDTHH:mm:ss.sssZ）
+ */
+function getCurrentLocalTimeISOString() {
+  const now = new Date();
+  // 获取本地时间的各个部分
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+  
+  // 获取时区偏移（分钟）
+  const timezoneOffset = -now.getTimezoneOffset(); // 注意：getTimezoneOffset() 返回的是 UTC 与本地时间的差值（分钟），需要取反
+  const offsetHours = String(Math.floor(Math.abs(timezoneOffset) / 60)).padStart(2, '0');
+  const offsetMinutes = String(Math.abs(timezoneOffset) % 60).padStart(2, '0');
+  const offsetSign = timezoneOffset >= 0 ? '+' : '-';
+  
+  // 返回 ISO 格式字符串，包含时区信息
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}${offsetSign}${offsetHours}:${offsetMinutes}`;
+}
+
+/**
  * 从custom_apis表获取博客数据
  * @param {string} path - API路径
  * @returns {Promise<Object|null>} API数据或null
@@ -70,6 +96,9 @@ async function getApiFieldMapping(apiName) {
  * @returns {Object} 文章对象
  */
 function convertApiItemToPost(item, apiName, fieldMapping = null) {
+  // 检查是否是天气路况的对象格式
+  const isWeatherObject = item && item.globalAlert && item.attractions && item.traffic;
+  
   // 默认字段映射（如果未配置）
   const defaultMapping = {
     id: 'id',
@@ -90,25 +119,64 @@ function convertApiItemToPost(item, apiName, fieldMapping = null) {
   
   // 应用字段映射
   // 注意：id字段现在已经是全局唯一的UUID，不需要internal_post_id
+  // 对于天气路况对象格式，使用基于API名称的稳定ID
+  const postId = isWeatherObject ? `weather-${apiName}` : (item[mapping.id] || item.id || uuidv4());
+  // name和title保持一致
+  const itemName = isWeatherObject ? '天气路况' : (item[mapping.name] || item.name || item[mapping.title] || item.title || '未命名');
+  
+  // 生成稳定的slug（基于ID）
+  let postSlug;
+  if (isWeatherObject) {
+    postSlug = 'weather';
+  } else {
+    const existingSlug = item[mapping.slug] || item.slug;
+    if (existingSlug) {
+      postSlug = existingSlug;
+    } else {
+      // 基于名称和ID生成稳定的slug
+      let baseSlug = itemName
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim();
+      
+      if (!baseSlug) {
+        baseSlug = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+      }
+      
+      const idSuffix = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+      postSlug = `${baseSlug}-${idSuffix}`;
+    }
+  }
+  // excerpt和description保持一致
+  const excerptValue = isWeatherObject 
+    ? (item.globalAlert?.message || '') 
+    : (item[mapping.excerpt] || item.excerpt || item[mapping.description] || item.description || '');
   const post = {
-    id: item[mapping.id] || item.id || uuidv4(), // id现在已经是全局唯一的UUID
-    name: item[mapping.name] || item.name || item.title || '未命名',
-    title: item[mapping.title] || item.title || item[mapping.name] || item.name,
-    slug: item[mapping.slug] || item.slug || (item[mapping.name] || item.name || '').toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-'),
-    excerpt: item[mapping.excerpt] || item.excerpt || item[mapping.description] || item.description || '',
-    description: item[mapping.description] || item.description || '',
+    id: postId, // 天气路况对象格式使用稳定ID
+    name: itemName,
+    title: itemName, // name和title保持一致
+    slug: postSlug,
+    excerpt: excerptValue,
+    description: excerptValue, // description和excerpt保持一致
     htmlContent: item[mapping.htmlContent] || item.htmlContent || item.html || '',
     image: item[mapping.image] || item.image || null,
-    category: apiName, // 分类就是API名称
+    category: item.category || apiName, // 分类/标签字段（优先使用item中的category，否则使用apiName）
     tags: item.tags || item.tag ? (Array.isArray(item.tags || item.tag) ? (item.tags || item.tag) : [item.tags || item.tag]) : [],
     published: mapping.published ? (item[mapping.published] !== undefined ? item[mapping.published] : true) : true,
     views: item[mapping.views] || item.views || 0,
-    createdAt: item[mapping.createdAt] || item.createdAt || item.created_at || new Date().toISOString(),
-    updatedAt: item[mapping.updatedAt] || item.updatedAt || item.updated_at || new Date().toISOString(),
+    createdAt: item[mapping.createdAt] || item.createdAt || item.created_at || getCurrentLocalTimeISOString(),
+    updatedAt: item[mapping.updatedAt] || item.updatedAt || item.updated_at || getCurrentLocalTimeISOString(),
     // 保留原始数据用于更新
     _sourceApiName: apiName,
     _originalData: item
   };
+  
+  // 保留特殊字段（二手市场和租房酒店）
+  if (item.price !== undefined) post.price = item.price;
+  if (item.rooms !== undefined) post.rooms = item.rooms;
+  if (item.area !== undefined) post.area = item.area;
   
   return post;
 }
@@ -158,12 +226,19 @@ async function getBlogPosts(options = {}) {
     for (const api of apis) {
       try {
         const responseContent = JSON.parse(api.response_content);
+        
+        // 支持多种格式：数组、{data: [...]}、或天气路况的对象格式
         let items = [];
         
-        // 支持两种格式：{data: [...]} 或直接是数组
-        if (Array.isArray(responseContent)) {
+        // 优先检查是否是天气路况的对象格式（包含globalAlert、attractions、traffic）
+        if (responseContent.globalAlert && responseContent.attractions && responseContent.traffic) {
+          // 天气路况的对象格式：将整个对象作为一个"文章"处理，只创建一个文章
+          items = [responseContent];
+        } else if (Array.isArray(responseContent)) {
+          // 数组格式
           items = responseContent;
         } else if (responseContent.data && Array.isArray(responseContent.data)) {
+          // 对象格式，包含data数组
           items = responseContent.data;
         } else {
           continue; // 跳过无效格式
@@ -191,16 +266,12 @@ async function getBlogPosts(options = {}) {
       allPosts = allPosts.filter(post => post.category === options.category);
     }
     
-    // 标签筛选
+    // 标签筛选（使用category字段作为标签）
     if (options.tag) {
       allPosts = allPosts.filter(post => {
-        if (Array.isArray(post.tags)) {
-          return post.tags.some(tag => 
-            (typeof tag === 'string' && tag === options.tag) ||
-            (typeof tag === 'object' && (tag.name === options.tag || tag.slug === options.tag))
-          );
-        }
-        return false;
+        // 使用category字段作为标签
+        const category = post.category || post._sourceApiName || '';
+        return category === options.tag || category.toLowerCase() === options.tag.toLowerCase();
       });
     }
     
@@ -318,6 +389,24 @@ async function findPostSourceApi(postId, apiName) {
       return null;
     }
     
+    // 优先检查是否是天气路况的对象格式
+    if (responseContent.globalAlert && responseContent.attractions && responseContent.traffic) {
+      // 天气路况对象格式：整个对象就是一个"文章"
+      // 对于天气路况，使用基于API名称的稳定ID进行匹配
+      const weatherPostId = `weather-${apiName}`;
+      if (String(postId) === String(weatherPostId)) {
+        return {
+          api,
+          items: [responseContent], // 将整个对象包装成数组
+          itemIndex: 0, // 只有一个元素，索引为0
+          isArrayFormat: false,
+          isWeatherObject: true // 标记这是天气路况对象格式
+        };
+      }
+      // 如果ID不匹配，返回null（可能是其他天气路况API）
+      return null;
+    }
+    
     let items = [];
     if (Array.isArray(responseContent)) {
       items = responseContent;
@@ -339,7 +428,8 @@ async function findPostSourceApi(postId, apiName) {
       api,
       items,
       itemIndex,
-      isArrayFormat: Array.isArray(responseContent) // 记录原始格式
+      isArrayFormat: Array.isArray(responseContent), // 记录原始格式
+      isWeatherObject: false
     };
   } catch (error) {
     logger.error('查找文章源API失败', { postId, apiName, error: error.message });
@@ -365,12 +455,22 @@ async function getBlogCategories() {
     // 获取文章列表以计算每个分类的文章数
     const posts = await getBlogPosts({ publishedOnly: false });
     
-    // 统计每个分类的文章数
+    // 统计每个分类的文章数（按_sourceApiName分组，因为文章是按apiName分组的）
     const categoryPostCount = {};
+    const seenPostIds = new Set(); // 用于去重，避免重复统计
+    
     posts.forEach(post => {
-      const categoryName = post.category || '';
-      if (categoryName) {
-        categoryPostCount[categoryName] = (categoryPostCount[categoryName] || 0) + 1;
+      const postId = String(post.id || '');
+      // 如果已存在相同id，跳过（防止重复统计）
+      if (postId && seenPostIds.has(postId)) {
+        return;
+      }
+      seenPostIds.add(postId);
+      
+      // 使用_sourceApiName作为分类名称（因为文章是按apiName分组的）
+      const apiName = post._sourceApiName || post.category || '';
+      if (apiName) {
+        categoryPostCount[apiName] = (categoryPostCount[apiName] || 0) + 1;
       }
     });
     
@@ -380,10 +480,17 @@ async function getBlogCategories() {
       name: api.name,
       slug: api.path.replace(/^\//, '').replace(/\//g, '-'), // 从path生成slug
       description: api.path, // Path作为描述
-      postCount: categoryPostCount[api.name] || 0,
+      postCount: categoryPostCount[api.name] || 0, // 使用api.name匹配_sourceApiName
       createdAt: api.created_at,
       updatedAt: api.updated_at
     }));
+    
+    logger.info('分类文章数统计', {
+      总分类数: categories.length,
+      总文章数: posts.length,
+      去重后文章数: seenPostIds.size,
+      分类统计: categoryPostCount
+    });
     
     return categories;
   } catch (error) {
@@ -393,18 +500,37 @@ async function getBlogCategories() {
 }
 
 /**
- * 获取标签列表
+ * 获取标签列表（从所有文章的category字段中提取）
  * @returns {Promise<Array>} 标签列表
  */
 async function getBlogTags() {
   try {
-    const api = await getBlogApi('/blog/tags');
+    // 从所有文章中提取category字段作为标签
+    const posts = await getBlogPosts({ publishedOnly: true });
     
-    if (!api || !api.response_content || !api.response_content.data) {
-      return [];
-    }
+    // 统计每个category的文章数量
+    const tagCountMap = new Map();
+    posts.forEach(post => {
+      const category = post.category || post._sourceApiName || '';
+      if (category) {
+        tagCountMap.set(category, (tagCountMap.get(category) || 0) + 1);
+      }
+    });
     
-    return api.response_content.data;
+    // 转换为标签数组
+    const tags = Array.from(tagCountMap.entries()).map(([name, count]) => ({
+      id: name, // 使用category名称作为ID
+      name: name,
+      slug: name.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-'),
+      postCount: count
+    }));
+    
+    // 按文章数量降序排序
+    tags.sort((a, b) => b.postCount - a.postCount);
+    
+    logger.info('从文章category字段提取标签', { tagCount: tags.length });
+    
+    return tags;
   } catch (error) {
     logger.error('获取标签列表失败', { error: error.message });
     return [];
@@ -490,7 +616,7 @@ async function incrementPostViews(slug) {
       item.views = 0;
     }
     item.views += 1;
-    item.updatedAt = new Date().toISOString();
+    item.updatedAt = getCurrentLocalTimeISOString();
     
     // 更新API的response_content，保持原有格式
     let responseContent;
@@ -562,7 +688,7 @@ async function upsertBlogApi(path, name, responseContent, method = 'GET', descri
          VALUES (?, ?, ?, ?, ?, 'active', 0)`,
         [name, path, method, responseContentJson, description]
       );
-      return result.lastID;
+      return result.id;
     }
   } catch (error) {
     logger.error('创建/更新博客API失败', { path, error: error.message });
@@ -592,27 +718,7 @@ async function createBlogPost(postData) {
       throw new Error(`API "${postData.apiName}" 不存在`);
     }
     
-    // 生成slug（如果没有提供）
-    let slug = postData.slug;
-    if (!slug && postData.name) {
-      slug = postData.name
-        .toLowerCase()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim();
-    }
-    
-    // 确保slug唯一
-    const posts = await getBlogPosts({ publishedOnly: false });
-    let finalSlug = slug;
-    let counter = 1;
-    while (posts.some(p => p.slug === finalSlug)) {
-      finalSlug = `${slug}-${counter}`;
-      counter++;
-    }
-    
-    // 生成文章ID（全局唯一的UUID）
+    // 生成文章ID（全局唯一的UUID）- 先生成ID，用于生成稳定的slug
     // UUID格式的正则表达式
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     
@@ -641,70 +747,212 @@ async function createBlogPost(postData) {
       postId = uuidv4();
     }
     
+    // 生成稳定的slug（基于ID，确保唯一性和稳定性）
+    let slug = postData.slug;
+    if (!slug && postData.name) {
+      // 基础slug从名称生成
+      let baseSlug = postData.name
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim();
+      
+      // 如果slug为空，使用id的前8位
+      if (!baseSlug) {
+        baseSlug = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+      }
+      
+      // 添加ID的前8位确保唯一性
+      const idSuffix = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+      slug = `${baseSlug}-${idSuffix}`;
+    }
+    
+    // 确保slug唯一（检查是否与其他文章冲突，排除当前文章）
+    const posts = await getBlogPosts({ publishedOnly: false });
+    let finalSlug = slug;
+    let counter = 1;
+    while (posts.some(p => p.slug === finalSlug && String(p.id) !== String(postId))) {
+      // 如果冲突，在基础slug后添加计数器
+      const baseSlug = slug.split('-').slice(0, -1).join('-') || slug;
+      finalSlug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+    
     // 构建文章数据（根据字段映射配置）
     const fieldMapping = await getApiFieldMapping(postData.apiName);
     
-    // 构建原始数据项（用于存储到API的response_content中）
-    const newItem = {
-      id: postId, // id现在是全局唯一的UUID
-      name: postData.name || postData.title || '未命名',
-      title: postData.title || postData.name,
-      slug: finalSlug,
-      excerpt: postData.excerpt || '',
-      description: postData.description || '',
-      htmlContent: postData.htmlContent || '',
-      image: postData.image || null,
-      tags: Array.isArray(postData.tags) ? postData.tags : (postData.tags ? postData.tags.split(',').map(t => t.trim()) : []),
-      published: postData.published !== undefined ? postData.published : false,
-      views: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    // 检查是否是特殊类别
+    const isSpecialCategory = (apiName) => {
+      if (!apiName) return null;
+      const lowerName = apiName.toLowerCase();
+      if (lowerName === 'weather' || lowerName.includes('weather')) return 'weather';
+      if (lowerName === 'exchange-rate' || lowerName === 'exchangerate' || lowerName.includes('exchange')) return 'exchange-rate';
+      if (lowerName === 'translation' || lowerName.includes('translation')) return 'translation';
+      return null;
     };
+    
+    // 生成特殊类别名称的辅助函数
+    const generateSpecialCategoryName = (type, data) => {
+      if (type === 'translation') {
+        return `${data.chinese || ''} / ${data.arabic || ''}`;
+      } else if (type === 'weather') {
+        return `${data.city || ''} - ${data.temperature || ''}`;
+      } else if (type === 'exchange-rate') {
+        return `${data.fromCurrency || ''} → ${data.toCurrency || ''}: ${data.rate || ''}`;
+      }
+      return '未命名';
+    };
+    
+    const specialType = isSpecialCategory(postData.apiName);
+    
+    // 构建原始数据项（用于存储到API的response_content中）
+    let newItem;
+    let isWeatherObjectFormat = false;
+    
+    if (specialType && postData._specialData) {
+      if (specialType === 'weather') {
+        // 天气路况：整个对象格式，需要特殊处理
+        isWeatherObjectFormat = true;
+        
+        // 构建完整的天气路况对象（只包含globalAlert、attractions、traffic）
+        // 只提取需要的字段，不要使用展开运算符，避免包含其他字段
+        newItem = {
+          globalAlert: postData._specialData.globalAlert ? { ...postData._specialData.globalAlert } : undefined,
+          attractions: postData._specialData.attractions ? [...postData._specialData.attractions] : [],
+          traffic: postData._specialData.traffic ? [...postData._specialData.traffic] : []
+        };
+        
+        // 确保所有字段都存在
+        if (!newItem.globalAlert) {
+          throw new Error('天气路况必须包含globalAlert字段');
+        }
+        if (!Array.isArray(newItem.attractions)) {
+          newItem.attractions = [];
+        }
+        if (!Array.isArray(newItem.traffic)) {
+          newItem.traffic = [];
+        }
+        // 注意：天气路况对象格式不使用slug字段，因为它是整个对象而不是数组中的项
+      } else {
+        // 其他特殊类别：直接使用特殊数据
+        const specialName = postData.name || generateSpecialCategoryName(specialType, postData._specialData);
+        // 为特殊类别生成稳定的slug
+        let specialSlug = postData.slug;
+        if (!specialSlug) {
+          let baseSlug = specialName
+            .toLowerCase()
+            .replace(/[^\w\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim();
+          
+          if (!baseSlug) {
+            baseSlug = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+          }
+          
+          const idSuffix = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+          specialSlug = `${baseSlug}-${idSuffix}`;
+        }
+        
+        // 从特殊数据中排除detailApi字段（已废弃）
+        const { detailApi, ...specialDataWithoutDetailApi } = postData._specialData || {};
+        newItem = {
+          id: postId,
+          slug: specialSlug,
+          ...specialDataWithoutDetailApi,
+          // 为特殊类别生成name字段（用于显示）
+          name: specialName
+        };
+      }
+    } else {
+      // 普通类别：使用标准格式
+      // name和title保持一致
+      const nameValue = postData.name || postData.title || '未命名';
+      // excerpt和description保持一致
+      const excerptValue = postData.excerpt || postData.description || '';
+      // 从postData中排除detailApi字段（已废弃）
+      const { detailApi: _, ...postDataWithoutDetailApi } = postData;
+      newItem = {
+        id: postId, // id现在是全局唯一的UUID
+        name: nameValue,
+        title: nameValue, // name和title保持一致
+        slug: finalSlug, // 使用基于ID的稳定slug
+        excerpt: excerptValue,
+        description: excerptValue, // description和excerpt保持一致
+        htmlContent: postData.htmlContent || '',
+        image: postData.image || null,
+        category: postData.category || postData.apiName, // 分类/标签字段（用于博客展示，替代原来的tags字段）
+        // tags字段已废弃，不再使用
+        published: postData.published !== undefined ? postData.published : false,
+        views: 0,
+        createdAt: getCurrentLocalTimeISOString(),
+        updatedAt: getCurrentLocalTimeISOString()
+      };
+      
+      // 添加特殊字段（二手市场和租房酒店）
+      if (postData.price !== undefined) {
+        newItem.price = postData.price;
+      }
+      if (postData.rooms !== undefined) {
+        newItem.rooms = postData.rooms;
+      }
+      if (postData.area !== undefined) {
+        newItem.area = postData.area;
+      }
+      if (postData.views !== undefined && typeof postData.views === 'number') {
+        newItem.views = postData.views;
+      }
+    }
     
     // 解析现有API数据，保持原有格式（数组或对象）
     let responseContent;
     let isArrayFormat = false;
     let items = [];
     
-    try {
-      const parsed = JSON.parse(targetApi.response_content);
-      // 检查原始格式
-      if (Array.isArray(parsed)) {
-        // 原始是数组格式，保持数组格式
-        isArrayFormat = true;
-        items = parsed;
-      } else if (parsed.data && Array.isArray(parsed.data)) {
-        // 原始是对象格式，包含data数组
-        isArrayFormat = false;
-        items = parsed.data;
-        responseContent = { ...parsed }; // 保留其他字段
-      } else {
-        // 其他格式，默认使用对象格式
-        isArrayFormat = false;
-        items = [];
-        responseContent = parsed || {};
-      }
-    } catch (e) {
-      // 解析失败，默认使用数组格式
-      isArrayFormat = true;
-      items = [];
-    }
-    
-    // 添加新文章到数组
-    items.push(newItem);
-    
-    // 根据原始格式保存
-    let finalContent;
-    if (isArrayFormat) {
-      // 保持数组格式
-      finalContent = items;
+    // 如果是天气路况的对象格式，直接替换整个对象
+    if (isWeatherObjectFormat) {
+      finalContent = newItem;
     } else {
-      // 保持对象格式
-      if (!responseContent) {
-        responseContent = {};
+      try {
+        const parsed = JSON.parse(targetApi.response_content);
+        // 检查原始格式
+        if (Array.isArray(parsed)) {
+          // 原始是数组格式，保持数组格式
+          isArrayFormat = true;
+          items = parsed;
+        } else if (parsed.data && Array.isArray(parsed.data)) {
+          // 原始是对象格式，包含data数组
+          isArrayFormat = false;
+          items = parsed.data;
+          responseContent = { ...parsed }; // 保留其他字段
+        } else {
+          // 其他格式，默认使用对象格式
+          isArrayFormat = false;
+          items = [];
+          responseContent = parsed || {};
+        }
+      } catch (e) {
+        // 解析失败，默认使用数组格式
+        isArrayFormat = true;
+        items = [];
       }
-      responseContent.data = items;
-      finalContent = responseContent;
+      
+      // 添加新文章到数组
+      items.push(newItem);
+      
+      // 根据原始格式保存
+      if (isArrayFormat) {
+        // 保持数组格式
+        finalContent = items;
+      } else {
+        // 保持对象格式
+        if (!responseContent) {
+          responseContent = {};
+        }
+        responseContent.data = items;
+        finalContent = responseContent;
+      }
     }
     
     // 更新API的response_content，保持原有格式
@@ -760,37 +1008,234 @@ async function updateBlogPost(postId, postData) {
     const originalItem = sourceApi.items[sourceApi.itemIndex];
     const originalId = originalItem.id;
     
-    const updatedItem = {
-      ...originalItem,
-      ...postData,
-      id: originalId, // 使用原始ID，确保ID不变（id现在是全局唯一的UUID）
-      updatedAt: new Date().toISOString()
+    // 如果是天气路况对象格式，originalItem就是整个对象
+    // 优先使用sourceApi的标记，因为这是最准确的
+    let isWeatherObjectFormat = sourceApi.isWeatherObject || false;
+    
+    // 检查是否是特殊类别
+    const isSpecialCategory = (apiName) => {
+      if (!apiName) return null;
+      const lowerName = apiName.toLowerCase();
+      if (lowerName === 'weather' || lowerName.includes('weather')) return 'weather';
+      if (lowerName === 'exchange-rate' || lowerName === 'exchangerate' || lowerName.includes('exchange')) return 'exchange-rate';
+      if (lowerName === 'translation' || lowerName.includes('translation')) return 'translation';
+      return null;
     };
+    
+    const specialType = isSpecialCategory(apiName);
+    
+    // 如果sourceApi标记为天气路况对象格式，强制设置为true
+    if (sourceApi.isWeatherObject) {
+      isWeatherObjectFormat = true;
+    }
+    
+    let updatedItem;
+    
+    // 如果已经是天气路况对象格式，但缺少_specialData，使用原始对象
+    if (isWeatherObjectFormat && (!specialType || !postData._specialData)) {
+      logger.warn('天气路况对象格式但缺少_specialData，使用原始对象', {
+        postId,
+        apiName,
+        hasSpecialType: !!specialType,
+        hasSpecialData: !!postData._specialData
+      });
+      // 使用原始对象，只更新允许的字段
+      updatedItem = { ...originalItem };
+      if (postData.name) updatedItem.name = postData.name;
+      // 注意：对于天气路况对象格式，不应该直接修改对象结构
+    } else if (specialType && postData._specialData) {
+      if (specialType === 'weather') {
+        // 天气路况：整个对象格式，需要特殊处理
+        isWeatherObjectFormat = true; // 确保标记为天气路况对象格式
+        
+        logger.info('更新天气路况文章', { 
+          postId, 
+          apiName,
+          hasSpecialData: !!postData._specialData,
+          specialDataKeys: postData._specialData ? Object.keys(postData._specialData) : []
+        });
+        
+        // 构建完整的天气路况对象（只包含globalAlert、attractions、traffic）
+        // 只提取需要的字段，不要使用展开运算符，避免包含其他字段
+        updatedItem = {
+          globalAlert: postData._specialData.globalAlert ? { ...postData._specialData.globalAlert } : undefined,
+          attractions: postData._specialData.attractions ? [...postData._specialData.attractions] : [],
+          traffic: postData._specialData.traffic ? [...postData._specialData.traffic] : []
+        };
+        
+        // 确保所有字段都存在
+        if (!updatedItem.globalAlert) {
+          throw new Error('天气路况必须包含globalAlert字段');
+        }
+        if (!Array.isArray(updatedItem.attractions)) {
+          updatedItem.attractions = [];
+        }
+        if (!Array.isArray(updatedItem.traffic)) {
+          updatedItem.traffic = [];
+        }
+        
+        logger.info('构建天气路况对象', { 
+          globalAlert: updatedItem.globalAlert,
+          globalAlertMessage: updatedItem.globalAlert?.message,
+          attractionsCount: updatedItem.attractions ? updatedItem.attractions.length : 0,
+          trafficCount: updatedItem.traffic ? updatedItem.traffic.length : 0,
+          finalKeys: Object.keys(updatedItem)
+        });
+      } else {
+        // 其他特殊类别（exchange-rate、translation）：直接使用特殊数据，保留原始ID
+        // 从特殊数据中排除detailApi字段（已废弃）
+        const { detailApi, ...specialDataWithoutDetailApi } = postData._specialData || {};
+        updatedItem = {
+          id: originalId,
+          ...specialDataWithoutDetailApi,
+          // 如果有name字段，更新它
+          name: postData.name || originalItem.name
+        };
+        // 注意：exchange-rate 和 translation 不使用 htmlContent
+      }
+    } else {
+      // 普通类别或需要htmlContent的特殊类别（second-hand、rentals）：使用标准格式
+      // name和title保持一致
+      const nameValue = postData.name !== undefined ? postData.name : (postData.title !== undefined ? postData.title : originalItem.name);
+      // excerpt和description保持一致
+      let excerptValue;
+      if (postData.excerpt !== undefined) {
+        excerptValue = postData.excerpt;
+      } else if (postData.description !== undefined) {
+        excerptValue = postData.description;
+      } else {
+        excerptValue = originalItem.excerpt || originalItem.description || '';
+      }
+      // 从originalItem和postData中排除detailApi字段（已废弃）
+      const { detailApi: originalDetailApi, ...originalItemWithoutDetailApi } = originalItem;
+      const { detailApi: postDetailApi, ...postDataWithoutDetailApi } = postData;
+      updatedItem = {
+        ...originalItemWithoutDetailApi,
+        ...postDataWithoutDetailApi,
+        id: originalId, // 使用原始ID，确保ID不变（id现在是全局唯一的UUID）
+        name: nameValue,
+        title: nameValue, // name和title保持一致
+        excerpt: excerptValue,
+        description: excerptValue, // description和excerpt保持一致
+        category: postData.category !== undefined ? postData.category : (originalItem.category || apiName), // 分类/标签字段
+        updatedAt: getCurrentLocalTimeISOString()
+      };
+      
+      // 确保 htmlContent 被正确更新（对于 second-hand 和 rentals，htmlContent 应该被保留）
+      if (postData.htmlContent !== undefined) {
+        updatedItem.htmlContent = postData.htmlContent;
+      }
+      
+      // 添加或更新特殊字段（二手市场和租房酒店）
+      if (postData.price !== undefined) {
+        updatedItem.price = postData.price;
+      }
+      if (postData.rooms !== undefined) {
+        updatedItem.rooms = postData.rooms;
+      }
+      if (postData.area !== undefined) {
+        updatedItem.area = postData.area;
+      }
+      if (postData.views !== undefined && typeof postData.views === 'number') {
+        updatedItem.views = postData.views;
+      }
+      
+      // 处理slug的唯一性和稳定性
+      if (postData.slug !== undefined) {
+        // 如果提供了新slug，检查唯一性
+        const posts = await getBlogPosts({ publishedOnly: false });
+        let finalSlug = postData.slug;
+        
+        // 如果slug为空，基于名称和ID生成
+        if (!finalSlug) {
+          const name = postData.name || updatedItem.name || updatedItem.title || '未命名';
+          let baseSlug = name
+            .toLowerCase()
+            .replace(/[^\w\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim();
+          
+          if (!baseSlug) {
+            baseSlug = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+          }
+          
+          const idSuffix = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+          finalSlug = `${baseSlug}-${idSuffix}`;
+        }
+        
+        // 确保slug唯一（排除当前文章）
+        let counter = 1;
+        const originalSlug = originalItem.slug;
+        while (posts.some(p => p.slug === finalSlug && String(p.id) !== String(originalId))) {
+          const baseSlug = finalSlug.split('-').slice(0, -1).join('-') || finalSlug;
+          finalSlug = `${baseSlug}-${counter}`;
+          counter++;
+        }
+        
+        updatedItem.slug = finalSlug;
+      } else if (!updatedItem.slug) {
+        // 如果没有slug，基于名称和ID生成稳定的slug
+        const name = updatedItem.name || updatedItem.title || '未命名';
+        let baseSlug = name
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim();
+        
+        if (!baseSlug) {
+          baseSlug = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+        }
+        
+        const idSuffix = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+        const newSlug = `${baseSlug}-${idSuffix}`;
+        
+        // 检查唯一性
+        const posts = await getBlogPosts({ publishedOnly: false });
+        let finalSlug = newSlug;
+        let counter = 1;
+        while (posts.some(p => p.slug === finalSlug && String(p.id) !== String(originalId))) {
+          const baseSlugPart = newSlug.split('-').slice(0, -1).join('-') || newSlug;
+          finalSlug = `${baseSlugPart}-${counter}`;
+          counter++;
+        }
+        
+        updatedItem.slug = finalSlug;
+      }
+    }
     
     // 如果分类改变，需要移动到新的API
     if (postData.apiName && postData.apiName !== apiName) {
-      // 从旧API中删除
-      sourceApi.items.splice(sourceApi.itemIndex, 1);
-      
-      // 更新旧API，保持原有格式
+      // 从旧API中删除（如果是天气路况对象格式，不需要删除，因为整个对象会被替换）
       let oldResponseContent;
-      let oldIsArrayFormat = false;
       
-      try {
-        const parsed = JSON.parse(sourceApi.api.response_content);
-        if (Array.isArray(parsed)) {
-          // 原始是数组格式，保持数组格式
+      if (isWeatherObjectFormat) {
+        // 天气路况：清空整个对象（只包含globalAlert、attractions、traffic）
+        oldResponseContent = { globalAlert: { level: 'low', message: '' }, attractions: [], traffic: [] };
+      } else {
+        // 普通格式：从数组中删除
+        sourceApi.items.splice(sourceApi.itemIndex, 1);
+        
+        // 更新旧API，保持原有格式
+        let oldIsArrayFormat = false;
+        
+        try {
+          const parsed = JSON.parse(sourceApi.api.response_content);
+          if (Array.isArray(parsed)) {
+            // 原始是数组格式，保持数组格式
+            oldIsArrayFormat = true;
+            oldResponseContent = sourceApi.items;
+          } else {
+            // 原始是对象格式，保持对象格式
+            oldIsArrayFormat = false;
+            oldResponseContent = { ...parsed, data: sourceApi.items };
+          }
+        } catch (e) {
+          // 解析失败，默认使用数组格式
           oldIsArrayFormat = true;
           oldResponseContent = sourceApi.items;
-        } else {
-          // 原始是对象格式，保持对象格式
-          oldIsArrayFormat = false;
-          oldResponseContent = { ...parsed, data: sourceApi.items };
         }
-      } catch (e) {
-        // 解析失败，默认使用数组格式
-        oldIsArrayFormat = true;
-        oldResponseContent = sourceApi.items;
       }
       
       await runAsync(
@@ -812,48 +1257,55 @@ async function updateBlogPost(postId, postData) {
       }
       
       // 添加到新API，保持新API的原有格式
-      let newResponseContent;
-      let newIsArrayFormat = false;
-      let newItems = [];
-      
-      try {
-        const parsed = JSON.parse(newApi.response_content);
-        if (Array.isArray(parsed)) {
-          // 新API是数组格式，保持数组格式
-          newIsArrayFormat = true;
-          newItems = parsed;
-        } else if (parsed.data && Array.isArray(parsed.data)) {
-          // 新API是对象格式，包含data数组
-          newIsArrayFormat = false;
-          newItems = parsed.data;
-          newResponseContent = { ...parsed }; // 保留其他字段
-        } else {
-          // 其他格式，默认使用对象格式
-          newIsArrayFormat = false;
-          newItems = [];
-          newResponseContent = parsed || {};
-        }
-      } catch (e) {
-        // 解析失败，默认使用数组格式
-        newIsArrayFormat = true;
-        newItems = [];
-      }
-      
-      // 添加文章到新API
-      newItems.push(updatedItem);
-      
-      // 根据新API的原始格式保存
       let newFinalContent;
-      if (newIsArrayFormat) {
-        // 保持数组格式
-        newFinalContent = newItems;
+      
+      if (isWeatherObjectFormat) {
+        // 天气路况：直接替换整个对象
+        newFinalContent = updatedItem;
       } else {
-        // 保持对象格式
-        if (!newResponseContent) {
-          newResponseContent = {};
+        // 普通格式：解析新API数据
+        let newResponseContent;
+        let newIsArrayFormat = false;
+        let newItems = [];
+        
+        try {
+          const parsed = JSON.parse(newApi.response_content);
+          if (Array.isArray(parsed)) {
+            // 新API是数组格式，保持数组格式
+            newIsArrayFormat = true;
+            newItems = parsed;
+          } else if (parsed.data && Array.isArray(parsed.data)) {
+            // 新API是对象格式，包含data数组
+            newIsArrayFormat = false;
+            newItems = parsed.data;
+            newResponseContent = { ...parsed }; // 保留其他字段
+          } else {
+            // 其他格式，默认使用对象格式
+            newIsArrayFormat = false;
+            newItems = [];
+            newResponseContent = parsed || {};
+          }
+        } catch (e) {
+          // 解析失败，默认使用数组格式
+          newIsArrayFormat = true;
+          newItems = [];
         }
-        newResponseContent.data = newItems;
-        newFinalContent = newResponseContent;
+        
+        // 添加文章到新API
+        newItems.push(updatedItem);
+        
+        // 根据新API的原始格式保存
+        if (newIsArrayFormat) {
+          // 保持数组格式
+          newFinalContent = newItems;
+        } else {
+          // 保持对象格式
+          if (!newResponseContent) {
+            newResponseContent = {};
+          }
+          newResponseContent.data = newItems;
+          newFinalContent = newResponseContent;
+        }
       }
       
       await runAsync(
@@ -864,34 +1316,160 @@ async function updateBlogPost(postId, postData) {
       );
     } else {
       // 在同一API中更新，保持原有格式
-      sourceApi.items[sourceApi.itemIndex] = updatedItem;
+      let finalContent;
       
-      let responseContent;
-      let isArrayFormat = false;
-      
-      try {
-        const parsed = JSON.parse(sourceApi.api.response_content);
-        if (Array.isArray(parsed)) {
-          // 原始是数组格式，保持数组格式
+      if (isWeatherObjectFormat) {
+        // 天气路况：直接替换整个对象
+        // 确保updatedItem包含所有必要的字段
+        if (!updatedItem || typeof updatedItem !== 'object') {
+          logger.error('天气路况updatedItem无效', { updatedItem });
+          throw new Error('天气路况更新数据无效');
+        }
+        
+        finalContent = updatedItem;
+        
+        logger.info('准备保存天气路况对象到数据库', {
+          apiId: sourceApi.api.id,
+          apiName: sourceApi.api.name,
+          finalContentKeys: Object.keys(finalContent),
+          hasGlobalAlert: !!finalContent.globalAlert,
+          attractionsCount: finalContent.attractions ? finalContent.attractions.length : 0,
+          trafficCount: finalContent.traffic ? finalContent.traffic.length : 0,
+          hasDataField: finalContent.data !== undefined,
+          finalContentPreview: JSON.stringify(finalContent).substring(0, 500)
+        });
+      } else {
+        // 普通格式：更新数组中的项
+        sourceApi.items[sourceApi.itemIndex] = updatedItem;
+        
+        let responseContent;
+        let isArrayFormat = false;
+        
+        try {
+          const parsed = JSON.parse(sourceApi.api.response_content);
+          if (Array.isArray(parsed)) {
+            // 原始是数组格式，保持数组格式
+            isArrayFormat = true;
+            responseContent = sourceApi.items;
+          } else {
+            // 原始是对象格式，保持对象格式
+            isArrayFormat = false;
+            responseContent = { ...parsed, data: sourceApi.items };
+          }
+        } catch (e) {
+          // 解析失败，默认使用数组格式
           isArrayFormat = true;
           responseContent = sourceApi.items;
-        } else {
-          // 原始是对象格式，保持对象格式
-          isArrayFormat = false;
-          responseContent = { ...parsed, data: sourceApi.items };
         }
-      } catch (e) {
-        // 解析失败，默认使用数组格式
-        isArrayFormat = true;
-        responseContent = sourceApi.items;
+        
+        finalContent = responseContent;
       }
       
-      await runAsync(
+      // 确保finalContent是有效的JSON对象
+      if (!finalContent || typeof finalContent !== 'object') {
+        logger.error('finalContent无效，无法保存到数据库', { 
+          finalContent, 
+          isWeatherObject: isWeatherObjectFormat,
+          apiId: sourceApi.api.id 
+        });
+        throw new Error('更新内容无效');
+      }
+      
+      const jsonContent = JSON.stringify(finalContent);
+      if (!jsonContent || jsonContent === 'null' || jsonContent === 'undefined') {
+        logger.error('JSON序列化失败', { finalContent, apiId: sourceApi.api.id });
+        throw new Error('无法序列化更新内容');
+      }
+      
+      logger.info('执行数据库更新', {
+        apiId: sourceApi.api.id,
+        apiName: sourceApi.api.name,
+        isWeatherObject: isWeatherObjectFormat,
+        jsonLength: jsonContent.length,
+        jsonPreview: jsonContent.substring(0, 200)
+      });
+      
+      const updateResult = await runAsync(
         `UPDATE custom_apis 
          SET response_content = ?, updated_at = datetime('now', 'localtime')
          WHERE id = ?`,
-        [JSON.stringify(responseContent), sourceApi.api.id]
+        [jsonContent, sourceApi.api.id]
       );
+      
+      logger.info('数据库更新完成', {
+        apiId: sourceApi.api.id,
+        changes: updateResult.changes,
+        id: updateResult.id,
+        isWeatherObject: isWeatherObjectFormat
+      });
+      
+      // 如果changes为0，说明没有行被更新，可能是WHERE条件不匹配
+      if (updateResult.changes === 0) {
+        logger.warn('数据库更新未影响任何行', {
+          apiId: sourceApi.api.id,
+          apiName: sourceApi.api.name
+        });
+        // 验证API是否存在
+        const checkApi = await getAsync('SELECT id FROM custom_apis WHERE id = ?', [sourceApi.api.id]);
+        if (!checkApi) {
+          throw new Error(`API不存在: ${sourceApi.api.id}`);
+        }
+      }
+      
+      // 验证更新是否成功
+      const verifyApi = await getAsync(
+        'SELECT response_content FROM custom_apis WHERE id = ?',
+        [sourceApi.api.id]
+      );
+      
+      if (verifyApi) {
+        try {
+          const verifyContent = JSON.parse(verifyApi.response_content);
+          
+          // 检查是否有不应该存在的字段
+          const allowedFields = ['globalAlert', 'attractions', 'traffic'];
+          const extraFields = Object.keys(verifyContent).filter(key => !allowedFields.includes(key));
+          
+          if (extraFields.length > 0) {
+            logger.warn('数据库中存在不应该的字段', {
+              apiId: sourceApi.api.id,
+              extraFields: extraFields
+            });
+          }
+          
+          logger.info('验证数据库更新结果', {
+            apiId: sourceApi.api.id,
+            hasGlobalAlert: !!verifyContent.globalAlert,
+            globalAlertMessage: verifyContent.globalAlert?.message,
+            attractionsCount: verifyContent.attractions ? verifyContent.attractions.length : 0,
+            trafficCount: verifyContent.traffic ? verifyContent.traffic.length : 0,
+            hasDataField: verifyContent.data !== undefined,
+            extraFields: extraFields.length > 0 ? extraFields : undefined
+          });
+          
+          // 如果发现不应该的字段，清理它们
+          if (extraFields.length > 0 && isWeatherObjectFormat) {
+            logger.info('清理不应该的字段', { apiId: sourceApi.api.id, extraFields });
+            const cleanedContent = {
+              globalAlert: verifyContent.globalAlert,
+              attractions: verifyContent.attractions,
+              traffic: verifyContent.traffic
+            };
+            
+            const cleanedJson = JSON.stringify(cleanedContent);
+            await runAsync(
+              `UPDATE custom_apis 
+               SET response_content = ?, updated_at = datetime('now', 'localtime')
+               WHERE id = ?`,
+              [cleanedJson, sourceApi.api.id]
+            );
+            
+            logger.info('已清理不应该的字段', { apiId: sourceApi.api.id });
+          }
+        } catch (e) {
+          logger.error('验证数据库更新结果失败', { error: e.message });
+        }
+      }
     }
     
     // 返回更新后的文章（转换为标准格式）
@@ -1011,13 +1589,18 @@ async function createBlogCategory(categoryData) {
       description || categoryPath // description字段存储path
     ]);
     
+    // 确保 result.id 存在
+    if (result.id === undefined || result.id === null) {
+      throw new Error('创建分类失败：无法获取新分类的ID');
+    }
+    
     return {
-      id: result.lastID,
+      id: result.id,
       name: name,
       slug: categoryPath.replace(/^\//, '').replace(/\//g, '-'),
       description: categoryPath,
       postCount: 0,
-      createdAt: new Date().toISOString()
+      createdAt: getCurrentLocalTimeISOString()
     };
   } catch (error) {
     logger.error('创建分类失败', { error: error.message });
@@ -1096,7 +1679,7 @@ async function updateBlogCategory(id, categoryData) {
       name: updated.name,
       slug: updated.path.replace(/^\//, '').replace(/\//g, '-'),
       description: updated.path,
-      updatedAt: new Date().toISOString()
+      updatedAt: getCurrentLocalTimeISOString()
     };
   } catch (error) {
     logger.error('更新分类失败', { id, error: error.message });
@@ -1164,7 +1747,7 @@ async function createBlogTag(tagData) {
       name: tagData.name,
       slug: slug,
       postCount: 0,
-      createdAt: new Date().toISOString()
+      createdAt: getCurrentLocalTimeISOString()
     };
     
     tags.push(newTag);
@@ -1210,8 +1793,8 @@ async function createBlogComment(postId, commentData) {
       postId: postId,
       parentId: commentData.parentId || null,
       approved: false, // 默认需要审核
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: getCurrentLocalTimeISOString(),
+      updatedAt: getCurrentLocalTimeISOString()
     };
     
     allCommentsList.push(newComment);
@@ -1251,7 +1834,7 @@ async function approveBlogComment(commentId, approved = true) {
         
         if (commentIndex !== -1) {
           api.response_content.data[commentIndex].approved = approved;
-          api.response_content.data[commentIndex].updatedAt = new Date().toISOString();
+          api.response_content.data[commentIndex].updatedAt = getCurrentLocalTimeISOString();
           
           await upsertBlogApi(
             `/blog/posts/${post.id}/comments`,

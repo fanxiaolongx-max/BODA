@@ -5,6 +5,7 @@ const { requireApiToken } = require('../middleware/api-token-auth');
 const { validate } = require('../middleware/validation');
 const { logger } = require('../utils/logger');
 const { reloadCustomApiRoutes } = require('../utils/custom-api-router');
+const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
 
@@ -319,14 +320,132 @@ router.put('/custom-apis/:id', [
     
     if (response_content !== undefined) {
       // 验证返回内容是否为有效的JSON
+      let parsedContent;
       try {
-        JSON.parse(response_content);
+        parsedContent = JSON.parse(response_content);
       } catch (e) {
         return res.status(400).json({
           success: false,
           message: '返回内容必须是有效的JSON格式',
           code: 'INVALID_JSON'
         });
+      }
+      
+      // 如果是GET方法的API，保护文章ID和slug
+      if (existing.method === 'GET' || (method !== undefined && method === 'GET')) {
+        try {
+          // 读取原始API数据
+          const originalApi = await getAsync(
+            'SELECT response_content FROM custom_apis WHERE id = ?',
+            [id]
+          );
+          
+          if (originalApi && originalApi.response_content) {
+            const originalContent = JSON.parse(originalApi.response_content);
+            let originalItems = [];
+            let newItems = [];
+            
+            // 解析原始数据
+            if (Array.isArray(originalContent)) {
+              originalItems = originalContent;
+              newItems = Array.isArray(parsedContent) ? parsedContent : [];
+            } else if (originalContent.data && Array.isArray(originalContent.data)) {
+              originalItems = originalContent.data;
+              newItems = (parsedContent.data && Array.isArray(parsedContent.data)) ? parsedContent.data : [];
+            }
+            
+            // 如果有文章数据，保护ID和slug
+            if (originalItems.length > 0 && newItems.length > 0) {
+              const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+              
+              // 创建原始ID和slug映射
+              const originalIdMap = new Map();
+              const originalSlugMap = new Map();
+              originalItems.forEach(item => {
+                const key = String(item.name || item.title || '').toLowerCase();
+                if (item.id && UUID_REGEX.test(String(item.id))) {
+                  originalIdMap.set(key, item.id);
+                  if (item.slug) {
+                    originalSlugMap.set(String(item.id), item.slug);
+                  }
+                }
+              });
+              
+              // 恢复被修改的ID和slug
+              let hasIdChanged = false;
+              let hasSlugChanged = false;
+              const usedSlugs = new Set();
+              
+              newItems.forEach((item) => {
+                const key = String(item.name || item.title || '').toLowerCase();
+                const originalId = originalIdMap.get(key);
+                
+                if (originalId) {
+                  const currentId = String(item.id || '');
+                  if (!UUID_REGEX.test(currentId) || currentId !== originalId) {
+                    item.id = originalId;
+                    hasIdChanged = true;
+                  }
+                  
+                  // 恢复或生成稳定的slug
+                  const originalSlug = originalSlugMap.get(String(originalId));
+                  if (originalSlug && !usedSlugs.has(originalSlug)) {
+                    item.slug = originalSlug;
+                    usedSlugs.add(originalSlug);
+                    if (item.slug !== originalSlug) {
+                      hasSlugChanged = true;
+                    }
+                  } else if (!item.slug || usedSlugs.has(item.slug)) {
+                    const name = item.name || item.title || '未命名';
+                    let baseSlug = name
+                      .toLowerCase()
+                      .replace(/[^\w\s-]/g, '')
+                      .replace(/\s+/g, '-')
+                      .replace(/-+/g, '-')
+                      .trim();
+                    
+                    if (!baseSlug) {
+                      baseSlug = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                    }
+                    
+                    const idSuffix = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                    let newSlug = `${baseSlug}-${idSuffix}`;
+                    
+                    let counter = 1;
+                    while (usedSlugs.has(newSlug)) {
+                      const baseSlugPart = newSlug.split('-').slice(0, -1).join('-') || newSlug;
+                      newSlug = `${baseSlugPart}-${counter}`;
+                      counter++;
+                    }
+                    
+                    item.slug = newSlug;
+                    usedSlugs.add(newSlug);
+                    hasSlugChanged = true;
+                  } else {
+                    usedSlugs.add(item.slug);
+                  }
+                }
+              });
+              
+              // 更新parsedContent
+              if (hasIdChanged || hasSlugChanged) {
+                if (Array.isArray(parsedContent)) {
+                  parsedContent = newItems;
+                } else {
+                  parsedContent.data = newItems;
+                }
+                response_content = JSON.stringify(parsedContent);
+                logger.info('外部API更新时保护了文章ID和slug', { 
+                  apiId: id, 
+                  idChanged: hasIdChanged, 
+                  slugChanged: hasSlugChanged 
+                });
+              }
+            }
+          }
+        } catch (e) {
+          logger.warn('保护文章ID和slug时出错，继续保存', { error: e.message, apiId: id });
+        }
       }
       
       updateFields.push('response_content = ?');
@@ -487,6 +606,183 @@ router.patch('/custom-apis/:id/content', [
         message: errorMessage,
         code: 'OPERATION_FAILED'
       });
+    }
+    
+    // 如果是GET方法的API，保护文章ID和slug
+    const apiMethod = await getAsync('SELECT method FROM custom_apis WHERE id = ?', [id]);
+    if (apiMethod && apiMethod.method === 'GET') {
+      try {
+        // 读取原始API数据
+        const originalApi = await getAsync(
+          'SELECT response_content FROM custom_apis WHERE id = ?',
+          [id]
+        );
+        
+        if (originalApi && originalApi.response_content) {
+          const originalContent = JSON.parse(originalApi.response_content);
+          let originalItems = [];
+          let newItems = [];
+          
+          // 解析原始数据
+          if (Array.isArray(originalContent)) {
+            originalItems = originalContent;
+            newItems = Array.isArray(content) ? content : [];
+          } else if (originalContent.data && Array.isArray(originalContent.data)) {
+            originalItems = originalContent.data;
+            newItems = (content.data && Array.isArray(content.data)) ? content.data : [];
+          }
+          
+          // 如果有文章数据，保护ID和slug
+          if (originalItems.length > 0 || newItems.length > 0) {
+            const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            
+            // 创建原始ID和slug映射
+            const originalIdMap = new Map();
+            const originalSlugMap = new Map();
+            originalItems.forEach(item => {
+              const key = String(item.name || item.title || '').toLowerCase();
+              if (item.id && UUID_REGEX.test(String(item.id))) {
+                originalIdMap.set(key, item.id);
+                if (item.slug) {
+                  originalSlugMap.set(String(item.id), item.slug);
+                }
+              }
+            });
+            
+            // 保护新数据中的ID和slug
+            let hasIdChanged = false;
+            let hasSlugChanged = false;
+            const usedSlugs = new Set();
+            
+            newItems.forEach((item) => {
+              const key = String(item.name || item.title || '').toLowerCase();
+              const originalId = originalIdMap.get(key);
+              
+              if (originalId) {
+                // 恢复原始ID
+                const currentId = String(item.id || '');
+                if (!UUID_REGEX.test(currentId) || currentId !== originalId) {
+                  item.id = originalId;
+                  hasIdChanged = true;
+                }
+                
+                // 恢复或生成稳定的slug
+                const originalSlug = originalSlugMap.get(String(originalId));
+                if (originalSlug && !usedSlugs.has(originalSlug)) {
+                  item.slug = originalSlug;
+                  usedSlugs.add(originalSlug);
+                  if (item.slug !== originalSlug) {
+                    hasSlugChanged = true;
+                  }
+                } else if (!item.slug || usedSlugs.has(item.slug)) {
+                  const name = item.name || item.title || '未命名';
+                  let baseSlug = name
+                    .toLowerCase()
+                    .replace(/[^\w\s-]/g, '')
+                    .replace(/\s+/g, '-')
+                    .replace(/-+/g, '-')
+                    .trim();
+                  
+                  if (!baseSlug) {
+                    baseSlug = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                  }
+                  
+                  const idSuffix = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                  let newSlug = `${baseSlug}-${idSuffix}`;
+                  
+                  let counter = 1;
+                  while (usedSlugs.has(newSlug)) {
+                    const baseSlugPart = newSlug.split('-').slice(0, -1).join('-') || newSlug;
+                    newSlug = `${baseSlugPart}-${counter}`;
+                    counter++;
+                  }
+                  
+                  item.slug = newSlug;
+                  usedSlugs.add(newSlug);
+                  hasSlugChanged = true;
+                } else {
+                  usedSlugs.add(item.slug);
+                }
+              } else if (item.id && UUID_REGEX.test(String(item.id))) {
+                // 新文章：确保有稳定的slug
+                if (!item.slug || usedSlugs.has(item.slug)) {
+                  const name = item.name || item.title || '未命名';
+                  let baseSlug = name
+                    .toLowerCase()
+                    .replace(/[^\w\s-]/g, '')
+                    .replace(/\s+/g, '-')
+                    .replace(/-+/g, '-')
+                    .trim();
+                  
+                  if (!baseSlug) {
+                    baseSlug = String(item.id).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                  }
+                  
+                  const idSuffix = String(item.id).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                  let newSlug = `${baseSlug}-${idSuffix}`;
+                  
+                  let counter = 1;
+                  while (usedSlugs.has(newSlug)) {
+                    const baseSlugPart = newSlug.split('-').slice(0, -1).join('-') || newSlug;
+                    newSlug = `${baseSlugPart}-${counter}`;
+                    counter++;
+                  }
+                  
+                  item.slug = newSlug;
+                  usedSlugs.add(newSlug);
+                  hasSlugChanged = true;
+                } else {
+                  usedSlugs.add(item.slug);
+                }
+              } else if (!item.id) {
+                // 新文章但没有ID：生成UUID和slug
+                item.id = uuidv4();
+                const name = item.name || item.title || '未命名';
+                let baseSlug = name
+                  .toLowerCase()
+                  .replace(/[^\w\s-]/g, '')
+                  .replace(/\s+/g, '-')
+                  .replace(/-+/g, '-')
+                  .trim();
+                
+                if (!baseSlug) {
+                  baseSlug = String(item.id).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                }
+                
+                const idSuffix = String(item.id).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                let newSlug = `${baseSlug}-${idSuffix}`;
+                
+                let counter = 1;
+                while (usedSlugs.has(newSlug)) {
+                  const baseSlugPart = newSlug.split('-').slice(0, -1).join('-') || newSlug;
+                  newSlug = `${baseSlugPart}-${counter}`;
+                  counter++;
+                }
+                
+                item.slug = newSlug;
+                usedSlugs.add(newSlug);
+                hasSlugChanged = true;
+              }
+            });
+            
+            // 更新content
+            if (hasIdChanged || hasSlugChanged) {
+              if (Array.isArray(content)) {
+                content = newItems;
+              } else if (content.data && Array.isArray(content.data)) {
+                content.data = newItems;
+              }
+              logger.info('PATCH操作时保护了文章ID和slug', { 
+                apiId: id, 
+                idChanged: hasIdChanged, 
+                slugChanged: hasSlugChanged 
+              });
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn('PATCH操作保护文章ID和slug时出错，继续保存', { error: e.message, apiId: id });
+      }
     }
     
     // 将更新后的内容转换回JSON字符串

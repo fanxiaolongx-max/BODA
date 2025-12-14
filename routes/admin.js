@@ -8119,33 +8119,77 @@ router.put('/custom-apis/:id', requireAuth, [
         if (originalApi && originalApi.response_content) {
           const originalContent = JSON.parse(originalApi.response_content);
           
-          // 检查是否是数组格式或包含data数组的对象格式
-          let originalItems = [];
-          let newItems = [];
+          // 检查是否是天气路况的对象格式（特殊处理）
+          const isWeatherObjectFormat = 
+            originalContent.globalAlert && 
+            originalContent.attractions && 
+            originalContent.traffic &&
+            parsedContent.globalAlert &&
+            parsedContent.attractions &&
+            parsedContent.traffic;
           
-          if (Array.isArray(originalContent)) {
-            originalItems = originalContent;
-            newItems = Array.isArray(parsedContent) ? parsedContent : [];
-          } else if (originalContent.data && Array.isArray(originalContent.data)) {
-            originalItems = originalContent.data;
-            newItems = (parsedContent.data && Array.isArray(parsedContent.data)) ? parsedContent.data : [];
-          }
-          
-          // 如果有文章数据，保护ID
-          if (originalItems.length > 0 && newItems.length > 0) {
+          if (isWeatherObjectFormat) {
+            // 天气路况对象格式：只包含globalAlert、attractions、traffic
+            logger.info('检测到天气路况对象格式', { apiId: id });
+            
+            // 确保不包含data字段
+            if (parsedContent.data !== undefined) {
+              delete parsedContent.data;
+            }
+            
+            // 验证天气路况对象结构
+            if (!parsedContent.globalAlert || !parsedContent.attractions || !parsedContent.traffic) {
+              logger.warn('天气路况对象格式不完整', {
+                hasGlobalAlert: !!parsedContent.globalAlert,
+                hasAttractions: !!parsedContent.attractions,
+                hasTraffic: !!parsedContent.traffic
+              });
+            }
+            
+            // 更新response_content（天气路况对象格式直接使用整个对象）
+            response_content = JSON.stringify(parsedContent);
+            logger.info('API Management更新天气路况对象', {
+              apiId: id,
+              globalAlert: parsedContent.globalAlert,
+              attractionsCount: parsedContent.attractions ? parsedContent.attractions.length : 0,
+              trafficCount: parsedContent.traffic ? parsedContent.traffic.length : 0,
+              hasDataField: parsedContent.data !== undefined
+            });
+          } else {
+            // 普通格式：检查是否是数组格式或包含data数组的对象格式
+            let originalItems = [];
+            let newItems = [];
+            
+            if (Array.isArray(originalContent)) {
+              originalItems = originalContent;
+              newItems = Array.isArray(parsedContent) ? parsedContent : [];
+            } else if (originalContent.data && Array.isArray(originalContent.data)) {
+              originalItems = originalContent.data;
+              newItems = (parsedContent.data && Array.isArray(parsedContent.data)) ? parsedContent.data : [];
+            }
+            
+            // 如果有文章数据，保护ID和slug
+            if (originalItems.length > 0 && newItems.length > 0) {
             const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             
-            // 创建原始ID映射（基于name/title匹配，因为ID可能被修改）
+            // 创建原始ID和slug映射（基于name/title匹配，因为ID可能被修改）
             const originalIdMap = new Map();
+            const originalSlugMap = new Map();
             originalItems.forEach(item => {
               const key = String(item.name || item.title || '').toLowerCase();
               if (item.id && UUID_REGEX.test(String(item.id))) {
                 originalIdMap.set(key, item.id);
+                if (item.slug) {
+                  originalSlugMap.set(String(item.id), item.slug);
+                }
               }
             });
             
-            // 恢复被修改的ID
+            // 恢复被修改的ID和slug
             let hasIdChanged = false;
+            let hasSlugChanged = false;
+            const usedSlugs = new Set(); // 跟踪已使用的slug
+            
             newItems.forEach((item, index) => {
               const key = String(item.name || item.title || '').toLowerCase();
               const originalId = originalIdMap.get(key);
@@ -8157,21 +8201,66 @@ router.put('/custom-apis/:id', requireAuth, [
                   item.id = originalId;
                   hasIdChanged = true;
                 }
+                
+                // 恢复或生成稳定的slug
+                const originalSlug = originalSlugMap.get(String(originalId));
+                if (originalSlug && !usedSlugs.has(originalSlug)) {
+                  item.slug = originalSlug;
+                  usedSlugs.add(originalSlug);
+                  if (item.slug !== originalSlug) {
+                    hasSlugChanged = true;
+                  }
+                } else if (!item.slug || usedSlugs.has(item.slug)) {
+                  // 如果没有slug或slug冲突，基于ID生成稳定的slug
+                  const name = item.name || item.title || '未命名';
+                  let baseSlug = name
+                    .toLowerCase()
+                    .replace(/[^\w\s-]/g, '')
+                    .replace(/\s+/g, '-')
+                    .replace(/-+/g, '-')
+                    .trim();
+                  
+                  if (!baseSlug) {
+                    baseSlug = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                  }
+                  
+                  const idSuffix = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
+                  let newSlug = `${baseSlug}-${idSuffix}`;
+                  
+                  // 确保唯一性
+                  let counter = 1;
+                  while (usedSlugs.has(newSlug)) {
+                    const baseSlugPart = newSlug.split('-').slice(0, -1).join('-') || newSlug;
+                    newSlug = `${baseSlugPart}-${counter}`;
+                    counter++;
+                  }
+                  
+                  item.slug = newSlug;
+                  usedSlugs.add(newSlug);
+                  hasSlugChanged = true;
+                } else {
+                  usedSlugs.add(item.slug);
+                }
               }
             });
             
-            // 如果有ID被恢复，更新parsedContent
-            if (hasIdChanged) {
+            // 如果有ID或slug被恢复，更新parsedContent
+            if (hasIdChanged || hasSlugChanged) {
               if (Array.isArray(parsedContent)) {
                 parsedContent = newItems;
               } else {
                 parsedContent.data = newItems;
               }
               response_content = JSON.stringify(parsedContent);
-              logger.info('API Management更新时保护了文章ID', { apiId: id });
+              logger.info('API Management更新时保护了文章ID和slug', { 
+                apiId: id, 
+                idChanged: hasIdChanged, 
+                slugChanged: hasSlugChanged 
+              });
             }
           }
         }
+      }
       } catch (e) {
         // 如果保护ID时出错，记录警告但继续保存（不阻止用户操作）
         logger.warn('保护文章ID时出错，继续保存', { error: e.message, apiId: id });

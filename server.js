@@ -26,7 +26,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.quilljs.com", "https://maxcdn.bootstrapcdn.com"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com", "https://cdn.jsdelivr.net", "https://cdn.quilljs.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com", "https://cdn.jsdelivr.net", "https://cdn.quilljs.com", "https://static.cloudflareinsights.com"],
       scriptSrcAttr: ["'unsafe-inline'"], // 允许内联事件处理器（onclick等）
       imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net", "https:", "http:"],
       connectSrc: [

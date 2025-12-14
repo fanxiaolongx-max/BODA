@@ -179,10 +179,86 @@
       
       grid.innerHTML = posts.map((post, index) => {
         const imageUrl = post.image || '';
-        const excerpt = truncate(post.excerpt || post.description || '', 100);
         const date = formatDate(post.createdAt || post.created_at);
-        const category = post.category || (post.categoryRelation && post.categoryRelation.name) || '';
-        const tags = post.tags || [];
+        // category字段作为标签使用
+        const category = post.category || post._sourceApiName || '';
+        const apiName = post._sourceApiName || '';
+        
+        // 检查是否是特殊类别，需要定制显示
+        const isExchangeRate = apiName.toLowerCase().includes('exchange') || apiName.toLowerCase().includes('汇率');
+        const isTranslation = apiName.toLowerCase().includes('translation') || apiName.toLowerCase().includes('翻译');
+        const isWeather = apiName.toLowerCase().includes('weather') || apiName.toLowerCase().includes('天气');
+        
+        let excerpt = '';
+        let customContent = '';
+        
+        if (isWeather && post._originalData) {
+          // 天气路况：显示预警和简要信息
+          if (post._originalData.globalAlert && post._originalData.globalAlert.message) {
+            const alertLevel = post._originalData.globalAlert.level || 'medium';
+            const levelColors = {
+              'low': { bg: '#dbeafe', border: '#3b82f6' },
+              'medium': { bg: '#fef3c7', border: '#f59e0b' },
+              'high': { bg: '#fee2e2', border: '#ef4444' }
+            };
+            const colors = levelColors[alertLevel] || levelColors['medium'];
+            const message = post._originalData.globalAlert.message;
+            const shortMessage = message.length > 60 ? message.substring(0, 60) + '...' : message;
+            
+            customContent = `<div style="padding: 0.75rem; background: ${colors.bg}; border-left: 3px solid ${colors.border}; border-radius: 0.5rem; margin-top: 0.5rem;">
+              <div style="font-weight: 600; color: ${colors.border}; margin-bottom: 0.25rem; font-size: 0.875rem;">⚠️ 全局预警</div>
+              <div style="color: #374151; font-size: 0.9375rem; line-height: 1.5;">${escapeHtml(shortMessage)}</div>
+              ${(post._originalData.attractions && post._originalData.attractions.length > 0) || (post._originalData.traffic && post._originalData.traffic.length > 0) 
+                ? `<div style="margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280;">
+                    ${post._originalData.attractions && post._originalData.attractions.length > 0 ? `📍 ${post._originalData.attractions.length} 个景点` : ''}
+                    ${post._originalData.attractions && post._originalData.attractions.length > 0 && post._originalData.traffic && post._originalData.traffic.length > 0 ? ' • ' : ''}
+                    ${post._originalData.traffic && post._originalData.traffic.length > 0 ? `🚦 ${post._originalData.traffic.length} 条路况` : ''}
+                  </div>`
+                : ''}
+            </div>`;
+          }
+        } else if (isExchangeRate && post._originalData) {
+          // 汇率转换：显示简要汇率信息
+          const excludeFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
+          const currencies = Object.keys(post._originalData).filter(k => 
+            !excludeFields.includes(k) && 
+            post._originalData[k] && 
+            typeof post._originalData[k] === 'object' && 
+            !Array.isArray(post._originalData[k])
+          );
+          
+          if (currencies.length > 0) {
+            const firstCurrency = currencies[0];
+            const firstRate = post._originalData[firstCurrency];
+            if (firstRate && typeof firstRate === 'object') {
+              const firstTarget = Object.keys(firstRate)[0];
+              const rateValue = firstRate[firstTarget];
+              if (typeof rateValue === 'number') {
+                customContent = `<div style="padding: 0.75rem; background: linear-gradient(to right, #10b98115, #05966915); border-radius: 0.5rem; margin-top: 0.5rem;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-weight: 600; color: #10b981;">${escapeHtml(firstCurrency)}</span>
+                    <span style="color: #6b7280;">→</span>
+                    <span style="font-weight: 600; color: #059669;">${escapeHtml(firstTarget)}</span>
+                    <span style="font-size: 1.25rem; font-weight: bold; color: #10b981;">${rateValue.toFixed(4)}</span>
+                  </div>
+                  ${currencies.length > 1 ? `<div style="margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280;">共 ${currencies.length} 种货币汇率</div>` : ''}
+                </div>`;
+              }
+            }
+          }
+        } else if (isTranslation && post._originalData) {
+          // 翻译卡片：显示中阿对照
+          if (post._originalData.chinese && post._originalData.arabic) {
+            customContent = `<div style="padding: 0.75rem; background: linear-gradient(to right, #9333ea15, #7c3aed15); border-radius: 0.5rem; margin-top: 0.5rem;">
+              <div style="display: grid; gap: 0.5rem;">
+                <div style="font-size: 1rem; color: #374151;">${escapeHtml(post._originalData.chinese)}</div>
+                <div style="font-size: 1rem; color: #374151; direction: rtl; text-align: right; font-family: 'Arial', 'Tahoma', sans-serif;">${escapeHtml(post._originalData.arabic)}</div>
+              </div>
+            </div>`;
+          }
+        } else {
+          excerpt = truncate(post.excerpt || post.description || '', 100);
+        }
         
         return `
           <article class="blog-post-card" style="animation-delay: ${index * 0.1}s">
@@ -191,17 +267,14 @@
             </a>
             <div style="padding: 0 0.5rem 0.5rem;">
               <div class="blog-post-meta">
-                ${category ? `<a href="#" class="blog-post-category" onclick="filterByCategory('${escapeHtml(category)}'); return false;">${escapeHtml(category)}</a>` : ''}
-                ${tags.slice(0, 3).map(tag => {
-                  const tagName = typeof tag === 'string' ? tag : tag.name;
-                  return `<a href="#" class="blog-post-tag" onclick="filterByTag('${escapeHtml(tagName)}'); return false;">#${escapeHtml(tagName)}</a>`;
-                }).join('')}
+                ${apiName ? `<a href="#" class="blog-post-category" onclick="filterByCategory('${escapeHtml(apiName)}'); return false;">${escapeHtml(apiName)}</a>` : ''}
+                ${category ? `<a href="#" class="blog-post-tag" onclick="filterByTag('${escapeHtml(category)}'); return false;">#${escapeHtml(category)}</a>` : ''}
                 <span class="blog-post-date">${date}</span>
               </div>
               <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" class="blog-post-title">
                 ${escapeHtml(post.name || post.title || '未命名')}
               </a>
-              ${excerpt ? `<p class="blog-post-excerpt">${escapeHtml(excerpt)}</p>` : ''}
+              ${customContent || (excerpt ? `<p class="blog-post-excerpt">${escapeHtml(excerpt)}</p>` : '')}
             </div>
           </article>
         `;

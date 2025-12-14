@@ -91,10 +91,36 @@
     .admin-form-textarea,
     .admin-form-select {
       width: 100%;
+      max-width: 100%;
       padding: 0.75rem;
       border: 1px solid #d1d5db;
       border-radius: 0.375rem;
       font-size: 0.875rem;
+      box-sizing: border-box;
+    }
+    
+    /* 特殊类别表单中的输入框样式 */
+    .weather-item .admin-form-input,
+    .weather-item .admin-form-select,
+    .exchange-rate-item .admin-form-input {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    
+    /* 确保grid布局中的输入框不会溢出 */
+    .weather-item > div[style*="grid"],
+    .exchange-rate-item > div[style*="grid"] {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    
+    .weather-item .admin-form-group,
+    .exchange-rate-item .admin-form-group {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     .admin-form-textarea {
       min-height: 200px;
@@ -221,6 +247,8 @@
   <!-- Quill HTML Editor -->
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
   <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+  <!-- Marked.js for Markdown parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
 </head>
 <body class="blog-page">
   <div class="admin-container">
@@ -257,8 +285,9 @@
         <form id="postFormElement" onsubmit="savePost(event)">
           <input type="hidden" id="postId">
           <div class="admin-form-group">
-            <label class="admin-form-label" for="postName">文章名称 *</label>
-            <input type="text" id="postName" class="admin-form-input" required>
+            <label class="admin-form-label" for="postName">文章名称/标题 *</label>
+            <input type="text" id="postName" class="admin-form-input" required oninput="syncNameAndTitle()">
+            <p style="color: #6b7280; font-size: 0.875rem; margin-top: 0.25rem;">名称和标题会自动保持同步</p>
           </div>
           <div class="admin-form-group">
             <label class="admin-form-label" for="postSlug">Slug</label>
@@ -301,11 +330,129 @@
               <p>此API已配置字段映射，文章将根据映射规则保存到对应字段</p>
             </div>
           </div>
-          <div class="admin-form-group">
-            <label class="admin-form-label" for="postTags">标签（用逗号分隔）</label>
-            <input type="text" id="postTags" class="admin-form-input" placeholder="标签1, 标签2">
+          
+          <!-- 特殊类别定制化表单 -->
+          <!-- 翻译卡片 (translation) -->
+          <div id="specialForm-translation" class="admin-form-group" style="display: none;">
+            <h4 style="color: #9333ea; margin-bottom: 1rem;">翻译卡片编辑</h4>
+            <div class="admin-form-group" style="max-width: 500px;">
+              <label class="admin-form-label" for="translationChinese">中文 *</label>
+              <input type="text" id="translationChinese" class="admin-form-input" placeholder="输入中文" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+            </div>
+            <div class="admin-form-group" style="max-width: 500px;">
+              <label class="admin-form-label" for="translationArabic">阿拉伯文 *</label>
+              <input type="text" id="translationArabic" class="admin-form-input" placeholder="输入阿拉伯文" dir="rtl" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+            </div>
+            <div class="admin-form-group" style="max-width: 300px;">
+              <label class="admin-form-label" for="translationCategory">分类</label>
+              <input type="text" id="translationCategory" class="admin-form-input" placeholder="如：问候、礼貌、购物等" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+            </div>
           </div>
+          
+          <!-- 天气路况 (weather) -->
+          <div id="specialForm-weather" class="admin-form-group" style="display: none;">
+            <h4 style="color: #3b82f6; margin-bottom: 1rem;">天气路况编辑</h4>
+            
+            <!-- Global Alert 全局预警 -->
+            <div style="background: #f3f4f6; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+              <h5 style="color: #3b82f6; margin-bottom: 0.75rem;">全局预警 (Global Alert)</h5>
+            <div class="admin-form-group" style="max-width: 300px;">
+              <label class="admin-form-label" for="weatherGlobalAlertLevel">预警级别</label>
+              <select id="weatherGlobalAlertLevel" class="admin-form-select" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+                <option value="low">低 (low)</option>
+                <option value="medium">中 (medium)</option>
+                <option value="high">高 (high)</option>
+              </select>
+            </div>
+            <div class="admin-form-group" style="max-width: 100%;">
+              <label class="admin-form-label" for="weatherGlobalAlertMessage">预警消息 *</label>
+              <textarea id="weatherGlobalAlertMessage" class="admin-form-input" rows="3" placeholder="输入预警消息" style="width: 100%; max-width: 100%; box-sizing: border-box; resize: vertical;"></textarea>
+            </div>
+            </div>
+            
+            <!-- Attractions 景点天气 -->
+            <div style="background: #f3f4f6; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h5 style="color: #3b82f6; margin: 0;">景点天气 (Attractions)</h5>
+                <button type="button" class="blog-btn blog-btn-secondary" onclick="addWeatherAttraction()" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+                  <i class="fa fa-plus" style="margin-right: 0.25rem;"></i>添加景点
+                </button>
+              </div>
+              <div id="weatherAttractionsList"></div>
+            </div>
+            
+            <!-- Traffic 路况信息 -->
+            <div style="background: #f3f4f6; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h5 style="color: #3b82f6; margin: 0;">路况信息 (Traffic)</h5>
+                <button type="button" class="blog-btn blog-btn-secondary" onclick="addWeatherTraffic()" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+                  <i class="fa fa-plus" style="margin-right: 0.25rem;"></i>添加路况
+                </button>
+              </div>
+              <div id="weatherTrafficList"></div>
+            </div>
+          </div>
+          
+          <!-- 汇率转换 (exchange-rate) -->
+          <div id="specialForm-exchange-rate" class="admin-form-group" style="display: none;">
+            <h4 style="color: #10b981; margin-bottom: 1rem;">汇率转换编辑</h4>
+            <div style="background: #f3f4f6; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h5 style="color: #10b981; margin: 0;">汇率列表</h5>
+                <button type="button" class="blog-btn blog-btn-secondary" onclick="addExchangeRate()" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+                  <i class="fa fa-plus" style="margin-right: 0.25rem;"></i>添加汇率
+                </button>
+              </div>
+              <div id="exchangeRatesList"></div>
+            </div>
+            <div class="admin-form-group" style="max-width: 300px;">
+              <label class="admin-form-label" for="exchangeUpdateTime">更新时间</label>
+              <input type="datetime-local" id="exchangeUpdateTime" class="admin-form-input" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+            </div>
+          </div>
+          
+          <!-- 二手市场 (second-hand) 特殊字段 -->
+          <div id="specialForm-second-hand" class="admin-form-group" style="display: none;">
+            <h4 style="color: #f59e0b; margin-bottom: 1rem;">二手市场特殊字段</h4>
+            <div class="admin-form-group" style="max-width: 300px;">
+              <label class="admin-form-label" for="secondHandPrice">价格 *</label>
+              <input type="text" id="secondHandPrice" class="admin-form-input" placeholder="如：500、1000等" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+            </div>
+          </div>
+          
+          <!-- 租房酒店 (rentals) 特殊字段 -->
+          <div id="specialForm-rentals" class="admin-form-group" style="display: none;">
+            <h4 style="color: #8b5cf6; margin-bottom: 1rem;">租房酒店特殊字段</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" for="rentalsPrice">价格 *</label>
+                <input type="text" id="rentalsPrice" class="admin-form-input" placeholder="如：3500" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+              </div>
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" for="rentalsRooms">房间数 *</label>
+                <input type="text" id="rentalsRooms" class="admin-form-input" placeholder="如：2" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+              </div>
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" for="rentalsArea">面积 *</label>
+                <input type="text" id="rentalsArea" class="admin-form-input" placeholder="如：80" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+              </div>
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" for="rentalsViews">浏览次数</label>
+                <input type="number" id="rentalsViews" class="admin-form-input" placeholder="如：1" min="0" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+              </div>
+            </div>
+          </div>
+          
           <div class="admin-form-group">
+            <label class="admin-form-label" for="postCategory">分类/标签 *</label>
+            <input type="text" id="postCategory" class="admin-form-input" placeholder="文章分类（作为标签使用）" required>
+            <p style="color: #6b7280; font-size: 0.875rem; margin-top: 0.25rem;">此分类用于在博客页面作为标签展示</p>
+          </div>
+          <div class="admin-form-group" style="display: none;">
+            <label class="admin-form-label" for="postTags">标签（已废弃，使用上面的分类字段）</label>
+            <input type="text" id="postTags" class="admin-form-input" placeholder="标签1, 标签2" disabled>
+          </div>
+          <div class="admin-form-group" id="normalContentEditor">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
               <label class="admin-form-label" for="postContent" style="margin-bottom: 0;">内容 *</label>
               <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -471,6 +618,7 @@
     let quillEditor = null;
     let currentEditorMode = 'markdown'; // 'markdown' or 'html'
     let availableApis = [];
+    let exchangeRatesCounter = 0; // 汇率转换计数器
 
     // 加载API列表
     async function loadApis() {
@@ -505,16 +653,107 @@
       }
     }
 
+    // 特殊类别定义
+    const SPECIAL_CATEGORIES = {
+      'weather': {
+        name: 'weather',
+        displayName: '天气路况',
+      },
+      'second-hand': {
+        name: 'second-hand',
+        displayName: '二手市场',
+      },
+      'rentals': {
+        name: 'rentals',
+        displayName: '租房酒店',
+        color: '#3b82f6',
+        fields: ['city', 'temperature', 'condition', 'traffic', 'humidity', 'wind']
+      },
+      'exchange-rate': {
+        name: 'exchange-rate',
+        displayName: '汇率转换',
+        color: '#10b981',
+        fields: ['fromCurrency', 'toCurrency', 'rate', 'updateTime']
+      },
+      'translation': {
+        name: 'translation',
+        displayName: '翻译卡片',
+        color: '#9333ea',
+        fields: ['chinese', 'arabic', 'category']
+      }
+    };
+    
+    // 检查是否是特殊类别
+    function isSpecialCategory(apiName) {
+      if (!apiName) return null;
+      // 检查API名称或路径是否匹配
+      const lowerName = apiName.toLowerCase();
+      if (lowerName === 'weather' || lowerName.includes('weather')) {
+        return 'weather';
+      }
+      if (lowerName === 'exchange-rate' || lowerName === 'exchangerate' || lowerName.includes('exchange')) {
+        return 'exchange-rate';
+      }
+      if (lowerName === 'translation' || lowerName.includes('translation')) {
+        return 'translation';
+      }
+      // 检测二手市场
+      if (lowerName === 'second-hand' || lowerName.includes('second-hand') || lowerName.includes('secondhand') || lowerName.includes('二手')) {
+        return 'second-hand';
+      }
+      // 检测租房酒店
+      if (lowerName === 'rentals' || lowerName.includes('rental') || lowerName.includes('租房') || lowerName.includes('酒店')) {
+        return 'rentals';
+      }
+      return null;
+    }
+    
     // API选择改变时的处理
     async function onApiNameChange() {
       const apiName = document.getElementById('postApiName').value;
       const mappingInfo = document.getElementById('fieldMappingInfo');
+      
+      // 检查是否是特殊类别
+      const specialType = isSpecialCategory(apiName);
+      
+      // 隐藏所有特殊表单
+      document.querySelectorAll('[id^="specialForm-"]').forEach(el => {
+        el.style.display = 'none';
+      });
+      
+      // 隐藏/显示普通内容编辑器
+      const normalEditor = document.getElementById('normalContentEditor');
+      if (normalEditor) {
+        normalEditor.style.display = specialType ? 'none' : 'block';
+      }
       
       if (!apiName) {
         mappingInfo.style.display = 'none';
         return;
       }
       
+      // 如果是特殊类别，显示对应的表单
+      if (specialType) {
+        const specialForm = document.getElementById(`specialForm-${specialType}`);
+        if (specialForm) {
+          specialForm.style.display = 'block';
+        }
+        // 对于second-hand和rentals，也显示标准内容编辑器（因为它们需要编辑普通内容）
+        const normalContentEditor = document.getElementById('normalContentEditor');
+        if (specialType === 'second-hand' || specialType === 'rentals') {
+          if (normalContentEditor) {
+            normalContentEditor.style.display = 'block';
+          }
+        } else {
+          if (normalContentEditor) {
+            normalContentEditor.style.display = 'none';
+          }
+        }
+        mappingInfo.style.display = 'none';
+        return;
+      }
+      
+      // 普通类别，检查字段映射
       try {
         const response = await adminApiRequest(`${BLOG_ADMIN_API}/apis/${encodeURIComponent(apiName)}/field-mapping`);
         if (response && response.success && response.data) {
@@ -662,11 +901,12 @@
         }
         seenIds.add(postId);
         
-        const category = post.category || post._sourceApiName || '无分类';
-        if (!postsByCategory[category]) {
-          postsByCategory[category] = [];
+        // 按apiName（_sourceApiName）分组，而不是category
+        const apiName = post._sourceApiName || post.category || '无分类';
+        if (!postsByCategory[apiName]) {
+          postsByCategory[apiName] = [];
         }
-        postsByCategory[category].push(post);
+        postsByCategory[apiName].push(post);
       }
 
       console.log('显示文章统计:', {
@@ -680,14 +920,26 @@
       let html = '';
       const sortedCategories = Object.keys(postsByCategory).sort();
       
-      for (const category of sortedCategories) {
-        const categoryPosts = postsByCategory[category];
+      for (const apiName of sortedCategories) {
+        const categoryPosts = postsByCategory[apiName];
         
-        // 分类标题行
+        // 分类标题行（按apiName分组）
+        const specialType = isSpecialCategory(apiName);
+        let categoryHeaderStyle = 'background: linear-gradient(to right, rgba(236, 72, 153, 0.1), rgba(147, 51, 234, 0.1));';
+        let categoryHeaderColor = '#9333ea';
+        let categoryDisplayName = apiName;
+        
+        if (specialType) {
+          const specialInfo = SPECIAL_CATEGORIES[specialType];
+          categoryHeaderStyle = `background: linear-gradient(to right, ${specialInfo.color}20, ${specialInfo.color}10);`;
+          categoryHeaderColor = specialInfo.color;
+          categoryDisplayName = specialInfo.displayName;
+        }
+        
         html += `
-          <tr class="category-header-row" style="background: linear-gradient(to right, rgba(236, 72, 153, 0.1), rgba(147, 51, 234, 0.1)); font-weight: 600;">
+          <tr class="category-header-row" style="${categoryHeaderStyle} font-weight: 600;">
             <td colspan="6" style="padding: 0.75rem 1rem;">
-              <span style="color: #9333ea;">📁 ${escapeHtml(category)}</span>
+              <span style="color: ${categoryHeaderColor}; font-weight: 600;">📁 ${escapeHtml(categoryDisplayName)}</span>
               <span style="color: #6b7280; font-size: 0.875rem; font-weight: normal; margin-left: 0.5rem;">
                 (${categoryPosts.length} 篇文章)
               </span>
@@ -698,10 +950,23 @@
         // 该分类下的文章
         for (const post of categoryPosts) {
           const date = formatDate(post.createdAt || post.created_at);
+          const postSpecialType = isSpecialCategory(apiName);
+          let rowStyle = '';
+          // 显示category作为标签，如果没有则显示apiName
+          const postCategory = post.category || apiName;
+          let categoryDisplay = escapeHtml(postCategory);
+          
+          // 为特殊类别添加颜色标识
+          if (postSpecialType) {
+            const specialInfo = SPECIAL_CATEGORIES[postSpecialType];
+            rowStyle = `background-color: ${specialInfo.color}15; border-left: 3px solid ${specialInfo.color};`;
+            categoryDisplay = `<span style="color: ${specialInfo.color}; font-weight: 600;">${escapeHtml(postCategory)}</span>`;
+          }
+          
           html += `
-            <tr>
+            <tr style="${rowStyle}">
               <td>${escapeHtml(post.name || post.title || '未命名')}</td>
-              <td>${escapeHtml(category)}</td>
+              <td>${categoryDisplay}</td>
               <td>${post.published ? '<span style="color: #10b981;">已发布</span>' : '<span style="color: #f59e0b;">草稿</span>'}</td>
               <td>${post.views || 0}</td>
               <td>${date}</td>
@@ -739,25 +1004,76 @@
       document.getElementById('postExcerpt').value = '';
       document.getElementById('postImage').value = '';
       updateImagePreview('');
+      document.getElementById('postCategory').value = '';
       document.getElementById('postTags').value = '';
       document.getElementById('postPublished').checked = true;
       
       if (post) {
         formTitle.textContent = '编辑文章';
         document.getElementById('postId').value = post.id || '';
-        document.getElementById('postName').value = post.name || post.title || '';
+        // name和title保持一致
+        const nameValue = post.name || post.title || '';
+        document.getElementById('postName').value = nameValue;
         document.getElementById('postSlug').value = post.slug || '';
         document.getElementById('postExcerpt').value = post.excerpt || post.description || '';
         const imageUrl = post.image || '';
         document.getElementById('postImage').value = imageUrl;
         updateImagePreview(imageUrl);
-        document.getElementById('postApiName').value = post.category || post._sourceApiName || '';
-        document.getElementById('postTags').value = Array.isArray(post.tags) ? post.tags.map(t => typeof t === 'string' ? t : t.name).join(', ') : '';
+        const apiName = post._sourceApiName || post.category || '';
+        document.getElementById('postApiName').value = apiName;
+        // category字段作为标签使用
+        const category = post.category || post._sourceApiName || '';
+        document.getElementById('postCategory').value = category;
+        // tags字段已废弃，不再使用
         document.getElementById('postPublished').checked = post.published !== false; // 默认为true
         
         // 触发API选择改变事件
         setTimeout(() => {
           onApiNameChange();
+          
+          // 如果是特殊类别，加载原始数据到表单
+          const specialType = isSpecialCategory(apiName);
+          if (specialType && post._originalData) {
+            loadSpecialCategoryData(specialType, post._originalData);
+          }
+          
+          // 加载特殊字段（二手市场和租房酒店）
+          if (specialType === 'second-hand') {
+            const priceInput = document.getElementById('secondHandPrice');
+            if (priceInput) {
+              // 优先从_originalData获取，如果没有则从post本身获取
+              const price = (post._originalData && post._originalData.price) || post.price || '';
+              priceInput.value = price;
+              console.log('加载二手市场价格字段:', { price, fromOriginalData: post._originalData?.price, fromPost: post.price });
+            }
+          } else if (specialType === 'rentals') {
+            const priceInput = document.getElementById('rentalsPrice');
+            const roomsInput = document.getElementById('rentalsRooms');
+            const areaInput = document.getElementById('rentalsArea');
+            const viewsInput = document.getElementById('rentalsViews');
+            if (priceInput) {
+              const price = (post._originalData && post._originalData.price) || post.price || '';
+              priceInput.value = price;
+            }
+            if (roomsInput) {
+              const rooms = (post._originalData && post._originalData.rooms) || post.rooms || '';
+              roomsInput.value = rooms;
+            }
+            if (areaInput) {
+              const area = (post._originalData && post._originalData.area) || post.area || '';
+              areaInput.value = area;
+            }
+            if (viewsInput) {
+              const views = (post._originalData && post._originalData.views) || post.views || 0;
+              viewsInput.value = views;
+            }
+            console.log('加载租房酒店特殊字段:', {
+              price: (post._originalData && post._originalData.price) || post.price,
+              rooms: (post._originalData && post._originalData.rooms) || post.rooms,
+              area: (post._originalData && post._originalData.area) || post.area,
+              views: (post._originalData && post._originalData.views) || post.views
+            });
+          }
         }, 100);
         
         // 设置htmlContent（统一使用htmlContent）
@@ -815,6 +1131,44 @@
         document.getElementById('postFormElement').reset();
         document.getElementById('postId').value = '';
         document.getElementById('postApiName').value = '';
+        
+        // 重置所有特殊表单
+        document.querySelectorAll('[id^="specialForm-"]').forEach(el => {
+          el.style.display = 'none';
+          // 清空所有输入框
+          el.querySelectorAll('input, textarea, select').forEach(input => {
+            input.value = '';
+          });
+        });
+        
+        // 重置天气路况的动态列表
+        document.getElementById('weatherAttractionsList').innerHTML = '';
+        document.getElementById('weatherTrafficList').innerHTML = '';
+        weatherAttractionsCounter = 0;
+        weatherTrafficCounter = 0;
+        
+        // 重置特殊字段（二手市场和租房酒店）
+        const secondHandPriceInput = document.getElementById('secondHandPrice');
+        if (secondHandPriceInput) secondHandPriceInput.value = '';
+        const rentalsPriceInput = document.getElementById('rentalsPrice');
+        if (rentalsPriceInput) rentalsPriceInput.value = '';
+        const rentalsRoomsInput = document.getElementById('rentalsRooms');
+        if (rentalsRoomsInput) rentalsRoomsInput.value = '';
+        const rentalsAreaInput = document.getElementById('rentalsArea');
+        if (rentalsAreaInput) rentalsAreaInput.value = '';
+        const rentalsViewsInput = document.getElementById('rentalsViews');
+        if (rentalsViewsInput) rentalsViewsInput.value = '';
+        
+        // 重置汇率转换列表
+        const exchangeRatesList = document.getElementById('exchangeRatesList');
+        if (exchangeRatesList) exchangeRatesList.innerHTML = '';
+        exchangeRatesCounter = 0;
+        
+        // 显示普通内容编辑器
+        const normalEditor = document.getElementById('normalContentEditor');
+        if (normalEditor) {
+          normalEditor.style.display = 'block';
+        }
         
         // 重置编辑器模式为Markdown
         document.querySelector('input[name="editorMode"][value="markdown"]').checked = true;
@@ -906,9 +1260,17 @@
             // 已经是HTML内容，直接使用
             quillEditor.root.innerHTML = currentContent;
           } else {
-            // Markdown内容，转换为HTML
-            const htmlContent = markdownToHtml(currentContent);
-            quillEditor.root.innerHTML = htmlContent;
+            // Markdown内容，转换为HTML（使用async函数）
+            markdownToHtml(currentContent).then(htmlContent => {
+              if (quillEditor) {
+                quillEditor.root.innerHTML = htmlContent;
+              }
+            }).catch(error => {
+              console.error('Markdown转换失败:', error);
+              if (quillEditor) {
+                quillEditor.root.innerHTML = '<p>转换失败: ' + escapeHtml(error.message) + '</p>';
+              }
+            });
           }
         } else if (quillEditor) {
           // 没有内容，清空
@@ -961,8 +1323,8 @@
       return markdown;
     }
     
-    // Markdown转HTML的辅助函数
-    function markdownToHtml(markdown) {
+    // Markdown转HTML的辅助函数（使用marked.js）
+    async function markdownToHtml(markdown) {
       if (!markdown) return '';
       
       // 如果已经是HTML，直接返回
@@ -970,6 +1332,24 @@
         return markdown;
       }
       
+      // 使用marked.js进行转换
+      if (typeof marked !== 'undefined') {
+        try {
+          // 配置marked选项
+          marked.setOptions({
+            breaks: true, // 支持GFM换行
+            gfm: true, // 启用GitHub Flavored Markdown
+            headerIds: true,
+            mangle: false
+          });
+          return marked.parse(markdown);
+        } catch (error) {
+          console.error('Markdown转换失败，使用简单转换:', error);
+          // 如果marked.js转换失败，使用简单转换作为后备
+        }
+      }
+      
+      // 后备方案：简单转换（如果marked.js未加载）
       let html = markdown
         // 标题
         .replace(/^###### (.*?)$/gm, '<h6>$1</h6>')
@@ -1087,33 +1467,493 @@
       document.getElementById('postForm').style.display = 'none';
     }
 
+    // 天气路况数据管理
+    let weatherAttractionsCounter = 0;
+    let weatherTrafficCounter = 0;
+    
+    // 添加景点天气
+    function addWeatherAttraction(attraction = null) {
+      const container = document.getElementById('weatherAttractionsList');
+      const index = attraction ? attraction._index : weatherAttractionsCounter++;
+      const itemId = attraction ? attraction.id : '';
+      
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'weather-item';
+      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db;';
+      itemDiv.dataset.index = index;
+      
+      itemDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <strong style="color: #3b82f6;">景点 #${index + 1}</strong>
+          <button type="button" class="blog-btn blog-btn-secondary" onclick="removeWeatherAttraction(${index})" style="font-size: 0.875rem; padding: 0.25rem 0.5rem; background: #ef4444; color: white;">
+            <i class="fa fa-trash"></i> 删除
+          </button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; width: 100%; box-sizing: border-box;">
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">ID</label>
+            <input type="number" class="admin-form-input weather-attraction-id" value="${itemId}" placeholder="自动生成" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">景点名称 *</label>
+            <input type="text" class="admin-form-input weather-attraction-name" value="${attraction ? escapeHtml(attraction.name || '') : ''}" placeholder="如：金字塔" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">温度 (°C) *</label>
+            <input type="number" class="admin-form-input weather-attraction-temperature" value="${attraction ? attraction.temperature || '' : ''}" placeholder="如：36" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">能见度</label>
+            <input type="text" class="admin-form-input weather-attraction-visibility" value="${attraction ? escapeHtml(attraction.visibility || '') : ''}" placeholder="如：高、中、低" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">紫外线指数</label>
+            <input type="number" class="admin-form-input weather-attraction-uvIndex" value="${attraction ? attraction.uvIndex || '' : ''}" placeholder="如：10" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">风速</label>
+            <input type="text" class="admin-form-input weather-attraction-windSpeed" value="${attraction ? escapeHtml(attraction.windSpeed || '') : ''}" placeholder="如：3级" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          </div>
+        </div>
+        <div class="admin-form-group" style="margin-bottom: 0; margin-top: 0.75rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          <label class="admin-form-label" style="font-size: 0.875rem;">建议</label>
+          <textarea class="admin-form-input weather-attraction-suggestion" rows="2" placeholder="如：早晨 8 点前去，带足水。" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box; resize: vertical;">${attraction ? escapeHtml(attraction.suggestion || '') : ''}</textarea>
+        </div>
+      `;
+      
+      container.appendChild(itemDiv);
+    }
+    
+    // 删除景点天气
+    function removeWeatherAttraction(index) {
+      const container = document.getElementById('weatherAttractionsList');
+      const item = container.querySelector(`[data-index="${index}"]`);
+      if (item && confirm('确定要删除这个景点吗？')) {
+        item.remove();
+      }
+    }
+    
+    // 添加路况信息
+    function addWeatherTraffic(traffic = null) {
+      const container = document.getElementById('weatherTrafficList');
+      const index = traffic ? traffic._index : weatherTrafficCounter++;
+      const itemId = traffic ? traffic.id : '';
+      
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'weather-item';
+      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db;';
+      itemDiv.dataset.index = index;
+      
+      itemDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <strong style="color: #3b82f6;">路况 #${index + 1}</strong>
+          <button type="button" class="blog-btn blog-btn-secondary" onclick="removeWeatherTraffic(${index})" style="font-size: 0.875rem; padding: 0.25rem 0.5rem; background: #ef4444; color: white;">
+            <i class="fa fa-trash"></i> 删除
+          </button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; width: 100%; box-sizing: border-box;">
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">ID</label>
+            <input type="number" class="admin-form-input weather-traffic-id" value="${itemId}" placeholder="自动生成" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">时间 *</label>
+            <input type="text" class="admin-form-input weather-traffic-time" value="${traffic ? escapeHtml(traffic.time || '') : ''}" placeholder="如：10:30" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">类型 *</label>
+            <select class="admin-form-select weather-traffic-type" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+              <option value="车祸" ${traffic && traffic.type === '车祸' ? 'selected' : ''}>车祸</option>
+              <option value="施工" ${traffic && traffic.type === '施工' ? 'selected' : ''}>施工</option>
+              <option value="天气" ${traffic && traffic.type === '天气' ? 'selected' : ''}>天气</option>
+              <option value="拥堵" ${traffic && traffic.type === '拥堵' ? 'selected' : ''}>拥堵</option>
+              <option value="其他" ${traffic && traffic.type === '其他' ? 'selected' : ''}>其他</option>
+            </select>
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; grid-column: 1 / -1; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">地点 *</label>
+            <input type="text" class="admin-form-input weather-traffic-location" value="${traffic ? escapeHtml(traffic.location || '') : ''}" placeholder="如：环城路 Maadi 出口方向" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; grid-column: 1 / -1; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">消息 *</label>
+            <textarea class="admin-form-input weather-traffic-message" rows="2" placeholder="如：发生追尾，极度拥堵。" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box; resize: vertical;">${traffic ? escapeHtml(traffic.message || '') : ''}</textarea>
+          </div>
+        </div>
+      `;
+      
+      container.appendChild(itemDiv);
+    }
+    
+    // 删除路况信息
+    function removeWeatherTraffic(index) {
+      const container = document.getElementById('weatherTrafficList');
+      const item = container.querySelector(`[data-index="${index}"]`);
+      if (item && confirm('确定要删除这条路况信息吗？')) {
+        item.remove();
+      }
+    }
+    
+    // 添加汇率转换项
+    function addExchangeRate(rate = null) {
+      const container = document.getElementById('exchangeRatesList');
+      const index = rate ? rate._index : exchangeRatesCounter++;
+      
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'exchange-rate-item';
+      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db;';
+      itemDiv.dataset.index = index;
+      
+      itemDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <strong style="color: #10b981;">汇率 #${index + 1}</strong>
+          <button type="button" class="blog-btn blog-btn-secondary" onclick="removeExchangeRate(${index})" style="font-size: 0.875rem; padding: 0.25rem 0.5rem; background: #ef4444; color: white;">
+            <i class="fa fa-trash"></i> 删除
+          </button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; width: 100%; box-sizing: border-box;">
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">源货币 *</label>
+            <input type="text" class="admin-form-input exchange-rate-from" value="${rate ? escapeHtml(rate.fromCurrency || '') : ''}" placeholder="如：CNY" pattern="^[A-Z]{3}$" maxlength="3" style="font-size: 0.875rem; text-transform: uppercase; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <small style="color: #6b7280; font-size: 0.75rem;">3位大写字母</small>
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">目标货币 *</label>
+            <input type="text" class="admin-form-input exchange-rate-to" value="${rate ? escapeHtml(rate.toCurrency || '') : ''}" placeholder="如：EGP" pattern="^[A-Z]{3}$" maxlength="3" style="font-size: 0.875rem; text-transform: uppercase; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <small style="color: #6b7280; font-size: 0.75rem;">3位大写字母</small>
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">汇率 *</label>
+            <input type="number" class="admin-form-input exchange-rate-value" value="${rate ? escapeHtml(rate.rate || '') : ''}" placeholder="如：6.74" step="0.0001" min="0" style="font-size: 0.875rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+            <small style="color: #6b7280; font-size: 0.75rem;">1源货币=?目标货币</small>
+          </div>
+        </div>
+      `;
+      
+      container.appendChild(itemDiv);
+      
+      // 自动转换为大写
+      const fromInput = itemDiv.querySelector('.exchange-rate-from');
+      const toInput = itemDiv.querySelector('.exchange-rate-to');
+      fromInput.addEventListener('input', function() {
+        this.value = this.value.toUpperCase();
+      });
+      toInput.addEventListener('input', function() {
+        this.value = this.value.toUpperCase();
+      });
+    }
+    
+    // 删除汇率转换项
+    function removeExchangeRate(index) {
+      const container = document.getElementById('exchangeRatesList');
+      const item = container.querySelector(`[data-index="${index}"]`);
+      if (item && confirm('确定要删除这条汇率吗？')) {
+        item.remove();
+      }
+    }
+    
+    // 加载特殊类别数据到表单
+    function loadSpecialCategoryData(specialType, originalData) {
+      if (specialType === 'translation') {
+        document.getElementById('translationChinese').value = originalData.chinese || '';
+        document.getElementById('translationArabic').value = originalData.arabic || '';
+        document.getElementById('translationCategory').value = originalData.category || '';
+      } else if (specialType === 'weather') {
+        // 加载globalAlert
+        if (originalData.globalAlert) {
+          document.getElementById('weatherGlobalAlertLevel').value = originalData.globalAlert.level || 'medium';
+          document.getElementById('weatherGlobalAlertMessage').value = originalData.globalAlert.message || '';
+        }
+        
+        // 加载attractions
+        const attractionsContainer = document.getElementById('weatherAttractionsList');
+        attractionsContainer.innerHTML = '';
+        weatherAttractionsCounter = 0;
+        if (originalData.attractions && Array.isArray(originalData.attractions)) {
+          originalData.attractions.forEach((attraction, index) => {
+            attraction._index = index;
+            addWeatherAttraction(attraction);
+            weatherAttractionsCounter++;
+          });
+        }
+        
+        // 加载traffic
+        const trafficContainer = document.getElementById('weatherTrafficList');
+        trafficContainer.innerHTML = '';
+        weatherTrafficCounter = 0;
+        if (originalData.traffic && Array.isArray(originalData.traffic)) {
+          originalData.traffic.forEach((traffic, index) => {
+            traffic._index = index;
+            addWeatherTraffic(traffic);
+            weatherTrafficCounter++;
+          });
+        }
+      } else if (specialType === 'exchange-rate') {
+        // 加载所有货币汇率
+        const ratesContainer = document.getElementById('exchangeRatesList');
+        ratesContainer.innerHTML = '';
+        exchangeRatesCounter = 0;
+        
+        // 遍历originalData中的所有货币字段（CNY, USD, EUR等）
+        Object.keys(originalData).forEach(currency => {
+          // 跳过标准字段
+          if (['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'].includes(currency)) {
+            return;
+          }
+          
+          // 如果该字段是一个对象（包含目标货币和汇率）
+          if (originalData[currency] && typeof originalData[currency] === 'object' && !Array.isArray(originalData[currency])) {
+            // 遍历该货币的所有目标货币
+            Object.keys(originalData[currency]).forEach(targetCurrency => {
+              const rate = originalData[currency][targetCurrency];
+              addExchangeRate({
+                fromCurrency: currency,
+                toCurrency: targetCurrency,
+                rate: rate
+              });
+              exchangeRatesCounter++;
+            });
+          }
+        });
+        
+        // 如果没有汇率数据，至少添加一行空行
+        if (exchangeRatesCounter === 0) {
+          addExchangeRate();
+        }
+        
+        // 加载更新时间
+        if (originalData.updateTime) {
+          const date = new Date(originalData.updateTime);
+          const localDateTime = date.toISOString().slice(0, 16);
+          document.getElementById('exchangeUpdateTime').value = localDateTime;
+        }
+      }
+    }
+    
+    // 从表单收集特殊类别数据
+    function collectSpecialCategoryData(specialType) {
+      const data = {};
+      
+      if (specialType === 'translation') {
+        data.chinese = document.getElementById('translationChinese').value.trim();
+        data.arabic = document.getElementById('translationArabic').value.trim();
+        data.category = document.getElementById('translationCategory').value.trim();
+        
+        if (!data.chinese || !data.arabic) {
+          throw new Error('中文和阿拉伯文为必填项');
+        }
+      } else if (specialType === 'weather') {
+        // 收集globalAlert
+        const alertLevel = document.getElementById('weatherGlobalAlertLevel').value;
+        const alertMessage = document.getElementById('weatherGlobalAlertMessage').value.trim();
+        
+        if (!alertMessage) {
+          throw new Error('预警消息为必填项');
+        }
+        
+        data.globalAlert = {
+          level: alertLevel,
+          message: alertMessage
+        };
+        
+        // 收集attractions
+        const attractionsContainer = document.getElementById('weatherAttractionsList');
+        const attractionItems = attractionsContainer.querySelectorAll('.weather-item');
+        data.attractions = [];
+        
+        attractionItems.forEach((item, index) => {
+          const idInput = item.querySelector('.weather-attraction-id');
+          const nameInput = item.querySelector('.weather-attraction-name');
+          const tempInput = item.querySelector('.weather-attraction-temperature');
+          const visibilityInput = item.querySelector('.weather-attraction-visibility');
+          const uvIndexInput = item.querySelector('.weather-attraction-uvIndex');
+          const windSpeedInput = item.querySelector('.weather-attraction-windSpeed');
+          const suggestionInput = item.querySelector('.weather-attraction-suggestion');
+          
+          const name = nameInput.value.trim();
+          const temperature = tempInput.value.trim();
+          
+          if (!name || !temperature) {
+            throw new Error(`景点 #${index + 1}：名称和温度为必填项`);
+          }
+          
+          const attraction = {
+            id: idInput.value ? parseInt(idInput.value) : index + 1,
+            name: name,
+            temperature: parseInt(temperature),
+            visibility: visibilityInput.value.trim() || undefined,
+            uvIndex: uvIndexInput.value ? parseInt(uvIndexInput.value) : undefined,
+            windSpeed: windSpeedInput.value.trim() || undefined,
+            suggestion: suggestionInput.value.trim() || undefined
+          };
+          
+          // 移除undefined字段
+          Object.keys(attraction).forEach(key => {
+            if (attraction[key] === undefined) {
+              delete attraction[key];
+            }
+          });
+          
+          data.attractions.push(attraction);
+        });
+        
+        // 收集traffic
+        const trafficContainer = document.getElementById('weatherTrafficList');
+        const trafficItems = trafficContainer.querySelectorAll('.weather-item');
+        data.traffic = [];
+        
+        trafficItems.forEach((item, index) => {
+          const idInput = item.querySelector('.weather-traffic-id');
+          const timeInput = item.querySelector('.weather-traffic-time');
+          const typeInput = item.querySelector('.weather-traffic-type');
+          const locationInput = item.querySelector('.weather-traffic-location');
+          const messageInput = item.querySelector('.weather-traffic-message');
+          
+          const time = timeInput.value.trim();
+          const type = typeInput.value;
+          const location = locationInput.value.trim();
+          const message = messageInput.value.trim();
+          
+          if (!time || !type || !location || !message) {
+            throw new Error(`路况 #${index + 1}：时间、类型、地点和消息为必填项`);
+          }
+          
+          const traffic = {
+            id: idInput.value ? parseInt(idInput.value) : index + 1,
+            time: time,
+            type: type,
+            location: location,
+            message: message
+          };
+          
+          data.traffic.push(traffic);
+        });
+        
+        // 保留data字段（如果存在，用于列表显示）
+        // data字段会在后端处理时自动生成或保留
+      } else if (specialType === 'exchange-rate') {
+        // 收集所有汇率项
+        const ratesContainer = document.getElementById('exchangeRatesList');
+        const rateItems = ratesContainer.querySelectorAll('.exchange-rate-item');
+        
+        // 构建汇率对象：{CNY: {EGP: 6.74}, USD: {EGP: 30.5}, ...}
+        const exchangeRates = {};
+        
+        rateItems.forEach((item, index) => {
+          const fromInput = item.querySelector('.exchange-rate-from');
+          const toInput = item.querySelector('.exchange-rate-to');
+          const rateInput = item.querySelector('.exchange-rate-value');
+          
+          const fromCurrency = fromInput.value.trim().toUpperCase();
+          const toCurrency = toInput.value.trim().toUpperCase();
+          const rate = parseFloat(rateInput.value);
+          
+          if (!fromCurrency || !toCurrency || isNaN(rate) || rate <= 0) {
+            throw new Error(`汇率 #${index + 1}：源货币、目标货币和汇率为必填项，且汇率必须大于0`);
+          }
+          
+          // 验证货币代码格式
+          if (!/^[A-Z]{3}$/.test(fromCurrency)) {
+            throw new Error(`汇率 #${index + 1}：源货币格式不正确，应为3位大写字母，如 CNY、USD、EGP`);
+          }
+          if (!/^[A-Z]{3}$/.test(toCurrency)) {
+            throw new Error(`汇率 #${index + 1}：目标货币格式不正确，应为3位大写字母，如 CNY、USD、EGP`);
+          }
+          
+          // 如果该源货币已存在，添加目标货币
+          if (!exchangeRates[fromCurrency]) {
+            exchangeRates[fromCurrency] = {};
+          }
+          exchangeRates[fromCurrency][toCurrency] = rate;
+        });
+        
+        // 将汇率对象合并到data中
+        Object.assign(data, exchangeRates);
+        
+        // 添加更新时间
+        const updateTime = document.getElementById('exchangeUpdateTime').value;
+        if (updateTime) {
+          data.updateTime = new Date(updateTime).toISOString();
+        }
+      }
+      
+      return data;
+    }
+    
     // 保存文章
     async function savePost(event) {
       event.preventDefault();
       
       const id = document.getElementById('postId').value;
       const name = document.getElementById('postName').value.trim();
+      // name和title保持一致
+      const title = name;
       const slug = document.getElementById('postSlug').value.trim();
       const excerpt = document.getElementById('postExcerpt').value.trim();
       const image = document.getElementById('postImage').value.trim();
       const apiName = document.getElementById('postApiName').value.trim();
-      const tagsStr = document.getElementById('postTags').value.trim();
+      const category = document.getElementById('postCategory').value.trim();
+      
+      // 检查是否是特殊类别
+      const specialType = isSpecialCategory(apiName);
       
       // 获取htmlContent（统一使用htmlContent字段）
       let htmlContent = '';
+      let specialData = null;
       
-      if (currentEditorMode === 'html' && quillEditor) {
-        htmlContent = quillEditor.root.innerHTML;
-      } else {
-        // Markdown模式：将Markdown转换为HTML
-        const markdownContent = simpleMDE ? simpleMDE.value() : document.getElementById('postContent').value;
-        if (markdownContent) {
-          // 如果内容看起来像HTML，直接使用
-          if (markdownContent.trim().startsWith('<')) {
-            htmlContent = markdownContent;
+      // 只有 weather、exchange-rate、translation 不使用 htmlContent
+      // second-hand 和 rentals 仍然需要 htmlContent
+      const needsSpecialDataOnly = specialType && (specialType === 'weather' || specialType === 'exchange-rate' || specialType === 'translation');
+      
+      if (specialType) {
+        // 特殊类别：收集特殊数据
+        try {
+          specialData = collectSpecialCategoryData(specialType);
+          // 只有 weather、exchange-rate、translation 不需要 htmlContent
+          // second-hand 和 rentals 仍然需要 htmlContent
+          if (!needsSpecialDataOnly) {
+            // 获取htmlContent（second-hand 和 rentals 需要）
+            if (currentEditorMode === 'html' && quillEditor) {
+              htmlContent = quillEditor.root.innerHTML;
+            } else {
+              // Markdown模式：将Markdown转换为HTML
+              const markdownContent = simpleMDE ? simpleMDE.value() : document.getElementById('postContent').value;
+              if (markdownContent) {
+                // 如果内容看起来像HTML，直接使用
+                if (markdownContent.trim().startsWith('<')) {
+                  htmlContent = markdownContent;
+                } else {
+                  // 使用 marked.js 将 Markdown 转换为 HTML
+                  if (typeof marked !== 'undefined') {
+                    htmlContent = marked.parse(markdownContent);
+                  } else {
+                    htmlContent = markdownContent; // 如果没有 marked.js，直接使用原始内容
+                  }
+                }
+              }
+            }
           } else {
-            // 否则，简单处理：将Markdown换行转换为HTML段落
-            htmlContent = '<p>' + markdownContent.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+            // weather、exchange-rate、translation 不需要 htmlContent
+            htmlContent = undefined;
+          }
+        } catch (error) {
+          showToast(error.message, 'error');
+          return;
+        }
+      } else {
+        // 普通类别：获取htmlContent
+        if (currentEditorMode === 'html' && quillEditor) {
+          htmlContent = quillEditor.root.innerHTML;
+        } else {
+          // Markdown模式：将Markdown转换为HTML
+          const markdownContent = simpleMDE ? simpleMDE.value() : document.getElementById('postContent').value;
+          if (markdownContent) {
+            // 如果内容看起来像HTML，直接使用
+            if (markdownContent.trim().startsWith('<')) {
+              htmlContent = markdownContent;
+            } else {
+              // 否则，简单处理：将Markdown换行转换为HTML段落
+              htmlContent = '<p>' + markdownContent.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+            }
           }
         }
       }
@@ -1130,32 +1970,117 @@
         return;
       }
 
-      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+      if (!category) {
+        showToast('请填写分类/标签', 'error');
+        return;
+      }
 
       try {
         // 直接使用id（id现在是全局唯一的UUID）
         const url = id ? `${BLOG_ADMIN_API}/posts/${id}` : `${BLOG_ADMIN_API}/posts`;
         const method = id ? 'PUT' : 'POST';
         
+        const requestBody = {
+          name,
+          title: title, // name和title保持一致
+          slug: slug || undefined,
+          excerpt,
+          image: image || undefined,
+          apiName: apiName, // API名称（用于确定数据存储位置）
+          category: category, // 分类/标签（用于博客展示，替代原来的tags字段）
+          published
+        };
+        
+        // 添加特殊字段（二手市场和租房酒店）
+        const specialType = isSpecialCategory(apiName);
+        if (specialType === 'second-hand') {
+          const price = document.getElementById('secondHandPrice').value.trim();
+          if (price) {
+            requestBody.price = price;
+          }
+        } else if (specialType === 'rentals') {
+          const price = document.getElementById('rentalsPrice').value.trim();
+          const rooms = document.getElementById('rentalsRooms').value.trim();
+          const area = document.getElementById('rentalsArea').value.trim();
+          const views = document.getElementById('rentalsViews').value.trim();
+          if (price) requestBody.price = price;
+          if (rooms) requestBody.rooms = rooms;
+          if (area) requestBody.area = area;
+          if (views) requestBody.views = parseInt(views) || 0;
+        }
+        
+        // 如果是特殊类别，添加特殊数据
+        // 注意：second-hand 和 rentals 虽然需要特殊字段，但仍然需要 htmlContent
+        const needsSpecialDataOnly = specialType && (specialType === 'weather' || specialType === 'exchange-rate' || specialType === 'translation');
+        
+        if (specialType && specialData) {
+          requestBody._specialData = specialData;
+          requestBody._specialType = specialType;
+          
+          // 只有 weather、exchange-rate、translation 不使用 htmlContent
+          // second-hand 和 rentals 仍然需要 htmlContent
+          if (!needsSpecialDataOnly) {
+            requestBody.htmlContent = htmlContent || undefined;
+          }
+          
+          // 添加调试信息
+          console.log('保存特殊类别文章', {
+            specialType,
+            needsSpecialDataOnly,
+            specialDataKeys: Object.keys(specialData),
+            specialDataPreview: JSON.stringify(specialData).substring(0, 500),
+            hasHtmlContent: !needsSpecialDataOnly && htmlContent
+          });
+        } else {
+          // 普通类别才添加htmlContent
+          requestBody.htmlContent = htmlContent || undefined;
+        }
+        
+        console.log('发送请求', {
+          url,
+          method,
+          requestBody: JSON.stringify(requestBody, null, 2)
+        });
+        
         const response = await adminApiRequest(url, {
           method,
-          body: JSON.stringify({
-            name,
-            slug: slug || undefined,
-            excerpt,
-            image: image || undefined,
-            apiName: apiName, // 使用apiName而不是category
-            tags,
-            htmlContent: htmlContent || undefined,
-            published
-          })
+          body: JSON.stringify(requestBody)
         });
-
+        
+        console.log('收到响应', {
+          success: response?.success,
+          data: response?.data,
+          message: response?.message
+        });
+        
+        // 显示调试信息面板
+        showDebugInfo({
+          request: requestBody,
+          response: response,
+          specialType: specialType,
+          specialData: specialData
+        });
+        
         if (response && response.success) {
+          // 显示详细的成功信息（包含调试信息）
+          const debugInfo = specialType && specialData 
+            ? `\n调试信息：\n- 类型: ${specialType}\n- 数据键: ${Object.keys(specialData).join(', ')}\n- 数据预览: ${JSON.stringify(specialData).substring(0, 200)}`
+            : '';
+          
+          console.log('保存成功', {
+            id: response.data?.id,
+            name: response.data?.name,
+            apiName: response.data?.category,
+            debugInfo
+          });
+          
           showToast(id ? '文章更新成功' : '文章创建成功', 'success');
           window.currentEditingPost = null; // 清除当前编辑的文章
           hidePostForm();
           loadPosts();
+        } else {
+          console.error('保存失败', response);
+          showToast('保存失败: ' + (response?.message || '未知错误'), 'error');
         }
       } catch (error) {
         console.error('保存文章失败:', error);
@@ -1594,6 +2519,118 @@
       } else {
         previewDiv.style.display = 'none';
       }
+    }
+    
+    /**
+     * 同步name和title字段
+     */
+    function syncNameAndTitle() {
+      const nameInput = document.getElementById('postName');
+      if (nameInput) {
+        // name和title保持一致，这里只需要确保name字段的值正确即可
+        // title会在保存时自动设置为与name相同
+      }
+    }
+    
+    /**
+     * 显示调试信息面板
+     */
+    function showDebugInfo(info) {
+      // 创建或获取调试面板
+      let debugPanel = document.getElementById('debugPanel');
+      if (!debugPanel) {
+        debugPanel = document.createElement('div');
+        debugPanel.id = 'debugPanel';
+        debugPanel.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          width: 500px;
+          max-height: 80vh;
+          background: #1f2937;
+          color: #f3f4f6;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+          z-index: 10000;
+          font-family: 'Courier New', monospace;
+          font-size: 12px;
+          overflow-y: auto;
+          display: none;
+        `;
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.style.cssText = `
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: #ef4444;
+          color: white;
+          border: none;
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          cursor: pointer;
+          font-size: 20px;
+          line-height: 1;
+        `;
+        closeBtn.onclick = () => {
+          debugPanel.style.display = 'none';
+        };
+        debugPanel.appendChild(closeBtn);
+        
+        const title = document.createElement('h3');
+        title.textContent = '调试信息';
+        title.style.cssText = 'margin: 0 0 15px 0; color: #60a5fa;';
+        debugPanel.appendChild(title);
+        
+        document.body.appendChild(debugPanel);
+      }
+      
+      // 清空内容（保留标题和关闭按钮）
+      const title = debugPanel.querySelector('h3');
+      const closeBtn = debugPanel.querySelector('button');
+      debugPanel.innerHTML = '';
+      debugPanel.appendChild(closeBtn);
+      debugPanel.appendChild(title);
+      
+      // 添加调试信息
+      const sections = [
+        { title: '请求数据', data: info.request },
+        { title: '响应数据', data: info.response },
+        { title: '特殊类型', data: info.specialType },
+        { title: '特殊数据', data: info.specialData }
+      ];
+      
+      sections.forEach(section => {
+        if (section.data) {
+          const sectionDiv = document.createElement('div');
+          sectionDiv.style.cssText = 'margin-bottom: 15px;';
+          
+          const sectionTitle = document.createElement('h4');
+          sectionTitle.textContent = section.title;
+          sectionTitle.style.cssText = 'color: #34d399; margin: 0 0 5px 0; font-size: 14px;';
+          sectionDiv.appendChild(sectionTitle);
+          
+          const pre = document.createElement('pre');
+          pre.style.cssText = 'margin: 0; padding: 10px; background: #111827; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;';
+          pre.textContent = JSON.stringify(section.data, null, 2);
+          sectionDiv.appendChild(pre);
+          
+          debugPanel.appendChild(sectionDiv);
+        }
+      });
+      
+      // 显示面板
+      debugPanel.style.display = 'block';
+      
+      // 5秒后自动隐藏（可选）
+      setTimeout(() => {
+        if (debugPanel.style.display === 'block') {
+          debugPanel.style.display = 'none';
+        }
+      }, 10000);
     }
   </script>
 </body>
