@@ -6280,6 +6280,10 @@ let logsFilterState = {
 // 加载操作日志
 async function loadLogs() {
   const container = document.getElementById('logsTab');
+  if (!container) return;
+  
+  // 先清空容器，防止旧内容残留
+  container.innerHTML = '';
   
   try {
     // 获取过滤器选项（用于下拉菜单）
@@ -6334,7 +6338,7 @@ async function loadLogs() {
           <div class="flex items-center justify-between mb-6">
             <h2 class="text-2xl font-bold text-gray-900">Logs</h2>
             <div class="text-sm text-gray-600">
-              ${dateRangeText} | Total: <span class="font-semibold">${pagination.total}</span> logs
+              ${escapeHtml(dateRangeText)} | Total: <span class="font-semibold">${escapeHtml(String(pagination.total))}</span> logs
             </div>
           </div>
           
@@ -6347,7 +6351,7 @@ async function loadLogs() {
                 <input 
                   type="date" 
                   id="logStartDate"
-                  value="${logsFilterState.start_date}"
+                  value="${escapeHtml(logsFilterState.start_date)}"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onchange="updateLogDateRange()"
                 />
@@ -6357,7 +6361,7 @@ async function loadLogs() {
                 <input 
                   type="date" 
                   id="logEndDate"
-                  value="${logsFilterState.end_date}"
+                  value="${escapeHtml(logsFilterState.end_date)}"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onchange="updateLogDateRange()"
                 />
@@ -6381,7 +6385,7 @@ async function loadLogs() {
                 >
                   <option value="">All Actions</option>
                   ${filterOptions.actions.map(action => `
-                    <option value="${action}" ${logsFilterState.action === action ? 'selected' : ''}>${action}</option>
+                    <option value="${escapeHtml(action)}" ${logsFilterState.action === action ? 'selected' : ''}>${escapeHtml(action)}</option>
                   `).join('')}
                 </select>
               </div>
@@ -6396,7 +6400,7 @@ async function loadLogs() {
                 >
                   <option value="">All Types</option>
                   ${filterOptions.resourceTypes.map(type => `
-                    <option value="${type}" ${logsFilterState.target_type === type ? 'selected' : ''}>${type}</option>
+                    <option value="${escapeHtml(type)}" ${logsFilterState.target_type === type ? 'selected' : ''}>${escapeHtml(type)}</option>
                   `).join('')}
                 </select>
               </div>
@@ -6411,7 +6415,7 @@ async function loadLogs() {
                 >
                   <option value="">All Operators</option>
                   ${filterOptions.operators.map(op => `
-                    <option value="${op}" ${logsFilterState.operator === op ? 'selected' : ''}>${op}</option>
+                    <option value="${escapeHtml(op)}" ${logsFilterState.operator === op ? 'selected' : ''}>${escapeHtml(op)}</option>
                   `).join('')}
                 </select>
               </div>
@@ -6423,7 +6427,7 @@ async function loadLogs() {
                   type="text" 
                   id="logDetailsFilter"
                   placeholder="Search in details..."
-                  value="${logsFilterState.details}"
+                  value="${escapeHtml(logsFilterState.details)}"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onkeyup="debounceFilterLogsByDetails(this.value)"
                 />
@@ -6436,7 +6440,7 @@ async function loadLogs() {
                   type="text" 
                   id="logIPFilter"
                   placeholder="Search IP address..."
-                  value="${logsFilterState.ip_address}"
+                  value="${escapeHtml(logsFilterState.ip_address)}"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onkeyup="debounceFilterLogsByIP(this.value)"
                 />
@@ -6592,16 +6596,25 @@ function renderLogRow(log) {
               'status': 'Status'
             };
             const displayKey = keyMap[key] || key;
-            return `${displayKey}: ${value}`;
+            // 转义value以防止HTML注入（在构建时就转义）
+            const valueStr = typeof value === 'string' ? value : (value === null || value === undefined ? '' : String(value));
+            const escapedValue = escapeHtml(valueStr);
+            return `${displayKey}: ${escapedValue}`;
           })
           .join(', ');
       } else {
-        detailsText = String(detailsObj);
+        const detailsStr = typeof detailsObj === 'string' ? detailsObj : String(detailsObj);
+        detailsText = escapeHtml(detailsStr);
       }
     }
   } catch (e) {
-    detailsText = log.details || '-';
+    // 如果解析失败，直接使用原始details并转义
+    const rawDetails = log.details || '-';
+    detailsText = escapeHtml(rawDetails);
   }
+  
+  // detailsText已经在构建时进行了转义，这里直接使用
+  const escapedDetailsText = detailsText;
   
   // 操作类型显示
   const actionMap = {
@@ -6616,29 +6629,130 @@ function renderLogRow(log) {
   // 操作者显示
   const operatorName = log.admin_username || (log.action === 'USER_LOGIN' ? 'System' : '-');
   
+  // 为data属性准备转义后的值（detailsText已经转义，需要再次转义用于HTML属性）
+  // 注意：detailsText已经是转义后的HTML实体，但用于HTML属性时还需要确保引号被转义
+  const detailsForDataAttr = escapeHtml(detailsText.toLowerCase());
+  
+  // 限制Details显示长度（100个字符）
+  // 注意：detailsText已经是转义后的HTML实体，我们基于转义后的长度来判断
+  const MAX_DETAILS_LENGTH = 100;
+  const isDetailsLong = escapedDetailsText.length > MAX_DETAILS_LENGTH;
+  // 如果内容过长，截断转义后的文本
+  const truncatedDetails = isDetailsLong ? escapedDetailsText.substring(0, MAX_DETAILS_LENGTH) + '...' : escapedDetailsText;
+  
+  // 生成唯一的日志ID用于存储和查找
+  const logId = `log-${log.id || Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  // 存储日志数据到全局变量（用于显示完整详情）
+  if (!window.operationLogsData) {
+    window.operationLogsData = {};
+  }
+  window.operationLogsData[logId] = {
+    details: escapedDetailsText,
+    fullDetails: log.details || '-',
+    created_at: log.created_at,
+    action: log.action,
+    operator: operatorName,
+    target_type: log.target_type || log.resource_type || '-',
+    ip_address: log.ip_address || '-'
+  };
+  
   return `
     <tr class="hover:bg-gray-50 log-row" 
-        data-time="${log.created_at || ''}"
-        data-operator="${operatorName.toLowerCase()}"
-        data-action="${log.action || ''}"
-        data-resource="${(log.target_type || log.resource_type || '').toLowerCase()}"
-        data-details="${detailsText.toLowerCase()}"
-        data-ip="${log.ip_address || ''}"
+        data-time="${escapeHtml(log.created_at || '')}"
+        data-operator="${escapeHtml(operatorName.toLowerCase())}"
+        data-action="${escapeHtml(log.action || '')}"
+        data-resource="${escapeHtml((log.target_type || log.resource_type || '').toLowerCase())}"
+        data-details="${detailsForDataAttr}"
+        data-ip="${escapeHtml(log.ip_address || '')}"
     >
-      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatServerTime(log.created_at)}</td>
-      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${operatorName}</td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(formatServerTime(log.created_at))}</td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${escapeHtml(operatorName)}</td>
       <td class="px-6 py-4 whitespace-nowrap text-sm">
         <span class="px-2 py-1 text-xs rounded-full ${actionInfo.class}">
-          ${actionInfo.text}
+          ${escapeHtml(actionInfo.text)}
         </span>
       </td>
-      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.target_type || log.resource_type || '-'}</td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${escapeHtml(log.target_type || log.resource_type || '-')}</td>
       <td class="px-6 py-4 text-sm text-gray-700 max-w-md">
-        <div class="truncate" title="${detailsText}">${detailsText}</div>
+        <div class="flex items-start gap-2">
+          <div class="truncate flex-1" title="${escapedDetailsText}">${truncatedDetails}</div>
+          ${isDetailsLong ? `
+            <button 
+              onclick="showOperationLogDetails('${logId}')" 
+              class="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 hover:bg-blue-50 rounded whitespace-nowrap flex-shrink-0"
+              title="查看完整内容"
+            >
+              查看全部
+            </button>
+          ` : ''}
+        </div>
       </td>
-      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${log.ip_address || '-'}</td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(log.ip_address || '-')}</td>
     </tr>
   `;
+}
+
+// 显示操作日志的完整Details
+function showOperationLogDetails(logId) {
+  if (!window.operationLogsData || !window.operationLogsData[logId]) {
+    showToast('日志数据未找到', 'error');
+    return;
+  }
+  
+  const logData = window.operationLogsData[logId];
+  
+  // 创建详情模态框
+  const detailsModal = document.createElement('div');
+  detailsModal.className = 'modal active';
+  detailsModal.onclick = function(e) {
+    if (e.target === detailsModal) {
+      detailsModal.remove();
+    }
+  };
+  
+  const detailsHtml = `
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-bold text-gray-900">日志详情</h3>
+        <button onclick="this.closest('.modal').remove()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">时间</h4>
+          <p class="text-sm text-gray-600">${escapeHtml(formatServerTime(logData.created_at))}</p>
+        </div>
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">操作者</h4>
+          <p class="text-sm text-gray-600">${escapeHtml(logData.operator)}</p>
+        </div>
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">操作类型</h4>
+          <p class="text-sm text-gray-600">${escapeHtml(logData.action)}</p>
+        </div>
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">资源类型</h4>
+          <p class="text-sm text-gray-600">${escapeHtml(logData.target_type)}</p>
+        </div>
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">IP地址</h4>
+          <p class="text-sm text-gray-600">${escapeHtml(logData.ip_address)}</p>
+        </div>
+        <div>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">详细信息</h4>
+          <div class="p-3 bg-gray-50 rounded text-sm text-gray-700 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
+            ${logData.details}
+          </div>
+        </div>
+      </div>
+      <div class="mt-6 flex justify-end">
+        <button onclick="this.closest('.modal').remove()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium">关闭</button>
+      </div>
+    </div>
+  `;
+  
+  detailsModal.innerHTML = detailsHtml;
+  document.body.appendChild(detailsModal);
 }
 
 // 更新日期范围
@@ -7218,9 +7332,16 @@ async function loadApiLogs() {
           const dataKey = `${currentApiLogsApiId}-${currentApiLogsPage}-${index}`;
           window.apiLogsData[dataKey] = log;
           
+          const escapedRequestPath = escapeHtml(log.request_path || '-');
+          const escapedRequestMethod = escapeHtml(log.request_method || '-');
+          const escapedResponseStatus = escapeHtml(String(log.response_status || '-'));
+          const escapedResponseTime = log.response_time_ms ? escapeHtml(String(log.response_time_ms)) + 'ms' : '-';
+          const escapedIpAddress = escapeHtml(log.ip_address || '-');
+          const escapedDataKey = escapeHtml(dataKey);
+          
           return `
             <tr class="hover:bg-gray-50" id="${logId}">
-              <td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">${log.created_at || '-'}</td>
+              <td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">${escapeHtml(log.created_at || '-')}</td>
               <td class="px-4 py-2 whitespace-nowrap">
                 <span class="px-2 py-1 text-xs font-semibold rounded ${
                   log.request_method === 'GET' ? 'bg-green-100 text-green-800' :
@@ -7228,21 +7349,21 @@ async function loadApiLogs() {
                   log.request_method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
                   log.request_method === 'DELETE' ? 'bg-red-100 text-red-800' :
                   'bg-gray-100 text-gray-800'
-                }">${log.request_method || '-'}</span>
+                }">${escapedRequestMethod}</span>
               </td>
-              <td class="px-4 py-2 text-xs font-mono text-gray-700 max-w-xs truncate" title="${(log.request_path || '-').replace(/"/g, '&quot;')}">${log.request_path || '-'}</td>
+              <td class="px-4 py-2 text-xs font-mono text-gray-700 max-w-xs truncate" title="${escapedRequestPath}">${escapedRequestPath}</td>
               <td class="px-4 py-2 whitespace-nowrap">
                 <span class="px-2 py-1 text-xs font-semibold rounded ${
                   log.response_status >= 200 && log.response_status < 300 ? 'bg-green-100 text-green-800' :
                   log.response_status >= 400 && log.response_status < 500 ? 'bg-yellow-100 text-yellow-800' :
                   log.response_status >= 500 ? 'bg-red-100 text-red-800' :
                   'bg-gray-100 text-gray-800'
-                }">${log.response_status || '-'}</span>
+                }">${escapedResponseStatus}</span>
               </td>
-              <td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">${log.response_time_ms ? log.response_time_ms + 'ms' : '-'}</td>
-              <td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">${log.ip_address || '-'}</td>
+              <td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">${escapedResponseTime}</td>
+              <td class="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">${escapedIpAddress}</td>
               <td class="px-4 py-2">
-                <button onclick="showLogDetails('${dataKey}')" 
+                <button onclick="showLogDetails('${escapedDataKey}')" 
                         class="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 hover:bg-blue-50 rounded">View</button>
               </td>
             </tr>
@@ -7314,13 +7435,13 @@ function showLogDetails(dataKey) {
         ${log.error_message ? `
         <div>
           <h4 class="text-sm font-semibold text-red-700 mb-2">Error Message</h4>
-          <div class="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700">${log.error_message}</div>
+          <div class="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700">${escapeHtml(log.error_message)}</div>
         </div>
         ` : ''}
         ${log.user_agent ? `
         <div>
           <h4 class="text-sm font-semibold text-gray-700 mb-2">User Agent</h4>
-          <p class="text-xs text-gray-600 break-all">${log.user_agent}</p>
+          <p class="text-xs text-gray-600 break-all">${escapeHtml(log.user_agent)}</p>
         </div>
         ` : ''}
       </div>

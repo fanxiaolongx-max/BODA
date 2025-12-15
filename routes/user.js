@@ -225,9 +225,79 @@ router.get('/balance', async (req, res) => {
  * @body {string} [notes] - Order notes (optional)
  * @returns {Object} Order object with id, order_number, total_amount, and items
  */
+// 清理和验证用户输入，防止路径遍历攻击和其他恶意输入
+function sanitizeInput(input, maxLength = 200) {
+  if (!input || typeof input !== 'string') {
+    return '';
+  }
+  
+  // 移除路径遍历攻击payload
+  let cleaned = input
+    // 移除路径遍历字符
+    .replace(/\.\./g, '')  // 移除 .. 
+    .replace(/\.\//g, '')  // 移除 ./
+    .replace(/\.\\/g, '')  // 移除 .\
+    .replace(/\\/g, '')    // 移除反斜杠
+    // 移除URL编码的路径遍历
+    .replace(/%2e%2e%2f/gi, '')  // %2e%2e%2f = ../
+    .replace(/%2e%2e\\/gi, '')   // %2e%2e\ = ..\
+    .replace(/%2e%2e/gi, '')     // %2e%2e = ..
+    .replace(/%2f/gi, '')        // %2f = /
+    .replace(/%5c/gi, '')       // %5c = \
+    // 移除Unicode编码的路径遍历
+    .replace(/%u002e%u002e%u2215/gi, '')  // Unicode ../
+    .replace(/%u002e%u002e%u2216/gi, '')  // Unicode ..\
+    .replace(/%u002e%u002e/gi, '')        // Unicode ..
+    .replace(/%u2215/gi, '')              // Unicode /
+    .replace(/%u2216/gi, '')              // Unicode \
+    // 移除可疑的系统文件路径
+    .replace(/WEB-INF/gi, '')
+    .replace(/win\.ini/gi, '')
+    .replace(/windows/gi, '')
+    .replace(/etc\/passwd/gi, '')
+    .replace(/etc\/shadow/gi, '')
+    // 移除其他可疑字符
+    .replace(/[<>\"']/g, '')  // 移除HTML标签字符
+    .trim();
+  
+  // 限制长度
+  if (cleaned.length > maxLength) {
+    cleaned = cleaned.substring(0, maxLength);
+  }
+  
+  return cleaned;
+}
+
 router.post('/orders', async (req, res) => {
   try {
-    const { items, customer_name, notes, use_balance, delivery_address_id, order_type, table_number } = req.body;
+    let { items, customer_name, notes, use_balance, delivery_address_id, order_type, table_number } = req.body;
+    
+    // 速率限制：检查同一手机号在1分钟内的订单数量
+    if (req.session.userPhone) {
+      const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString().replace('T', ' ').substring(0, 19);
+      const recentOrders = await allAsync(
+        'SELECT COUNT(*) as count FROM orders WHERE customer_phone = ? AND created_at >= ?',
+        [req.session.userPhone, oneMinuteAgo]
+      );
+      
+      if (recentOrders[0] && recentOrders[0].count >= 5) {
+        return res.status(429).json({ 
+          success: false, 
+          message: '订单创建过于频繁，请稍后再试' 
+        });
+      }
+    }
+    
+    // 清理和验证输入
+    if (customer_name) {
+      customer_name = sanitizeInput(customer_name, 100);
+    }
+    if (notes) {
+      notes = sanitizeInput(notes, 500);
+    }
+    if (table_number) {
+      table_number = sanitizeInput(table_number, 50);
+    }
     
     // 确定订单类型：dine_in (堂食) 或 delivery (外卖)
     // 优先使用前端发送的 order_type，如果前端未指定，则根据数据判断
