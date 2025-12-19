@@ -223,6 +223,9 @@ async function getBlogPosts(options = {}) {
     let allPosts = [];
     
     // 遍历每个API，读取其response_content.data
+    const skippedApis = [];
+    const processedApis = [];
+    
     for (const api of apis) {
       try {
         const responseContent = JSON.parse(api.response_content);
@@ -241,7 +244,13 @@ async function getBlogPosts(options = {}) {
           // 对象格式，包含data数组
           items = responseContent.data;
         } else {
+          skippedApis.push({ name: api.name, reason: '无效的数据格式（不是数组、不是{data:[]}、也不是天气对象）', contentType: typeof responseContent });
           continue; // 跳过无效格式
+        }
+        
+        if (items.length === 0) {
+          skippedApis.push({ name: api.name, reason: '数据数组为空' });
+          continue;
         }
         
         // 获取字段映射配置
@@ -250,10 +259,23 @@ async function getBlogPosts(options = {}) {
         // 将每个数据项转换为文章格式
         const posts = items.map(item => convertApiItemToPost(item, api.name, fieldMapping));
         allPosts = allPosts.concat(posts);
+        processedApis.push({ name: api.name, postCount: posts.length });
       } catch (e) {
+        skippedApis.push({ name: api.name, reason: '解析失败', error: e.message });
         logger.warn('解析API响应内容失败', { apiName: api.name, error: e.message });
         continue;
       }
+    }
+    
+    // 记录处理结果
+    if (skippedApis.length > 0 || processedApis.length > 0) {
+      logger.info('API处理统计', {
+        总API数: apis.length,
+        成功处理的API数: processedApis.length,
+        跳过的API数: skippedApis.length,
+        跳过的API详情: skippedApis,
+        处理的API详情: processedApis.map(a => ({ name: a.name, posts: a.postCount }))
+      });
     }
     
     // 筛选已发布的文章
@@ -263,7 +285,63 @@ async function getBlogPosts(options = {}) {
     
     // 分类筛选（分类就是API名称）
     if (options.category) {
-      allPosts = allPosts.filter(post => post.category === options.category);
+      const categoryLower = options.category.toLowerCase();
+      const beforeFilterCount = allPosts.length;
+      
+      // 收集所有文章的分类信息用于调试（在筛选前）
+      const allCategories = new Set();
+      const allSourceApiNames = new Set();
+      const samplePostsBeforeFilter = [];
+      allPosts.forEach((post, index) => {
+        if (post.category) allCategories.add(post.category);
+        if (post._sourceApiName) allSourceApiNames.add(post._sourceApiName);
+        if (index < 5) {
+          samplePostsBeforeFilter.push({
+            id: post.id,
+            name: post.name,
+            category: post.category,
+            _sourceApiName: post._sourceApiName
+          });
+        }
+      });
+      
+      allPosts = allPosts.filter(post => {
+        // 优先使用_sourceApiName匹配（因为分类是基于API名称的）
+        // _sourceApiName应该总是等于api.name，这是最可靠的匹配方式
+        const sourceApiName = post._sourceApiName || '';
+        if (sourceApiName) {
+          const exactMatch = sourceApiName === options.category;
+          const caseInsensitiveMatch = sourceApiName.toLowerCase() === categoryLower;
+          if (exactMatch || caseInsensitiveMatch) {
+            return true;
+          }
+        }
+        
+        // 如果_sourceApiName不匹配，检查category字段（可能来自item.category）
+        // 但这种情况应该很少见，因为category通常是item.category || apiName
+        const category = post.category || '';
+        if (category) {
+          const exactMatch = category === options.category;
+          const caseInsensitiveMatch = category.toLowerCase() === categoryLower;
+          if (exactMatch || caseInsensitiveMatch) {
+            return true;
+          }
+        }
+        
+        return false;
+      });
+      
+      // 调试日志：如果筛选后没有结果，记录详细信息
+      if (allPosts.length === 0 && beforeFilterCount > 0) {
+        logger.warn('分类筛选结果为空', {
+          requestedCategory: options.category,
+          requestedCategoryLower: categoryLower,
+          beforeFilterCount,
+          allCategoriesInPosts: Array.from(allCategories),
+          allSourceApiNamesInPosts: Array.from(allSourceApiNames),
+          samplePostsBeforeFilter
+        });
+      }
     }
     
     // 标签筛选（使用category字段作为标签）
@@ -445,10 +523,13 @@ async function findPostSourceApi(postId, apiName) {
 async function getBlogCategories() {
   try {
     // 从custom_apis表直接读取所有记录作为分类
+    // 排除博客系统专用的API路径（与getBlogPosts保持一致）
     const apis = await allAsync(`
       SELECT id, name, path, description, status, created_at, updated_at
       FROM custom_apis
-      WHERE method = 'GET' AND status = 'active'
+      WHERE method = 'GET' 
+        AND status = 'active'
+        AND path NOT LIKE '/blog/%'
       ORDER BY name ASC
     `);
     
@@ -485,11 +566,20 @@ async function getBlogCategories() {
       updatedAt: api.updated_at
     }));
     
+    // 检查哪些分类有文章，哪些没有
+    const categoriesWithPosts = categories.filter(cat => cat.postCount > 0);
+    const categoriesWithoutPosts = categories.filter(cat => cat.postCount === 0);
+    
     logger.info('分类文章数统计', {
       总分类数: categories.length,
+      有文章的分类数: categoriesWithPosts.length,
+      无文章的分类数: categoriesWithoutPosts.length,
       总文章数: posts.length,
       去重后文章数: seenPostIds.size,
-      分类统计: categoryPostCount
+      分类统计: categoryPostCount,
+      有文章的分类: categoriesWithPosts.map(cat => ({ name: cat.name, count: cat.postCount })),
+      无文章的分类: categoriesWithoutPosts.map(cat => cat.name),
+      所有文章的分类字段: Array.from(new Set(posts.map(p => p._sourceApiName || p.category).filter(Boolean)))
     });
     
     return categories;

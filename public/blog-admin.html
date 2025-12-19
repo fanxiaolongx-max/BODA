@@ -2393,7 +2393,28 @@
     }
 
     // 初始化
-    document.addEventListener('DOMContentLoaded', () => {
+    // 获取URL参数
+    function getUrlParam(name) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name);
+    }
+
+    // 检查URL参数并自动打开编辑对话框
+    async function checkUrlParams() {
+      const editId = getUrlParam('edit');
+      if (editId) {
+        // 等待页面加载完成后再执行编辑
+        setTimeout(async () => {
+          await editPost(editId);
+          // 清除URL参数，避免刷新时重复执行
+          const url = new URL(window.location);
+          url.searchParams.delete('edit');
+          window.history.replaceState({}, '', url);
+        }, 500);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
       loadPosts();
       loadApis(); // 加载API列表
       
@@ -2407,6 +2428,9 @@
         // 初始化时也检查一次
         updateImagePreview(postImageInput.value);
       }
+      
+      // 检查URL参数，如果有edit参数，自动打开编辑对话框
+      await checkUrlParams();
     });
     
     /**

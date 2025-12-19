@@ -279,6 +279,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // 限制只能输入数字，且必须以0开头
     phoneInput.addEventListener('input', (e) => {
+      // 检查 Name 是否已填写
+      const nameInput = document.getElementById('name');
+      const nameValue = nameInput ? nameInput.value.trim() : '';
+      if (!nameValue) {
+        // Name 未填写，提示用户先输入 Name
+        const nameError = document.getElementById('nameError');
+        if (nameError) {
+          nameError.textContent = t('please_enter_name_first') || 'Please enter your name first';
+          nameError.classList.remove('hidden');
+        }
+        if (nameInput) {
+          nameInput.classList.add('border-red-500');
+        }
+        // 阻止 Phone Number 输入，聚焦回 Name
+        phoneInput.blur();
+        setTimeout(() => {
+          if (nameInput) {
+            nameInput.focus();
+          }
+        }, 0);
+        return;
+      }
+      
+      // Name 已填写，清除 Name 错误提示
+      const nameError = document.getElementById('nameError');
+      if (nameError) {
+        nameError.classList.add('hidden');
+      }
+      if (nameInput) {
+        nameInput.classList.remove('border-red-500');
+      }
+      
       let phone = phoneInput.value.replace(/\D/g, ''); // 只保留数字
       
       // 如果第一个字符不是0，清空或设置为0
@@ -431,6 +463,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         phoneError.classList.add('hidden');
       }
       phoneInput.classList.remove('border-red-500');
+    });
+  }
+  
+  // Name 输入框事件监听
+  const nameInput = document.getElementById('name');
+  const nameError = document.getElementById('nameError');
+  
+  if (nameInput) {
+    // 获得焦点时清除错误提示
+    nameInput.addEventListener('focus', () => {
+      if (nameError) {
+        nameError.classList.add('hidden');
+      }
+      nameInput.classList.remove('border-red-500');
+    });
+    
+    // 输入时清除错误提示
+    nameInput.addEventListener('input', () => {
+      if (nameError) {
+        nameError.classList.add('hidden');
+      }
+      nameInput.classList.remove('border-red-500');
     });
   }
   
@@ -1038,6 +1092,22 @@ async function login() {
   const pin = loginState.pin;
   const pinConfirm = loginState.pinConfirm;
 
+  // 首先验证 Name 是否已填写
+  if (!name) {
+    showToast(t('please_enter_name') || 'Please enter your name', 'error');
+    const nameInput = document.getElementById('name');
+    if (nameInput) {
+      nameInput.focus();
+      nameInput.classList.add('border-red-500');
+      const nameError = document.getElementById('nameError');
+      if (nameError) {
+        nameError.textContent = t('please_enter_name') || 'Please enter your name';
+        nameError.classList.remove('hidden');
+      }
+    }
+    return;
+  }
+
   // 强制要求PIN：如果PIN区域不可见，需要先检查PIN状态
   if (!isPinVisible) {
     // PIN区域不可见，需要先检查PIN状态
@@ -1385,6 +1455,20 @@ function showLoginModal() {
   if (nameSection) {
     nameSection.classList.remove('hidden');
   }
+  
+  // 默认聚焦到 Name 输入框
+  setTimeout(() => {
+    const nameInput = document.getElementById('name');
+    if (nameInput) {
+      nameInput.focus();
+      // 清除之前的错误提示
+      const nameError = document.getElementById('nameError');
+      if (nameError) {
+        nameError.classList.add('hidden');
+      }
+      nameInput.classList.remove('border-red-500');
+    }
+  }, 100);
   
   // 根据设置显示/隐藏验证码输入框
   const smsEnabled = currentSettings.sms_enabled === 'true';

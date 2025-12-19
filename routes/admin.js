@@ -623,7 +623,7 @@ router.put('/products/:id', upload.single('image'), async (req, res) => {
     if (columns.includes('price')) updateFields.push('price = ?'), updateValues.push(price);
     if (columns.includes('category_id')) updateFields.push('category_id = ?'), updateValues.push(category_id || null);
     if (columns.includes('image_url')) updateFields.push('image_url = ?'), updateValues.push(image_url);
-    if (columns.includes('sort_order')) updateFields.push('sort_order = ?'), updateValues.push(sort_order || 0);
+    if (columns.includes('sort_order') && req.body.sort_order !== undefined) updateFields.push('sort_order = ?'), updateValues.push(sort_order);
     if (columns.includes('status')) updateFields.push('status = ?'), updateValues.push(status || 'active');
     if (columns.includes('sizes')) updateFields.push('sizes = ?'), updateValues.push(sizesJson);
     if (columns.includes('sugar_levels')) updateFields.push('sugar_levels = ?'), updateValues.push(sugarLevelsJson);
