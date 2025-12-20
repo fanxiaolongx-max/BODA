@@ -245,8 +245,9 @@ const staticWithCORS = (root, options = {}) => {
       // 获取文件扩展名
       const ext = path.extname(filePath).toLowerCase();
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
+      const audioExtensions = ['.mp3', '.m4a', '.aac', '.wav', '.ogg'];
       
-      if (imageExtensions.includes(ext)) {
+      if (imageExtensions.includes(ext) || audioExtensions.includes(ext)) {
         // 添加CORS头（满足小程序需求）
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
@@ -261,10 +262,15 @@ const staticWithCORS = (root, options = {}) => {
           '.webp': 'image/webp',
           '.svg': 'image/svg+xml',
           '.bmp': 'image/bmp',
-          '.ico': 'image/x-icon'
+          '.ico': 'image/x-icon',
+          '.mp3': 'audio/mpeg',
+          '.m4a': 'audio/mp4',
+          '.aac': 'audio/aac',
+          '.wav': 'audio/wav',
+          '.ogg': 'audio/ogg'
         };
         
-        const contentType = mimeTypes[ext] || 'image/jpeg';
+        const contentType = mimeTypes[ext] || (imageExtensions.includes(ext) ? 'image/jpeg' : 'audio/mpeg');
         res.setHeader('Content-Type', contentType);
       }
     }
@@ -275,7 +281,8 @@ const staticWithCORS = (root, options = {}) => {
     if (req.method === 'OPTIONS') {
       const ext = path.extname(req.path).toLowerCase();
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
-      if (imageExtensions.includes(ext)) {
+      const audioExtensions = ['.mp3', '.m4a', '.aac', '.wav', '.ogg'];
+      if (imageExtensions.includes(ext) || audioExtensions.includes(ext)) {
         // 处理OPTIONS预检请求（满足小程序需求）
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
@@ -329,7 +336,7 @@ const actualShowDir = fs.existsSync(SHOW_DIR) ? SHOW_DIR : FALLBACK_SHOW_DIR;
 app.use('/show', staticWithCORS(actualShowDir));
 
 // 确保必要目录存在
-['uploads', 'uploads/products', 'uploads/payments', 'uploads/custom-api-images', 'logs', 'show'].forEach(dir => {
+['uploads', 'uploads/products', 'uploads/payments', 'uploads/custom-api-images', 'uploads/tts', 'logs', 'show'].forEach(dir => {
   const dirPath = path.join(DATA_DIR, dir);
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
@@ -390,6 +397,7 @@ const publicRoutes = require('./routes/public');
 const externalRoutes = require('./routes/external');
 const blogRoutes = require('./routes/blog');
 const blogAdminRoutes = require('./routes/blog-admin');
+const ttsRoutes = require('./routes/tts');
 
 // 注册路由
 app.use('/api/auth', loginLimiter, authRoutes);
@@ -397,7 +405,8 @@ app.use('/api/admin', adminApiLimiter, adminRoutes); // 使用更宽松的管理
 app.use('/api/user', apiLimiter, userRoutes);
 app.use('/api/external', externalApiLimiter, externalRoutes); // 外部API路由（自定义API管理）
 app.use('/api/blog', apiLimiter, blogRoutes); // 博客前端API路由
-app.use('/api/blog-admin', adminApiLimiter, blogAdminRoutes); // 博客管理API路由（需要身份验证）
+app.use('/api/blog-admin', adminApiLimiter, blogAdminRoutes); // 博客管理API路由
+app.use('/api/tts', apiLimiter, ttsRoutes); // TTS语音合成API路由（公开接口，仅限流）
 
 // 堂食扫码登录路由（在public路由之前，提供简洁的URL）
 app.get('/dine-in', (req, res) => {

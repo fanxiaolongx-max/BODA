@@ -748,15 +748,35 @@
       }
     }
 
-    // 跳转到编辑文章页面
+    // 编辑文章（在新窗口打开）
     function editPost(postId) {
       if (!isAdminLoggedIn) {
         // 如果未登录，跳转到管理界面登录
         window.location.href = '/blog-admin.html';
         return;
       }
-      // 跳转到管理界面并传递文章ID参数
-      window.location.href = `/blog-admin.html?edit=${postId}`;
+      
+      // 在新窗口打开编辑页面
+      const editUrl = `/blog-admin.html?edit=${encodeURIComponent(postId)}`;
+      const editWindow = window.open(editUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+      
+      if (!editWindow) {
+        showToast('无法打开新窗口，请检查浏览器弹窗设置', 'error');
+        return;
+      }
+      
+      // 监听新窗口关闭事件，刷新文章列表
+      const checkClosed = setInterval(() => {
+        if (editWindow.closed) {
+          clearInterval(checkClosed);
+          // 刷新文章列表（根据当前视图模式）
+          if (viewMode === 'archive') {
+            loadArchive();
+          } else {
+            loadPosts(1);
+          }
+        }
+      }, 500);
     }
 
     // 更新编辑按钮显示

@@ -4493,6 +4493,84 @@ async function loadSettingsPage() {
               </div>
               
               <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔊 TTS语音合成设置</h3>
+                <p class="text-sm text-gray-600 mb-4">配置文本转语音（TTS）服务的参数，支持中文和阿拉伯语。</p>
+                
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">语速 (Speech Rate)</label>
+                    <div class="flex items-center space-x-4">
+                      <input type="range" id="ttsRate" 
+                             class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                             min="30" max="200" step="10"
+                             value="${settings.tts_rate || '50'}"
+                             oninput="document.getElementById('ttsRateValue').textContent = this.value + '%'">
+                      <span id="ttsRateValue" class="text-sm font-semibold text-gray-700 w-16 text-right">${settings.tts_rate || '50'}%</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">语速范围：30% (很慢) - 200% (很快)，默认：50% (较慢)</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">音调 (Pitch)</label>
+                    <div class="flex items-center space-x-4">
+                      <input type="range" id="ttsPitch" 
+                             class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                             min="-50" max="50" step="5"
+                             value="${settings.tts_pitch || '0'}"
+                             oninput="document.getElementById('ttsPitchValue').textContent = (this.value >= 0 ? '+' : '') + this.value + 'Hz'">
+                      <span id="ttsPitchValue" class="text-sm font-semibold text-gray-700 w-20 text-right">${(parseInt(settings.tts_pitch) || 0) >= 0 ? '+' : ''}${settings.tts_pitch || '0'}Hz</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">音调范围：-50Hz (低) - +50Hz (高)，默认：0Hz (正常)</p>
+                  </div>
+                  
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">音量 (Volume)</label>
+                    <div class="flex items-center space-x-4">
+                      <input type="range" id="ttsVolume" 
+                             class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                             min="0" max="100" step="5"
+                             value="${settings.tts_volume || '100'}"
+                             oninput="document.getElementById('ttsVolumeValue').textContent = this.value + '%'">
+                      <span id="ttsVolumeValue" class="text-sm font-semibold text-gray-700 w-16 text-right">${settings.tts_volume || '100'}%</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">音量范围：0% (静音) - 100% (最大)，默认：100%</p>
+                  </div>
+                  
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">中文语音 (Chinese Voice)</label>
+                      <select id="ttsVoiceZh" 
+                              class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <option value="zh-CN-XiaoxiaoNeural" ${(settings.tts_voice_zh || 'zh-CN-XiaoxiaoNeural') === 'zh-CN-XiaoxiaoNeural' ? 'selected' : ''}>晓晓 (女声)</option>
+                        <option value="zh-CN-YunxiNeural" ${settings.tts_voice_zh === 'zh-CN-YunxiNeural' ? 'selected' : ''}>云希 (男声)</option>
+                        <option value="zh-CN-YunyangNeural" ${settings.tts_voice_zh === 'zh-CN-YunyangNeural' ? 'selected' : ''}>云扬 (男声)</option>
+                        <option value="zh-CN-XiaoyiNeural" ${settings.tts_voice_zh === 'zh-CN-XiaoyiNeural' ? 'selected' : ''}>晓伊 (女声)</option>
+                      </select>
+                      <p class="text-xs text-gray-500 mt-1">选择中文语音合成的声音</p>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">阿拉伯语语音 (Arabic Voice)</label>
+                      <select id="ttsVoiceAr" 
+                              class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <option value="ar-SA-HamedNeural" ${(settings.tts_voice_ar || 'ar-SA-HamedNeural') === 'ar-SA-HamedNeural' ? 'selected' : ''}>哈米德 (男声)</option>
+                        <option value="ar-SA-ZariyahNeural" ${settings.tts_voice_ar === 'ar-SA-ZariyahNeural' ? 'selected' : ''}>扎里亚 (女声)</option>
+                        <option value="ar-EG-SalmaNeural" ${settings.tts_voice_ar === 'ar-EG-SalmaNeural' ? 'selected' : ''}>萨尔玛 (女声，埃及)</option>
+                        <option value="ar-EG-ShakirNeural" ${settings.tts_voice_ar === 'ar-EG-ShakirNeural' ? 'selected' : ''}>沙基尔 (男声，埃及)</option>
+                      </select>
+                      <p class="text-xs text-gray-500 mt-1">选择阿拉伯语语音合成的声音</p>
+                    </div>
+                  </div>
+                  
+                  <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p class="text-xs text-blue-800">
+                      <strong>提示：</strong> 修改设置后，点击"Save Settings"保存。新的设置将在下次TTS请求时生效。
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">🔒 Security Policy Settings</h3>
                 
                 <div class="space-y-6">
@@ -4974,6 +5052,12 @@ async function saveSettings(e) {
     // IP rate limiting
     ip_rate_limit_attempts: ipRateLimitAttempts,
     ip_rate_limit_window_minutes: ipRateLimitWindowMinutes,
+    // TTS Settings
+    tts_rate: document.getElementById('ttsRate')?.value || '50',
+    tts_pitch: document.getElementById('ttsPitch')?.value || '0',
+    tts_volume: document.getElementById('ttsVolume')?.value || '100',
+    tts_voice_zh: document.getElementById('ttsVoiceZh')?.value || 'zh-CN-XiaoxiaoNeural',
+    tts_voice_ar: document.getElementById('ttsVoiceAr')?.value || 'ar-SA-HamedNeural',
     // Custom API Token (only for custom APIs)
     custom_api_token: (() => {
       const tokenInput = document.getElementById('customApiToken');

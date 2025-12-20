@@ -178,6 +178,12 @@ function convertApiItemToPost(item, apiName, fieldMapping = null) {
   if (item.rooms !== undefined) post.rooms = item.rooms;
   if (item.area !== undefined) post.area = item.area;
   
+  // 保留位置和联系方式字段
+  if (item.phone !== undefined) post.phone = item.phone;
+  if (item.address !== undefined) post.address = item.address;
+  if (item.latitude !== undefined) post.latitude = item.latitude;
+  if (item.longitude !== undefined) post.longitude = item.longitude;
+  
   return post;
 }
 
@@ -993,6 +999,20 @@ async function createBlogPost(postData) {
       if (postData.views !== undefined && typeof postData.views === 'number') {
         newItem.views = postData.views;
       }
+      
+      // 保存位置和联系方式字段
+      if (postData.phone !== undefined) {
+        newItem.phone = postData.phone;
+      }
+      if (postData.address !== undefined) {
+        newItem.address = postData.address;
+      }
+      if (postData.latitude !== undefined) {
+        newItem.latitude = postData.latitude;
+      }
+      if (postData.longitude !== undefined) {
+        newItem.longitude = postData.longitude;
+      }
     }
     
     // 解析现有API数据，保持原有格式（数组或对象）
@@ -1228,6 +1248,20 @@ async function updateBlogPost(postId, postData) {
       }
       if (postData.views !== undefined && typeof postData.views === 'number') {
         updatedItem.views = postData.views;
+      }
+      
+      // 添加或更新位置和联系方式字段
+      if (postData.phone !== undefined) {
+        updatedItem.phone = postData.phone;
+      }
+      if (postData.address !== undefined) {
+        updatedItem.address = postData.address;
+      }
+      if (postData.latitude !== undefined) {
+        updatedItem.latitude = postData.latitude;
+      }
+      if (postData.longitude !== undefined) {
+        updatedItem.longitude = postData.longitude;
       }
       
       // 处理slug的唯一性和稳定性

@@ -131,6 +131,57 @@
       align-items: center;
       gap: 0.5rem;
     }
+    
+    /* 文章表单加载提示样式 */
+    .post-form-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4rem 2rem;
+      min-height: 300px;
+    }
+    
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #e5e7eb;
+      border-top-color: #9333ea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 1rem;
+    }
+    
+    .loading-text {
+      color: #6b7280;
+      font-size: 0.875rem;
+      margin: 0;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+    
+    /* 加载时隐藏表单内容 */
+    #postForm.loading #postFormContent {
+      display: none;
+    }
+    
+    #postForm.loading #postFormLoading {
+      display: flex !important;
+    }
     .admin-actions {
       display: flex;
       gap: 0.5rem;
@@ -281,6 +332,13 @@
 
       <!-- 文章表单 -->
       <div id="postForm" class="admin-form" style="display: none;">
+        <!-- 加载提示 -->
+        <div id="postFormLoading" class="post-form-loading" style="display: none;">
+          <div class="loading-spinner"></div>
+          <p class="loading-text">正在加载文章内容...</p>
+        </div>
+        <!-- 表单内容 -->
+        <div id="postFormContent">
         <h3 id="postFormTitle">新建文章</h3>
         <form id="postFormElement" onsubmit="savePost(event)">
           <input type="hidden" id="postId">
@@ -418,6 +476,24 @@
               <label class="admin-form-label" for="secondHandPrice">价格 *</label>
               <input type="text" id="secondHandPrice" class="admin-form-input" placeholder="如：500、1000等" style="width: 100%; max-width: 100%; box-sizing: border-box;">
             </div>
+            <div class="admin-form-group" style="max-width: 300px;">
+              <label class="admin-form-label" for="secondHandPhone">联系方式 *</label>
+              <input type="text" id="secondHandPhone" name="secondHandPhone" class="admin-form-input" placeholder="如：+201017739088" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+            </div>
+            <div class="admin-form-group" style="max-width: 100%;">
+              <label class="admin-form-label" for="secondHandAddress">地址 *</label>
+              <input type="text" id="secondHandAddress" name="secondHandAddress" class="admin-form-input" placeholder="如：开罗市中心，Heliopolis 区" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 100%;">
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" for="secondHandLatitude">纬度 *</label>
+                <input type="number" step="any" id="secondHandLatitude" name="secondHandLatitude" class="admin-form-input" placeholder="如：30.0444" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+              </div>
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" for="secondHandLongitude">经度 *</label>
+                <input type="number" step="any" id="secondHandLongitude" name="secondHandLongitude" class="admin-form-input" placeholder="如：31.2357" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+              </div>
+            </div>
           </div>
           
           <!-- 租房酒店 (rentals) 特殊字段 -->
@@ -439,6 +515,47 @@
               <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
                 <label class="admin-form-label" for="rentalsViews">浏览次数</label>
                 <input type="number" id="rentalsViews" class="admin-form-input" placeholder="如：1" min="0" style="width: 100%; max-width: 100%; box-sizing: border-box;">
+              </div>
+            </div>
+            <div class="admin-form-group" style="max-width: 300px;">
+              <label class="admin-form-label" for="rentalsPhone">联系方式 *</label>
+              <input type="text" id="rentalsPhone" name="rentalsPhone" class="admin-form-input" placeholder="如：+201017739088" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+            </div>
+            <div class="admin-form-group" style="max-width: 100%;">
+              <label class="admin-form-label" for="rentalsAddress">地址 *</label>
+              <input type="text" id="rentalsAddress" name="rentalsAddress" class="admin-form-input" placeholder="如：开罗市中心，Heliopolis 区" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 100%;">
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" for="rentalsLatitude">纬度 *</label>
+                <input type="number" step="any" id="rentalsLatitude" name="rentalsLatitude" class="admin-form-input" placeholder="如：30.0444" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+              </div>
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" for="rentalsLongitude">经度 *</label>
+                <input type="number" step="any" id="rentalsLongitude" name="rentalsLongitude" class="admin-form-input" placeholder="如：31.2357" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 通用位置字段（用于其他需要位置的分类） -->
+          <div id="commonLocationFields" class="admin-form-group" style="display: none;">
+            <h4 style="color: #059669; margin-bottom: 1rem;">位置信息</h4>
+            <div class="admin-form-group" id="commonPhoneField" style="max-width: 300px; display: none;">
+              <label class="admin-form-label" id="commonPhoneLabel" for="commonPhone">联系方式 *</label>
+              <input type="text" id="commonPhone" name="commonPhone" class="admin-form-input" placeholder="如：+201017739088" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+            </div>
+            <div class="admin-form-group" style="max-width: 100%;">
+              <label class="admin-form-label" id="commonAddressLabel" for="commonAddress">地址 *</label>
+              <input type="text" id="commonAddress" name="commonAddress" class="admin-form-input" placeholder="如：开罗市中心，Heliopolis 区" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 100%;">
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" id="commonLatitudeLabel" for="commonLatitude">纬度 *</label>
+                <input type="number" step="any" id="commonLatitude" name="commonLatitude" class="admin-form-input" placeholder="如：30.0444" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+              </div>
+              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
+                <label class="admin-form-label" id="commonLongitudeLabel" for="commonLongitude">经度 *</label>
+                <input type="number" step="any" id="commonLongitude" name="commonLongitude" class="admin-form-input" placeholder="如：31.2357" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
               </div>
             </div>
           </div>
@@ -485,6 +602,7 @@
             <button type="button" class="blog-btn blog-btn-secondary" onclick="hidePostForm()">取消</button>
           </div>
         </form>
+        </div>
       </div>
 
       <!-- 文章列表 -->
@@ -618,6 +736,8 @@
     let quillEditor = null;
     let currentEditorMode = 'markdown'; // 'markdown' or 'html'
     let availableApis = [];
+    let allPostsData = []; // 存储所有文章数据
+    let expandedCategories = new Set(); // 存储已展开的分类
     let exchangeRatesCounter = 0; // 汇率转换计数器
 
     // 加载API列表
@@ -709,17 +829,160 @@
     }
     
     // API选择改变时的处理
+    // 检查是否需要位置信息（latitude, longitude, address）
+    function needsLocationFields(apiName) {
+      // 所有分类都支持位置字段（可选）
+      if (!apiName) return false;
+      return true;
+    }
+
+    // 检查是否需要电话字段（所有分类都支持电话字段，作为可选）
+    function needsPhoneField(apiName) {
+      // 所有分类都支持电话字段（可选）
+      if (!apiName) return false;
+      return true;
+    }
+
+    // 检查位置字段是否为必填（必填：寻味中国、常用导航、打卡地、租房、二手集市、热门活动；可选：签证指南、攻略指南、尼罗河应用、防骗指南）
+    function isLocationRequired(apiName) {
+      if (!apiName) return false;
+      const lowerName = apiName.toLowerCase();
+      // 必填位置字段的分类
+      return lowerName.includes('chinese-food') || 
+             lowerName.includes('寻味') || 
+             lowerName.includes('location-list') ||
+             lowerName.includes('导航') || 
+             lowerName.includes('hot-spots') ||
+             lowerName.includes('打卡') ||
+             lowerName.includes('rental-list') ||
+             lowerName.includes('rentals') || 
+             lowerName.includes('租房') || 
+             lowerName.includes('酒店') ||
+             lowerName.includes('second-hand') || 
+             lowerName.includes('二手') ||
+             lowerName.includes('hot-activity') ||
+             (lowerName.includes('活动') && !lowerName.includes('签证') && !lowerName.includes('攻略') && !lowerName.includes('防骗'));
+    }
+
     async function onApiNameChange() {
       const apiName = document.getElementById('postApiName').value;
       const mappingInfo = document.getElementById('fieldMappingInfo');
       
       // 检查是否是特殊类别
       const specialType = isSpecialCategory(apiName);
+      const needsLocation = needsLocationFields(apiName);
       
       // 隐藏所有特殊表单
       document.querySelectorAll('[id^="specialForm-"]').forEach(el => {
         el.style.display = 'none';
       });
+
+      // 显示/隐藏通用位置字段
+      const commonLocationFields = document.getElementById('commonLocationFields');
+      if (commonLocationFields) {
+        // 如果已经在特殊表单中显示了位置字段（如rentals或second-hand），就不显示通用位置字段
+        const hasLocationInSpecialForm = (specialType === 'rentals' || specialType === 'second-hand');
+        // 所有分类都显示位置字段（除了特殊表单的分类）
+        const shouldShow = needsLocation && !hasLocationInSpecialForm;
+        commonLocationFields.style.display = shouldShow ? 'block' : 'none';
+        
+        // 显示/隐藏电话字段（所有分类都支持）
+        const needsPhone = needsPhoneField(apiName);
+        const hasPhoneInSpecialForm = (specialType === 'rentals' || specialType === 'second-hand');
+        // 所有分类都显示电话字段（除了特殊表单的分类）
+        const shouldShowPhone = needsPhone && !hasPhoneInSpecialForm && shouldShow;
+        
+        // 判断电话字段是否为必填（寻味中国必填，防骗指南等可选）
+        const lowerName = apiName.toLowerCase();
+        const isPhoneRequired = lowerName.includes('chinese-food') || lowerName.includes('寻味');
+        
+        const commonPhoneField = document.getElementById('commonPhoneField');
+        const commonPhoneInput = document.getElementById('commonPhone');
+        const commonPhoneLabel = document.getElementById('commonPhoneLabel');
+        if (commonPhoneField) {
+          commonPhoneField.style.display = shouldShowPhone ? 'block' : 'none';
+        }
+        if (commonPhoneInput) {
+          commonPhoneInput.required = shouldShowPhone && isPhoneRequired;
+          if (!shouldShowPhone || !isPhoneRequired) commonPhoneInput.removeAttribute('required');
+        }
+        // 更新电话字段标签
+        if (commonPhoneLabel) {
+          commonPhoneLabel.textContent = isPhoneRequired ? '联系方式 *' : '联系方式（可选）';
+        }
+        
+        // 动态设置必填属性（只在字段可见且为必填分类时设置）
+        const isRequired = isLocationRequired(apiName);
+        const addressInput = document.getElementById('commonAddress');
+        const latInput = document.getElementById('commonLatitude');
+        const lngInput = document.getElementById('commonLongitude');
+        const addressLabel = document.getElementById('commonAddressLabel');
+        const latLabel = document.getElementById('commonLatitudeLabel');
+        const lngLabel = document.getElementById('commonLongitudeLabel');
+        
+        if (addressInput) {
+          addressInput.required = shouldShow && isRequired;
+          if (!shouldShow || !isRequired) addressInput.removeAttribute('required');
+        }
+        // 更新地址字段标签
+        if (addressLabel) {
+          addressLabel.textContent = isRequired ? '地址 *' : '地址（可选）';
+        }
+        
+        if (latInput) {
+          latInput.required = shouldShow && isRequired;
+          if (!shouldShow || !isRequired) latInput.removeAttribute('required');
+        }
+        // 更新纬度字段标签
+        if (latLabel) {
+          latLabel.textContent = isRequired ? '纬度 *' : '纬度（可选）';
+        }
+        
+        if (lngInput) {
+          lngInput.required = shouldShow && isRequired;
+          if (!shouldShow || !isRequired) lngInput.removeAttribute('required');
+        }
+        // 更新经度字段标签
+        if (lngLabel) {
+          lngLabel.textContent = isRequired ? '经度 *' : '经度（可选）';
+        }
+      }
+      
+      // 动态设置特殊表单中字段的必填属性
+      if (specialType === 'second-hand') {
+        const phoneInput = document.getElementById('secondHandPhone');
+        const addressInput = document.getElementById('secondHandAddress');
+        const latInput = document.getElementById('secondHandLatitude');
+        const lngInput = document.getElementById('secondHandLongitude');
+        if (phoneInput) phoneInput.required = true;
+        if (addressInput) addressInput.required = true;
+        if (latInput) latInput.required = true;
+        if (lngInput) lngInput.required = true;
+      } else if (specialType === 'rentals') {
+        const phoneInput = document.getElementById('rentalsPhone');
+        const addressInput = document.getElementById('rentalsAddress');
+        const latInput = document.getElementById('rentalsLatitude');
+        const lngInput = document.getElementById('rentalsLongitude');
+        if (phoneInput) phoneInput.required = true;
+        if (addressInput) addressInput.required = true;
+        if (latInput) latInput.required = true;
+        if (lngInput) lngInput.required = true;
+      } else {
+        // 隐藏时移除必填属性
+        const secondHandPhone = document.getElementById('secondHandPhone');
+        const secondHandAddress = document.getElementById('secondHandAddress');
+        const secondHandLat = document.getElementById('secondHandLatitude');
+        const secondHandLng = document.getElementById('secondHandLongitude');
+        const rentalsPhone = document.getElementById('rentalsPhone');
+        const rentalsAddress = document.getElementById('rentalsAddress');
+        const rentalsLat = document.getElementById('rentalsLatitude');
+        const rentalsLng = document.getElementById('rentalsLongitude');
+        
+        [secondHandPhone, secondHandAddress, secondHandLat, secondHandLng, 
+         rentalsPhone, rentalsAddress, rentalsLat, rentalsLng].forEach(input => {
+          if (input) input.removeAttribute('required');
+        });
+      }
       
       // 隐藏/显示普通内容编辑器
       const normalEditor = document.getElementById('normalContentEditor');
@@ -852,12 +1115,14 @@
     }
 
     // 加载文章列表
-    async function loadPosts() {
+    async function loadPosts(resetExpanded = false) {
       try {
         const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
         if (response && response.success) {
           const posts = response.data || [];
           console.log('获取文章列表成功，文章数:', posts.length);
+          // 保存所有文章数据
+          allPostsData = posts;
           // 按分类统计
           const byCategory = {};
           posts.forEach(p => {
@@ -865,6 +1130,10 @@
             byCategory[cat] = (byCategory[cat] || 0) + 1;
           });
           console.log('文章分类统计:', byCategory);
+          // 如果指定重置展开状态，则清空（默认所有分类都折叠）
+          if (resetExpanded) {
+            expandedCategories.clear();
+          }
           displayPosts(posts);
         } else {
           console.error('获取文章列表失败:', response);
@@ -876,7 +1145,7 @@
       }
     }
 
-    // 显示文章列表（按分类分组）
+    // 显示文章列表（按分类分组，默认折叠）
     function displayPosts(posts) {
       const tbody = document.getElementById('postsTableBody');
       if (!posts || posts.length === 0) {
@@ -916,12 +1185,13 @@
         分类数: Object.keys(postsByCategory).length
       });
 
-      // 生成HTML：按分类分组显示
+      // 生成HTML：按分类分组显示，默认折叠
       let html = '';
       const sortedCategories = Object.keys(postsByCategory).sort();
       
       for (const apiName of sortedCategories) {
         const categoryPosts = postsByCategory[apiName];
+        const isExpanded = expandedCategories.has(apiName);
         
         // 分类标题行（按apiName分组）
         const specialType = isSpecialCategory(apiName);
@@ -936,18 +1206,25 @@
           categoryDisplayName = specialInfo.displayName;
         }
         
+        // 添加点击展开/折叠功能
+        const expandIcon = isExpanded ? '📂' : '📁';
+        // 使用 data-* 属性传递分类名称，避免转义问题
         html += `
-          <tr class="category-header-row" style="${categoryHeaderStyle} font-weight: 600;">
+          <tr class="category-header-row" style="${categoryHeaderStyle} font-weight: 600; cursor: pointer;" data-category-name="${escapeHtml(apiName)}" onclick="toggleCategory(this.dataset.categoryName)">
             <td colspan="6" style="padding: 0.75rem 1rem;">
-              <span style="color: ${categoryHeaderColor}; font-weight: 600;">📁 ${escapeHtml(categoryDisplayName)}</span>
+              <span style="color: ${categoryHeaderColor}; font-weight: 600;">${expandIcon} ${escapeHtml(categoryDisplayName)}</span>
               <span style="color: #6b7280; font-size: 0.875rem; font-weight: normal; margin-left: 0.5rem;">
                 (${categoryPosts.length} 篇文章)
+              </span>
+              <span style="color: #9ca3af; font-size: 0.75rem; margin-left: 0.5rem;">
+                ${isExpanded ? '点击折叠' : '点击展开'}
               </span>
             </td>
           </tr>
         `;
         
-        // 该分类下的文章
+        // 该分类下的文章（根据展开状态显示/隐藏）
+        if (isExpanded) {
         for (const post of categoryPosts) {
           const date = formatDate(post.createdAt || post.created_at);
           const postSpecialType = isSpecialCategory(apiName);
@@ -964,7 +1241,7 @@
           }
           
           html += `
-            <tr style="${rowStyle}">
+              <tr class="category-post-row" data-category="${escapeHtml(apiName)}" style="${rowStyle}">
               <td>${escapeHtml(post.name || post.title || '未命名')}</td>
               <td>${categoryDisplay}</td>
               <td>${post.published ? '<span style="color: #10b981;">已发布</span>' : '<span style="color: #f59e0b;">草稿</span>'}</td>
@@ -978,16 +1255,30 @@
               </td>
             </tr>
           `;
+          }
         }
       }
 
       tbody.innerHTML = html;
     }
 
+    // 切换分类展开/折叠状态
+    function toggleCategory(apiName) {
+      if (expandedCategories.has(apiName)) {
+        expandedCategories.delete(apiName);
+      } else {
+        expandedCategories.add(apiName);
+      }
+      // 重新渲染列表
+      displayPosts(allPostsData);
+    }
+
     // 显示文章表单
     async function showPostForm(post = null) {
       const form = document.getElementById('postForm');
       const formTitle = document.getElementById('postFormTitle');
+      const postFormLoading = document.getElementById('postFormLoading');
+      const postFormContent = document.getElementById('postFormContent');
       
       // 确保API列表已加载
       if (availableApis.length === 0) {
@@ -995,6 +1286,18 @@
           showPostForm(post);
         });
         return;
+      }
+      
+      // 确保表单显示，并隐藏加载提示
+      if (form) {
+        form.style.display = 'block';
+        form.classList.remove('loading');
+      }
+      if (postFormLoading) {
+        postFormLoading.style.display = 'none';
+      }
+      if (postFormContent) {
+        postFormContent.style.display = 'block';
       }
       
       // 重置表单
@@ -1007,6 +1310,33 @@
       document.getElementById('postCategory').value = '';
       document.getElementById('postTags').value = '';
       document.getElementById('postPublished').checked = true;
+      
+      // 清空位置和联系方式字段
+      const commonPhone = document.getElementById('commonPhone');
+      const commonAddress = document.getElementById('commonAddress');
+      const commonLatitude = document.getElementById('commonLatitude');
+      const commonLongitude = document.getElementById('commonLongitude');
+      const secondHandPhone = document.getElementById('secondHandPhone');
+      const secondHandAddress = document.getElementById('secondHandAddress');
+      const secondHandLatitude = document.getElementById('secondHandLatitude');
+      const secondHandLongitude = document.getElementById('secondHandLongitude');
+      const rentalsPhone = document.getElementById('rentalsPhone');
+      const rentalsAddress = document.getElementById('rentalsAddress');
+      const rentalsLatitude = document.getElementById('rentalsLatitude');
+      const rentalsLongitude = document.getElementById('rentalsLongitude');
+      
+      if (commonPhone) commonPhone.value = '';
+      if (commonAddress) commonAddress.value = '';
+      if (commonLatitude) commonLatitude.value = '';
+      if (commonLongitude) commonLongitude.value = '';
+      if (secondHandPhone) secondHandPhone.value = '';
+      if (secondHandAddress) secondHandAddress.value = '';
+      if (secondHandLatitude) secondHandLatitude.value = '';
+      if (secondHandLongitude) secondHandLongitude.value = '';
+      if (rentalsPhone) rentalsPhone.value = '';
+      if (rentalsAddress) rentalsAddress.value = '';
+      if (rentalsLatitude) rentalsLatitude.value = '';
+      if (rentalsLongitude) rentalsLongitude.value = '';
       
       if (post) {
         formTitle.textContent = '编辑文章';
@@ -1046,11 +1376,35 @@
               priceInput.value = price;
               console.log('加载二手市场价格字段:', { price, fromOriginalData: post._originalData?.price, fromPost: post.price });
             }
+            const phoneInput = document.getElementById('secondHandPhone');
+            const addressInput = document.getElementById('secondHandAddress');
+            const latInput = document.getElementById('secondHandLatitude');
+            const lngInput = document.getElementById('secondHandLongitude');
+            if (phoneInput) {
+              const phone = (post._originalData && post._originalData.phone) || post.phone || '';
+              phoneInput.value = phone;
+            }
+            if (addressInput) {
+              const address = (post._originalData && post._originalData.address) || post.address || '';
+              addressInput.value = address;
+            }
+            if (latInput) {
+              const lat = (post._originalData && post._originalData.latitude) || post.latitude || '';
+              latInput.value = lat;
+            }
+            if (lngInput) {
+              const lng = (post._originalData && post._originalData.longitude) || post.longitude || '';
+              lngInput.value = lng;
+            }
           } else if (specialType === 'rentals') {
             const priceInput = document.getElementById('rentalsPrice');
             const roomsInput = document.getElementById('rentalsRooms');
             const areaInput = document.getElementById('rentalsArea');
             const viewsInput = document.getElementById('rentalsViews');
+            const phoneInput = document.getElementById('rentalsPhone');
+            const addressInput = document.getElementById('rentalsAddress');
+            const latInput = document.getElementById('rentalsLatitude');
+            const lngInput = document.getElementById('rentalsLongitude');
             if (priceInput) {
               const price = (post._originalData && post._originalData.price) || post.price || '';
               priceInput.value = price;
@@ -1067,12 +1421,61 @@
               const views = (post._originalData && post._originalData.views) || post.views || 0;
               viewsInput.value = views;
             }
+            if (phoneInput) {
+              const phone = (post._originalData && post._originalData.phone) || post.phone || '';
+              phoneInput.value = phone;
+            }
+            if (addressInput) {
+              const address = (post._originalData && post._originalData.address) || post.address || '';
+              addressInput.value = address;
+            }
+            if (latInput) {
+              const lat = (post._originalData && post._originalData.latitude) || post.latitude || '';
+              latInput.value = lat;
+            }
+            if (lngInput) {
+              const lng = (post._originalData && post._originalData.longitude) || post.longitude || '';
+              lngInput.value = lng;
+            }
             console.log('加载租房酒店特殊字段:', {
               price: (post._originalData && post._originalData.price) || post.price,
               rooms: (post._originalData && post._originalData.rooms) || post.rooms,
               area: (post._originalData && post._originalData.area) || post.area,
-              views: (post._originalData && post._originalData.views) || post.views
+              views: (post._originalData && post._originalData.views) || post.views,
+              phone: (post._originalData && post._originalData.phone) || post.phone,
+              address: (post._originalData && post._originalData.address) || post.address,
+              latitude: (post._originalData && post._originalData.latitude) || post.latitude,
+              longitude: (post._originalData && post._originalData.longitude) || post.longitude
             });
+          } else {
+            // 加载通用位置字段（用于其他需要位置的分类）
+            const needsLocation = needsLocationFields(apiName);
+            const needsPhone = needsPhoneField(apiName);
+            if (needsLocation) {
+              const addressInput = document.getElementById('commonAddress');
+              const latInput = document.getElementById('commonLatitude');
+              const lngInput = document.getElementById('commonLongitude');
+              if (addressInput) {
+                const address = (post._originalData && post._originalData.address) || post.address || '';
+                addressInput.value = address;
+              }
+              if (latInput) {
+                const lat = (post._originalData && post._originalData.latitude) || post.latitude || '';
+                latInput.value = lat;
+              }
+              if (lngInput) {
+                const lng = (post._originalData && post._originalData.longitude) || post.longitude || '';
+                lngInput.value = lng;
+              }
+            }
+            // 加载通用电话字段（用于寻味中国等分类）
+            if (needsPhone) {
+              const phoneInput = document.getElementById('commonPhone');
+              if (phoneInput) {
+                const phone = (post._originalData && post._originalData.phone) || post.phone || '';
+                phoneInput.value = phone;
+              }
+            }
           }
         }, 100);
         
@@ -1465,6 +1868,10 @@
     // 隐藏文章表单
     function hidePostForm() {
       document.getElementById('postForm').style.display = 'none';
+      // 如果是在新窗口中打开的，关闭窗口
+      if (window.opener) {
+        window.close();
+      }
     }
 
     // 天气路况数据管理
@@ -1970,6 +2377,87 @@
         return;
       }
 
+      // 验证必填字段
+      // specialType 已经在上面声明过了（第2076行），这里直接使用
+      const needsLocation = needsLocationFields(apiName);
+      const isLocationReq = isLocationRequired(apiName);
+      
+      // 验证联系方式（在租房、二手集市和寻味中国中必填，防骗指南等可选）
+      const needsPhone = needsPhoneField(apiName);
+      // 判断电话字段是否为必填（寻味中国必填，防骗指南等可选）
+      const lowerNameForPhone = apiName.toLowerCase();
+      const isPhoneRequired = lowerNameForPhone.includes('chinese-food') || 
+                              lowerNameForPhone.includes('寻味') ||
+                              specialType === 'second-hand' || 
+                              specialType === 'rentals';
+      
+      if (needsPhone && isPhoneRequired) {
+        let phoneInput;
+        if (specialType === 'second-hand') {
+          phoneInput = document.getElementById('secondHandPhone');
+        } else if (specialType === 'rentals') {
+          phoneInput = document.getElementById('rentalsPhone');
+        } else {
+          // 寻味中国等其他分类使用通用电话字段
+          phoneInput = document.getElementById('commonPhone');
+        }
+        
+        // 检查字段是否可见（不在隐藏的表单中）
+        if (phoneInput) {
+          const isVisible = phoneInput.offsetParent !== null; // 检查元素是否可见
+          if (isVisible && !phoneInput.value.trim()) {
+            showToast('联系方式是必填项', 'error');
+            phoneInput.focus();
+            return;
+          }
+        }
+      }
+      
+      // 验证位置信息（只在必填分类中验证）
+      if (needsLocation && isLocationReq) {
+        let addressInput, latInput, lngInput;
+        
+        if (specialType === 'second-hand') {
+          addressInput = document.getElementById('secondHandAddress');
+          latInput = document.getElementById('secondHandLatitude');
+          lngInput = document.getElementById('secondHandLongitude');
+        } else if (specialType === 'rentals') {
+          addressInput = document.getElementById('rentalsAddress');
+          latInput = document.getElementById('rentalsLatitude');
+          lngInput = document.getElementById('rentalsLongitude');
+        } else {
+          addressInput = document.getElementById('commonAddress');
+          latInput = document.getElementById('commonLatitude');
+          lngInput = document.getElementById('commonLongitude');
+        }
+        
+        // 只验证可见的字段
+        if (addressInput) {
+          const isVisible = addressInput.offsetParent !== null;
+          if (isVisible && !addressInput.value.trim()) {
+            showToast('地址是必填项', 'error');
+            addressInput.focus();
+            return;
+          }
+        }
+        if (latInput) {
+          const isVisible = latInput.offsetParent !== null;
+          if (isVisible && !latInput.value.trim()) {
+            showToast('纬度是必填项', 'error');
+            latInput.focus();
+            return;
+          }
+        }
+        if (lngInput) {
+          const isVisible = lngInput.offsetParent !== null;
+          if (isVisible && !lngInput.value.trim()) {
+            showToast('经度是必填项', 'error');
+            lngInput.focus();
+            return;
+          }
+        }
+      }
+
       if (!category) {
         showToast('请填写分类/标签', 'error');
         return;
@@ -1992,21 +2480,63 @@
         };
         
         // 添加特殊字段（二手市场和租房酒店）
-        const specialType = isSpecialCategory(apiName);
+        // specialType 和 needsLocation 已经在上面声明过了，这里直接使用
+        
         if (specialType === 'second-hand') {
           const price = document.getElementById('secondHandPrice').value.trim();
-          if (price) {
-            requestBody.price = price;
-          }
+          const phone = document.getElementById('secondHandPhone').value.trim();
+          const address = document.getElementById('secondHandAddress').value.trim();
+          const latitude = document.getElementById('secondHandLatitude').value.trim();
+          const longitude = document.getElementById('secondHandLongitude').value.trim();
+          if (price) requestBody.price = price;
+          if (phone) requestBody.phone = phone;
+          if (address) requestBody.address = address;
+          if (latitude) requestBody.latitude = parseFloat(latitude);
+          if (longitude) requestBody.longitude = parseFloat(longitude);
         } else if (specialType === 'rentals') {
           const price = document.getElementById('rentalsPrice').value.trim();
           const rooms = document.getElementById('rentalsRooms').value.trim();
           const area = document.getElementById('rentalsArea').value.trim();
           const views = document.getElementById('rentalsViews').value.trim();
+          const phone = document.getElementById('rentalsPhone').value.trim();
+          const address = document.getElementById('rentalsAddress').value.trim();
+          const latitude = document.getElementById('rentalsLatitude').value.trim();
+          const longitude = document.getElementById('rentalsLongitude').value.trim();
           if (price) requestBody.price = price;
           if (rooms) requestBody.rooms = rooms;
           if (area) requestBody.area = area;
           if (views) requestBody.views = parseInt(views) || 0;
+          if (phone) requestBody.phone = phone;
+          if (address) requestBody.address = address;
+          if (latitude) requestBody.latitude = parseFloat(latitude);
+          if (longitude) requestBody.longitude = parseFloat(longitude);
+        } else if (needsLocation) {
+          // 通用位置字段（用于其他需要位置的分类）
+          const addressInput = document.getElementById('commonAddress');
+          const latInput = document.getElementById('commonLatitude');
+          const lngInput = document.getElementById('commonLongitude');
+          if (addressInput) {
+            const address = addressInput.value.trim();
+            if (address) requestBody.address = address;
+          }
+          if (latInput) {
+            const latitude = latInput.value.trim();
+            if (latitude) requestBody.latitude = parseFloat(latitude);
+          }
+          if (lngInput) {
+            const longitude = lngInput.value.trim();
+            if (longitude) requestBody.longitude = parseFloat(longitude);
+          }
+        }
+        
+        // 添加通用电话字段（用于寻味中国等分类）
+        const needsPhone = needsPhoneField(apiName);
+        if (needsPhone && specialType !== 'second-hand' && specialType !== 'rentals') {
+          const phoneInput = document.getElementById('commonPhone');
+          if (phoneInput) {
+            const phone = phoneInput.value.trim();
+            if (phone) requestBody.phone = phone;
+          }
         }
         
         // 如果是特殊类别，添加特殊数据
@@ -2076,8 +2606,32 @@
           
           showToast(id ? '文章更新成功' : '文章创建成功', 'success');
           window.currentEditingPost = null; // 清除当前编辑的文章
-          hidePostForm();
-          loadPosts();
+          
+          // 如果是在新窗口中打开的，刷新父窗口并关闭当前窗口
+          if (window.opener) {
+            // 通知父窗口刷新内容（根据父窗口类型调用不同的刷新方法）
+            try {
+              // blog-admin.html 使用 loadPosts
+              if (typeof window.opener.loadPosts === 'function') {
+                window.opener.loadPosts(false);
+              }
+              // blog-detail.html 使用 loadPost
+              if (typeof window.opener.loadPost === 'function') {
+                window.opener.loadPost();
+              }
+              // blog.html 可能使用 loadPosts 或 loadArchive（已在窗口关闭时处理）
+            } catch (e) {
+              console.warn('无法通知父窗口刷新:', e);
+            }
+            // 延迟关闭，让用户看到成功提示
+            setTimeout(() => {
+              window.close();
+            }, 1000);
+          } else {
+            // 在当前窗口中，正常处理
+            hidePostForm();
+            loadPosts(false); // 保存后保持展开状态
+          }
         } else {
           console.error('保存失败', response);
           showToast('保存失败: ' + (response?.message || '未知错误'), 'error');
@@ -2088,9 +2642,51 @@
       }
     }
 
-    // 编辑文章
-    async function editPost(id) {
+    // 编辑文章（在新窗口打开）
+    function editPost(id) {
+      // 在新窗口打开编辑页面
+      const editUrl = `${window.location.pathname}?edit=${encodeURIComponent(id)}`;
+      const editWindow = window.open(editUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+      
+      if (!editWindow) {
+        showToast('无法打开新窗口，请检查浏览器弹窗设置', 'error');
+        return;
+      }
+      
+      // 监听新窗口关闭事件，刷新文章列表
+      const checkClosed = setInterval(() => {
+        if (editWindow.closed) {
+          clearInterval(checkClosed);
+          // 刷新文章列表
+          loadPosts(false);
+        }
+      }, 500);
+    }
+    
+    // 编辑文章（内部函数，用于在新窗口中加载文章数据）
+    async function editPostInternal(id) {
+      const postForm = document.getElementById('postForm');
+      const postFormLoading = document.getElementById('postFormLoading');
+      const postFormContent = document.getElementById('postFormContent');
+      
       try {
+        // 显示表单和加载提示
+        if (postForm) {
+          postForm.style.display = 'block';
+          postForm.classList.add('loading');
+        }
+        if (postFormLoading) {
+          postFormLoading.style.display = 'flex';
+        }
+        if (postFormContent) {
+          postFormContent.style.display = 'none';
+        }
+        
+        // 切换到文章标签页（如果不在新窗口）
+        if (!window.opener) {
+          switchTab('posts');
+        }
+        
         console.log('编辑文章，ID:', id);
         const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
         console.log('获取文章列表响应:', response);
@@ -2108,19 +2704,58 @@
           if (post) {
             // 保存当前文章对象，用于后续保存时使用
             window.currentEditingPost = post;
+            // 隐藏加载提示，显示表单内容
+            if (postForm) {
+              postForm.classList.remove('loading');
+            }
+            if (postFormLoading) {
+              postFormLoading.style.display = 'none';
+            }
+            if (postFormContent) {
+              postFormContent.style.display = 'block';
+            }
+            // 填充表单数据
             showPostForm(post);
-            // 切换到文章标签页
-            switchTab('posts');
           } else {
             console.error('未找到文章，ID:', id, '可用文章ID:', response.data.map(p => p.id));
+            // 隐藏加载提示
+            if (postForm) {
+              postForm.classList.remove('loading');
+            }
+            if (postFormLoading) {
+              postFormLoading.style.display = 'none';
+            }
+            if (postForm) {
+              postForm.style.display = 'none';
+            }
             showToast('未找到要编辑的文章', 'error');
           }
         } else {
           console.error('获取文章列表失败:', response);
+          // 隐藏加载提示
+          if (postForm) {
+            postForm.classList.remove('loading');
+          }
+          if (postFormLoading) {
+            postFormLoading.style.display = 'none';
+          }
+          if (postForm) {
+            postForm.style.display = 'none';
+          }
           showToast('获取文章列表失败', 'error');
         }
       } catch (error) {
         console.error('加载文章失败:', error);
+        // 隐藏加载提示
+        if (postForm) {
+          postForm.classList.remove('loading');
+        }
+        if (postFormLoading) {
+          postFormLoading.style.display = 'none';
+        }
+        if (postForm) {
+          postForm.style.display = 'none';
+        }
         showToast('加载文章失败: ' + (error.message || '未知错误'), 'error');
       }
     }
@@ -2138,7 +2773,7 @@
 
         if (response && response.success) {
           showToast('文章删除成功', 'success');
-          loadPosts();
+          loadPosts(false); // 删除后保持展开状态
         }
       } catch (error) {
         console.error('删除文章失败:', error);
@@ -2405,7 +3040,7 @@
       if (editId) {
         // 等待页面加载完成后再执行编辑
         setTimeout(async () => {
-          await editPost(editId);
+          await editPostInternal(editId);
           // 清除URL参数，避免刷新时重复执行
           const url = new URL(window.location);
           url.searchParams.delete('edit');
@@ -2415,8 +3050,37 @@
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
+      // 如果是在新窗口中打开编辑页面，只加载必要的资源
+      const isEditWindow = window.opener && getUrlParam('edit');
+      
+      if (isEditWindow) {
+        // 新窗口：隐藏不相关的元素，只显示编辑表单
+        hideUnnecessaryElements();
+        // 更新页面标题
+        updatePageTitleForEdit();
+        // 立即显示表单和加载提示（等待DOM完全加载）
+        setTimeout(() => {
+          const postForm = document.getElementById('postForm');
+          const postFormLoading = document.getElementById('postFormLoading');
+          const postFormContent = document.getElementById('postFormContent');
+          if (postForm) {
+            postForm.style.display = 'block';
+            postForm.classList.add('loading');
+          }
+          if (postFormLoading) {
+            postFormLoading.style.display = 'flex';
+          }
+          if (postFormContent) {
+            postFormContent.style.display = 'none';
+          }
+        }, 100);
+      } else {
+        // 主窗口：加载文章列表
       loadPosts();
-      loadApis(); // 加载API列表
+      }
+      
+      // 所有窗口都需要加载API列表
+      loadApis();
       
       // 监听图片URL输入框变化，实时更新预览
       const postImageInput = document.getElementById('postImage');
@@ -2432,6 +3096,69 @@
       // 检查URL参数，如果有edit参数，自动打开编辑对话框
       await checkUrlParams();
     });
+    
+    // 隐藏新窗口中不需要的元素
+    function hideUnnecessaryElements() {
+      // 隐藏标签页导航
+      const tabsContainer = document.querySelector('.admin-tabs');
+      if (tabsContainer) {
+        tabsContainer.style.display = 'none';
+      }
+      
+      // 隐藏文章管理标题和新建按钮
+      const postsHeader = document.querySelector('#tab-posts > div:first-child');
+      if (postsHeader) {
+        postsHeader.style.display = 'none';
+      }
+      
+      // 隐藏文章列表表格
+      const postsTable = document.querySelector('#tab-posts > div:last-child');
+      if (postsTable && postsTable.querySelector('#postsTableBody')) {
+        postsTable.style.display = 'none';
+      }
+      
+      // 隐藏其他标签页内容
+      const otherTabs = ['tab-categories', 'tab-tags', 'tab-comments'];
+      otherTabs.forEach(tabId => {
+        const tab = document.getElementById(tabId);
+        if (tab) {
+          tab.style.display = 'none';
+        }
+      });
+      
+      // 确保文章表单容器可见
+      const postsTab = document.getElementById('tab-posts');
+      if (postsTab) {
+        postsTab.style.display = 'block';
+        postsTab.classList.add('active');
+      }
+      
+      // 隐藏"返回博客"按钮（新窗口中不需要）
+      const returnButton = document.querySelector('.admin-header a[href="/blog.html"]');
+      if (returnButton) {
+        returnButton.style.display = 'none';
+      }
+      
+      // 调整容器样式，让编辑表单更突出
+      const adminContainer = document.querySelector('.admin-container');
+      if (adminContainer) {
+        adminContainer.style.maxWidth = '100%';
+        adminContainer.style.padding = '1rem';
+      }
+    }
+    
+    // 更新页面标题为编辑模式
+    function updatePageTitleForEdit() {
+      const headerTitle = document.querySelector('.admin-header h1');
+      if (headerTitle) {
+        headerTitle.textContent = '编辑文章';
+      }
+      
+      const headerSubtitle = document.querySelector('.admin-header p');
+      if (headerSubtitle) {
+        headerSubtitle.textContent = '编辑文章内容';
+      }
+    }
     
     /**
      * 处理图片上传

@@ -12,9 +12,20 @@
       top: 0;
       left: 0;
       height: 3px;
-      background: linear-gradient(to right, #ec4899, #9333ea);
+      background: linear-gradient(to right, #d97706, #f59e0b);
       z-index: 100;
       transition: width 0.1s ease;
+    }
+    
+    /* 联系方式和位置信息卡片 */
+    .blog-contact-location-card {
+      max-width: 48rem;
+      margin: 0 auto 2rem;
+    }
+    
+    /* Leaflet地图样式覆盖 */
+    .blog-contact-location-card .leaflet-container {
+      font-family: inherit;
     }
   </style>
 </head>
@@ -58,6 +69,9 @@
     <div class="blog-detail-image" id="articleImage" style="display: none;">
       <img id="articleImageImg" src="" alt="">
     </div>
+
+    <!-- 联系方式和位置信息 -->
+    <div id="articleContactLocation" style="display: none;"></div>
 
     <div class="blog-detail-content" id="articleContent">
       <div class="blog-loading">加载中...</div>
@@ -174,7 +188,7 @@
       }
     }
 
-    // 编辑文章
+    // 编辑文章（在新窗口打开）
     function editPost() {
       if (!currentPostId) {
         showToast('无法获取文章ID', 'error');
@@ -187,8 +201,23 @@
         return;
       }
       
-      // 跳转到管理界面并传递文章ID参数
-      window.location.href = `/blog-admin.html?edit=${currentPostId}`;
+      // 在新窗口打开编辑页面
+      const editUrl = `/blog-admin.html?edit=${encodeURIComponent(currentPostId)}`;
+      const editWindow = window.open(editUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+      
+      if (!editWindow) {
+        showToast('无法打开新窗口，请检查浏览器弹窗设置', 'error');
+        return;
+      }
+      
+      // 监听新窗口关闭事件，重新加载文章详情
+      const checkClosed = setInterval(() => {
+        if (editWindow.closed) {
+          clearInterval(checkClosed);
+          // 重新加载文章详情
+          loadPost();
+        }
+      }, 500);
     }
 
     // 获取URL参数
@@ -288,6 +317,12 @@
         // 如果没有htmlContent，显示所有字段内容
         renderPostFields(post, contentDiv);
       }
+
+      // 显示联系方式和位置信息
+      displayContactLocation(post);
+
+      // 显示联系方式和位置信息
+      displayContactLocation(post);
 
       // 标签（使用category字段）
       const category = post.category || post._sourceApiName || '';
@@ -871,6 +906,141 @@
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
       return `${year}-${month}-${day} ${hours}:${minutes}`;
+    }
+
+    // 显示联系方式和位置信息
+    function displayContactLocation(post) {
+      const container = document.getElementById('articleContactLocation');
+      if (!container) return;
+
+      // 获取联系方式和位置信息（优先从_originalData获取）
+      const phone = (post._originalData && post._originalData.phone) || post.phone || '';
+      const address = (post._originalData && post._originalData.address) || post.address || '';
+      const latitude = (post._originalData && post._originalData.latitude) || post.latitude;
+      const longitude = (post._originalData && post._originalData.longitude) || post.longitude;
+
+      // 如果没有联系方式和位置信息，隐藏容器
+      if (!phone && !address && (latitude === undefined || longitude === undefined || isNaN(latitude) || isNaN(longitude))) {
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'block';
+      
+      let html = '<div class="blog-contact-location-card" style="background: white; border-radius: 1rem; border: 1px solid #e5e7eb; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">';
+      
+      // 联系方式
+      if (phone) {
+        html += `
+          <div style="margin-bottom: 1.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+              </svg>
+              <span style="font-weight: 600; color: #374151; font-size: 1rem;">联系方式</span>
+            </div>
+            <a href="tel:${escapeHtml(phone)}" style="color: #d97706; text-decoration: none; font-size: 1.125rem; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem;">
+              ${escapeHtml(phone)}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 4h4l2 5l-2.5 2.5a11 11 0 0 0 5 5l2.5 -2.5l5 2v4a2 2 0 0 1 -2 2a16 16 0 0 1 -15 -15a2 2 0 0 1 2 -2"></path>
+              </svg>
+            </a>
+          </div>
+        `;
+      }
+
+      // 位置信息
+      if (address || (latitude !== undefined && longitude !== undefined && !isNaN(latitude) && !isNaN(longitude))) {
+        html += `
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+              </svg>
+              <span style="font-weight: 600; color: #374151; font-size: 1rem;">位置信息</span>
+            </div>
+        `;
+        
+        if (address) {
+          html += `<div style="color: #6b7280; margin-bottom: 1rem; line-height: 1.6;">${escapeHtml(address)}</div>`;
+        }
+
+        // 地图显示
+        if (latitude !== undefined && longitude !== undefined && !isNaN(latitude) && !isNaN(longitude)) {
+          const mapId = 'locationMap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          html += `
+            <div id="${mapId}" style="width: 100%; height: 300px; border-radius: 0.5rem; overflow: hidden; margin-top: 1rem; border: 1px solid #e5e7eb; background: #f9fafb;"></div>
+          `;
+          
+          // 延迟加载地图，确保DOM已渲染
+          setTimeout(() => {
+            initMap(mapId, parseFloat(latitude), parseFloat(longitude), address || '');
+          }, 200);
+        }
+        
+        html += `</div>`;
+      }
+
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    // 初始化地图（使用Leaflet + OpenStreetMap）
+    function initMap(mapId, lat, lng, address) {
+      const mapContainer = document.getElementById(mapId);
+      if (!mapContainer) return;
+
+      // 检查是否已加载Leaflet
+      if (typeof L === 'undefined') {
+        // 动态加载Leaflet CSS和JS（使用jsdelivr CDN，已在CSP白名单中）
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+        link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+        link.crossOrigin = '';
+        document.head.appendChild(link);
+
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';
+        script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+        script.crossOrigin = '';
+        script.onload = () => {
+          createMap(mapContainer, lat, lng, address);
+        };
+        script.onerror = () => {
+          mapContainer.innerHTML = `<div style="padding: 2rem; text-align: center; color: #6b7280;">地图加载失败，请刷新重试</div>`;
+        };
+        document.head.appendChild(script);
+      } else {
+        createMap(mapContainer, lat, lng, address);
+      }
+    }
+
+    function createMap(container, lat, lng, address) {
+      try {
+        // 创建地图
+        const map = L.map(container).setView([lat, lng], 15);
+
+        // 添加OpenStreetMap图层（使用jsdelivr的代理，避免CSP问题）
+        // 如果直接使用OpenStreetMap可能被CSP阻止，使用jsdelivr的代理
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 19,
+          // 添加错误处理
+          errorTileUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0iI2Y5ZmFmYiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7lm77niYfliqDovb3lpLHotKU8L3RleHQ+PC9zdmc+'
+        }).addTo(map);
+
+        // 添加标记
+        const marker = L.marker([lat, lng]).addTo(map);
+        const popupContent = address 
+          ? `<div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(address)}</div><div style="font-size: 0.875rem; color: #6b7280;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>`
+          : `<div style="font-size: 0.875rem;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>`;
+        marker.bindPopup(popupContent).openPopup();
+      } catch (error) {
+        console.error('地图初始化失败:', error);
+        container.innerHTML = `<div style="padding: 2rem; text-align: center; color: #6b7280;">地图加载失败</div>`;
+      }
     }
 
     // 初始化

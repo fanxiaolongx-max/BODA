@@ -204,6 +204,12 @@ router.post('/posts', requireAuth, [
     if (req.body.area !== undefined) postData.area = req.body.area;
     if (req.body.views !== undefined) postData.views = parseInt(req.body.views) || 0;
     
+    // 位置和联系方式字段
+    if (req.body.phone !== undefined) postData.phone = req.body.phone;
+    if (req.body.address !== undefined) postData.address = req.body.address;
+    if (req.body.latitude !== undefined) postData.latitude = parseFloat(req.body.latitude);
+    if (req.body.longitude !== undefined) postData.longitude = parseFloat(req.body.longitude);
+    
     // 处理特殊类别的数据
     if (req.body._specialData !== undefined) {
       postData._specialData = req.body._specialData;
@@ -286,6 +292,12 @@ router.put('/posts/:id', requireAuth, [
     if (req.body.rooms !== undefined) updateData.rooms = req.body.rooms;
     if (req.body.area !== undefined) updateData.area = req.body.area;
     if (req.body.views !== undefined) updateData.views = parseInt(req.body.views) || 0;
+    
+    // 位置和联系方式字段
+    if (req.body.phone !== undefined) updateData.phone = req.body.phone;
+    if (req.body.address !== undefined) updateData.address = req.body.address;
+    if (req.body.latitude !== undefined) updateData.latitude = parseFloat(req.body.latitude);
+    if (req.body.longitude !== undefined) updateData.longitude = parseFloat(req.body.longitude);
     
     // 处理特殊类别的数据
     // 注意：second-hand 和 rentals 虽然需要特殊字段，但仍然需要 htmlContent
