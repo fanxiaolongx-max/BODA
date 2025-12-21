@@ -33,6 +33,7 @@ app.use(helmet({
         "'self'", 
         "https://api.stripe.com",
         "https://cdn.jsdelivr.net",
+        "https://nominatim.openstreetmap.org", // OpenStreetMap地理编码服务（用于地图地址搜索）
         // QZ Tray WebSocket 连接（本地服务）
         // 安全连接 (wss://)
         "wss://localhost:8181",

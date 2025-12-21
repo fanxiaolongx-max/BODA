@@ -8606,5 +8606,199 @@ router.get('/custom-apis/:id/logs', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/admin/parse-google-maps-link
+ * 解析谷歌地图链接（包括短链接），提取经纬度或地址信息
+ */
+router.post('/parse-google-maps-link', requireAuth, [
+  body('link').notEmpty().withMessage('链接不能为空').trim(),
+  validate
+], async (req, res) => {
+  try {
+    const { link } = req.body;
+    const https = require('https');
+    const http = require('http');
+    const { URL } = require('url');
+
+    let finalUrl = link;
+    let lat = null;
+    let lng = null;
+    let address = null;
+
+    // 检查是否是短链接（goo.gl 或 maps.app.goo.gl）
+    const isShortLink = /^(https?:\/\/)?(maps\.app\.)?goo\.gl\/.+$/i.test(link) || 
+                        /^(https?:\/\/)?maps\.app\.goo\.gl\/.+$/i.test(link);
+
+    // 如果是短链接，先获取真实URL
+    if (isShortLink) {
+      try {
+        // 确保URL有协议
+        if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+          finalUrl = 'https://' + finalUrl;
+        }
+
+        // 使用GET请求获取重定向后的URL（HEAD请求可能不返回Location头）
+        const urlObj = new URL(finalUrl);
+        
+        // 创建一个Promise来处理重定向
+        finalUrl = await new Promise((resolve, reject) => {
+          const protocol = urlObj.protocol === 'https:' ? https : http;
+          let redirectCount = 0;
+          const maxRedirects = 5;
+
+          const makeRequest = (url) => {
+            const currentUrl = new URL(url);
+            const reqOptions = {
+              hostname: currentUrl.hostname,
+              path: currentUrl.pathname + currentUrl.search,
+              method: 'GET',
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+              },
+              timeout: 5000,
+              maxRedirects: 0 // 手动处理重定向
+            };
+
+            const req = protocol.request(reqOptions, (res) => {
+              // 处理重定向（3xx状态码）
+              if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                redirectCount++;
+                if (redirectCount > maxRedirects) {
+                  req.destroy();
+                  reject(new Error('重定向次数过多'));
+                  return;
+                }
+                // 处理相对路径和绝对路径
+                let redirectUrl = res.headers.location;
+                if (!redirectUrl.startsWith('http://') && !redirectUrl.startsWith('https://')) {
+                  redirectUrl = new URL(redirectUrl, url).href;
+                }
+                // 继续跟踪重定向
+                makeRequest(redirectUrl);
+              } else if (res.statusCode >= 200 && res.statusCode < 300) {
+                // 成功响应，返回当前URL
+                req.destroy();
+                resolve(url);
+              } else {
+                // 其他状态码，返回当前URL
+                req.destroy();
+                resolve(url);
+              }
+              // 不需要读取响应体，直接销毁
+              res.on('data', () => {});
+              res.on('end', () => {});
+            });
+
+            req.on('error', (error) => {
+              reject(error);
+            });
+
+            req.on('timeout', () => {
+              req.destroy();
+              reject(new Error('请求超时'));
+            });
+
+            req.end();
+          };
+
+          makeRequest(finalUrl);
+        });
+      } catch (error) {
+        logger.warn('解析短链接失败，尝试直接解析原链接', { error: error.message, link });
+        // 如果短链接解析失败，继续尝试直接解析原链接
+      }
+    }
+
+    // 解析各种谷歌地图链接格式
+    // 格式1: https://www.google.com/maps?q=30.0444,31.2357
+    // 格式2: https://maps.google.com/?q=30.0444,31.2357
+    let match = finalUrl.match(/[?&]q=([^&]+)/);
+    if (match) {
+      const qValue = decodeURIComponent(match[1]);
+      // 检查是否是经纬度格式 (lat,lng)
+      const coordsMatch = qValue.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/);
+      if (coordsMatch) {
+        lat = parseFloat(coordsMatch[1]);
+        lng = parseFloat(coordsMatch[2]);
+      } else {
+        // 否则是地址名称
+        address = qValue;
+      }
+    }
+
+    // 格式3: https://www.google.com/maps/@30.0444,31.2357,15z
+    // 格式4: https://www.google.com/maps/place/.../@30.0444,31.2357,15z
+    if (lat === null || lng === null) {
+      match = finalUrl.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+      if (match) {
+        lat = parseFloat(match[1]);
+        lng = parseFloat(match[2]);
+      }
+    }
+
+    // 格式5: 直接包含经纬度的URL参数
+    if (lat === null || lng === null) {
+      match = finalUrl.match(/[?&]ll=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+      if (match) {
+        lat = parseFloat(match[1]);
+        lng = parseFloat(match[2]);
+      }
+    }
+
+    // 格式6: place链接
+    if (lat === null || lng === null) {
+      match = finalUrl.match(/place\/[^/]+\/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+      if (match) {
+        lat = parseFloat(match[1]);
+        lng = parseFloat(match[2]);
+      }
+    }
+
+    // 验证经纬度范围
+    if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+      if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return res.json({
+          success: true,
+          data: {
+            lat: lat,
+            lng: lng,
+            address: address || null,
+            finalUrl: finalUrl
+          }
+        });
+      }
+    }
+
+    // 如果只有地址名称，返回地址信息
+    if (address) {
+      return res.json({
+        success: true,
+        data: {
+          lat: null,
+          lng: null,
+          address: address,
+          finalUrl: finalUrl
+        }
+      });
+    }
+
+    // 如果都没有找到
+    return res.status(400).json({
+      success: false,
+      message: '无法从链接中提取位置信息，请检查链接格式',
+      data: {
+        finalUrl: finalUrl
+      }
+    });
+  } catch (error) {
+    logger.error('解析谷歌地图链接失败', { error: error.message, link: req.body.link });
+    res.status(500).json({
+      success: false,
+      message: '解析失败：' + error.message
+    });
+  }
+});
+
 module.exports = router;
 
