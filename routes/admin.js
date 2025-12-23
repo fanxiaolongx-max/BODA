@@ -8800,5 +8800,88 @@ router.post('/parse-google-maps-link', requireAuth, [
   }
 });
 
+/**
+ * POST /api/admin/exchange-rate/update
+ * 手动触发汇率更新
+ */
+router.post('/exchange-rate/update', requireAuth, async (req, res) => {
+  try {
+    const { fetchExchangeRates } = require('../utils/exchange-rate-fetcher');
+    const { updateExchangeRateAPI } = require('../utils/exchange-rate-updater');
+    const { allAsync, runAsync } = require('../db/database');
+
+    // 获取设置
+    const settings = await allAsync('SELECT key, value FROM settings');
+    const settingsObj = {};
+    settings.forEach(s => {
+      settingsObj[s.key] = s.value;
+    });
+
+    // 检查是否配置了API密钥
+    const freecurrencyapiKey = settingsObj.freecurrencyapi_api_key;
+    const exchangerateKey = settingsObj.exchangerate_api_key;
+    
+    if (!freecurrencyapiKey && !exchangerateKey) {
+      return res.status(400).json({
+        success: false,
+        message: '未配置任何汇率API密钥，请在设置中配置'
+      });
+    }
+
+    // 获取汇率
+    logger.info('手动触发汇率更新', {
+      hasFreecurrencyAPI: !!freecurrencyapiKey,
+      hasExchangeRateAPI: !!exchangerateKey
+    });
+
+    const exchangeRates = await fetchExchangeRates({
+      freecurrencyapi_api_key: freecurrencyapiKey,
+      exchangerate_api_key: exchangerateKey,
+      exchange_rate_base_currencies: settingsObj.exchange_rate_base_currencies || 'CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB',
+      exchange_rate_target_currency: settingsObj.exchange_rate_target_currency || 'EGP'
+    });
+
+    // 更新API
+    const result = await updateExchangeRateAPI(exchangeRates);
+
+    // 更新最后更新时间
+    const now = new Date();
+    await runAsync(
+      `INSERT INTO settings (key, value, updated_at) 
+       VALUES (?, ?, datetime('now', 'localtime'))
+       ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now', 'localtime')`,
+      ['exchange_rate_last_update', now.toISOString(), now.toISOString()]
+    );
+
+    await logAction(
+      req.session.adminId,
+      'UPDATE',
+      'exchange_rate',
+      'manual',
+      JSON.stringify({
+        currencies: Object.keys(exchangeRates).length,
+        updatedCurrencies: Object.keys(exchangeRates)
+      }),
+      req
+    );
+
+    res.json({
+      success: true,
+      message: '汇率更新成功',
+      data: {
+        currencies: result.currencies,
+        updatedCurrencies: Object.keys(exchangeRates),
+        updateTime: now.toISOString()
+      }
+    });
+  } catch (error) {
+    logger.error('手动更新汇率失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '汇率更新失败: ' + error.message
+    });
+  }
+});
+
 module.exports = router;
 

@@ -562,6 +562,10 @@ async function startServer() {
   try {
     await initData();
     
+    // 启动定时任务调度器
+    const { startScheduler } = require('./utils/scheduler');
+    startScheduler();
+    
     // 检查是否使用本地 HTTPS（仅本地开发环境）
     // 在 Fly.io 或其他生产环境上，FLY_APP_NAME 会被设置，跳过本地 HTTPS 检查
     const isLocalEnv = process.env.NODE_ENV !== 'production' && !process.env.FLY_APP_NAME;

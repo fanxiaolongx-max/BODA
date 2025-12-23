@@ -1237,6 +1237,50 @@ async function updateBlogPost(postId, postData) {
       }
       
       // 添加或更新特殊字段（二手市场和租房酒店）
+      // 如果字段值为null，则删除该字段（不设置或设置为undefined）
+      if (postData.price !== undefined) {
+        updatedItem.price = postData.price === null || postData.price === '' ? undefined : postData.price;
+      }
+      if (postData.rooms !== undefined) {
+        updatedItem.rooms = postData.rooms === null || postData.rooms === '' ? undefined : postData.rooms;
+      }
+      if (postData.area !== undefined) {
+        updatedItem.area = postData.area === null || postData.area === '' ? undefined : postData.area;
+      }
+      if (postData.views !== undefined) {
+        updatedItem.views = postData.views === null || postData.views === '' ? undefined : postData.views;
+      }
+      // 位置和联系方式字段：如果为null，则删除字段
+      if (postData.phone !== undefined) {
+        if (postData.phone === null || postData.phone === '') {
+          delete updatedItem.phone;
+        } else {
+          updatedItem.phone = postData.phone;
+        }
+      }
+      if (postData.address !== undefined) {
+        if (postData.address === null || postData.address === '') {
+          delete updatedItem.address;
+        } else {
+          updatedItem.address = postData.address;
+        }
+      }
+      if (postData.latitude !== undefined) {
+        if (postData.latitude === null || postData.latitude === '') {
+          delete updatedItem.latitude;
+        } else {
+          updatedItem.latitude = typeof postData.latitude === 'number' ? postData.latitude : parseFloat(postData.latitude);
+        }
+      }
+      if (postData.longitude !== undefined) {
+        if (postData.longitude === null || postData.longitude === '') {
+          delete updatedItem.longitude;
+        } else {
+          updatedItem.longitude = typeof postData.longitude === 'number' ? postData.longitude : parseFloat(postData.longitude);
+        }
+      }
+      
+      // 原有的特殊字段处理逻辑（如果存在）
       if (postData.price !== undefined) {
         updatedItem.price = postData.price;
       }
@@ -1251,17 +1295,34 @@ async function updateBlogPost(postId, postData) {
       }
       
       // 添加或更新位置和联系方式字段
+      // 如果字段值为null或空字符串，则删除该字段
       if (postData.phone !== undefined) {
-        updatedItem.phone = postData.phone;
+        if (postData.phone === null || postData.phone === '') {
+          delete updatedItem.phone;
+        } else {
+          updatedItem.phone = postData.phone;
+        }
       }
       if (postData.address !== undefined) {
-        updatedItem.address = postData.address;
+        if (postData.address === null || postData.address === '') {
+          delete updatedItem.address;
+        } else {
+          updatedItem.address = postData.address;
+        }
       }
       if (postData.latitude !== undefined) {
-        updatedItem.latitude = postData.latitude;
+        if (postData.latitude === null || postData.latitude === '') {
+          delete updatedItem.latitude;
+        } else {
+          updatedItem.latitude = typeof postData.latitude === 'number' ? postData.latitude : parseFloat(postData.latitude);
+        }
       }
       if (postData.longitude !== undefined) {
-        updatedItem.longitude = postData.longitude;
+        if (postData.longitude === null || postData.longitude === '') {
+          delete updatedItem.longitude;
+        } else {
+          updatedItem.longitude = typeof postData.longitude === 'number' ? postData.longitude : parseFloat(postData.longitude);
+        }
       }
       
       // 处理slug的唯一性和稳定性

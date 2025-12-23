@@ -4571,6 +4571,82 @@ async function loadSettingsPage() {
               </div>
               
               <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">💱 汇率自动更新设置</h3>
+                <p class="text-sm text-gray-600 mb-4">配置汇率API密钥，系统将自动定时获取汇率并更新到汇率转换API中。</p>
+                
+                <div class="space-y-4">
+                  <div>
+                    <label class="flex items-center space-x-2 mb-2">
+                      <input type="checkbox" id="exchangeRateAutoUpdateEnabled" 
+                             class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                             ${settings.exchange_rate_auto_update_enabled === 'true' ? 'checked' : ''}
+                             onchange="document.getElementById('exchangeRateConfigSection').classList.toggle('hidden', !this.checked)">
+                      <span class="text-sm font-medium text-gray-700">启用汇率自动更新</span>
+                    </label>
+                    <p class="text-xs text-gray-500 ml-6">启用后，系统将根据设置的频率自动获取并更新汇率</p>
+                  </div>
+                  
+                  <div id="exchangeRateConfigSection" class="space-y-4 ${settings.exchange_rate_auto_update_enabled === 'true' ? '' : 'hidden'}">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">FreeCurrencyAPI API Key</label>
+                      <input type="password" id="freecurrencyapiApiKey" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="Enter FreeCurrencyAPI API key"
+                             value="${settings.freecurrencyapi_api_key || ''}">
+                      <p class="text-xs text-gray-500 mt-1">优先使用的汇率API密钥（<a href="https://freecurrencyapi.com/" target="_blank" class="text-blue-600 hover:underline">获取API Key</a>）</p>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">ExchangeRate-API API Key</label>
+                      <input type="password" id="exchangerateApiKey" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="Enter ExchangeRate-API key"
+                             value="${settings.exchangerate_api_key || ''}">
+                      <p class="text-xs text-gray-500 mt-1">备用汇率API密钥（当FreeCurrencyAPI失败时使用，<a href="https://www.exchangerate-api.com/" target="_blank" class="text-blue-600 hover:underline">获取API Key</a>）</p>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">更新频率</label>
+                      <select id="exchangeRateUpdateFrequency" 
+                              class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <option value="hourly" ${settings.exchange_rate_update_frequency === 'hourly' ? 'selected' : ''}>每小时更新</option>
+                        <option value="daily" ${settings.exchange_rate_update_frequency === 'daily' || !settings.exchange_rate_update_frequency ? 'selected' : ''}>每天更新（推荐）</option>
+                      </select>
+                      <p class="text-xs text-gray-500 mt-1">汇率更新频率，建议每天更新一次以避免API调用限制</p>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">基础货币列表</label>
+                      <input type="text" id="exchangeRateBaseCurrencies" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB"
+                             value="${settings.exchange_rate_base_currencies || 'CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB'}">
+                      <p class="text-xs text-gray-500 mt-1">需要获取汇率的基础货币代码，用逗号分隔（如：CNY,USD,EUR）</p>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">目标货币</label>
+                      <input type="text" id="exchangeRateTargetCurrency" 
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="EGP"
+                             value="${settings.exchange_rate_target_currency || 'EGP'}"
+                             maxlength="3">
+                      <p class="text-xs text-gray-500 mt-1">目标货币代码（默认：EGP埃及镑）</p>
+                    </div>
+                    
+                    <div class="flex items-center space-x-3 pt-2">
+                      <button type="button" id="updateExchangeRateBtn" 
+                              onclick="updateExchangeRateManually()"
+                              class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
+                        🔄 立即更新汇率
+                      </button>
+                      <span id="exchangeRateUpdateStatus" class="text-sm text-gray-600"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">🔒 Security Policy Settings</h3>
                 
                 <div class="space-y-6">
@@ -5058,6 +5134,13 @@ async function saveSettings(e) {
     tts_volume: document.getElementById('ttsVolume')?.value || '100',
     tts_voice_zh: document.getElementById('ttsVoiceZh')?.value || 'zh-CN-XiaoxiaoNeural',
     tts_voice_ar: document.getElementById('ttsVoiceAr')?.value || 'ar-SA-HamedNeural',
+    // Exchange Rate API Settings
+    exchange_rate_auto_update_enabled: document.getElementById('exchangeRateAutoUpdateEnabled')?.checked ? 'true' : 'false',
+    freecurrencyapi_api_key: document.getElementById('freecurrencyapiApiKey')?.value.trim() || '',
+    exchangerate_api_key: document.getElementById('exchangerateApiKey')?.value.trim() || '',
+    exchange_rate_update_frequency: document.getElementById('exchangeRateUpdateFrequency')?.value || 'daily',
+    exchange_rate_base_currencies: document.getElementById('exchangeRateBaseCurrencies')?.value.trim() || 'CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB',
+    exchange_rate_target_currency: document.getElementById('exchangeRateTargetCurrency')?.value.trim().toUpperCase() || 'EGP',
     // Custom API Token (only for custom APIs)
     custom_api_token: (() => {
       const tokenInput = document.getElementById('customApiToken');
@@ -12878,5 +12961,56 @@ function toggleOrderNotification() {
   } catch (error) {
     // 切换失败不影响其他功能
     console.error('切换订单通知失败（不影响功能）:', error);
+  }
+}
+
+// 手动更新汇率
+async function updateExchangeRateManually() {
+  const btn = document.getElementById('updateExchangeRateBtn');
+  const statusSpan = document.getElementById('exchangeRateUpdateStatus');
+  
+  if (!btn || !statusSpan) {
+    showToast('无法找到更新按钮或状态显示元素', 'error');
+    return;
+  }
+  
+  try {
+    // 禁用按钮并显示加载状态
+    btn.disabled = true;
+    btn.textContent = '更新中...';
+    statusSpan.textContent = '';
+    
+    const response = await fetch(`${API_BASE}/admin/exchange-rate/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      statusSpan.textContent = '✓ 更新成功';
+      statusSpan.className = 'text-sm text-green-600';
+      showToast('汇率更新成功', 'success');
+      
+      // 3秒后清除状态
+      setTimeout(() => {
+        statusSpan.textContent = '';
+        statusSpan.className = 'text-sm text-gray-600';
+      }, 3000);
+    } else {
+      statusSpan.textContent = '✗ 更新失败: ' + (result.message || '未知错误');
+      statusSpan.className = 'text-sm text-red-600';
+      showToast('汇率更新失败: ' + (result.message || '未知错误'), 'error');
+    }
+  } catch (error) {
+    console.error('手动更新汇率失败:', error);
+    statusSpan.textContent = '✗ 更新失败: ' + error.message;
+    statusSpan.className = 'text-sm text-red-600';
+    showToast('汇率更新失败: ' + error.message, 'error');
+  } finally {
+    // 恢复按钮状态
+    btn.disabled = false;
+    btn.textContent = '🔄 立即更新汇率';
   }
 }

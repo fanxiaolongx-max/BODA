@@ -2,9 +2,12 @@
 const { logger } = require('./logger');
 const { allAsync, getAsync } = require('../db/database');
 const { shouldPushNow, pushBackupToRemote } = require('./remote-backup');
+const { fetchExchangeRates } = require('./exchange-rate-fetcher');
+const { updateExchangeRateAPI } = require('./exchange-rate-updater');
 
 let checkInterval = null;
 let pushCheckInterval = null;
+let exchangeRateCheckInterval = null;
 
 // 启动定时任务（已禁用，不再执行自动开放时间检查）
 function startScheduler() {
@@ -13,6 +16,9 @@ function startScheduler() {
   
   // 启动远程备份推送检查（每分钟检查一次）
   startRemoteBackupScheduler();
+  
+  // 启动汇率更新调度器
+  startExchangeRateScheduler();
 }
 
 // 启动远程备份推送调度器
@@ -78,6 +84,102 @@ function startRemoteBackupScheduler() {
   logger.info('远程备份推送调度器已启动（每分钟检查一次）');
 }
 
+// 启动汇率更新调度器
+function startExchangeRateScheduler() {
+  // 每小时检查一次是否需要更新汇率
+  exchangeRateCheckInterval = setInterval(async () => {
+    try {
+      // 获取设置
+      const settings = await allAsync('SELECT key, value FROM settings');
+      const settingsObj = {};
+      settings.forEach(s => {
+        settingsObj[s.key] = s.value;
+      });
+
+      // 检查是否启用自动更新
+      if (settingsObj.exchange_rate_auto_update_enabled !== 'true') {
+        return; // 未启用，跳过
+      }
+
+      // 检查API密钥是否配置
+      const freecurrencyapiKey = settingsObj.freecurrencyapi_api_key;
+      const exchangerateKey = settingsObj.exchangerate_api_key;
+      if (!freecurrencyapiKey && !exchangerateKey) {
+        logger.warn('汇率自动更新已启用但未配置API密钥');
+        return;
+      }
+
+      // 获取更新频率
+      const frequency = settingsObj.exchange_rate_update_frequency || 'daily';
+      
+      // 检查上次更新时间
+      const lastUpdateKey = 'exchange_rate_last_update';
+      const lastUpdateSetting = await getAsync(
+        'SELECT value FROM settings WHERE key = ?',
+        [lastUpdateKey]
+      );
+      
+      const now = new Date();
+      let shouldUpdate = false;
+
+      if (!lastUpdateSetting || !lastUpdateSetting.value) {
+        // 从未更新过，立即更新
+        shouldUpdate = true;
+      } else {
+        const lastUpdate = new Date(lastUpdateSetting.value);
+        const hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
+
+        if (frequency === 'hourly' && hoursSinceUpdate >= 1) {
+          shouldUpdate = true;
+        } else if (frequency === 'daily' && hoursSinceUpdate >= 24) {
+          shouldUpdate = true;
+        }
+      }
+
+      if (shouldUpdate) {
+        logger.info('开始自动更新汇率', {
+          frequency,
+          lastUpdate: lastUpdateSetting?.value || '从未更新'
+        });
+
+        try {
+          // 获取汇率
+          const exchangeRates = await fetchExchangeRates({
+            freecurrencyapi_api_key: freecurrencyapiKey,
+            exchangerate_api_key: exchangerateKey,
+            exchange_rate_base_currencies: settingsObj.exchange_rate_base_currencies || 'CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB',
+            exchange_rate_target_currency: settingsObj.exchange_rate_target_currency || 'EGP'
+          });
+
+          // 更新API
+          await updateExchangeRateAPI(exchangeRates);
+
+          // 更新最后更新时间
+          const { runAsync } = require('../db/database');
+          await runAsync(
+            `INSERT INTO settings (key, value, updated_at) 
+             VALUES (?, ?, datetime('now', 'localtime'))
+             ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now', 'localtime')`,
+            [lastUpdateKey, now.toISOString(), now.toISOString()]
+          );
+
+          logger.info('汇率自动更新成功', {
+            currencies: Object.keys(exchangeRates).length
+          });
+        } catch (error) {
+          logger.error('汇率自动更新失败', {
+            error: error.message
+          });
+        }
+      }
+    } catch (error) {
+      logger.error('汇率更新调度器检查失败', { error: error.message });
+    }
+  }, 60 * 60 * 1000); // 每小时检查一次
+
+  logger.info('汇率更新调度器已启动（每小时检查一次）');
+}
+
 // 停止定时任务
 function stopScheduler() {
   if (checkInterval) {
@@ -90,6 +192,12 @@ function stopScheduler() {
     clearInterval(pushCheckInterval);
     pushCheckInterval = null;
     logger.info('远程备份推送调度器已停止');
+  }
+  
+  if (exchangeRateCheckInterval) {
+    clearInterval(exchangeRateCheckInterval);
+    exchangeRateCheckInterval = null;
+    logger.info('汇率更新调度器已停止');
   }
 }
 

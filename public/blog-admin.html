@@ -2522,8 +2522,10 @@
 
       try {
         // 直接使用id（id现在是全局唯一的UUID）
-        const url = id ? `${BLOG_ADMIN_API}/posts/${id}` : `${BLOG_ADMIN_API}/posts`;
-        const method = id ? 'PUT' : 'POST';
+        // 如果ID为空字符串或null/undefined，则创建新文章
+        const hasId = id && id.trim() !== '';
+        const url = hasId ? `${BLOG_ADMIN_API}/posts/${id}` : `${BLOG_ADMIN_API}/posts`;
+        const method = hasId ? 'PUT' : 'POST';
         
         const requestBody = {
           name,
@@ -2545,11 +2547,12 @@
           const address = document.getElementById('secondHandAddress').value.trim();
           const latitude = document.getElementById('secondHandLatitude').value.trim();
           const longitude = document.getElementById('secondHandLongitude').value.trim();
-          if (price) requestBody.price = price;
-          if (phone) requestBody.phone = phone;
-          if (address) requestBody.address = address;
-          if (latitude) requestBody.latitude = parseFloat(latitude);
-          if (longitude) requestBody.longitude = parseFloat(longitude);
+          // 即使字段为空也要发送，以便后端可以删除这些字段
+          requestBody.price = price || null;
+          requestBody.phone = phone || null;
+          requestBody.address = address || null;
+          requestBody.latitude = latitude ? parseFloat(latitude) : null;
+          requestBody.longitude = longitude ? parseFloat(longitude) : null;
         } else if (specialType === 'rentals') {
           const price = document.getElementById('rentalsPrice').value.trim();
           const rooms = document.getElementById('rentalsRooms').value.trim();
@@ -2559,30 +2562,32 @@
           const address = document.getElementById('rentalsAddress').value.trim();
           const latitude = document.getElementById('rentalsLatitude').value.trim();
           const longitude = document.getElementById('rentalsLongitude').value.trim();
-          if (price) requestBody.price = price;
-          if (rooms) requestBody.rooms = rooms;
-          if (area) requestBody.area = area;
-          if (views) requestBody.views = parseInt(views) || 0;
-          if (phone) requestBody.phone = phone;
-          if (address) requestBody.address = address;
-          if (latitude) requestBody.latitude = parseFloat(latitude);
-          if (longitude) requestBody.longitude = parseFloat(longitude);
+          // 即使字段为空也要发送，以便后端可以删除这些字段
+          requestBody.price = price || null;
+          requestBody.rooms = rooms || null;
+          requestBody.area = area || null;
+          requestBody.views = views ? parseInt(views) || 0 : null;
+          requestBody.phone = phone || null;
+          requestBody.address = address || null;
+          requestBody.latitude = latitude ? parseFloat(latitude) : null;
+          requestBody.longitude = longitude ? parseFloat(longitude) : null;
         } else if (needsLocation) {
           // 通用位置字段（用于其他需要位置的分类）
           const addressInput = document.getElementById('commonAddress');
           const latInput = document.getElementById('commonLatitude');
           const lngInput = document.getElementById('commonLongitude');
+          // 即使字段为空也要发送，以便后端可以删除这些字段
           if (addressInput) {
             const address = addressInput.value.trim();
-            if (address) requestBody.address = address;
+            requestBody.address = address || null;
           }
           if (latInput) {
             const latitude = latInput.value.trim();
-            if (latitude) requestBody.latitude = parseFloat(latitude);
+            requestBody.latitude = latitude ? parseFloat(latitude) : null;
           }
           if (lngInput) {
             const longitude = lngInput.value.trim();
-            if (longitude) requestBody.longitude = parseFloat(longitude);
+            requestBody.longitude = longitude ? parseFloat(longitude) : null;
           }
         }
         
@@ -2592,7 +2597,8 @@
           const phoneInput = document.getElementById('commonPhone');
           if (phoneInput) {
             const phone = phoneInput.value.trim();
-            if (phone) requestBody.phone = phone;
+            // 即使字段为空也要发送，以便后端可以删除这些字段
+            requestBody.phone = phone || null;
           }
         }
         

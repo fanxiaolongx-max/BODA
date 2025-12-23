@@ -294,10 +294,19 @@ router.put('/posts/:id', requireAuth, [
     if (req.body.views !== undefined) updateData.views = parseInt(req.body.views) || 0;
     
     // 位置和联系方式字段
-    if (req.body.phone !== undefined) updateData.phone = req.body.phone;
-    if (req.body.address !== undefined) updateData.address = req.body.address;
-    if (req.body.latitude !== undefined) updateData.latitude = parseFloat(req.body.latitude);
-    if (req.body.longitude !== undefined) updateData.longitude = parseFloat(req.body.longitude);
+    // 如果字段值为null或空字符串，则删除该字段（设置为null）
+    if (req.body.phone !== undefined) {
+      updateData.phone = req.body.phone === null || req.body.phone === '' ? null : req.body.phone;
+    }
+    if (req.body.address !== undefined) {
+      updateData.address = req.body.address === null || req.body.address === '' ? null : req.body.address;
+    }
+    if (req.body.latitude !== undefined) {
+      updateData.latitude = (req.body.latitude === null || req.body.latitude === '') ? null : parseFloat(req.body.latitude);
+    }
+    if (req.body.longitude !== undefined) {
+      updateData.longitude = (req.body.longitude === null || req.body.longitude === '') ? null : parseFloat(req.body.longitude);
+    }
     
     // 处理特殊类别的数据
     // 注意：second-hand 和 rentals 虽然需要特殊字段，但仍然需要 htmlContent
