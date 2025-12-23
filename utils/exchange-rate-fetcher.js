@@ -16,14 +16,19 @@ async function fetchRatesFromFreecurrencyAPI(apiKey, baseCurrencies, targetCurre
   const exchangeRates = {};
   const errors = [];
 
+  // 优化：先测试第一个货币，如果是403权限错误，立即停止，避免浪费时间和资源
+  const testCurrency = baseCurrencies[0];
+  let hasPermissionError = false;
+
   // 为每个基础货币获取汇率
   for (const baseCurrency of baseCurrencies) {
     try {
+      // 使用查询参数方式传递API密钥（符合官方示例格式）
       const url = `https://api.freecurrencyapi.com/v1/latest?apikey=${encodeURIComponent(apiKey)}&base_currency=${baseCurrency}&currencies=${targetCurrency}`;
       
       const response = await new Promise((resolve, reject) => {
         const req = https.get(url, {
-          timeout: 5000,
+          timeout: 10000, // 增加超时时间到10秒
           headers: {
             'User-Agent': 'BODA Exchange Rate Updater'
           }
@@ -40,7 +45,23 @@ async function fetchRatesFromFreecurrencyAPI(apiKey, baseCurrencies, targetCurre
                 reject(new Error(`解析响应失败: ${e.message}`));
               }
             } else {
-              reject(new Error(`API返回错误: ${res.statusCode} ${res.statusMessage}`));
+              // 读取错误响应体以便更好地诊断问题
+              let errorMsg = `${res.statusCode} ${res.statusMessage}`;
+              try {
+                const errorData = JSON.parse(data);
+                if (errorData.message) {
+                  errorMsg += `: ${errorData.message}`;
+                }
+              } catch (e) {
+                // 忽略解析错误
+              }
+              
+              // 如果是403权限错误或422参数错误（如货币不支持），标记并立即停止
+              if (res.statusCode === 403 || res.statusCode === 422) {
+                hasPermissionError = true;
+              }
+              
+              reject(new Error(`API返回错误: ${errorMsg}`));
             }
           });
         });
@@ -73,6 +94,13 @@ async function fetchRatesFromFreecurrencyAPI(apiKey, baseCurrencies, targetCurre
     } catch (error) {
       errors.push(`${baseCurrency}: ${error.message}`);
       logger.warn(`FreeCurrencyAPI获取 ${baseCurrency} 汇率失败`, { error: error.message });
+      
+      // 如果是403权限错误或422参数错误（如货币不支持），立即停止尝试其他货币
+      if (hasPermissionError || (error.message && (error.message.includes('403') || error.message.includes('422')))) {
+        const errorType = error.message.includes('422') ? '422参数错误（可能不支持该货币）' : '403权限错误（API密钥可能无效）';
+        logger.warn(`FreeCurrencyAPI返回${errorType}，停止尝试其他货币`);
+        break;
+      }
     }
   }
 
@@ -96,75 +124,103 @@ async function fetchRatesFromExchangeRateAPI(apiKey, baseCurrencies, targetCurre
   }
 
   const exchangeRates = {};
-  const errors = [];
 
-  // 为每个基础货币获取汇率
-  for (const baseCurrency of baseCurrencies) {
-    try {
-      const url = `https://v6.exchangerate-api.com/v6/${encodeURIComponent(apiKey)}/latest/${baseCurrency}`;
-      
-      const response = await new Promise((resolve, reject) => {
-        const req = https.get(url, {
-          timeout: 5000,
-          headers: {
-            'User-Agent': 'BODA Exchange Rate Updater'
-          }
-        }, (res) => {
-          let data = '';
-          res.on('data', (chunk) => {
-            data += chunk;
-          });
-          res.on('end', () => {
-            if (res.statusCode === 200) {
-              try {
-                resolve(JSON.parse(data));
-              } catch (e) {
-                reject(new Error(`解析响应失败: ${e.message}`));
-              }
-            } else {
-              reject(new Error(`API返回错误: ${res.statusCode} ${res.statusMessage}`));
+  try {
+    // 优化：以目标货币作为base_currency，一次调用获取所有汇率
+    // 例如：base=EGP时，返回的是"1 EGP = X 其他货币"
+    // 我们需要计算倒数：1 其他货币 = 1/X EGP
+    const url = `https://v6.exchangerate-api.com/v6/${encodeURIComponent(apiKey)}/latest/${targetCurrency}`;
+    
+    logger.info(`ExchangeRate-API: 使用优化方式，以${targetCurrency}作为base获取所有汇率`);
+    
+    const response = await new Promise((resolve, reject) => {
+      const req = https.get(url, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'BODA Exchange Rate Updater'
+        }
+      }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              resolve(JSON.parse(data));
+            } catch (e) {
+              reject(new Error(`解析响应失败: ${e.message}`));
             }
-          });
-        });
-
-        req.on('error', (error) => {
-          reject(error);
-        });
-
-        req.on('timeout', () => {
-          req.destroy();
-          reject(new Error('请求超时'));
+          } else {
+            // 读取错误响应体以便更好地诊断问题
+            let errorMsg = `${res.statusCode} ${res.statusMessage}`;
+            try {
+              const errorData = JSON.parse(data);
+              if (errorData['error-type']) {
+                errorMsg += `: ${errorData['error-type']}`;
+              } else if (errorData.message) {
+                errorMsg += `: ${errorData.message}`;
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+            reject(new Error(`API返回错误: ${errorMsg}`));
+          }
         });
       });
 
-      // 处理响应格式：{"result": "success", "conversion_rates": {"EGP": 30.5}}
-      if (response.result === 'success' && response.conversion_rates && response.conversion_rates[targetCurrency]) {
-        const rate = parseFloat(response.conversion_rates[targetCurrency]);
-        if (!isNaN(rate) && rate > 0) {
-          if (!exchangeRates[baseCurrency]) {
-            exchangeRates[baseCurrency] = {};
+      req.on('error', (error) => {
+        reject(error);
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('请求超时'));
+      });
+    });
+
+    // 处理响应格式：{"result": "success", "base_code": "EGP", "conversion_rates": {"USD": 0.02107, "CNY": 0.1485, ...}}
+    if (response.result === 'success' && response.conversion_rates) {
+      const conversionRates = response.conversion_rates;
+      let successCount = 0;
+      
+      // 从返回的汇率中提取所需的基础货币汇率
+      for (const baseCurrency of baseCurrencies) {
+        if (conversionRates[baseCurrency]) {
+          // 如果base是EGP，返回的是"1 EGP = X 其他货币"
+          // 我们需要计算倒数：1 其他货币 = 1/X EGP
+          const rateFromTarget = parseFloat(conversionRates[baseCurrency]);
+          if (!isNaN(rateFromTarget) && rateFromTarget > 0) {
+            const rate = 1 / rateFromTarget; // 计算倒数
+            if (!exchangeRates[baseCurrency]) {
+              exchangeRates[baseCurrency] = {};
+            }
+            exchangeRates[baseCurrency][targetCurrency] = rate;
+            logger.info(`ExchangeRate-API: 获取 ${baseCurrency} -> ${targetCurrency} = ${rate.toFixed(4)} (从 ${rateFromTarget.toFixed(4)} 计算)`);
+            successCount++;
+          } else {
+            logger.warn(`ExchangeRate-API: ${baseCurrency} 的汇率值无效`, { rate: conversionRates[baseCurrency] });
           }
-          exchangeRates[baseCurrency][targetCurrency] = rate;
-          logger.info(`ExchangeRate-API: 获取 ${baseCurrency} -> ${targetCurrency} = ${rate}`);
         } else {
-          errors.push(`${baseCurrency}: 无效的汇率值`);
+          logger.warn(`ExchangeRate-API: 响应中未找到 ${baseCurrency} 的汇率`);
         }
-      } else {
-        const errorMsg = response['error-type'] || '未知错误';
-        errors.push(`${baseCurrency}: ${errorMsg}`);
-        logger.warn(`ExchangeRate-API获取 ${baseCurrency} 汇率失败`, { 
-          error: errorMsg,
-          result: response.result 
-        });
       }
-    } catch (error) {
-      errors.push(`${baseCurrency}: ${error.message}`);
-      logger.warn(`ExchangeRate-API获取 ${baseCurrency} 汇率失败`, { error: error.message });
+      
+      if (successCount === 0) {
+        throw new Error(`无法从响应中提取任何有效的汇率数据`);
+      }
+      
+      logger.info(`ExchangeRate-API: 成功获取 ${successCount}/${baseCurrencies.length} 个货币的汇率`);
+    } else {
+      const errorMsg = response['error-type'] || '未知错误';
+      throw new Error(`API响应格式错误: ${errorMsg}`);
     }
+  } catch (error) {
+    throw new Error(`ExchangeRate-API获取汇率失败: ${error.message}`);
   }
 
   if (Object.keys(exchangeRates).length === 0) {
-    throw new Error(`无法获取任何汇率数据。错误: ${errors.join('; ')}`);
+    throw new Error(`无法获取任何汇率数据`);
   }
 
   return exchangeRates;
@@ -219,9 +275,16 @@ async function fetchExchangeRates(settings) {
       });
       return rates;
     } catch (error) {
-      logger.warn('FreeCurrencyAPI获取汇率失败，尝试使用ExchangeRate-API', {
-        error: error.message
-      });
+      // 如果是403权限错误，说明API密钥无效，直接跳过，不要浪费时间
+      if (error.message && error.message.includes('403')) {
+        logger.warn('FreeCurrencyAPI返回403权限错误，密钥可能无效，直接使用ExchangeRate-API', {
+          error: error.message
+        });
+      } else {
+        logger.warn('FreeCurrencyAPI获取汇率失败，尝试使用ExchangeRate-API', {
+          error: error.message
+        });
+      }
     }
   }
 
