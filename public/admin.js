@@ -7027,78 +7027,90 @@ function debounceFilterLogsByIP(value) {
 }
 
 // 加载关于页面
-// 加载API管理页面
+// 加载API管理页面（性能优化：使用DocumentFragment批量插入）
 async function loadApiManagement() {
   try {
     const data = await adminApiRequest(`${API_BASE}/admin/custom-apis`);
     
     if (data.success) {
-      // 渲染系统API列表
+      // 渲染系统API列表（使用DocumentFragment优化）
       const systemApisBody = document.getElementById('systemApisTableBody');
       if (systemApisBody) {
+        const fragment = document.createDocumentFragment();
+        
         if (data.data.systemApis && data.data.systemApis.length > 0) {
-          systemApisBody.innerHTML = data.data.systemApis.map(api => `
-            <tr>
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">${api.path}</td>
+          data.data.systemApis.forEach(api => {
+            const row = document.createElement('tr');
+            const methodClass = api.method === 'GET' ? 'bg-green-100 text-green-800' :
+                              api.method === 'POST' ? 'bg-blue-100 text-blue-800' :
+                              api.method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
+                              api.method === 'DELETE' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800';
+            
+            row.innerHTML = `
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">${escapeHtml(api.path)}</td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 text-xs font-semibold rounded ${
-                  api.method === 'GET' ? 'bg-green-100 text-green-800' :
-                  api.method === 'POST' ? 'bg-blue-100 text-blue-800' :
-                  api.method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
-                  api.method === 'DELETE' ? 'bg-red-100 text-red-800' :
-                  'bg-gray-100 text-gray-800'
-                }">${api.method}</span>
+                <span class="px-2 py-1 text-xs font-semibold rounded ${methodClass}">${escapeHtml(api.method)}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 text-xs font-semibold rounded ${
-                  api.requires_token ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'
-                }">${api.requires_token ? 'Yes' : 'No'}</span>
+                <span class="px-2 py-1 text-xs font-semibold rounded ${api.requires_token ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}">${api.requires_token ? 'Yes' : 'No'}</span>
               </td>
-              <td class="px-6 py-4 text-sm text-gray-500">${api.description || '-'}</td>
-            </tr>
-          `).join('');
+              <td class="px-6 py-4 text-sm text-gray-500">${escapeHtml(api.description || '-')}</td>
+            `;
+            fragment.appendChild(row);
+          });
         } else {
-          systemApisBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No system APIs</td></tr>';
+          const row = document.createElement('tr');
+          row.innerHTML = '<td colspan="4" class="px-6 py-4 text-center text-gray-500">No system APIs</td>';
+          fragment.appendChild(row);
         }
+        
+        systemApisBody.innerHTML = '';
+        systemApisBody.appendChild(fragment);
       }
 
-      // 渲染自定义API列表
+      // 渲染自定义API列表（使用DocumentFragment优化）
       const customApisBody = document.getElementById('customApisTableBody');
       if (customApisBody) {
+        const fragment = document.createDocumentFragment();
+        
         if (data.data.customApis && data.data.customApis.length > 0) {
-          customApisBody.innerHTML = data.data.customApis.map(api => `
-            <tr>
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${api.name}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">/api/custom${api.path}</td>
+          data.data.customApis.forEach(api => {
+            const row = document.createElement('tr');
+            const methodClass = api.method === 'GET' ? 'bg-green-100 text-green-800' :
+                              api.method === 'POST' ? 'bg-blue-100 text-blue-800' :
+                              api.method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
+                              api.method === 'DELETE' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800';
+            
+            row.innerHTML = `
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${escapeHtml(api.name)}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">/api/custom${escapeHtml(api.path)}</td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 text-xs font-semibold rounded ${
-                  api.method === 'GET' ? 'bg-green-100 text-green-800' :
-                  api.method === 'POST' ? 'bg-blue-100 text-blue-800' :
-                  api.method === 'PUT' ? 'bg-yellow-100 text-yellow-800' :
-                  api.method === 'DELETE' ? 'bg-red-100 text-red-800' :
-                  'bg-gray-100 text-gray-800'
-                }">${api.method}</span>
+                <span class="px-2 py-1 text-xs font-semibold rounded ${methodClass}">${escapeHtml(api.method)}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 text-xs font-semibold rounded ${
-                  api.requires_token ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'
-                }">${api.requires_token ? 'Yes' : 'No'}</span>
+                <span class="px-2 py-1 text-xs font-semibold rounded ${api.requires_token ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}">${api.requires_token ? 'Yes' : 'No'}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 text-xs font-semibold rounded ${
-                  api.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                }">${api.status === 'active' ? 'Active' : 'Inactive'}</span>
+                <span class="px-2 py-1 text-xs font-semibold rounded ${api.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">${api.status === 'active' ? 'Active' : 'Inactive'}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                 <button onclick="viewApiLogs(${api.id})" class="text-green-600 hover:text-green-900 mr-3">📋 Logs</button>
                 <button onclick="editApi(${api.id})" class="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
                 <button onclick="deleteApi(${api.id})" class="text-red-600 hover:text-red-900">Delete</button>
               </td>
-            </tr>
-          `).join('');
+            `;
+            fragment.appendChild(row);
+          });
         } else {
-          customApisBody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No custom APIs. Click "Add Custom API" to create one.</td></tr>';
+          const row = document.createElement('tr');
+          row.innerHTML = '<td colspan="6" class="px-6 py-4 text-center text-gray-500">No custom APIs. Click "Add Custom API" to create one.</td>';
+          fragment.appendChild(row);
         }
+        
+        customApisBody.innerHTML = '';
+        customApisBody.appendChild(fragment);
       }
     }
   } catch (error) {

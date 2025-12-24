@@ -2,6 +2,32 @@ const { getAsync, allAsync, runAsync } = require('../db/database');
 const { logger } = require('./logger');
 const { v4: uuidv4 } = require('uuid');
 
+// 文章列表缓存（内存缓存）
+const postsCache = {
+  data: null,
+  timestamp: null,
+  ttl: 30000 // 30秒缓存时间
+};
+
+/**
+ * 清除文章列表缓存
+ */
+function clearPostsCache() {
+  postsCache.data = null;
+  postsCache.timestamp = null;
+}
+
+/**
+ * 检查缓存是否有效
+ */
+function isCacheValid() {
+  if (!postsCache.data || !postsCache.timestamp) {
+    return false;
+  }
+  const now = Date.now();
+  return (now - postsCache.timestamp) < postsCache.ttl;
+}
+
 /**
  * 获取当前本地时间的 ISO 格式字符串
  * 使用 Node.js 的时区设置（通过 TZ 环境变量，如 Africa/Cairo）
@@ -85,6 +111,49 @@ async function getApiFieldMapping(apiName) {
   } catch (error) {
     logger.error('获取API字段映射配置失败', { apiName, error: error.message });
     return null;
+  }
+}
+
+/**
+ * 批量获取多个API的字段映射配置
+ * @param {string[]} apiNames - API名称数组
+ * @returns {Promise<Map<string, object>>} - 返回Map，key为API名称，value为字段映射对象
+ */
+async function getAllApiFieldMappings(apiNames) {
+  if (!apiNames || apiNames.length === 0) {
+    return new Map();
+  }
+  
+  try {
+    // 构建查询条件：blog_api_field_mapping_${apiName}
+    const keys = apiNames.map(name => `blog_api_field_mapping_${name}`);
+    const placeholders = keys.map(() => '?').join(',');
+    
+    const mappings = await allAsync(
+      `SELECT key, value FROM settings WHERE key IN (${placeholders})`,
+      keys
+    );
+    
+    // 构建Map，key为API名称（去掉前缀），value为解析后的映射对象
+    const mappingMap = new Map();
+    
+    for (const mapping of mappings) {
+      if (mapping && mapping.value) {
+        try {
+          // 从key中提取API名称：blog_api_field_mapping_${apiName} -> apiName
+          const apiName = mapping.key.replace('blog_api_field_mapping_', '');
+          const parsedMapping = JSON.parse(mapping.value);
+          mappingMap.set(apiName, parsedMapping);
+        } catch (e) {
+          logger.warn('解析API字段映射配置失败', { key: mapping.key, error: e.message });
+        }
+      }
+    }
+    
+    return mappingMap;
+  } catch (error) {
+    logger.error('批量获取API字段映射配置失败', { error: error.message });
+    return new Map();
   }
 }
 
@@ -215,6 +284,13 @@ function cleanPostForPublic(post) {
  */
 async function getBlogPosts(options = {}) {
   try {
+    // 检查缓存（仅在没有任何筛选条件时使用缓存）
+    const hasFilters = options.publishedOnly === false || options.category || options.tag || options.search;
+    if (!hasFilters && isCacheValid()) {
+      logger.debug('使用缓存的文章列表');
+      return postsCache.data;
+    }
+    
     // 从custom_apis表读取所有GET方法的API
     // 排除博客系统专用的API路径（如/blog/posts, /blog/categories等）
     const apis = await allAsync(`
@@ -227,6 +303,10 @@ async function getBlogPosts(options = {}) {
     `);
     
     let allPosts = [];
+    
+    // 批量获取所有API的字段映射配置（性能优化）
+    const apiNames = apis.map(api => api.name);
+    const allFieldMappings = await getAllApiFieldMappings(apiNames);
     
     // 遍历每个API，读取其response_content.data
     const skippedApis = [];
@@ -259,8 +339,8 @@ async function getBlogPosts(options = {}) {
           continue;
         }
         
-        // 获取字段映射配置
-        const fieldMapping = await getApiFieldMapping(api.name);
+        // 从批量查询的Map中获取字段映射配置（性能优化：避免N次数据库查询）
+        const fieldMapping = allFieldMappings.get(api.name) || null;
         
         // 将每个数据项转换为文章格式
         const posts = items.map(item => convertApiItemToPost(item, api.name, fieldMapping));
@@ -406,6 +486,12 @@ async function getBlogPosts(options = {}) {
       const idB = String(b.id || '');
       return idA.localeCompare(idB);
     });
+    
+    // 缓存结果（仅在没有任何筛选条件时缓存）
+    if (!hasFilters) {
+      postsCache.data = uniquePosts;
+      postsCache.timestamp = Date.now();
+    }
     
     return uniquePosts;
   } catch (error) {
@@ -1073,6 +1159,9 @@ async function createBlogPost(postData) {
       [JSON.stringify(finalContent), targetApi.id]
     );
     
+    // 清除缓存（文章已变更）
+    clearPostsCache();
+    
     // 返回文章对象（转换为标准格式）
     return convertApiItemToPost(newItem, postData.apiName, fieldMapping);
   } catch (error) {
@@ -1499,6 +1588,9 @@ async function updateBlogPost(postId, postData) {
          WHERE id = ?`,
         [JSON.stringify(newFinalContent), newApi.id]
       );
+      
+      // 清除缓存（文章已变更）
+      clearPostsCache();
     } else {
       // 在同一API中更新，保持原有格式
       let finalContent;
@@ -1657,6 +1749,9 @@ async function updateBlogPost(postId, postData) {
       }
     }
     
+    // 清除缓存（文章已变更）
+    clearPostsCache();
+    
     // 返回更新后的文章（转换为标准格式）
     const fieldMapping = await getApiFieldMapping(postData.apiName || apiName);
     return convertApiItemToPost(updatedItem, postData.apiName || apiName, fieldMapping);
@@ -1727,6 +1822,9 @@ async function deleteBlogPost(postId) {
        WHERE id = ?`,
       [JSON.stringify(responseContent), sourceApi.api.id]
     );
+    
+    // 清除缓存（文章已删除）
+    clearPostsCache();
     
     return true;
   } catch (error) {
@@ -2078,6 +2176,7 @@ async function deleteBlogComment(commentId) {
 }
 
 module.exports = {
+  getAllApiFieldMappings,
   getBlogPosts,
   getBlogPost,
   getBlogCategories,
@@ -2096,6 +2195,7 @@ module.exports = {
   deleteBlogComment,
   upsertBlogApi,
   getApiFieldMapping,
+  clearPostsCache,
   convertApiItemToPost,
   findPostSourceApi,
   cleanPostForPublic

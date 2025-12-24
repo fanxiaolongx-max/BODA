@@ -76,7 +76,7 @@
             <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
-        <span>埃旅小工具</span>
+        <span>BLOG</span>
       </a>
       <div class="blog-nav-actions">
         <div class="blog-search">
@@ -95,8 +95,8 @@
 
   <!-- 首页标题区域 -->
   <section class="blog-hero">
-    <h1>埃旅小工具<span style="background: linear-gradient(to right, #d97706, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">博客端</span></h1>
-    <p>埃及最好用的小工具！</p>
+    <h1>生产环境<span style="background: linear-gradient(to right, #d97706, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">博客端</span></h1>
+    <p>Production Environment</p>
     <div class="blog-hero-actions">
       <a href="#posts" class="blog-btn blog-btn-primary">浏览文章</a>
       <a href="#archive" class="blog-btn blog-btn-secondary">文章归档</a>
@@ -135,6 +135,20 @@
 
       <!-- 文章归档 -->
       <section id="archive" class="blog-posts-section" style="display: none;">
+        <!-- 加载进度条 -->
+        <div id="archiveLoadingProgress" style="display: none; padding: 2rem; background: #f9fafb; border-radius: 0.5rem; margin-bottom: 2rem;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+            <div class="blog-loading" style="display: flex; align-items: center; gap: 0.75rem;">
+              <div style="width: 20px; height: 20px; border: 3px solid #e5e7eb; border-top-color: #d97706; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+              <span style="color: #6b7280; font-size: 0.875rem;">正在加载归档文章...</span>
+            </div>
+            <div style="width: 100%; max-width: 400px;">
+              <div style="height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
+                <div id="archiveLoadingProgressBar" style="height: 100%; background: linear-gradient(90deg, #d97706, #f59e0b); width: 0%; transition: width 0.3s ease; border-radius: 2px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="blog-archive-container" id="archiveContainer">
           <div class="blog-loading">加载中...</div>
         </div>
@@ -224,9 +238,45 @@
       }
     }
 
+    // 归档文章缓存
+    let archiveCache = null;
+    let archiveCacheKey = null;
+    
     // 加载归档文章（按时间分组）
     async function loadArchive() {
+      const archiveContainer = document.getElementById('archiveContainer');
+      const progressContainer = document.getElementById('archiveLoadingProgress');
+      const progressBar = document.getElementById('archiveLoadingProgressBar');
+      
       try {
+        // 构建缓存键
+        const cacheKey = JSON.stringify({
+          category: currentCategory,
+          tag: currentTag,
+          search: currentSearch
+        });
+        
+        // 检查缓存（仅在没有任何筛选条件时使用缓存）
+        if (!currentCategory && !currentTag && !currentSearch && archiveCache && archiveCacheKey === cacheKey) {
+          console.log('使用缓存的归档数据');
+          displayArchive(archiveCache);
+          if (isAdminLoggedIn) {
+            updateEditButtons();
+          }
+          return;
+        }
+        
+        // 显示进度条
+        if (progressContainer) {
+          progressContainer.style.display = 'block';
+        }
+        if (progressBar) {
+          progressBar.style.width = '0%';
+        }
+        if (archiveContainer) {
+          archiveContainer.innerHTML = '';
+        }
+        
         // 构建查询选项
         const options = {
           published: 'true',
@@ -248,22 +298,82 @@
           options.search = currentSearch;
         }
         
+        // 模拟进度更新
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+          progress += 5;
+          if (progress < 80 && progressBar) {
+            progressBar.style.width = progress + '%';
+          }
+        }, 100);
+        
         // 获取所有文章（使用一个很大的pageSize，足够获取所有文章）
         const response = await getPosts(options);
         
+        // 清除进度动画
+        clearInterval(progressInterval);
+        
+        if (progressBar) {
+          progressBar.style.width = '90%';
+        }
+        
         if (response.success) {
-          displayArchive(response.data || []);
-          // 更新编辑按钮显示
-          if (isAdminLoggedIn) {
-            updateEditButtons();
+          const posts = response.data || [];
+          
+          // 更新进度条
+          if (progressBar) {
+            progressBar.style.width = '100%';
           }
+          
+          // 缓存数据（仅在没有任何筛选条件时缓存）
+          if (!currentCategory && !currentTag && !currentSearch) {
+            archiveCache = posts;
+            archiveCacheKey = cacheKey;
+          }
+          
+          // 延迟显示，让用户看到完成状态
+          setTimeout(() => {
+            displayArchive(posts);
+            
+            // 隐藏进度条
+            if (progressContainer) {
+              progressContainer.style.display = 'none';
+            }
+            if (progressBar) {
+              progressBar.style.width = '0%';
+            }
+            
+            // 更新编辑按钮显示
+            if (isAdminLoggedIn) {
+              updateEditButtons();
+            }
+          }, 200);
         } else {
+          // 隐藏进度条
+          if (progressContainer) {
+            progressContainer.style.display = 'none';
+          }
+          if (progressBar) {
+            progressBar.style.width = '0%';
+          }
           showToast('加载归档失败', 'error');
+          if (archiveContainer) {
+            archiveContainer.innerHTML = '<div class="blog-empty">加载失败，请刷新重试</div>';
+          }
         }
       } catch (error) {
         console.error('加载归档失败:', error);
+        // 隐藏进度条
+        if (progressContainer) {
+          progressContainer.style.display = 'none';
+        }
+        if (progressBar) {
+          progressBar.style.width = '0%';
+        }
         showToast('加载归档失败: ' + error.message, 'error');
-        document.getElementById('archiveContainer').innerHTML = '<div class="blog-empty">加载失败，请刷新重试</div>';
+        if (archiveContainer) {
+          archiveContainer.innerHTML = '<div class="blog-empty">加载失败，请刷新重试</div>';
+        }
       }
     }
 
@@ -383,6 +493,10 @@
       currentTag = null;
       currentSearch = null;
       currentPage = 1;
+      
+      // 清除归档缓存
+      archiveCache = null;
+      archiveCacheKey = null;
       
       // 清除搜索框
       const searchInput = document.getElementById('searchInput');
@@ -644,6 +758,10 @@
       currentSearch = null;
       currentPage = 1;
       
+      // 清除归档缓存（筛选条件改变）
+      archiveCache = null;
+      archiveCacheKey = null;
+      
       // 更新分类显示
       loadCategories();
       
@@ -673,6 +791,10 @@
       currentSearch = null;
       currentPage = 1;
       
+      // 清除归档缓存（筛选条件改变）
+      archiveCache = null;
+      archiveCacheKey = null;
+      
       // 更新标签显示
       loadTags();
       
@@ -700,6 +822,10 @@
           currentTag = null;
           currentPage = 1;
           
+          // 清除归档缓存（搜索条件改变）
+          archiveCache = null;
+          archiveCacheKey = null;
+          
           // 根据当前视图模式调用相应的加载函数
           if (viewMode === 'archive') {
             loadArchive();
@@ -712,6 +838,10 @@
           // 清除搜索
           currentSearch = null;
           currentPage = 1;
+          
+          // 清除归档缓存（搜索条件改变）
+          archiveCache = null;
+          archiveCacheKey = null;
           
           // 根据当前视图模式调用相应的加载函数
           if (viewMode === 'archive') {

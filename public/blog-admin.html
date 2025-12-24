@@ -515,6 +515,11 @@
         <div id="postFormLoading" class="post-form-loading" style="display: none;">
           <div class="loading-spinner"></div>
           <p class="loading-text">正在加载文章内容...</p>
+          <div style="width: 100%; max-width: 400px; margin: 1rem auto 0;">
+            <div style="height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
+              <div id="postFormLoadingProgressBar" style="height: 100%; background: linear-gradient(90deg, #9333ea, #a855f7); width: 0%; transition: width 0.3s ease; border-radius: 2px;"></div>
+            </div>
+          </div>
         </div>
         <!-- 表单内容 -->
         <div id="postFormContent">
@@ -799,6 +804,18 @@
 
       <!-- 文章列表 -->
       <div class="admin-card">
+        <!-- 加载进度条 -->
+        <div id="postsLoadingProgress" style="display: none; padding: 1rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <div class="loading-spinner" style="width: 20px; height: 20px; border-width: 2px; margin: 0;"></div>
+            <div style="flex: 1;">
+              <div style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.25rem;">正在加载文章列表...</div>
+              <div style="height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
+                <div id="postsLoadingProgressBar" style="height: 100%; background: linear-gradient(90deg, #9333ea, #a855f7); width: 0%; transition: width 0.3s ease; border-radius: 2px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div style="overflow-x: auto;">
           <table class="admin-table">
           <thead>
@@ -1323,36 +1340,122 @@
 
     // 加载文章列表
     async function loadPosts(resetExpanded = false) {
-      try {
-        const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
-        if (response && response.success) {
-          const posts = response.data || [];
-          console.log('获取文章列表成功，文章数:', posts.length);
-          // 保存所有文章数据
-          allPostsData = posts;
-          // 按分类统计
-          const byCategory = {};
-          posts.forEach(p => {
-            const cat = p.category || '无分类';
-            byCategory[cat] = (byCategory[cat] || 0) + 1;
-          });
-          console.log('文章分类统计:', byCategory);
-          // 如果指定重置展开状态，则清空（默认所有分类都折叠）
-          if (resetExpanded) {
-            expandedCategories.clear();
+      // 显示进度条
+      const progressContainer = document.getElementById('postsLoadingProgress');
+      const progressBar = document.getElementById('postsLoadingProgressBar');
+      
+      if (progressContainer && progressBar) {
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        
+        // 模拟进度动画
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+          progress += 10;
+          if (progress < 90) {
+            progressBar.style.width = progress + '%';
           }
-          displayPosts(posts);
-        } else {
-          console.error('获取文章列表失败:', response);
+        }, 100);
+        
+        try {
+          const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
+          
+          // 清除进度动画
+          clearInterval(progressInterval);
+          
+          if (response && response.success) {
+            const posts = response.data || [];
+            console.log('获取文章列表成功，文章数:', posts.length);
+            
+            // 完成进度条
+            if (progressBar) {
+              progressBar.style.width = '100%';
+            }
+            
+            // 保存所有文章数据
+            allPostsData = posts;
+            // 按分类统计
+            const byCategory = {};
+            posts.forEach(p => {
+              const cat = p.category || '无分类';
+              byCategory[cat] = (byCategory[cat] || 0) + 1;
+            });
+            console.log('文章分类统计:', byCategory);
+            // 如果指定重置展开状态，则清空（默认所有分类都折叠）
+            if (resetExpanded) {
+              expandedCategories.clear();
+            }
+            displayPosts(posts);
+            
+            // 延迟隐藏进度条
+            setTimeout(() => {
+              if (progressContainer) {
+                progressContainer.style.display = 'none';
+              }
+              if (progressBar) {
+                progressBar.style.width = '0%';
+              }
+            }, 300);
+          } else {
+            console.error('获取文章列表失败:', response);
+            document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+            
+            // 隐藏进度条
+            if (progressContainer) {
+              progressContainer.style.display = 'none';
+            }
+            if (progressBar) {
+              progressBar.style.width = '0%';
+            }
+          }
+        } catch (error) {
+          console.error('加载文章列表异常:', error);
+          document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+          
+          // 清除进度动画
+          clearInterval(progressInterval);
+          
+          // 隐藏进度条
+          if (progressContainer) {
+            progressContainer.style.display = 'none';
+          }
+          if (progressBar) {
+            progressBar.style.width = '0%';
+          }
+        }
+      } else {
+        // 如果进度条元素不存在，使用原来的逻辑
+        try {
+          const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
+          if (response && response.success) {
+            const posts = response.data || [];
+            console.log('获取文章列表成功，文章数:', posts.length);
+            // 保存所有文章数据
+            allPostsData = posts;
+            // 按分类统计
+            const byCategory = {};
+            posts.forEach(p => {
+              const cat = p.category || '无分类';
+              byCategory[cat] = (byCategory[cat] || 0) + 1;
+            });
+            console.log('文章分类统计:', byCategory);
+            // 如果指定重置展开状态，则清空（默认所有分类都折叠）
+            if (resetExpanded) {
+              expandedCategories.clear();
+            }
+            displayPosts(posts);
+          } else {
+            console.error('获取文章列表失败:', response);
+            document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+          }
+        } catch (error) {
+          console.error('加载文章列表异常:', error);
           document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
         }
-      } catch (error) {
-        console.error('加载文章列表异常:', error);
-        document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
       }
     }
 
-    // 显示文章列表（按分类分组，默认折叠）
+    // 显示文章列表（按分类分组，默认折叠，延迟渲染）
     function displayPosts(posts) {
       const tbody = document.getElementById('postsTableBody');
       if (!posts || posts.length === 0) {
@@ -1392,10 +1495,14 @@
         分类数: Object.keys(postsByCategory).length
       });
 
-      // 生成HTML：按分类分组显示，默认折叠
-      let html = '';
+      // 保存文章数据到全局变量，用于延迟渲染
+      window.postsByCategoryData = postsByCategory;
+
+      // 使用 DocumentFragment 优化 DOM 操作
+      const fragment = document.createDocumentFragment();
       const sortedCategories = Object.keys(postsByCategory).sort();
       
+      // 只渲染分类标题行（性能优化：不渲染折叠的文章行）
       for (const apiName of sortedCategories) {
         const categoryPosts = postsByCategory[apiName];
         const isExpanded = expandedCategories.has(apiName);
@@ -1411,64 +1518,132 @@
         
         // 添加点击展开/折叠功能 - 去掉文件夹图标
         const expandIcon = isExpanded ? '▼' : '▶';
-        // 使用 data-* 属性传递分类名称，避免转义问题
-        html += `
-          <tr class="category-header-row" style="background: #FFFFFF; font-weight: 600; cursor: pointer;" data-category-name="${escapeHtml(apiName)}" onclick="toggleCategory(this.dataset.categoryName)">
-            <td colspan="6" style="padding: 0.875rem 1rem;">
-              <span style="color: #374151; font-weight: 600; font-size: 0.875rem;">${expandIcon} ${escapeHtml(categoryDisplayName)}</span>
-              <span style="color: #6B7280; font-size: 0.875rem; font-weight: normal; margin-left: 0.5rem;">
-                (${categoryPosts.length} 篇文章)
-              </span>
-            </td>
-          </tr>
+        
+        // 创建分类标题行
+        const headerRow = document.createElement('tr');
+        headerRow.className = 'category-header-row';
+        headerRow.style.cssText = 'background: #FFFFFF; font-weight: 600; cursor: pointer;';
+        headerRow.setAttribute('data-category-name', apiName);
+        headerRow.onclick = function() {
+          toggleCategory(this.dataset.categoryName);
+        };
+        
+        headerRow.innerHTML = `
+          <td colspan="6" style="padding: 0.875rem 1rem;">
+            <span style="color: #374151; font-weight: 600; font-size: 0.875rem;">${expandIcon} ${escapeHtml(categoryDisplayName)}</span>
+            <span style="color: #6B7280; font-size: 0.875rem; font-weight: normal; margin-left: 0.5rem;">
+              (${categoryPosts.length} 篇文章)
+            </span>
+          </td>
         `;
         
-        // 该分类下的文章（根据展开状态显示/隐藏）
+        fragment.appendChild(headerRow);
+        
+        // 该分类下的文章（只渲染展开的分类，性能优化）
         if (isExpanded) {
-        for (const post of categoryPosts) {
-          const date = formatDate(post.createdAt || post.created_at);
-          const postSpecialType = isSpecialCategory(apiName);
-          // 显示category作为标签，如果没有则显示apiName
-          const postCategory = post.category || apiName;
-          let categoryDisplay = `<span class="category-tag">${escapeHtml(postCategory)}</span>`;
-          
-          // 状态Badge
-          const statusBadge = post.published 
-            ? '<span class="status-badge published">已发布</span>' 
-            : '<span class="status-badge draft">草稿</span>';
-          
-          html += `
-              <tr class="category-post-row" data-category="${escapeHtml(apiName)}" style="background: #FFFFFF;">
-              <td style="font-weight: 500; color: #111827;">${escapeHtml(post.name || post.title || '未命名')}</td>
-              <td>${categoryDisplay}</td>
-              <td>${statusBadge}</td>
-              <td style="color: #6B7280;">${post.views || 0}</td>
-              <td style="color: #6B7280;">${date}</td>
-              <td>
-                <div class="admin-actions">
-                  <button class="admin-btn-small admin-btn-edit" onclick="editPost('${post.id}')">编辑</button>
-                  <button class="admin-btn-small admin-btn-copy" onclick="copyPost('${post.id}')" title="复制文章">复制</button>
-                  <button class="admin-btn-small admin-btn-delete" onclick="deletePost('${post.id}')">删除</button>
-                </div>
-              </td>
-            </tr>
-          `;
-          }
+          renderCategoryPosts(apiName, categoryPosts, fragment);
         }
       }
 
-      tbody.innerHTML = html;
+      // 批量插入 DOM（性能优化）
+      tbody.innerHTML = '';
+      tbody.appendChild(fragment);
+    }
+    
+    // 渲染单个分类的文章行（延迟渲染函数）
+    function renderCategoryPosts(apiName, categoryPosts, container) {
+      const fragment = container || document.createDocumentFragment();
+      
+      for (const post of categoryPosts) {
+        const date = formatDate(post.createdAt || post.created_at);
+        const postCategory = post.category || apiName;
+        const categoryDisplay = `<span class="category-tag">${escapeHtml(postCategory)}</span>`;
+        
+        // 状态Badge
+        const statusBadge = post.published 
+          ? '<span class="status-badge published">已发布</span>' 
+          : '<span class="status-badge draft">草稿</span>';
+        
+        const row = document.createElement('tr');
+        row.className = 'category-post-row';
+        row.setAttribute('data-category', apiName);
+        row.style.cssText = 'background: #FFFFFF;';
+        
+        row.innerHTML = `
+          <td style="font-weight: 500; color: #111827;">${escapeHtml(post.name || post.title || '未命名')}</td>
+          <td>${categoryDisplay}</td>
+          <td>${statusBadge}</td>
+          <td style="color: #6B7280;">${post.views || 0}</td>
+          <td style="color: #6B7280;">${date}</td>
+          <td>
+            <div class="admin-actions">
+              <button class="admin-btn-small admin-btn-edit" onclick="editPost('${post.id}')">编辑</button>
+              <button class="admin-btn-small admin-btn-copy" onclick="copyPost('${post.id}')" title="复制文章">复制</button>
+              <button class="admin-btn-small admin-btn-delete" onclick="deletePost('${post.id}')">删除</button>
+            </div>
+          </td>
+        `;
+        
+        fragment.appendChild(row);
+      }
+      
+      return fragment;
     }
 
-    // 切换分类展开/折叠状态
+    // 切换分类展开/折叠状态（优化：只更新相关行，不重新渲染整个列表）
     function toggleCategory(apiName) {
-      if (expandedCategories.has(apiName)) {
+      const tbody = document.getElementById('postsTableBody');
+      const headerRow = tbody.querySelector(`tr[data-category-name="${escapeHtml(apiName)}"]`);
+      
+      if (!headerRow) return;
+      
+      const isExpanded = expandedCategories.has(apiName);
+      const categoryPosts = window.postsByCategoryData && window.postsByCategoryData[apiName];
+      
+      if (!categoryPosts) {
+        // 如果没有缓存数据，回退到重新加载
+        if (expandedCategories.has(apiName)) {
+          expandedCategories.delete(apiName);
+        } else {
+          expandedCategories.add(apiName);
+        }
+        displayPosts(allPostsData);
+        return;
+      }
+      
+      // 更新展开/折叠状态
+      if (isExpanded) {
         expandedCategories.delete(apiName);
+        // 折叠：删除该分类下的所有文章行
+        let nextRow = headerRow.nextElementSibling;
+        while (nextRow && nextRow.getAttribute('data-category') === apiName) {
+          const toRemove = nextRow;
+          nextRow = nextRow.nextElementSibling;
+          toRemove.remove();
+        }
+        // 更新图标
+        const iconSpan = headerRow.querySelector('td span');
+        if (iconSpan) {
+          const text = iconSpan.textContent.replace(/^[▶▼]\s*/, '');
+          iconSpan.textContent = '▶ ' + text;
+        }
       } else {
         expandedCategories.add(apiName);
+        // 展开：在该分类标题行后插入文章行
+        const fragment = renderCategoryPosts(apiName, categoryPosts);
+        // 找到插入位置（分类标题行的下一个兄弟节点）
+        if (headerRow.nextSibling) {
+          headerRow.parentNode.insertBefore(fragment, headerRow.nextSibling);
+        } else {
+          headerRow.parentNode.appendChild(fragment);
+        }
+        // 更新图标
+        const iconSpan = headerRow.querySelector('td span');
+        if (iconSpan) {
+          const text = iconSpan.textContent.replace(/^[▶▼]\s*/, '');
+          iconSpan.textContent = '▼ ' + text;
+        }
       }
-      // 重新渲染列表
-      displayPosts(allPostsData);
     }
 
     // 显示文章表单
@@ -3566,6 +3741,7 @@
       const postForm = document.getElementById('postForm');
       const postFormLoading = document.getElementById('postFormLoading');
       const postFormContent = document.getElementById('postFormContent');
+      const progressBar = document.getElementById('postFormLoadingProgressBar');
       
       try {
         // 显示表单和加载提示
@@ -3579,6 +3755,9 @@
         if (postFormContent) {
           postFormContent.style.display = 'none';
         }
+        if (progressBar) {
+          progressBar.style.width = '0%';
+        }
         
         // 切换到文章标签页（如果不在新窗口）
         if (!window.opener) {
@@ -3586,22 +3765,130 @@
         }
         
         console.log('编辑文章，ID:', id);
-        const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
-        console.log('获取文章列表响应:', response);
         
-        if (response && response.success && response.data) {
+        // 先检查是否已有文章数据（优化：避免重复加载）
+        let posts = [];
+        let post = null;
+        
+        if (window.allPostsData && Array.isArray(window.allPostsData) && window.allPostsData.length > 0) {
+          console.log('使用已有的文章数据，文章数:', window.allPostsData.length);
+          posts = window.allPostsData;
+          
+          // 更新进度条
+          if (progressBar) {
+            progressBar.style.width = '50%';
+          }
+          
           // 直接使用id匹配（id现在是全局唯一的UUID）
-          const post = response.data.find(p => {
+          post = posts.find(p => {
             const pId = String(p.id || '');
             const searchId = String(id || '');
             return pId === searchId;
           });
+        }
+        
+        // 如果没有找到文章，需要加载所有文章
+        if (!post) {
+          console.log('未在已有数据中找到文章，开始加载所有文章...');
           
-          console.log('找到的文章:', post);
+          // 模拟进度
+          if (progressBar) {
+            let progress = 10;
+            progressBar.style.width = progress + '%';
+            const progressInterval = setInterval(() => {
+              progress += 5;
+              if (progress < 80) {
+                progressBar.style.width = progress + '%';
+              }
+            }, 100);
+            
+            try {
+              const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
+              clearInterval(progressInterval);
+              
+              if (progressBar) {
+                progressBar.style.width = '90%';
+              }
+              
+              console.log('获取文章列表响应:', response);
+              
+              if (response && response.success && response.data) {
+                posts = response.data;
+                // 保存到全局变量，供下次使用
+                window.allPostsData = posts;
+                
+                // 直接使用id匹配（id现在是全局唯一的UUID）
+                post = posts.find(p => {
+                  const pId = String(p.id || '');
+                  const searchId = String(id || '');
+                  return pId === searchId;
+                });
+              } else {
+                console.error('获取文章列表失败:', response);
+                if (progressBar) {
+                  progressBar.style.width = '0%';
+                }
+                if (postForm) {
+                  postForm.classList.remove('loading');
+                }
+                if (postFormLoading) {
+                  postFormLoading.style.display = 'none';
+                }
+                if (postForm) {
+                  postForm.style.display = 'none';
+                }
+                showToast('获取文章列表失败', 'error');
+                return;
+              }
+            } catch (error) {
+              clearInterval(progressInterval);
+              throw error;
+            }
+          } else {
+            const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
+            console.log('获取文章列表响应:', response);
+            
+            if (response && response.success && response.data) {
+              posts = response.data;
+              // 保存到全局变量，供下次使用
+              window.allPostsData = posts;
+              
+              // 直接使用id匹配（id现在是全局唯一的UUID）
+              post = posts.find(p => {
+                const pId = String(p.id || '');
+                const searchId = String(id || '');
+                return pId === searchId;
+              });
+            } else {
+              console.error('获取文章列表失败:', response);
+              if (postForm) {
+                postForm.classList.remove('loading');
+              }
+              if (postFormLoading) {
+                postFormLoading.style.display = 'none';
+              }
+              if (postForm) {
+                postForm.style.display = 'none';
+              }
+              showToast('获取文章列表失败', 'error');
+              return;
+            }
+          }
+        }
+        
+        // 完成进度条
+        if (progressBar) {
+          progressBar.style.width = '100%';
+        }
+        
+        console.log('找到的文章:', post);
+        
+        if (post) {
+          // 保存当前文章对象，用于后续保存时使用
+          window.currentEditingPost = post;
           
-          if (post) {
-            // 保存当前文章对象，用于后续保存时使用
-            window.currentEditingPost = post;
+          // 延迟一下再隐藏加载提示，让用户看到完成状态
+          setTimeout(() => {
             // 隐藏加载提示，显示表单内容
             if (postForm) {
               postForm.classList.remove('loading');
@@ -3612,24 +3899,14 @@
             if (postFormContent) {
               postFormContent.style.display = 'block';
             }
+            if (progressBar) {
+              progressBar.style.width = '0%';
+            }
             // 填充表单数据
             showPostForm(post);
-          } else {
-            console.error('未找到文章，ID:', id, '可用文章ID:', response.data.map(p => p.id));
-            // 隐藏加载提示
-            if (postForm) {
-              postForm.classList.remove('loading');
-            }
-            if (postFormLoading) {
-              postFormLoading.style.display = 'none';
-            }
-            if (postForm) {
-              postForm.style.display = 'none';
-            }
-            showToast('未找到要编辑的文章', 'error');
-          }
+          }, 200);
         } else {
-          console.error('获取文章列表失败:', response);
+          console.error('未找到文章，ID:', id, '可用文章ID:', posts.map(p => p.id));
           // 隐藏加载提示
           if (postForm) {
             postForm.classList.remove('loading');
@@ -3640,7 +3917,10 @@
           if (postForm) {
             postForm.style.display = 'none';
           }
-          showToast('获取文章列表失败', 'error');
+          if (progressBar) {
+            progressBar.style.width = '0%';
+          }
+          showToast('未找到要编辑的文章', 'error');
         }
       } catch (error) {
         console.error('加载文章失败:', error);
@@ -3653,6 +3933,9 @@
         }
         if (postForm) {
           postForm.style.display = 'none';
+        }
+        if (progressBar) {
+          progressBar.style.width = '0%';
         }
         showToast('加载文章失败: ' + (error.message || '未知错误'), 'error');
       }

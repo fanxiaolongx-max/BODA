@@ -7995,9 +7995,9 @@ router.delete('/showcase-images/:filename', async (req, res) => {
  */
 router.get('/custom-apis', requireAuth, async (req, res) => {
   try {
-    // 获取所有自定义API
+    // 获取所有自定义API（性能优化：不查询response_content字段，列表页面不需要）
     const customApis = await allAsync(`
-      SELECT id, name, path, method, requires_token, response_content, description, status, created_at, updated_at
+      SELECT id, name, path, method, requires_token, description, status, created_at, updated_at
       FROM custom_apis
       ORDER BY created_at DESC
     `);
