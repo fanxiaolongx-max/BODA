@@ -86,8 +86,11 @@ function startRemoteBackupScheduler() {
 
 // 启动汇率更新调度器
 function startExchangeRateScheduler() {
+  let checkCount = 0; // 检查计数器，用于控制日志频率
+  
   // 每小时检查一次是否需要更新汇率
   exchangeRateCheckInterval = setInterval(async () => {
+    checkCount++;
     try {
       // 获取设置
       const settings = await allAsync('SELECT key, value FROM settings');
@@ -98,6 +101,10 @@ function startExchangeRateScheduler() {
 
       // 检查是否启用自动更新
       if (settingsObj.exchange_rate_auto_update_enabled !== 'true') {
+        // 每24次检查记录一次（每24小时），避免日志过多
+        if (checkCount % 24 === 0) {
+          logger.debug('汇率自动更新未启用，跳过检查');
+        }
         return; // 未启用，跳过
       }
 
@@ -121,25 +128,39 @@ function startExchangeRateScheduler() {
       
       const now = new Date();
       let shouldUpdate = false;
+      let hoursSinceUpdate = 0;
 
       if (!lastUpdateSetting || !lastUpdateSetting.value) {
         // 从未更新过，立即更新
         shouldUpdate = true;
+        logger.info('汇率更新检查：从未更新过，将立即更新');
       } else {
         const lastUpdate = new Date(lastUpdateSetting.value);
-        const hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
+        hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
 
         if (frequency === 'hourly' && hoursSinceUpdate >= 1) {
           shouldUpdate = true;
         } else if (frequency === 'daily' && hoursSinceUpdate >= 24) {
           shouldUpdate = true;
         }
+        
+        // 记录检查结果（每6次检查记录一次，即每6小时）
+        if (checkCount % 6 === 0) {
+          logger.info('汇率更新检查', {
+            frequency,
+            hoursSinceUpdate: hoursSinceUpdate.toFixed(2),
+            lastUpdate: lastUpdateSetting.value,
+            shouldUpdate: shouldUpdate,
+            nextCheckIn: shouldUpdate ? '立即更新' : `${(frequency === 'hourly' ? 1 : 24) - hoursSinceUpdate}小时`
+          });
+        }
       }
 
       if (shouldUpdate) {
         logger.info('开始自动更新汇率', {
           frequency,
-          lastUpdate: lastUpdateSetting?.value || '从未更新'
+          lastUpdate: lastUpdateSetting?.value || '从未更新',
+          hoursSinceUpdate: hoursSinceUpdate.toFixed(2)
         });
 
         try {
@@ -164,16 +185,24 @@ function startExchangeRateScheduler() {
           );
 
           logger.info('汇率自动更新成功', {
-            currencies: Object.keys(exchangeRates).length
+            currencies: Object.keys(exchangeRates).length,
+            updatedAt: now.toISOString()
           });
+          
+          // 重置计数器
+          checkCount = 0;
         } catch (error) {
           logger.error('汇率自动更新失败', {
-            error: error.message
+            error: error.message,
+            stack: error.stack
           });
         }
       }
     } catch (error) {
-      logger.error('汇率更新调度器检查失败', { error: error.message });
+      logger.error('汇率更新调度器检查失败', { 
+        error: error.message,
+        stack: error.stack
+      });
     }
   }, 60 * 60 * 1000); // 每小时检查一次
 

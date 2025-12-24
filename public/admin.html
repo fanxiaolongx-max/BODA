@@ -313,6 +313,27 @@
     #developerTab *::-webkit-scrollbar-corner {
       background: #f7fafc;
     }
+    /* 确保 Logs 页面可以正常滚动 */
+    #logsTab {
+      min-height: 0;
+      overflow: visible;
+    }
+    #logsTab .fade-in {
+      min-height: 0;
+    }
+    /* 确保所有日志行都是白色背景，没有其他颜色 */
+    #logsTab .log-row {
+      background-color: white !important;
+    }
+    #logsTab .log-row:hover {
+      background-color: #f9fafb !important; /* gray-50 */
+    }
+    #logsTab tbody tr {
+      background-color: white !important;
+    }
+    #logsTab tbody tr:hover {
+      background-color: #f9fafb !important; /* gray-50 */
+    }
   </style>
 </head>
 <body class="bg-gray-50">
@@ -424,7 +445,7 @@
       </aside>
 
       <!-- 主内容区 -->
-      <main class="flex-1 overflow-y-auto p-6 bg-gray-50">
+      <main class="flex-1 overflow-y-auto p-6 bg-gray-50" style="min-height: 0;">
         <!-- 仪表盘 -->
         <div id="dashboardTab" class="tab-content fade-in">
           <h2 class="text-2xl font-bold text-gray-900 mb-6">Overview</h2>

@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
+const ffmpeg = require('fluent-ffmpeg');
 
 // 支持 fly.io 持久化卷
 const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
@@ -7830,6 +7831,53 @@ const customApiImageUpload = multer({
   }
 });
 
+// 配置自定义API视频上传
+const customApiVideoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(DATA_DIR, 'uploads/custom-api-videos');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname).toLowerCase();
+    // 生成随机字符串确保唯一性（8位）
+    const randomStr = Math.random().toString(36).substring(2, 10);
+    // 只使用时间戳和随机字符串，保持文件名简洁
+    cb(null, `${timestamp}-${randomStr}${ext}`);
+  }
+});
+
+const customApiVideoUpload = multer({
+  storage: customApiVideoStorage,
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /mp4|webm|ogg|mov|avi|wmv|flv|mkv/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = /^video\//.test(file.mimetype);
+    if (extname && mimetype) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only video formats are supported (mp4, webm, ogg, mov, avi, wmv, flv, mkv)'));
+    }
+  }
+});
+
+// 视频上传任务状态存储（用于进度跟踪）
+const videoUploadTasks = new Map();
+
+// 清理过期的任务（超过1小时）
+setInterval(() => {
+  const now = Date.now();
+  for (const [taskId, task] of videoUploadTasks.entries()) {
+    if (now - task.createdAt > 60 * 60 * 1000) { // 1小时
+      videoUploadTasks.delete(taskId);
+    }
+  }
+}, 10 * 60 * 1000); // 每10分钟清理一次
+
 /**
  * GET /api/admin/showcase-images
  * Get list of showcase images
@@ -8340,6 +8388,416 @@ router.post('/custom-apis/upload-image', requireAuth, customApiImageUpload.singl
   } catch (error) {
     logger.error('上传自定义API图片失败', { error: error.message });
     res.status(500).json({ success: false, message: 'Failed to upload image: ' + error.message });
+  }
+});
+
+/**
+ * 将视频转换为MP4格式（兼容微信小程序）
+ * @param {string} inputPath - 输入视频文件路径
+ * @param {string} outputPath - 输出MP4文件路径
+ * @returns {Promise<void>}
+ */
+function convertVideoToMp4(inputPath, outputPath, onProgress) {
+  return new Promise((resolve, reject) => {
+    // 检查ffmpeg是否可用
+    ffmpeg.ffprobe(inputPath, (err, metadata) => {
+      if (err) {
+        return reject(new Error('无法读取视频文件，可能格式不兼容: ' + err.message));
+      }
+      
+      // 获取视频格式
+      const format = metadata.format ? metadata.format.format_name : '';
+      const ext = path.extname(inputPath).toLowerCase();
+      
+      // 如果已经是MP4格式，检查编码是否兼容
+      if (ext === '.mp4' && format && format.includes('mp4')) {
+        // 检查视频编码（微信小程序主要支持H.264）
+        const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+        if (videoStream && videoStream.codec_name === 'h264') {
+          // 已经是兼容的MP4格式，直接复制
+          fs.copyFileSync(inputPath, outputPath);
+          if (onProgress) {
+            onProgress(100);
+          }
+          return resolve();
+        }
+      }
+      
+      // 转换为MP4格式（H.264编码，兼容微信小程序）
+      ffmpeg(inputPath)
+        .videoCodec('libx264') // H.264编码
+        .audioCodec('aac') // AAC音频编码
+        .format('mp4')
+        .outputOptions([
+          '-preset medium', // 编码速度和质量平衡
+          '-crf 23', // 质量参数（18-28，23是默认值）
+          '-movflags +faststart' // 优化网络播放
+        ])
+        .on('start', (commandLine) => {
+          logger.info('开始转换视频', { inputPath, commandLine });
+          if (onProgress) {
+            onProgress(0);
+          }
+        })
+        .on('progress', (progress) => {
+          if (progress.percent !== undefined) {
+            const percent = Math.min(Math.round(progress.percent), 99); // 最多99%，完成时设为100%
+            logger.debug('视频转换进度', { percent });
+            if (onProgress) {
+              onProgress(percent);
+            }
+          }
+        })
+        .on('end', () => {
+          logger.info('视频转换完成', { inputPath, outputPath });
+          // 删除原始文件（如果不是MP4）
+          if (ext !== '.mp4') {
+            try {
+              fs.unlinkSync(inputPath);
+              logger.info('已删除原始视频文件', { inputPath });
+            } catch (e) {
+              logger.warn('删除原始视频文件失败', { error: e.message });
+            }
+          }
+          if (onProgress) {
+            onProgress(100);
+          }
+          resolve();
+        })
+        .on('error', (err) => {
+          logger.error('视频转换失败', { error: err.message, inputPath });
+          reject(new Error('视频格式不兼容，无法转换为MP4: ' + err.message));
+        })
+        .save(outputPath);
+    });
+  });
+}
+
+/**
+ * 提取视频的第一帧并保存为图片
+ * @param {string} videoPath - 视频文件路径
+ * @param {string} outputPath - 输出图片路径
+ * @returns {Promise<string>} 返回图片文件路径
+ */
+function extractVideoFirstFrame(videoPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    // 确保输出目录存在
+    const outputDir = path.dirname(outputPath);
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    
+    // 使用ffmpeg提取第一帧（在0秒处）
+    // 根据输出文件扩展名确定格式
+    const ext = path.extname(outputPath).toLowerCase();
+    const isJpeg = ext === '.jpg' || ext === '.jpeg';
+    
+    ffmpeg(videoPath)
+      .seekInput(0) // 从0秒开始
+      .frames(1) // 只提取1帧
+      .format(isJpeg ? 'image2' : 'image2') // 图片格式
+      .outputOptions([
+        '-q:v', '2' // 高质量JPEG（1-31，2是高质量，值越小质量越高）
+      ])
+      .on('start', (commandLine) => {
+        logger.info('开始提取视频第一帧', { videoPath, outputPath, commandLine });
+      })
+      .on('end', () => {
+        logger.info('视频第一帧提取完成', { videoPath, outputPath });
+        resolve(outputPath);
+      })
+      .on('error', (err) => {
+        logger.error('提取视频第一帧失败', { error: err.message, videoPath });
+        reject(new Error('提取视频第一帧失败: ' + err.message));
+      })
+      .save(outputPath);
+  });
+}
+
+/**
+ * GET /api/admin/custom-apis/video-upload-progress/:taskId
+ * 获取视频上传任务进度
+ */
+router.get('/custom-apis/video-upload-progress/:taskId', requireAuth, (req, res) => {
+  const { taskId } = req.params;
+  const task = videoUploadTasks.get(taskId);
+  
+  if (!task) {
+    return res.json({ 
+      success: false, 
+      message: '任务不存在或已过期',
+      running: false 
+    });
+  }
+  
+  res.json({
+    success: true,
+    running: task.running,
+    progress: task.progress,
+    status: task.status,
+    error: task.error,
+    result: task.result
+  });
+});
+
+/**
+ * POST /api/admin/custom-apis/upload-video
+ * 上传自定义API视频（自动转换为MP4格式以兼容微信小程序）
+ */
+router.post('/custom-apis/upload-video', requireAuth, customApiVideoUpload.single('video'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No video file provided' });
+    }
+    
+    // 生成任务ID
+    const taskId = `video-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    
+    // 创建任务状态
+    const task = {
+      taskId,
+      running: true,
+      progress: {
+        stage: 'uploading', // uploading, converting, extracting_poster, completed
+        percent: 0,
+        message: '视频上传完成，开始处理...'
+      },
+      status: 'uploading',
+      createdAt: Date.now(),
+      error: null,
+      result: null
+    };
+    
+    videoUploadTasks.set(taskId, task);
+    
+    // 立即返回任务ID，让前端开始轮询
+    res.json({ 
+      success: true, 
+      taskId: taskId,
+      message: '视频上传成功，正在处理...'
+    });
+    
+    // 异步处理视频（不阻塞响应）
+    (async () => {
+      try {
+        const originalFilename = req.file.filename;
+        const originalPath = req.file.path;
+        const ext = path.extname(originalFilename).toLowerCase();
+        const baseName = path.basename(originalFilename, ext);
+        
+        // 目标文件路径（始终使用MP4扩展名）
+        const uploadDir = path.join(DATA_DIR, 'uploads/custom-api-videos');
+        const outputFilename = `${baseName}.mp4`;
+        const outputPath = path.join(uploadDir, outputFilename);
+        
+        let finalFilename = originalFilename;
+        let finalPath = originalPath;
+        let converted = false;
+        
+        // 更新状态：检查格式
+        task.progress = {
+          stage: 'checking',
+          percent: 5,
+          message: '正在检查视频格式...'
+        };
+        
+        // 如果不是MP4格式，尝试转换
+        if (ext !== '.mp4') {
+          try {
+            logger.info('检测到非MP4格式视频，开始转换', { 
+              originalFormat: ext, 
+              originalPath,
+              outputPath 
+            });
+            
+            task.progress = {
+              stage: 'converting',
+              percent: 10,
+              message: `正在将${ext.toUpperCase()}格式转换为MP4...`
+            };
+            
+            // 转换视频，带进度回调
+            await convertVideoToMp4(originalPath, outputPath, (percent) => {
+              // 转换进度：10% - 90%
+              const conversionPercent = 10 + Math.round(percent * 0.8);
+              task.progress = {
+                stage: 'converting',
+                percent: conversionPercent,
+                message: `正在转换视频... ${percent}%`
+              };
+            });
+            
+            finalFilename = outputFilename;
+            finalPath = outputPath;
+            converted = true;
+            
+            logger.info('视频转换成功', { 
+              originalFormat: ext,
+              finalFilename 
+            });
+          } catch (conversionError) {
+            // 转换失败，删除原始文件
+            try {
+              fs.unlinkSync(originalPath);
+            } catch (e) {
+              logger.warn('删除转换失败的视频文件时出错', { error: e.message });
+            }
+            
+            logger.error('视频转换失败', { 
+              error: conversionError.message,
+              originalFormat: ext 
+            });
+            
+            task.running = false;
+            task.error = `视频格式不兼容（${ext}），无法转换为MP4。错误详情: ${conversionError.message}`;
+            task.status = 'error';
+            return;
+          }
+        } else {
+          // 已经是MP4，检查是否需要重新编码以确保兼容性
+          try {
+            task.progress = {
+              stage: 'checking',
+              percent: 20,
+              message: '正在检查视频编码...'
+            };
+            
+            // 检查视频编码
+            await new Promise((resolve, reject) => {
+              ffmpeg.ffprobe(originalPath, (err, metadata) => {
+                if (err) {
+                  // 如果无法读取，可能文件损坏，但不阻止上传
+                  logger.warn('无法读取MP4视频信息', { error: err.message });
+                  return resolve();
+                }
+                
+                const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+                if (videoStream && videoStream.codec_name !== 'h264') {
+                  // 不是H.264编码，需要转换
+                  logger.info('MP4视频不是H.264编码，开始转换', { 
+                    codec: videoStream.codec_name,
+                    originalPath,
+                    outputPath 
+                  });
+                  
+                  task.progress = {
+                    stage: 'converting',
+                    percent: 20,
+                    message: '正在重新编码视频以确保兼容性...'
+                  };
+                  
+                  convertVideoToMp4(originalPath, outputPath, (percent) => {
+                    // 转换进度：20% - 90%
+                    const conversionPercent = 20 + Math.round(percent * 0.7);
+                    task.progress = {
+                      stage: 'converting',
+                      percent: conversionPercent,
+                      message: `正在重新编码视频... ${percent}%`
+                    };
+                  })
+                    .then(() => {
+                      finalFilename = outputFilename;
+                      finalPath = outputPath;
+                      converted = true;
+                      resolve();
+                    })
+                    .catch(reject);
+                } else {
+                  resolve();
+                }
+              });
+            });
+          } catch (conversionError) {
+            logger.warn('MP4视频编码检查/转换失败，使用原始文件', { 
+              error: conversionError.message 
+            });
+            // 转换失败但文件是MP4，继续使用原始文件
+          }
+        }
+        
+        // 获取完整的URL（包含协议和域名）
+        const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+        const host = req.get('x-forwarded-host') || req.get('host') || req.headers.host;
+        const fullUrl = `${protocol}://${host}/uploads/custom-api-videos/${finalFilename}`;
+        const relativeUrl = `/uploads/custom-api-videos/${finalFilename}`;
+        
+        // 自动提取视频第一帧作为poster
+        let posterUrl = '';
+        let posterRelativeUrl = '';
+        
+        task.progress = {
+          stage: 'extracting_poster',
+          percent: 90,
+          message: '正在提取视频封面...'
+        };
+        
+        try {
+          const posterImageDir = path.join(DATA_DIR, 'uploads/custom-api-images');
+          if (!fs.existsSync(posterImageDir)) {
+            fs.mkdirSync(posterImageDir, { recursive: true });
+          }
+          
+          // 生成poster图片文件名（与视频文件名对应，但使用.jpg扩展名）
+          const posterFilename = `${baseName}.jpg`;
+          const posterPath = path.join(posterImageDir, posterFilename);
+          
+          // 提取第一帧
+          await extractVideoFirstFrame(finalPath, posterPath);
+          
+          // 生成poster URL
+          posterRelativeUrl = `/uploads/custom-api-images/${posterFilename}`;
+          posterUrl = `${protocol}://${host}${posterRelativeUrl}`;
+          
+          logger.info('成功提取视频第一帧作为poster', { 
+            videoPath: finalPath, 
+            posterPath,
+            posterUrl 
+          });
+        } catch (posterError) {
+          // poster提取失败不影响视频上传，只记录警告
+          logger.warn('提取视频第一帧失败，继续上传视频', { 
+            error: posterError.message,
+            videoPath: finalPath 
+          });
+        }
+        
+        await logAction(req.session.adminId, 'CREATE', 'custom_api_video', null, JSON.stringify({
+          filename: finalFilename,
+          originalFilename: converted ? originalFilename : undefined,
+          converted: converted,
+          url: fullUrl,
+          relativeUrl: relativeUrl,
+          posterUrl: posterUrl || undefined,
+          posterRelativeUrl: posterRelativeUrl || undefined
+        }), req);
+        
+        // 完成任务
+        task.running = false;
+        task.status = 'completed';
+        task.progress = {
+          stage: 'completed',
+          percent: 100,
+          message: converted ? '视频处理完成，已自动转换为MP4格式' : '视频处理完成'
+        };
+        task.result = {
+          filename: finalFilename,
+          originalFilename: converted ? originalFilename : undefined,
+          converted: converted,
+          url: fullUrl,
+          relativeUrl: relativeUrl,
+          posterUrl: posterUrl,
+          posterRelativeUrl: posterRelativeUrl
+        };
+      } catch (error) {
+        logger.error('处理视频失败', { error: error.message });
+        task.running = false;
+        task.error = '处理视频失败: ' + error.message;
+        task.status = 'error';
+      }
+    })();
+  } catch (error) {
+    logger.error('上传自定义API视频失败', { error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to upload video: ' + error.message });
   }
 });
 

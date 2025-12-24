@@ -27,6 +27,53 @@
     .blog-contact-location-card .leaflet-container {
       font-family: inherit;
     }
+    
+    /* 确保文章内容中的所有图片和视频自适应屏幕大小 */
+    .blog-detail-content img,
+    .blog-detail-content video,
+    .blog-detail-content iframe,
+    .blog-detail-content embed,
+    .blog-detail-content object {
+      max-width: 100% !important;
+      height: auto !important;
+      display: block;
+      margin: 1rem auto;
+    }
+    
+    /* 视频标签特殊处理 */
+    .blog-detail-content video {
+      width: 100%;
+      max-width: 100%;
+    }
+    
+    /* iframe 视频（如 YouTube, Bilibili 等） */
+    .blog-detail-content iframe {
+      max-width: 100%;
+      aspect-ratio: 16 / 9;
+      width: 100%;
+      height: auto;
+      min-height: 300px;
+    }
+    
+    /* 确保文章内容区域不会溢出 */
+    .blog-detail-content {
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+    }
+    
+    /* 处理表格溢出 */
+    .blog-detail-content table {
+      max-width: 100%;
+      overflow-x: auto;
+      display: block;
+    }
+    
+    /* 文章主图片也需要自适应 */
+    .blog-detail-image img {
+      max-width: 100%;
+      height: auto;
+      object-fit: contain;
+    }
   </style>
 </head>
 <body class="blog-detail-page">
@@ -308,10 +355,30 @@
           const originalSrc = img.getAttribute('src');
           if (originalSrc) {
             img.src = validateImageUrl(originalSrc);
+            // 确保图片自适应
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.style.display = 'block';
             img.onerror = function() {
               this.style.display = 'none';
             };
           }
+        });
+        // 处理HTML内容中的视频
+        const videos = contentDiv.querySelectorAll('video');
+        videos.forEach(video => {
+          video.style.maxWidth = '100%';
+          video.style.height = 'auto';
+          video.style.width = '100%';
+        });
+        // 处理HTML内容中的iframe（如YouTube, Bilibili等）
+        const iframes = contentDiv.querySelectorAll('iframe');
+        iframes.forEach(iframe => {
+          iframe.style.maxWidth = '100%';
+          iframe.style.width = '100%';
+          // 保持16:9的宽高比
+          const width = iframe.offsetWidth || 560;
+          iframe.style.height = (width * 9 / 16) + 'px';
         });
       } else {
         // 如果没有htmlContent，显示所有字段内容

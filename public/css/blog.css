@@ -862,10 +862,48 @@
 }
 
 .blog-detail-content img {
-  max-width: 100%;
-  height: auto;
+  max-width: 100% !important;
+  height: auto !important;
   border-radius: 0.5rem;
   margin: 1rem 0;
+  display: block;
+}
+
+/* 视频和iframe自适应 */
+.blog-detail-content video,
+.blog-detail-content iframe,
+.blog-detail-content embed,
+.blog-detail-content object {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block;
+  margin: 1rem auto;
+}
+
+.blog-detail-content video {
+  width: 100%;
+  max-width: 100%;
+}
+
+.blog-detail-content iframe {
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  height: auto;
+  min-height: 300px;
+}
+
+/* 确保内容区域不会溢出 */
+.blog-detail-content {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+/* 表格溢出处理 */
+.blog-detail-content table {
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
 }
 
 .blog-detail-tags {

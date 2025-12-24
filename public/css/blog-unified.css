@@ -1,0 +1,487 @@
+/**
+ * 统一博客设计系统
+ * 包含：统一色彩、字体、半透明效果、响应式布局
+ */
+
+/* ==================== 设计令牌 ==================== */
+:root {
+  /* 主色调 - 紫色系（统一） */
+  --color-primary: #9333ea;
+  --color-primary-light: #a855f7;
+  --color-primary-dark: #7e22ce;
+  --color-primary-alpha: rgba(147, 51, 234, 0.1);
+  --color-primary-alpha-20: rgba(147, 51, 234, 0.2);
+  --color-primary-alpha-30: rgba(147, 51, 234, 0.3);
+  
+  /* 辅助色 - 橙色系（埃及主题） */
+  --color-accent: #d97706;
+  --color-accent-light: #f59e0b;
+  --color-accent-dark: #b45309;
+  --color-accent-alpha: rgba(217, 119, 6, 0.1);
+  
+  /* 中性色 */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  
+  /* 状态色 */
+  --color-success: #10b981;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+  
+  /* 半透明背景 */
+  --bg-glass: rgba(255, 255, 255, 0.7);
+  --bg-glass-strong: rgba(255, 255, 255, 0.9);
+  --bg-glass-dark: rgba(17, 24, 39, 0.7);
+  
+  /* 字体 */
+  --font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --font-family-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  
+  /* 间距 */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  
+  /* 圆角 */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+  
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  --shadow-primary: 0 10px 15px -3px var(--color-primary-alpha-30);
+  
+  /* 过渡 */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.3s ease;
+  --transition-slow: 0.5s ease;
+}
+
+/* ==================== 基础样式 ==================== */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+  color: var(--color-gray-900);
+}
+
+/* ==================== 统一按钮样式 ==================== */
+.blog-btn,
+.admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: var(--font-family-base);
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.blog-btn::before,
+.admin-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.blog-btn:hover::before,
+.admin-btn:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.blog-btn-primary,
+.admin-btn-primary {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
+  color: white;
+  box-shadow: var(--shadow-primary);
+}
+
+.blog-btn-primary:hover,
+.admin-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 25px -5px var(--color-primary-alpha-30);
+  background: linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%);
+}
+
+.blog-btn-secondary,
+.admin-btn-secondary {
+  background: var(--bg-glass);
+  backdrop-filter: blur(10px);
+  color: var(--color-gray-700);
+  border: 1px solid var(--color-gray-200);
+}
+
+.blog-btn-secondary:hover,
+.admin-btn-secondary:hover {
+  background: var(--bg-glass-strong);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.blog-btn-accent {
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-light) 100%);
+  color: white;
+  box-shadow: 0 10px 15px -3px rgba(217, 119, 6, 0.3);
+}
+
+.blog-btn-accent:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 25px -5px rgba(217, 119, 6, 0.4);
+  background: linear-gradient(135deg, var(--color-accent-dark) 0%, var(--color-accent) 100%);
+}
+
+/* 小按钮 */
+.blog-btn-sm,
+.admin-btn-sm {
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+}
+
+/* 禁用状态 */
+.blog-btn:disabled,
+.admin-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ==================== 半透明卡片 ==================== */
+.blog-card-glass,
+.admin-card-glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition-base);
+}
+
+.blog-card-glass:hover,
+.admin-card-glass:hover {
+  background: var(--bg-glass-strong);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* ==================== 响应式布局 ==================== */
+/* 移动端优先 */
+@media (max-width: 640px) {
+  .blog-container,
+  .admin-container {
+    padding: var(--spacing-md);
+  }
+  
+  .blog-btn,
+  .admin-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .blog-hero {
+    padding: 3rem 1rem;
+  }
+  
+  .blog-hero h1 {
+    font-size: 2rem;
+  }
+  
+  .blog-hero p {
+    font-size: 1rem;
+  }
+  
+  .blog-main-layout {
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-md);
+  }
+  
+  .blog-sidebar {
+    width: 100%;
+    position: static;
+    order: 0;
+  }
+  
+  .blog-content {
+    order: 1;
+  }
+  
+  .blog-posts-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-lg);
+  }
+  
+  .admin-tabs {
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+  
+  .admin-tab {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+  
+  .admin-table {
+    font-size: 0.875rem;
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .admin-table thead {
+    display: none;
+  }
+  
+  .admin-table tr {
+    display: block;
+    margin-bottom: var(--spacing-md);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    background: white;
+  }
+  
+  .admin-table td {
+    display: block;
+    text-align: right;
+    padding: 0.75rem;
+    border-top: none;
+    border-bottom: 1px solid var(--color-gray-100);
+  }
+  
+  .admin-table td:before {
+    content: attr(data-label) ': ';
+    font-weight: 600;
+    float: left;
+    color: var(--color-gray-600);
+  }
+  
+  .admin-table td:last-child {
+    border-bottom: none;
+  }
+  
+  .admin-form {
+    padding: var(--spacing-lg);
+  }
+}
+
+/* 平板 */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .blog-posts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .blog-sidebar {
+    width: 200px;
+  }
+}
+
+/* 桌面端 */
+@media (min-width: 1025px) {
+  .blog-posts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .blog-sidebar {
+    width: 240px;
+  }
+}
+
+/* ==================== 导航栏优化 ==================== */
+.blog-nav {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 640px) {
+  .blog-nav-content {
+    flex-wrap: wrap;
+    height: auto;
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+  
+  .blog-nav-actions {
+    width: 100%;
+    margin-top: var(--spacing-sm);
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+  
+  .blog-search {
+    width: 100%;
+  }
+  
+  .blog-search-input {
+    width: 100%;
+  }
+  
+  .blog-btn {
+    width: 100%;
+  }
+}
+
+/* ==================== 表单优化 ==================== */
+.admin-form-input,
+.admin-form-textarea,
+.admin-form-select,
+.blog-search-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-family: var(--font-family-base);
+  font-size: 0.875rem;
+  color: var(--color-gray-900);
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-base);
+}
+
+.admin-form-input:focus,
+.admin-form-textarea:focus,
+.admin-form-select:focus,
+.blog-search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-alpha);
+  background: white;
+}
+
+/* ==================== 表格优化 ==================== */
+.admin-table {
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(10px);
+}
+
+.admin-table th {
+  background: linear-gradient(135deg, var(--color-primary-alpha) 0%, var(--color-accent-alpha) 100%);
+  backdrop-filter: blur(10px);
+}
+
+.admin-table tr:hover {
+  background: var(--color-primary-alpha);
+}
+
+/* ==================== 标签和分类 ==================== */
+.blog-taxonomy-item,
+.blog-detail-tag,
+.blog-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: var(--bg-glass);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-full);
+  color: var(--color-gray-700);
+  text-decoration: none;
+  transition: all var(--transition-base);
+}
+
+.blog-taxonomy-item:hover,
+.blog-detail-tag:hover,
+.blog-tag:hover {
+  background: var(--color-primary-alpha);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.blog-taxonomy-item.active {
+  background: linear-gradient(135deg, var(--color-primary-alpha) 0%, var(--color-accent-alpha) 100%);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ==================== 文章卡片 ==================== */
+.blog-post-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-xl);
+  transition: all var(--transition-base);
+}
+
+.blog-post-card:hover {
+  background: var(--bg-glass-strong);
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-4px);
+}
+
+/* ==================== 加载状态 ==================== */
+.blog-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+  color: var(--color-gray-500);
+  font-size: 0.875rem;
+}
+
+/* ==================== 工具类 ==================== */
+.text-primary {
+  color: var(--color-primary);
+}
+
+.text-accent {
+  color: var(--color-accent);
+}
+
+.bg-glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+}
+
+.bg-glass-strong {
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(20px);
+}
+
+.shadow-glass {
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+}
+

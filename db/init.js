@@ -8,8 +8,18 @@ async function initData() {
 
     // 检查是否已初始化
     const adminCount = await getAsync('SELECT COUNT(*) as count FROM admins');
+    const customApiCount = await getAsync('SELECT COUNT(*) as count FROM custom_apis');
+    
+    // 如果自定义API表为空，初始化自定义API数据（即使已有管理员）
+    const shouldInitCustomApis = customApiCount.count === 0;
+    
     if (adminCount.count > 0) {
-      console.log('数据已初始化，跳过初始化数据');
+      console.log('数据已初始化，跳过管理员和基础数据初始化');
+      
+      // 如果自定义API表为空，仍然初始化自定义API
+      if (shouldInitCustomApis) {
+        await initCustomApis();
+      }
       return;
     }
 
@@ -470,6 +480,13 @@ async function initData() {
     }
     console.log('系统设置已创建');
 
+    // 初始化自定义API数据（如果表为空）
+    if (shouldInitCustomApis) {
+      await initCustomApis();
+    } else {
+      console.log('自定义API表已有数据，跳过自定义API初始化');
+    }
+
     console.log('数据初始化完成！');
   } catch (error) {
     console.error('数据初始化失败:', error);
@@ -488,6 +505,83 @@ if (require.main === module) {
       console.error('初始化失败:', err);
       process.exit(1);
     });
+}
+
+// 初始化自定义API数据
+async function initCustomApis() {
+  console.log('开始初始化自定义API数据...');
+  const fs = require('fs');
+  const path = require('path');
+  
+  // 尝试从导出的JSON文件读取，如果不存在则跳过
+  const customApisPath = path.join(__dirname, '../data/initial-custom-apis.json');
+  let customApis = [];
+  
+  if (fs.existsSync(customApisPath)) {
+    try {
+      const customApisData = fs.readFileSync(customApisPath, 'utf8');
+      customApis = JSON.parse(customApisData);
+      console.log(`从 ${customApisPath} 读取到 ${customApis.length} 个自定义API`);
+    } catch (error) {
+      console.warn('读取自定义API初始化数据失败:', error.message);
+      return;
+    }
+  } else {
+    console.log('未找到自定义API初始化数据文件，跳过自定义API初始化');
+    console.log(`提示: 可以将导出的自定义API数据保存到 ${customApisPath} 作为初始化数据`);
+    return;
+  }
+  
+  // 插入自定义API数据
+  let insertedCount = 0;
+  for (const api of customApis) {
+    try {
+      // 验证必需字段
+      if (!api.name || !api.path || !api.method || !api.response_content) {
+        console.warn(`跳过无效的API数据: ${api.name || '未知'}`);
+        continue;
+      }
+
+      // 验证response_content是否为有效JSON
+      try {
+        JSON.parse(api.response_content);
+      } catch (e) {
+        console.warn(`跳过response_content无效的API: ${api.name}`);
+        continue;
+      }
+
+      // 检查路径是否已存在（避免重复）
+      const existing = await getAsync('SELECT id FROM custom_apis WHERE path = ?', [api.path]);
+      if (existing) {
+        console.log(`跳过已存在的API路径: ${api.path} (${api.name})`);
+        continue;
+      }
+
+      // 插入API（不保留原ID，使用新的自增ID）
+      await runAsync(
+        `INSERT INTO custom_apis (name, path, method, requires_token, response_content, description, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))`,
+        [
+          api.name,
+          api.path,
+          api.method || 'GET',
+          api.requires_token ? 1 : 0,
+          api.response_content,
+          api.description || null,
+          api.status || 'active'
+        ]
+      );
+      insertedCount++;
+    } catch (error) {
+      console.error(`插入自定义API失败: ${api.name}`, error.message);
+    }
+  }
+  
+  if (insertedCount > 0) {
+    console.log(`已初始化 ${insertedCount} 个自定义API`);
+  } else {
+    console.log('没有新的自定义API需要初始化');
+  }
 }
 
 module.exports = { initData };

@@ -6785,11 +6785,11 @@ function renderLogRow(log) {
   
   // 操作类型显示
   const actionMap = {
-    'CREATE': { text: 'Create', class: 'bg-green-100 text-green-800' },
-    'UPDATE': { text: 'Update', class: 'bg-blue-100 text-blue-800' },
-    'DELETE': { text: 'Delete', class: 'bg-red-100 text-red-800' },
-    'LOGIN': { text: 'Login', class: 'bg-purple-100 text-purple-800' },
-    'USER_LOGIN': { text: 'User Login', class: 'bg-indigo-100 text-indigo-800' }
+    'CREATE': { text: 'Create', class: 'bg-gray-100 text-gray-800' },
+    'UPDATE': { text: 'Update', class: 'bg-gray-100 text-gray-800' },
+    'DELETE': { text: 'Delete', class: 'bg-gray-100 text-gray-800' },
+    'LOGIN': { text: 'Login', class: 'bg-gray-100 text-gray-800' },
+    'USER_LOGIN': { text: 'User Login', class: 'bg-gray-100 text-gray-800' }
   };
   const actionInfo = actionMap[log.action] || { text: log.action, class: 'bg-gray-100 text-gray-800' };
   

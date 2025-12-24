@@ -238,7 +238,7 @@ const externalApiLimiter = rateLimit({
 // 支持 fly.io 持久化卷：如果 /data 目录存在，使用 /data，否则使用本地目录
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 
-// 自定义静态文件中间件，添加CORS头和正确的Content-Type
+// 自定义静态文件中间件，添加CORS头和正确的Content-Type（兼容微信小程序）
 const staticWithCORS = (root, options = {}) => {
   const staticMiddleware = express.static(root, {
     ...options,
@@ -247,8 +247,9 @@ const staticWithCORS = (root, options = {}) => {
       const ext = path.extname(filePath).toLowerCase();
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
       const audioExtensions = ['.mp3', '.m4a', '.aac', '.wav', '.ogg'];
+      const videoExtensions = ['.mp4', '.mov', '.webm', '.ogg', '.ogv', '.avi', '.wmv', '.flv', '.mkv', '.m4v'];
       
-      if (imageExtensions.includes(ext) || audioExtensions.includes(ext)) {
+      if (imageExtensions.includes(ext) || audioExtensions.includes(ext) || videoExtensions.includes(ext)) {
         // 添加CORS头（满足小程序需求）
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
@@ -256,6 +257,7 @@ const staticWithCORS = (root, options = {}) => {
         
         // 设置正确的Content-Type
         const mimeTypes = {
+          // 图片
           '.jpg': 'image/jpeg',
           '.jpeg': 'image/jpeg',
           '.png': 'image/png',
@@ -264,15 +266,37 @@ const staticWithCORS = (root, options = {}) => {
           '.svg': 'image/svg+xml',
           '.bmp': 'image/bmp',
           '.ico': 'image/x-icon',
+          // 音频
           '.mp3': 'audio/mpeg',
           '.m4a': 'audio/mp4',
           '.aac': 'audio/aac',
           '.wav': 'audio/wav',
-          '.ogg': 'audio/ogg'
+          '.ogg': 'audio/ogg',
+          // 视频（兼容微信小程序）
+          '.mp4': 'video/mp4',
+          '.mov': 'video/quicktime',
+          '.webm': 'video/webm',
+          '.ogv': 'video/ogg',
+          '.avi': 'video/x-msvideo',
+          '.wmv': 'video/x-ms-wmv',
+          '.flv': 'video/x-flv',
+          '.mkv': 'video/x-matroska',
+          '.m4v': 'video/mp4'
         };
         
-        const contentType = mimeTypes[ext] || (imageExtensions.includes(ext) ? 'image/jpeg' : 'audio/mpeg');
+        const contentType = mimeTypes[ext] || 
+          (imageExtensions.includes(ext) ? 'image/jpeg' : 
+           audioExtensions.includes(ext) ? 'audio/mpeg' : 
+           videoExtensions.includes(ext) ? 'video/mp4' : 
+           'application/octet-stream');
         res.setHeader('Content-Type', contentType);
+        
+        // 视频文件添加Accept-Ranges头（支持断点续传，兼容小程序）
+        if (videoExtensions.includes(ext)) {
+          res.setHeader('Accept-Ranges', 'bytes');
+          // 添加缓存控制（可选）
+          res.setHeader('Cache-Control', 'public, max-age=31536000');
+        }
       }
     }
   });
@@ -283,7 +307,8 @@ const staticWithCORS = (root, options = {}) => {
       const ext = path.extname(req.path).toLowerCase();
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
       const audioExtensions = ['.mp3', '.m4a', '.aac', '.wav', '.ogg'];
-      if (imageExtensions.includes(ext) || audioExtensions.includes(ext)) {
+      const videoExtensions = ['.mp4', '.mov', '.webm', '.ogg', '.ogv', '.avi', '.wmv', '.flv', '.mkv', '.m4v'];
+      if (imageExtensions.includes(ext) || audioExtensions.includes(ext) || videoExtensions.includes(ext)) {
         // 处理OPTIONS预检请求（满足小程序需求）
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');

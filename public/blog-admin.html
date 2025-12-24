@@ -5,37 +5,56 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>博客管理 - DevBlog</title>
   <link rel="stylesheet" href="/css/blog.css">
+  <link rel="stylesheet" href="/css/blog-unified.css">
   <style>
     .admin-container {
       max-width: 1400px;
       margin: 0 auto;
       padding: 2rem 1rem;
+      background-color: #F9FAFB;
+      min-height: 100vh;
     }
     .admin-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
     }
     .admin-tabs {
       display: flex;
-      gap: 1rem;
-      border-bottom: 2px solid #e5e7eb;
-      margin-bottom: 2rem;
+      gap: 0;
+      border-bottom: 1px solid #E5E7EB;
+      margin-bottom: 1.5rem;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      background: transparent;
+    }
+    .admin-tabs::-webkit-scrollbar {
+      display: none;
     }
     .admin-tab {
       padding: 0.75rem 1.5rem;
-      background: none;
+      background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
       cursor: pointer;
       font-weight: 500;
-      color: #6b7280;
-      transition: all 0.3s;
+      color: #6B7280;
+      transition: all 0.2s;
+      white-space: nowrap;
+      font-family: var(--font-family-base);
+      position: relative;
+    }
+    .admin-tab:hover {
+      color: #9333ea;
     }
     .admin-tab.active {
       color: #9333ea;
       border-bottom-color: #9333ea;
+      background: transparent;
     }
     .admin-tab-content {
       display: none;
@@ -46,37 +65,89 @@
     .admin-table {
       width: 100%;
       border-collapse: collapse;
-      background: white;
-      border-radius: 0.5rem;
+      background: #FFFFFF;
+      border-radius: 0;
       overflow: hidden;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     .admin-table th {
-      background: linear-gradient(to right, rgba(236, 72, 153, 0.1), rgba(147, 51, 234, 0.1));
-      padding: 1rem;
+      background: #F9FAFB;
+      padding: 0.875rem 1rem;
       text-align: left;
       font-weight: 600;
-      color: #171717;
+      color: #6B7280;
+      font-family: var(--font-family-base);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid #E5E7EB;
     }
     .admin-table td {
       padding: 1rem;
-      border-top: 1px solid #f3f4f6;
+      border-top: 1px solid #F3F4F6;
+      background: #FFFFFF;
     }
-    .admin-table tr:hover {
-      background: rgba(147, 51, 234, 0.05);
+    .admin-table tbody tr {
+      background: #FFFFFF;
+    }
+    .admin-table tbody tr:hover {
+      background: #F9FAFB;
+    }
+    .admin-table tr.category-header-row {
+      background: #FFFFFF !important;
     }
     .admin-table tr.category-header-row:hover {
-      background: linear-gradient(to right, rgba(236, 72, 153, 0.15), rgba(147, 51, 234, 0.15));
+      background: #F9FAFB !important;
+    }
+    .admin-table tr.category-post-row {
+      background: #FFFFFF !important;
+    }
+    .admin-table tr.category-post-row:hover {
+      background: #F9FAFB !important;
     }
     .admin-table tr.category-header-row + tr {
-      border-top: 2px solid rgba(147, 51, 234, 0.2);
+      border-top: 1px solid #F3F4F6;
+    }
+    .admin-card {
+      background: #FFFFFF;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      border: 1px solid #E5E7EB;
+      margin-bottom: 1.5rem;
     }
     .admin-form {
-      background: white;
+      background: #FFFFFF;
       padding: 2rem;
       border-radius: 0.5rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      margin-bottom: 2rem;
+      border: 1px solid #E5E7EB;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      margin-bottom: 1.5rem;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .status-badge.published {
+      background-color: #D1FAE5;
+      color: #065F46;
+    }
+    .status-badge.draft {
+      background-color: #F3F4F6;
+      color: #6B7280;
+    }
+    .category-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.75rem;
+      border-radius: 0.375rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      background-color: #F3F4F6;
+      color: #374151;
     }
     .admin-form-group {
       margin-bottom: 1.5rem;
@@ -182,48 +253,156 @@
     #postForm.loading #postFormLoading {
       display: flex !important;
     }
+    .admin-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.5rem;
+      border-bottom: 1px solid #E5E7EB;
+      background: #FFFFFF;
+    }
     .admin-actions {
       display: flex;
       gap: 0.5rem;
+      flex-wrap: wrap;
     }
     .admin-btn-small {
-      padding: 0.375rem 0.75rem;
-      font-size: 0.875rem;
-      border-radius: 0.375rem;
+      padding: 0.5rem 1rem;
+      font-size: 0.8125rem;
+      border-radius: 0.5rem;
       border: none;
       cursor: pointer;
       transition: all 0.3s;
+      font-family: var(--font-family-base);
+      font-weight: 500;
+      backdrop-filter: blur(10px);
     }
     .admin-btn-edit {
-      background: #3b82f6;
+      background: rgba(59, 130, 246, 0.9);
+      backdrop-filter: blur(10px);
       color: white;
+      box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
     }
     .admin-btn-edit:hover {
-      background: #2563eb;
+      background: rgba(37, 99, 235, 0.95);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
     }
     .admin-btn-delete {
-      background: #ef4444;
+      background: rgba(239, 68, 68, 0.9);
+      backdrop-filter: blur(10px);
       color: white;
+      box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
     }
     .admin-btn-delete:hover {
-      background: #dc2626;
+      background: rgba(220, 38, 38, 0.95);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(239, 68, 68, 0.4);
     }
     .admin-btn-copy {
-      background: #10b981;
+      background: rgba(16, 185, 129, 0.9);
+      backdrop-filter: blur(10px);
       color: white;
+      box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
     }
     .admin-btn-copy:hover {
-      background: #059669;
+      background: rgba(5, 150, 105, 0.95);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(16, 185, 129, 0.4);
     }
     .admin-btn-approve {
-      background: #10b981;
+      background: rgba(16, 185, 129, 0.9);
+      backdrop-filter: blur(10px);
       color: white;
+      box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
     }
     .admin-btn-approve:hover {
-      background: #059669;
+      background: rgba(5, 150, 105, 0.95);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(16, 185, 129, 0.4);
+    }
+    
+    /* 移动端响应式优化 */
+    @media (max-width: 640px) {
+      .admin-container {
+        padding: 1rem 0.75rem;
+      }
+      
+      .admin-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      
+      .admin-header h1 {
+        font-size: 1.5rem;
+      }
+      
+      .admin-tabs {
+        width: 100%;
+        padding-bottom: 0.5rem;
+      }
+      
+      .admin-tab {
+        padding: 0.5rem 1rem;
+        font-size: 0.8125rem;
+      }
+      
+      .admin-form {
+        padding: 1.5rem 1rem;
+      }
+      
+      .admin-actions {
+        flex-direction: column;
+      }
+      
+      .admin-btn-small {
+        width: 100%;
+        justify-content: center;
+      }
+      
+      .admin-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
     }
     .markdown-editor {
       min-height: 400px;
+    }
+    
+    /* 视频块样式（兼容Quill和WangEditor） */
+    .ql-video-block,
+    .video-block {
+      margin: 1rem 0;
+      width: 100%;
+    }
+    
+    .ql-video-block video,
+    .video-block video {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 1rem 0;
+      border-radius: 0.375rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .ql-video-block iframe,
+    .video-block iframe {
+      max-width: 100%;
+      width: 100%;
+      height: 400px;
+      display: block;
+      margin: 1rem 0;
+      border-radius: 0.375rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border: none;
+    }
+    
+    @media (max-width: 768px) {
+      .ql-video-block iframe,
+      .video-block iframe {
+        height: 250px;
+      }
     }
     
     /* SimpleMDE 工具栏样式修复 */
@@ -297,22 +476,15 @@
       background: white;
     }
   </style>
-  <!-- Font Awesome for SimpleMDE toolbar icons -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
-  <!-- SimpleMDE Markdown Editor -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css">
-  <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
-  <!-- Quill HTML Editor -->
-  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-  <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
-  <!-- Marked.js for Markdown parsing -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+  <!-- WangEditor v5 (使用jsdelivr CDN以符合CSP策略) -->
+  <link href="https://cdn.jsdelivr.net/npm/@wangeditor/editor@5.1.23/dist/css/style.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@wangeditor/editor@5.1.23/dist/index.js"></script>
 </head>
 <body class="blog-page">
   <div class="admin-container">
     <div class="admin-header">
       <div>
-        <h1 style="font-size: 2rem; font-weight: bold; background: linear-gradient(to right, #ec4899, #9333ea); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+        <h1 style="font-size: 2rem; font-weight: bold; color: #111827;">
           博客管理
         </h1>
         <p style="color: #6b7280; margin-top: 0.5rem;">管理文章、分类、标签和评论</p>
@@ -332,9 +504,9 @@
 
     <!-- 文章管理 -->
     <div id="tab-posts" class="admin-tab-content active">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h2>文章管理</h2>
-        <button class="blog-btn blog-btn-primary" onclick="showPostForm()">新建文章</button>
+      <div class="admin-card-header">
+        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">文章管理</h2>
+        <button class="blog-btn blog-btn-primary" onclick="showPostForm()" style="background-color: #9333ea; border-color: #9333ea;">+ 新建文章</button>
       </div>
 
       <!-- 文章表单 -->
@@ -606,22 +778,8 @@
           <div class="admin-form-group" id="normalContentEditor">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
               <label class="admin-form-label" for="postContent" style="margin-bottom: 0;">内容 *</label>
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <span style="font-size: 0.875rem; color: #6b7280;">编辑模式：</span>
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                  <input type="radio" name="editorMode" value="markdown" checked onchange="switchEditorMode('markdown')">
-                  <span>Markdown</span>
-                </label>
-                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                  <input type="radio" name="editorMode" value="html" onchange="switchEditorMode('html')">
-                  <span>HTML</span>
-                </label>
-              </div>
             </div>
-            <div id="markdownEditorContainer">
-              <textarea id="postContent" class="admin-form-textarea markdown-editor"></textarea>
-            </div>
-            <div id="htmlEditorContainer" style="display: none;">
+            <div id="htmlEditorContainer">
               <div id="postHtmlContent" style="min-height: 400px;"></div>
             </div>
           </div>
@@ -640,8 +798,9 @@
       </div>
 
       <!-- 文章列表 -->
-      <div style="background: white; border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <table class="admin-table">
+      <div class="admin-card">
+        <div style="overflow-x: auto;">
+          <table class="admin-table">
           <thead>
             <tr>
               <th>标题</th>
@@ -656,14 +815,15 @@
             <tr><td colspan="6" class="blog-loading">加载中...</td></tr>
           </tbody>
         </table>
+        </div>
       </div>
     </div>
 
     <!-- 分类管理 -->
     <div id="tab-categories" class="admin-tab-content">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h2>分类管理</h2>
-        <button class="blog-btn blog-btn-primary" onclick="showCategoryForm()">新建分类</button>
+      <div class="admin-card-header">
+        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">分类管理</h2>
+        <button class="blog-btn blog-btn-primary" onclick="showCategoryForm()" style="background-color: #9333ea; border-color: #9333ea;">+ 新建分类</button>
       </div>
 
       <div id="categoryForm" class="admin-form" style="display: none;">
@@ -687,28 +847,30 @@
         </form>
       </div>
 
-      <div style="background: white; border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>路径/描述</th>
-              <th>文章数</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="categoriesTableBody">
-            <tr><td colspan="4" class="blog-loading">加载中...</td></tr>
-          </tbody>
-        </table>
+      <div class="admin-card">
+        <div style="overflow-x: auto;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>路径/描述</th>
+                <th>文章数</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="categoriesTableBody">
+              <tr><td colspan="4" class="blog-loading">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
     <!-- 标签管理 -->
     <div id="tab-tags" class="admin-tab-content">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h2>标签管理</h2>
-        <button class="blog-btn blog-btn-primary" onclick="showTagForm()">新建标签</button>
+      <div class="admin-card-header">
+        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">标签管理</h2>
+        <button class="blog-btn blog-btn-primary" onclick="showTagForm()" style="background-color: #9333ea; border-color: #9333ea;">+ 新建标签</button>
       </div>
 
       <div id="tagForm" class="admin-form" style="display: none;">
@@ -725,40 +887,46 @@
         </form>
       </div>
 
-      <div style="background: white; border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>文章数</th>
-            </tr>
-          </thead>
-          <tbody id="tagsTableBody">
-            <tr><td colspan="2" class="blog-loading">加载中...</td></tr>
-          </tbody>
-        </table>
+      <div class="admin-card">
+        <div style="overflow-x: auto;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>文章数</th>
+              </tr>
+            </thead>
+            <tbody id="tagsTableBody">
+              <tr><td colspan="2" class="blog-loading">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
     <!-- 评论管理 -->
     <div id="tab-comments" class="admin-tab-content">
-      <h2>评论管理</h2>
-      <div style="background: white; border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>文章</th>
-              <th>作者</th>
-              <th>内容</th>
-              <th>状态</th>
-              <th>日期</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="commentsTableBody">
-            <tr><td colspan="6" class="blog-loading">加载中...</td></tr>
-          </tbody>
-        </table>
+      <div class="admin-card-header">
+        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">评论管理</h2>
+      </div>
+      <div class="admin-card">
+        <div style="overflow-x: auto;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>文章</th>
+                <th>作者</th>
+                <th>内容</th>
+                <th>状态</th>
+                <th>日期</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="commentsTableBody">
+              <tr><td colspan="6" class="blog-loading">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -766,9 +934,7 @@
   <script src="/utils/blog.js"></script>
   <script>
     const BLOG_ADMIN_API = '/api/blog-admin';
-    let simpleMDE = null;
-    let quillEditor = null;
-    let currentEditorMode = 'markdown'; // 'markdown' or 'html'
+    let wangEditor = null;
     let availableApis = [];
     let allPostsData = []; // 存储所有文章数据
     let expandedCategories = new Set(); // 存储已展开的分类
@@ -1236,29 +1402,22 @@
         
         // 分类标题行（按apiName分组）
         const specialType = isSpecialCategory(apiName);
-        let categoryHeaderStyle = 'background: linear-gradient(to right, rgba(236, 72, 153, 0.1), rgba(147, 51, 234, 0.1));';
-        let categoryHeaderColor = '#9333ea';
         let categoryDisplayName = apiName;
         
         if (specialType) {
           const specialInfo = SPECIAL_CATEGORIES[specialType];
-          categoryHeaderStyle = `background: linear-gradient(to right, ${specialInfo.color}20, ${specialInfo.color}10);`;
-          categoryHeaderColor = specialInfo.color;
           categoryDisplayName = specialInfo.displayName;
         }
         
-        // 添加点击展开/折叠功能
-        const expandIcon = isExpanded ? '📂' : '📁';
+        // 添加点击展开/折叠功能 - 去掉文件夹图标
+        const expandIcon = isExpanded ? '▼' : '▶';
         // 使用 data-* 属性传递分类名称，避免转义问题
         html += `
-          <tr class="category-header-row" style="${categoryHeaderStyle} font-weight: 600; cursor: pointer;" data-category-name="${escapeHtml(apiName)}" onclick="toggleCategory(this.dataset.categoryName)">
-            <td colspan="6" style="padding: 0.75rem 1rem;">
-              <span style="color: ${categoryHeaderColor}; font-weight: 600;">${expandIcon} ${escapeHtml(categoryDisplayName)}</span>
-              <span style="color: #6b7280; font-size: 0.875rem; font-weight: normal; margin-left: 0.5rem;">
+          <tr class="category-header-row" style="background: #FFFFFF; font-weight: 600; cursor: pointer;" data-category-name="${escapeHtml(apiName)}" onclick="toggleCategory(this.dataset.categoryName)">
+            <td colspan="6" style="padding: 0.875rem 1rem;">
+              <span style="color: #374151; font-weight: 600; font-size: 0.875rem;">${expandIcon} ${escapeHtml(categoryDisplayName)}</span>
+              <span style="color: #6B7280; font-size: 0.875rem; font-weight: normal; margin-left: 0.5rem;">
                 (${categoryPosts.length} 篇文章)
-              </span>
-              <span style="color: #9ca3af; font-size: 0.75rem; margin-left: 0.5rem;">
-                ${isExpanded ? '点击折叠' : '点击展开'}
               </span>
             </td>
           </tr>
@@ -1269,25 +1428,22 @@
         for (const post of categoryPosts) {
           const date = formatDate(post.createdAt || post.created_at);
           const postSpecialType = isSpecialCategory(apiName);
-          let rowStyle = '';
           // 显示category作为标签，如果没有则显示apiName
           const postCategory = post.category || apiName;
-          let categoryDisplay = escapeHtml(postCategory);
+          let categoryDisplay = `<span class="category-tag">${escapeHtml(postCategory)}</span>`;
           
-          // 为特殊类别添加颜色标识
-          if (postSpecialType) {
-            const specialInfo = SPECIAL_CATEGORIES[postSpecialType];
-            rowStyle = `background-color: ${specialInfo.color}15; border-left: 3px solid ${specialInfo.color};`;
-            categoryDisplay = `<span style="color: ${specialInfo.color}; font-weight: 600;">${escapeHtml(postCategory)}</span>`;
-          }
+          // 状态Badge
+          const statusBadge = post.published 
+            ? '<span class="status-badge published">已发布</span>' 
+            : '<span class="status-badge draft">草稿</span>';
           
           html += `
-              <tr class="category-post-row" data-category="${escapeHtml(apiName)}" style="${rowStyle}">
-              <td>${escapeHtml(post.name || post.title || '未命名')}</td>
+              <tr class="category-post-row" data-category="${escapeHtml(apiName)}" style="background: #FFFFFF;">
+              <td style="font-weight: 500; color: #111827;">${escapeHtml(post.name || post.title || '未命名')}</td>
               <td>${categoryDisplay}</td>
-              <td>${post.published ? '<span style="color: #10b981;">已发布</span>' : '<span style="color: #f59e0b;">草稿</span>'}</td>
-              <td>${post.views || 0}</td>
-              <td>${date}</td>
+              <td>${statusBadge}</td>
+              <td style="color: #6B7280;">${post.views || 0}</td>
+              <td style="color: #6B7280;">${date}</td>
               <td>
                 <div class="admin-actions">
                   <button class="admin-btn-small admin-btn-edit" onclick="editPost('${post.id}')">编辑</button>
@@ -1525,51 +1681,15 @@
         // 设置htmlContent（统一使用htmlContent）
         const htmlContent = post.htmlContent || (post._originalData ? (post._originalData.htmlContent || '') : '');
         
-        // 判断内容类型并设置编辑器模式
-        if (htmlContent && htmlContent.trim().startsWith('<')) {
-          // HTML内容，切换到HTML编辑器
-          document.querySelector('input[name="editorMode"][value="html"]').checked = true;
-          await switchEditorMode('html');
-          
-          // 等待Quill编辑器初始化后设置内容
-          if (quillEditor) {
-            quillEditor.root.innerHTML = htmlContent;
-          } else {
-            // 如果Quill还没加载，等待一下再试
-            setTimeout(async () => {
-              if (!quillEditor) {
-                await initQuillEditor();
-              }
-              if (quillEditor) {
-                quillEditor.root.innerHTML = htmlContent;
-              }
-            }, 500);
-          }
-        } else {
-          // Markdown内容或空内容，使用Markdown编辑器
-          document.querySelector('input[name="editorMode"][value="markdown"]').checked = true;
-          await switchEditorMode('markdown');
-          
-          // 初始化Markdown编辑器
-          if (!simpleMDE) {
-            simpleMDE = new SimpleMDE({
-              element: document.getElementById('postContent'),
-              spellChecker: false,
-              placeholder: '输入Markdown内容...'
-            });
-          }
-          // 如果有htmlContent，简单转换为Markdown显示（移除HTML标签）
+        // 初始化HTML编辑器并设置内容
+        if (!wangEditor) {
+          await initQuillEditor();
+        }
+        if (wangEditor) {
           if (htmlContent) {
-            const markdownContent = htmlContent
-              .replace(/<h2>/g, '## ')
-              .replace(/<\/h2>/g, '\n\n')
-              .replace(/<p>/g, '')
-              .replace(/<\/p>/g, '\n\n')
-              .replace(/<br>/g, '\n')
-              .replace(/<[^>]+>/g, '');
-            simpleMDE.value(markdownContent.trim());
+            wangEditor.setHtml(htmlContent);
           } else {
-            simpleMDE.value('');
+            wangEditor.setHtml('');
           }
         }
       } else {
@@ -1616,18 +1736,12 @@
           normalEditor.style.display = 'block';
         }
         
-        // 重置编辑器模式为Markdown
-        document.querySelector('input[name="editorMode"][value="markdown"]').checked = true;
-        await switchEditorMode('markdown');
-        
-        if (simpleMDE) {
-          simpleMDE.value('');
-        } else {
-          simpleMDE = new SimpleMDE({
-            element: document.getElementById('postContent'),
-            spellChecker: false,
-            placeholder: '输入Markdown内容...'
-          });
+        // 初始化HTML编辑器
+        if (!wangEditor) {
+          await initQuillEditor();
+        }
+        if (wangEditor) {
+          wangEditor.setHtml('');
         }
         document.getElementById('fieldMappingInfo').style.display = 'none';
       }
@@ -1644,9 +1758,9 @@
       // 保存当前编辑器内容到临时变量（在切换前）
       let currentContent = '';
       
-      if (currentEditorMode === 'html' && quillEditor) {
+      if (currentEditorMode === 'html' && wangEditor) {
         // 当前是HTML模式，保存HTML内容
-        currentContent = quillEditor.root.innerHTML;
+        currentContent = wangEditor.getHtml();
       } else if (currentEditorMode === 'markdown' && simpleMDE) {
         // 当前是Markdown模式，保存Markdown内容
         currentContent = simpleMDE.value();
@@ -1693,34 +1807,34 @@
         markdownContainer.style.display = 'none';
         htmlContainer.style.display = 'block';
         
-        // 初始化Quill编辑器（如果还没有初始化）
-        if (!quillEditor) {
+        // 初始化WangEditor编辑器（如果还没有初始化）
+        if (!wangEditor) {
           await initQuillEditor();
-          // 等待Quill完全初始化
+          // 等待WangEditor完全初始化
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         // 如果切换到HTML，将Markdown内容转换为HTML
-        if (currentContent && quillEditor) {
+        if (currentContent && wangEditor) {
           if (currentContent.trim().startsWith('<')) {
             // 已经是HTML内容，直接使用
-            quillEditor.root.innerHTML = currentContent;
+            wangEditor.setHtml(currentContent);
           } else {
             // Markdown内容，转换为HTML（使用async函数）
             markdownToHtml(currentContent).then(htmlContent => {
-              if (quillEditor) {
-                quillEditor.root.innerHTML = htmlContent;
+              if (wangEditor) {
+                wangEditor.setHtml(htmlContent);
               }
             }).catch(error => {
               console.error('Markdown转换失败:', error);
-              if (quillEditor) {
-                quillEditor.root.innerHTML = '<p>转换失败: ' + escapeHtml(error.message) + '</p>';
+              if (wangEditor) {
+                wangEditor.setHtml('<p>转换失败: ' + escapeHtml(error.message) + '</p>');
               }
             });
           }
-        } else if (quillEditor) {
+        } else if (wangEditor) {
           // 没有内容，清空
-          quillEditor.root.innerHTML = '';
+          wangEditor.setHtml('');
         }
       }
     }
@@ -1833,38 +1947,52 @@
       return html;
     }
     
-    // 初始化Quill HTML编辑器
+    // 初始化WangEditor v5 HTML编辑器
     function initQuillEditor() {
-      // 检查Quill是否已加载
-      if (typeof Quill === 'undefined') {
-        console.error('Quill未加载，等待加载...');
-        // 等待Quill加载
-        return new Promise((resolve) => {
-          const checkQuill = setInterval(() => {
-            if (typeof Quill !== 'undefined') {
-              clearInterval(checkQuill);
-              initQuillEditorInternal();
-              resolve();
-            }
-          }, 100);
-          setTimeout(() => {
-            clearInterval(checkQuill);
-            if (typeof Quill === 'undefined') {
-              showToast('HTML编辑器加载失败，请刷新页面重试', 'error');
-            }
-            resolve();
-          }, 5000);
-        });
-      } else {
-        initQuillEditorInternal();
-      }
+      // 兼容性：保持函数名不变，内部使用WangEditor
+      return initWangEditor();
     }
     
-    function initQuillEditorInternal() {
-      if (typeof Quill === 'undefined') {
-        return;
-      }
-      
+    async function initWangEditor() {
+      // 检查WangEditor是否已加载（WangEditor v5使用window.wangEditor）
+      // 等待WangEditor加载
+      return new Promise((resolve) => {
+        let checkCount = 0;
+        const maxChecks = 50; // 最多检查5秒（50 * 100ms）
+        
+        const checkWangEditor = setInterval(() => {
+          checkCount++;
+          
+          // 检查window.wangEditor是否存在
+          if (typeof window.wangEditor !== 'undefined' && 
+              window.wangEditor && 
+              window.wangEditor.createEditor && 
+              window.wangEditor.createToolbar) {
+            clearInterval(checkWangEditor);
+            console.log('WangEditor已加载，开始初始化编辑器');
+            try {
+              initWangEditorInternal();
+              resolve();
+            } catch (e) {
+              console.error('WangEditor初始化失败:', e);
+              showToast('HTML编辑器初始化失败: ' + e.message, 'error');
+              resolve();
+            }
+          } else if (checkCount >= maxChecks) {
+            clearInterval(checkWangEditor);
+            console.error('WangEditor加载超时', {
+              windowWangEditor: typeof window.wangEditor,
+              wangEditorType: typeof wangEditor,
+              checkCount: checkCount
+            });
+            showToast('HTML编辑器加载失败，请刷新页面重试', 'error');
+            resolve();
+          }
+        }, 100);
+      });
+    }
+    
+    function initWangEditorInternal() {
       const editorContainer = document.getElementById('postHtmlContent');
       if (!editorContainer) {
         console.error('编辑器容器不存在');
@@ -1872,40 +2000,767 @@
       }
       
       // 如果已经初始化，先销毁
-      if (quillEditor) {
+      if (wangEditor) {
         try {
-          quillEditor = null;
+          wangEditor.destroy();
+          wangEditor = null;
         } catch (e) {
           console.warn('销毁编辑器时出错:', e);
         }
       }
       
-      // 清空容器内容（Quill会在容器内创建编辑器）
-      editorContainer.innerHTML = '';
+      // 清空容器内容，创建编辑器和工具栏容器
+      editorContainer.innerHTML = `
+        <div id="wang-editor-toolbar" style="border: 1px solid #ccc; border-bottom: none;"></div>
+        <div id="wang-editor-container" style="border: 1px solid #ccc; min-height: 500px;"></div>
+      `;
       
       try {
-        // 创建Quill编辑器
-        quillEditor = new Quill('#postHtmlContent', {
-          theme: 'snow',
-          modules: {
-            toolbar: [
-              [{ 'header': [1, 2, 3, false] }],
-              ['bold', 'italic', 'underline', 'strike'],
-              [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-              [{ 'color': [] }, { 'background': [] }],
-              [{ 'align': [] }],
-              ['link', 'image'],
-              ['blockquote', 'code-block'],
-              ['clean']
-            ]
-          },
-          placeholder: '输入HTML内容...'
+        // 使用CDN版本的WangEditor（@wangeditor/editor v5）
+        // WangEditor v5通过CDN加载后，通过window.wangEditor导出
+        if (typeof window.wangEditor === 'undefined') {
+          console.error('WangEditor未加载，请检查CDN链接');
+          throw new Error('WangEditor未正确加载，请检查CDN链接和CSP策略');
+        }
+        
+        const { createEditor, createToolbar } = window.wangEditor;
+        
+        if (!createEditor || !createToolbar) {
+          console.error('WangEditor API不存在:', window.wangEditor);
+          throw new Error('WangEditor API未正确导出，请检查CDN版本');
+        }
+        
+        // WangEditor v5配置
+        const editorConfig = {
+          placeholder: '输入HTML内容...',
+          MENU_CONF: {
+            uploadImage: {
+              server: '/api/admin/custom-apis/upload-image',
+              fieldName: 'image',
+              maxFileSize: 10 * 1024 * 1024, // 10MB
+              allowedFileTypes: ['image/*'],
+              withCredentials: true,
+              customUpload: async (file, insertFn) => {
+                try {
+                  const imageUrl = await uploadImageToServer(file);
+                  insertFn(imageUrl, file.name, imageUrl);
+                  showToast('图片上传成功', 'success');
+                } catch (error) {
+                  showToast('图片上传失败: ' + error.message, 'error');
+                }
+              }
+            },
+            uploadVideo: {
+              server: '/api/admin/custom-apis/upload-video',
+              fieldName: 'video',
+              maxFileSize: 200 * 1024 * 1024, // 200MB
+              allowedFileTypes: ['video/*'],
+              withCredentials: true,
+              customUpload: async (file, insertFn) => {
+                // 创建全局进度显示
+                const globalProgressId = 'wangEditorVideoProgress';
+                let progressContainer = document.getElementById(globalProgressId);
+                
+                if (!progressContainer) {
+                  progressContainer = document.createElement('div');
+                  progressContainer.id = globalProgressId;
+                  progressContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; background: white; padding: 1rem; border-radius: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10001; min-width: 300px; max-width: 400px;';
+                  progressContainer.innerHTML = `
+                    <div style="margin-bottom: 0.5rem; font-weight: 600; color: #333;">视频上传中...</div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                      <div style="flex: 1; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                        <div id="wangEditorVideoProgressBar" style="height: 100%; background: #9333ea; width: 0%; transition: width 0.3s;"></div>
+                      </div>
+                      <span id="wangEditorVideoStatus" style="font-size: 0.875rem; color: #6b7280; white-space: nowrap; min-width: 60px; text-align: right;">0%</span>
+                    </div>
+                    <div id="wangEditorVideoMessage" style="font-size: 0.75rem; color: #6b7280;">准备上传...</div>
+                  `;
+                  document.body.appendChild(progressContainer);
+                } else {
+                  // 重置进度
+                  const progressBar = document.getElementById('wangEditorVideoProgressBar');
+                  const statusSpan = document.getElementById('wangEditorVideoStatus');
+                  const messageSpan = document.getElementById('wangEditorVideoMessage');
+                  if (progressBar) progressBar.style.width = '0%';
+                  if (statusSpan) statusSpan.textContent = '0%';
+                  if (messageSpan) messageSpan.textContent = '准备上传...';
+                  progressContainer.style.display = 'block';
+                }
+                
+                const progressBar = document.getElementById('wangEditorVideoProgressBar');
+                const statusSpan = document.getElementById('wangEditorVideoStatus');
+                const messageSpan = document.getElementById('wangEditorVideoMessage');
+                
+                try {
+                  const videoInfo = await uploadVideoToServer(file, (progress, message) => {
+                    // 更新全局进度显示
+                    if (progressBar && statusSpan) {
+                      progressBar.style.width = Math.min(Math.max(progress, 0), 100) + '%';
+                      statusSpan.textContent = `${Math.round(progress)}%`;
+                      if (progress >= 100) {
+                        statusSpan.style.color = '#10b981'; // 绿色表示完成
+                      } else {
+                        statusSpan.style.color = '#6b7280'; // 灰色表示进行中
+                      }
+                    }
+                    if (messageSpan && message) {
+                      messageSpan.textContent = message;
+                    }
+                  });
+                  
+                  // 完成
+                  if (progressBar && statusSpan && messageSpan) {
+                    progressBar.style.width = '100%';
+                    statusSpan.textContent = '100%';
+                    statusSpan.style.color = '#10b981';
+                    messageSpan.textContent = '上传完成！';
+                  }
+                  
+                  insertFn(videoInfo.url, file.name, videoInfo.url);
+                  showToast('视频上传成功', 'success');
+                  
+                  // 3秒后隐藏进度条
+                  setTimeout(() => {
+                    if (progressContainer) {
+                      progressContainer.style.display = 'none';
+                    }
+                  }, 3000);
+                } catch (error) {
+                  // 显示错误
+                  if (progressBar && statusSpan && messageSpan) {
+                    progressBar.style.width = '0%';
+                    statusSpan.textContent = '失败';
+                    statusSpan.style.color = '#ef4444';
+                    messageSpan.textContent = '上传失败: ' + error.message;
+                  }
+                  
+                  showToast('视频上传失败: ' + error.message, 'error');
+                  
+                  // 5秒后隐藏进度条
+                  setTimeout(() => {
+                    if (progressContainer) {
+                      progressContainer.style.display = 'none';
+                    }
+                  }, 5000);
+                }
+              }
+            }
+          }
+        };
+        
+        // 创建编辑器
+        wangEditor = createEditor({
+          selector: '#wang-editor-container',
+          config: editorConfig,
+          mode: 'default'
         });
-        console.log('Quill编辑器初始化成功');
+        
+        // 创建工具栏
+        const toolbar = createToolbar({
+          editor: wangEditor,
+          selector: '#wang-editor-toolbar',
+          config: {},
+          mode: 'default'
+        });
+        
+        // 监听粘贴事件，处理粘贴的图片文件和外部图片URL
+        const editorDom = document.getElementById('wang-editor-container');
+        if (editorDom) {
+          editorDom.addEventListener('paste', async function(e) {
+            const clipboardData = e.clipboardData || window.clipboardData;
+            if (!clipboardData) return;
+            
+            // 检查剪贴板中是否有base64图片数据
+            const pasteData = clipboardData.getData('text/html');
+            if (pasteData && (pasteData.includes('data:image') || pasteData.includes('data:video'))) {
+              // 如果包含base64图片或视频，阻止默认行为
+              e.preventDefault();
+              showToast('检测到base64内容，请使用上传功能上传文件', 'warning');
+              return;
+            }
+            
+            const items = clipboardData.items;
+            let hasImageFile = false;
+            let externalImageUrl = null;
+            
+            // 检查是否有图片文件
+            for (let i = 0; i < items.length; i++) {
+              const item = items[i];
+              if (item.kind === 'file' && item.type.indexOf('image') !== -1) {
+                hasImageFile = true;
+                break;
+              }
+            }
+            
+            // 如果没有图片文件，检查HTML内容中是否有外部图片URL
+            if (!hasImageFile) {
+              const htmlPromise = new Promise((resolve) => {
+                for (let i = 0; i < items.length; i++) {
+                  const item = items[i];
+                  if (item.kind === 'string' && item.type === 'text/html') {
+                    item.getAsString(function(html) {
+                      resolve(html);
+                    });
+                    return;
+                  }
+                }
+                resolve(null);
+              });
+              
+              const html = await htmlPromise;
+              if (html) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const images = doc.querySelectorAll('img');
+                
+                if (images.length > 0) {
+                  const imgSrc = images[0].src;
+                  if (imgSrc && !imgSrc.startsWith('data:') && !imgSrc.startsWith('blob:')) {
+                    try {
+                      const currentHost = window.location.host;
+                      const imgUrl = new URL(imgSrc, window.location.origin);
+                      if (imgUrl.host !== currentHost && imgUrl.host !== '') {
+                        externalImageUrl = imgSrc;
+                      }
+                    } catch (e) {
+                      // URL解析失败，忽略
+                    }
+                  }
+                }
+              }
+            }
+            
+            // 如果有图片文件，阻止默认行为并上传
+            if (hasImageFile) {
+              e.preventDefault();
+              
+              for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.kind === 'file' && item.type.indexOf('image') !== -1) {
+                  const file = item.getAsFile();
+                  if (!file) continue;
+                  
+                  if (file.size > 10 * 1024 * 1024) {
+                    showToast('图片文件大小不能超过10MB', 'error');
+                    continue;
+                  }
+                  
+                  try {
+                    const imageUrl = await uploadImageToServer(file);
+                    if (wangEditor && wangEditor.insertNode) {
+                      const imageNode = {
+                        type: 'image',
+                        src: imageUrl,
+                        alt: file.name,
+                        href: ''
+                      };
+                      wangEditor.insertNode(imageNode);
+                    } else if (wangEditor && wangEditor.dangerouslyInsertHtml) {
+                      wangEditor.dangerouslyInsertHtml(`<img src="${imageUrl}" alt="${file.name}" />`);
+                    }
+                    showToast('图片上传成功', 'success');
+                  } catch (error) {
+                    showToast('图片上传失败: ' + error.message, 'error');
+                  }
+                  break;
+                }
+              }
+            } else if (externalImageUrl) {
+              // 如果有外部图片URL，阻止默认行为，下载并上传
+              e.preventDefault();
+              
+              try {
+                const response = await fetch(externalImageUrl, { 
+                  mode: 'cors',
+                  credentials: 'omit'
+                });
+                
+                if (!response.ok) {
+                  throw new Error('下载图片失败: ' + response.statusText);
+                }
+                
+                const blob = await response.blob();
+                
+                if (blob.size > 10 * 1024 * 1024) {
+                  throw new Error('图片文件大小不能超过10MB');
+                }
+                
+                if (!blob.type.startsWith('image/')) {
+                  throw new Error('下载的文件不是图片格式');
+                }
+                
+                const fileExtension = blob.type.split('/')[1] || 'jpg';
+                const fileName = `image.${fileExtension}`;
+                const file = new File([blob], fileName, { type: blob.type });
+                
+                const imageUrl = await uploadImageToServer(file);
+                
+                if (wangEditor && wangEditor.insertNode) {
+                  const imageNode = {
+                    type: 'image',
+                    src: imageUrl,
+                    alt: fileName,
+                    href: ''
+                  };
+                  wangEditor.insertNode(imageNode);
+                } else if (wangEditor && wangEditor.dangerouslyInsertHtml) {
+                  wangEditor.dangerouslyInsertHtml(`<img src="${imageUrl}" alt="${fileName}" />`);
+                }
+                
+                showToast('图片上传成功', 'success');
+              } catch (error) {
+                showToast('图片上传失败: ' + error.message, 'error');
+                console.error('下载并上传外部图片失败:', error);
+              }
+            }
+          });
+          
+          // 添加拖放上传图片功能
+          // 阻止默认的拖放行为
+          ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            editorDom.addEventListener(eventName, function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+            });
+          });
+          
+          // 添加拖放区域视觉反馈
+          ['dragenter', 'dragover'].forEach(eventName => {
+            editorDom.addEventListener(eventName, function() {
+              editorDom.style.border = '2px dashed #3b82f6';
+              editorDom.style.backgroundColor = '#eff6ff';
+            });
+          });
+          
+          ['dragleave', 'drop'].forEach(eventName => {
+            editorDom.addEventListener(eventName, function() {
+              editorDom.style.border = '';
+              editorDom.style.backgroundColor = '';
+            });
+          });
+          
+          // 处理文件拖放
+          editorDom.addEventListener('drop', async function(e) {
+            const files = e.dataTransfer.files;
+            
+            if (!files || files.length === 0) return;
+            
+            for (let i = 0; i < files.length; i++) {
+              const file = files[i];
+              
+              if (!file.type.startsWith('image/')) {
+                continue;
+              }
+              
+              if (file.size > 10 * 1024 * 1024) {
+                showToast(`图片 ${file.name} 大小超过10MB，已跳过`, 'error');
+                continue;
+              }
+              
+              try {
+                const imageUrl = await uploadImageToServer(file);
+                if (wangEditor && wangEditor.insertNode) {
+                  const imageNode = {
+                    type: 'image',
+                    src: imageUrl,
+                    alt: file.name,
+                    href: ''
+                  };
+                  wangEditor.insertNode(imageNode);
+                } else if (wangEditor && wangEditor.dangerouslyInsertHtml) {
+                  wangEditor.dangerouslyInsertHtml(`<img src="${imageUrl}" alt="${file.name}" />`);
+                }
+                showToast(`图片 ${file.name} 上传成功`, 'success');
+              } catch (error) {
+                showToast(`图片 ${file.name} 上传失败: ${error.message}`, 'error');
+                console.error('拖放上传图片失败:', error);
+              }
+            }
+          });
+        }
+        
+        console.log('WangEditor v5编辑器初始化成功', {
+          editor: wangEditor,
+          container: document.getElementById('wang-editor-container'),
+          toolbar: document.getElementById('wang-editor-toolbar')
+        });
       } catch (error) {
-        console.error('初始化Quill编辑器失败:', error);
+        console.error('初始化WangEditor编辑器失败:', error);
+        console.error('错误详情:', {
+          message: error.message,
+          stack: error.stack,
+          windowWangEditor: typeof window.wangEditor,
+          wangEditor: typeof wangEditor
+        });
+        
+        // 显示错误信息并恢复容器
+        const editorContainer = document.getElementById('postHtmlContent');
+        if (editorContainer) {
+          editorContainer.innerHTML = `
+            <div style="padding: 2rem; text-align: center; color: #ef4444; border: 1px solid #ef4444; border-radius: 0.375rem; background: #fef2f2;">
+              <p style="margin: 0 0 1rem 0; font-weight: 500;">编辑器加载失败</p>
+              <p style="margin: 0; font-size: 0.875rem;">${error.message}</p>
+              <p style="margin: 1rem 0 0 0; font-size: 0.875rem;">请刷新页面重试，或检查浏览器控制台获取更多信息。</p>
+            </div>
+          `;
+        }
         showToast('HTML编辑器初始化失败: ' + error.message, 'error');
       }
+    }
+    
+    // Video handler已集成到WangEditor配置中，此函数保留用于兼容
+    function initVideoHandler() {
+                  // 创建视频插入对话框（WangEditor已支持视频上传）
+                  const dialog = document.createElement('div');
+                  dialog.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 10000; min-width: 400px; max-width: 600px;';
+                  
+                  dialog.innerHTML = `
+                    <h3 style="margin-top: 0; margin-bottom: 1rem; color: #333;">插入视频</h3>
+                    <div style="margin-bottom: 1rem;">
+                      <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">视频URL：</label>
+                      <input type="text" id="videoUrlInput" placeholder="输入视频URL" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 0.25rem; box-sizing: border-box;">
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                      <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">或上传视频文件：</label>
+                      <input type="file" id="videoFileInput" accept="video/*" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 0.25rem; box-sizing: border-box;">
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                      <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">视频格式：</label>
+                      <select id="videoFormatSelect" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 0.25rem; box-sizing: border-box;">
+                        <option value="video-tag">方式1: video标签（带src，符合示例格式）</option>
+                        <option value="video-source">方式2: video标签（带source）</option>
+                        <option value="youtube-iframe">方式3: YouTube iframe嵌入</option>
+                        <option value="video-link">方式4: 视频链接</option>
+                      </select>
+                      <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">
+                        方式1格式：&lt;video src="..." poster="..."&gt;&lt;/video&gt;
+                      </p>
+                    </div>
+                    <div style="margin-bottom: 1rem;" id="posterUrlContainer">
+                      <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">封面图片URL（可选）：</label>
+                      <input type="text" id="posterUrlInput" placeholder="输入封面图片URL" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 0.25rem; box-sizing: border-box;">
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                      <button id="videoInsertCancel" style="padding: 0.5rem 1rem; background: #e5e7eb; border: none; border-radius: 0.25rem; cursor: pointer;">取消</button>
+                      <button id="videoInsertConfirm" style="padding: 0.5rem 1rem; background: #9333ea; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">插入</button>
+                    </div>
+                  `;
+                  
+                  // 添加遮罩层
+                  const overlay = document.createElement('div');
+                  overlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999;';
+                  
+                  document.body.appendChild(overlay);
+                  document.body.appendChild(dialog);
+                  
+                  // 根据格式选择显示/隐藏封面输入框
+                  const formatSelect = dialog.querySelector('#videoFormatSelect');
+                  const posterContainer = dialog.querySelector('#posterUrlContainer');
+                  const urlInput = dialog.querySelector('#videoUrlInput');
+                  
+                  // 初始化显示状态
+                  if (formatSelect.value === 'video-tag' || formatSelect.value === 'video-source') {
+                    posterContainer.style.display = 'block';
+                  } else {
+                    posterContainer.style.display = 'none';
+                  }
+                  
+                  formatSelect.addEventListener('change', function() {
+                    if (this.value === 'video-tag' || this.value === 'video-source') {
+                      posterContainer.style.display = 'block';
+                    } else {
+                      posterContainer.style.display = 'none';
+                    }
+                    
+                    // 如果是YouTube格式，更新提示
+                    if (this.value === 'youtube-iframe') {
+                      urlInput.placeholder = '输入YouTube视频URL或视频ID（如：https://www.youtube.com/watch?v=VIDEO_ID 或 VIDEO_ID）';
+                    } else {
+                      urlInput.placeholder = '输入视频URL';
+                    }
+                  });
+                  
+                  // 添加进度显示元素
+                  const progressContainer = document.createElement('div');
+                  progressContainer.id = 'videoUploadProgress';
+                  progressContainer.style.cssText = 'display: none; margin-top: 1rem; margin-bottom: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 0.25rem; border: 1px solid #e5e7eb;';
+                  progressContainer.innerHTML = `
+                    <div style="margin-bottom: 0.5rem; font-weight: 600; color: #333; font-size: 0.875rem;">视频上传进度</div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <div style="flex: 1; height: 10px; background: #e5e7eb; border-radius: 5px; overflow: hidden;">
+                        <div id="videoUploadProgressBar" style="height: 100%; background: linear-gradient(90deg, #9333ea, #a855f7); width: 0%; transition: width 0.3s ease;"></div>
+                      </div>
+                      <span id="videoUploadStatus" style="font-size: 0.875rem; color: #6b7280; white-space: nowrap; min-width: 80px; text-align: right; font-weight: 500;">0%</span>
+                    </div>
+                    <div id="videoUploadMessage" style="margin-top: 0.5rem; font-size: 0.75rem; color: #6b7280;">准备上传...</div>
+                  `;
+                  // 插入到poster输入框之后，按钮之前（posterContainer已在上面声明）
+                  if (posterContainer && posterContainer.nextSibling) {
+                    posterContainer.parentNode.insertBefore(progressContainer, posterContainer.nextSibling);
+                  } else {
+                    // 如果找不到，插入到按钮容器之前
+                    const buttonContainer = dialog.querySelector('div[style*="flex"][style*="justify-content: flex-end"]');
+                    if (buttonContainer && buttonContainer.parentNode) {
+                      buttonContainer.parentNode.insertBefore(progressContainer, buttonContainer);
+                    } else {
+                      // 最后的后备方案：插入到对话框内容的最后
+                      dialog.appendChild(progressContainer);
+                    }
+                  }
+                  
+                  // 上传状态标志（在对话框作用域内）
+                  let isUploading = false;
+                  
+                  // 禁用/启用对话框控件的辅助函数
+                  function setDialogControlsEnabled(enabled) {
+                    isUploading = !enabled;
+                    const urlInput = dialog.querySelector('#videoUrlInput');
+                    const fileInput = dialog.querySelector('#videoFileInput');
+                    const formatSelect = dialog.querySelector('#videoFormatSelect');
+                    const posterInput = dialog.querySelector('#posterUrlInput');
+                    const cancelBtn = dialog.querySelector('#videoInsertCancel');
+                    const confirmBtn = dialog.querySelector('#videoInsertConfirm');
+                    
+                    const controls = [urlInput, fileInput, formatSelect, posterInput, cancelBtn, confirmBtn];
+                    controls.forEach(control => {
+                      if (control) {
+                        control.disabled = !enabled;
+                        if (control.style) {
+                          control.style.opacity = enabled ? '1' : '0.6';
+                          control.style.cursor = enabled ? '' : 'not-allowed';
+                        }
+                      }
+                    });
+                    
+                    // 禁用/启用遮罩层点击（overlay在外部作用域）
+                    // overlay变量在initVideoHandler函数的作用域中，这里通过闭包访问
+                    try {
+                      if (typeof overlay !== 'undefined' && overlay) {
+                        overlay.style.pointerEvents = enabled ? 'auto' : 'none';
+                      }
+                    } catch (e) {
+                      // 如果overlay不可访问，忽略错误
+                    }
+                  }
+                  
+                  // 文件选择处理
+                  const fileInput = dialog.querySelector('#videoFileInput');
+                  fileInput.addEventListener('change', async function() {
+                    const file = this.files[0];
+                    if (!file) return;
+                    
+                    // 验证文件类型
+                    if (!file.type.startsWith('video/')) {
+                      showToast('请选择视频文件', 'error');
+                      this.value = '';
+                      return;
+                    }
+                    
+                    // 验证文件大小（200MB）
+                    if (file.size > 200 * 1024 * 1024) {
+                      showToast('视频文件大小不能超过200MB', 'error');
+                      this.value = '';
+                      return;
+                    }
+                    
+                    // 显示进度条
+                    progressContainer.style.display = 'block';
+                    const progressBar = dialog.querySelector('#videoUploadProgressBar');
+                    const statusSpan = dialog.querySelector('#videoUploadStatus');
+                    const messageSpan = dialog.querySelector('#videoUploadMessage');
+                    
+                    // 重置进度
+                    if (progressBar) progressBar.style.width = '0%';
+                    if (statusSpan) {
+                      statusSpan.textContent = '0%';
+                      statusSpan.style.color = '#6b7280';
+                    }
+                    if (messageSpan) messageSpan.textContent = '准备上传...';
+                    
+                    // 禁用所有控件，防止用户操作
+                    setDialogControlsEnabled(false);
+                    
+                    // 检查文件格式
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    const needsConversion = ext !== 'mp4';
+                    
+                    try {
+                      // 上传视频（带进度回调）- 进度已合并为0-100%
+                      const videoInfo = await uploadVideoToServer(file, (progress, message) => {
+                        // 确保进度条和状态元素存在
+                        if (progressBar) {
+                          progressBar.style.width = Math.min(Math.max(progress, 0), 100) + '%';
+                        }
+                        if (statusSpan) {
+                          statusSpan.textContent = `${Math.round(progress)}%`;
+                          // 更新颜色
+                          if (progress >= 100) {
+                            statusSpan.style.color = '#10b981'; // 绿色表示完成
+                          } else {
+                            statusSpan.style.color = '#6b7280'; // 灰色表示进行中
+                          }
+                        }
+                        if (messageSpan && message) {
+                          messageSpan.textContent = message;
+                        }
+                      });
+                      
+                      // 完成进度
+                      if (progressBar) progressBar.style.width = '100%';
+                      if (statusSpan) {
+                        statusSpan.textContent = '100%';
+                        statusSpan.style.color = '#10b981'; // 绿色表示完成
+                      }
+                      if (messageSpan) messageSpan.textContent = '处理完成！';
+                      
+                      // 将视频URL填充到输入框，等待用户点击"插入"按钮
+                      dialog.querySelector('#videoUrlInput').value = videoInfo.url;
+                      
+                      // 如果有poster URL，自动填充到poster输入框
+                      if (videoInfo.posterUrl) {
+                        dialog.querySelector('#posterUrlInput').value = videoInfo.posterUrl;
+                        // 确保poster输入框可见（如果格式支持）
+                        // 使用dialog重新查询，避免作用域问题
+                        const posterContainerEl = dialog.querySelector('#posterUrlContainer');
+                        if (posterContainerEl && (formatSelect.value === 'video-tag' || formatSelect.value === 'video-source')) {
+                          posterContainerEl.style.display = 'block';
+                        }
+                      }
+                      
+                      const successMessage = videoInfo.converted 
+                        ? '视频上传成功，已自动转换为MP4格式，请点击"插入"按钮插入视频'
+                        : '视频上传成功，请点击"插入"按钮插入视频';
+                      showToast(successMessage, 'success');
+                      
+                      // 恢复所有控件
+                      setDialogControlsEnabled(true);
+                      
+                      // 不自动关闭对话框，等待用户点击"插入"按钮
+                    } catch (error) {
+                      // 显示错误
+                      if (progressBar) progressBar.style.width = '0%';
+                      if (statusSpan) {
+                        statusSpan.textContent = '失败';
+                        statusSpan.style.color = '#ef4444'; // 红色表示错误
+                      }
+                      if (messageSpan) messageSpan.textContent = '上传失败: ' + error.message;
+                      
+                      // 恢复所有控件
+                      setDialogControlsEnabled(true);
+                      
+                      // 检查是否是格式不兼容错误
+                      let errorMessage = error.message;
+                      if (errorMessage.includes('格式不兼容') || errorMessage.includes('无法转换为MP4')) {
+                        errorMessage = `视频格式不兼容：${errorMessage}。建议使用MP4格式的视频文件。`;
+                      } else if (errorMessage.includes('ffmpeg')) {
+                        errorMessage = `视频转换失败：${errorMessage}。请确保服务器已安装ffmpeg，或使用MP4格式的视频文件。`;
+                      }
+                      
+                      showToast('视频上传失败: ' + errorMessage, 'error');
+                      
+                      // 5秒后重置状态文本颜色
+                      setTimeout(() => {
+                        if (statusSpan) {
+                          statusSpan.style.color = '#6b7280';
+                        }
+                      }, 5000); // 错误信息显示5秒
+                    }
+                  });
+                  
+                  // 确认按钮处理
+                  dialog.querySelector('#videoInsertConfirm').addEventListener('click', function() {
+                    const videoUrl = dialog.querySelector('#videoUrlInput').value.trim();
+                    const format = formatSelect.value;
+                    let posterUrl = dialog.querySelector('#posterUrlInput').value.trim();
+                    
+                    if (!videoUrl) {
+                      showToast('请输入视频URL或选择视频文件', 'error');
+                      return;
+                    }
+                    
+                    // 验证poster URL（必须是图片，不能是视频）
+                    if (posterUrl) {
+                      const fullPosterUrl = ensureFullUrl(posterUrl);
+                      if (!isValidPosterUrl(fullPosterUrl)) {
+                        showToast('封面图片URL不能是视频文件，请输入图片URL（如.jpg、.png等）', 'error');
+                        return;
+                      }
+                    }
+                    
+                    // 如果是YouTube格式，验证URL格式
+                    if (format === 'youtube-iframe') {
+                      const youtubePattern = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+                      if (!youtubePattern.test(videoUrl) && !/^[a-zA-Z0-9_-]{11}$/.test(videoUrl)) {
+                        showToast('请输入有效的YouTube视频URL或视频ID', 'error');
+                        return;
+                      }
+                    }
+                    
+                    try {
+                      // 确保URL是完整的网络地址（兼容小程序等环境）
+                      const fullVideoUrl = ensureFullUrl(videoUrl);
+                      // poster URL验证已在generateVideoHtml函数中处理
+                      const fullPosterUrl = posterUrl ? ensureFullUrl(posterUrl) : '';
+                      
+                      // 根据选择的格式生成视频HTML（会自动验证poster URL）
+                      const videoHtml = generateVideoHtml(fullVideoUrl, format, fullPosterUrl);
+                      
+                      // 使用WangEditor插入HTML
+                      if (wangEditor && wangEditor.dangerouslyInsertHtml) {
+                        wangEditor.dangerouslyInsertHtml(`<div class="video-block">${videoHtml}</div><p><br></p>`);
+                      } else if (wangEditor && wangEditor.insertNode) {
+                        // 如果支持insertNode，创建视频节点（使用完整URL）
+                        // 确保poster是有效的图片URL（generateVideoHtml已经验证过）
+                        const validPosterUrl = fullPosterUrl && isValidPosterUrl(fullPosterUrl) ? fullPosterUrl : '';
+                        const videoNode = {
+                          type: 'video',
+                          src: fullVideoUrl,
+                          poster: validPosterUrl
+                        };
+                        wangEditor.insertNode(videoNode);
+                      } else {
+                        // 后备方案：直接插入HTML
+                        const currentHtml = wangEditor ? wangEditor.getHtml() : '';
+                        if (wangEditor) {
+                          wangEditor.setHtml(currentHtml + `<div class="video-block">${videoHtml}</div><p><br></p>`);
+                        }
+                      }
+                      
+                      showToast('视频插入成功', 'success');
+                      
+                      // 关闭对话框
+                      document.body.removeChild(overlay);
+                      document.body.removeChild(dialog);
+                    } catch (error) {
+                      console.error('插入视频失败:', error);
+                      showToast('插入视频失败: ' + error.message, 'error');
+                    }
+                  });
+                  
+                  // 取消按钮处理
+                  dialog.querySelector('#videoInsertCancel').addEventListener('click', function() {
+                    // 如果正在上传，不允许关闭
+                    if (isUploading) {
+                      showToast('正在上传视频，请稍候...', 'warning');
+                      return;
+                    }
+                    document.body.removeChild(overlay);
+                    document.body.removeChild(dialog);
+                  });
+                  
+                  // 点击遮罩层关闭
+                  overlay.addEventListener('click', function() {
+                    // 如果正在上传，不允许关闭
+                    if (isUploading) {
+                      showToast('正在上传视频，请稍候...', 'warning');
+                      return;
+                    }
+                    document.body.removeChild(overlay);
+                    document.body.removeChild(dialog);
+                  });
+                  
+                  // 聚焦URL输入框
+                  dialog.querySelector('#videoUrlInput').focus();
     }
     
     // 隐藏文章表单
@@ -2350,63 +3205,43 @@
       let htmlContent = '';
       let specialData = null;
       
-      // 只有 weather、exchange-rate、translation 不使用 htmlContent
-      // second-hand 和 rentals 仍然需要 htmlContent
-      const needsSpecialDataOnly = specialType && (specialType === 'weather' || specialType === 'exchange-rate' || specialType === 'translation');
-      
-      if (specialType) {
-        // 特殊类别：收集特殊数据
-        try {
-          specialData = collectSpecialCategoryData(specialType);
-          // 只有 weather、exchange-rate、translation 不需要 htmlContent
+          // 只有 weather、exchange-rate、translation 不使用 htmlContent
           // second-hand 和 rentals 仍然需要 htmlContent
-          if (!needsSpecialDataOnly) {
-            // 获取htmlContent（second-hand 和 rentals 需要）
-            if (currentEditorMode === 'html' && quillEditor) {
-              htmlContent = quillEditor.root.innerHTML;
-            } else {
-              // Markdown模式：将Markdown转换为HTML
-              const markdownContent = simpleMDE ? simpleMDE.value() : document.getElementById('postContent').value;
-              if (markdownContent) {
-                // 如果内容看起来像HTML，直接使用
-                if (markdownContent.trim().startsWith('<')) {
-                  htmlContent = markdownContent;
-                } else {
-                  // 使用 marked.js 将 Markdown 转换为 HTML
-                  if (typeof marked !== 'undefined') {
-                    htmlContent = marked.parse(markdownContent);
-                  } else {
-                    htmlContent = markdownContent; // 如果没有 marked.js，直接使用原始内容
-                  }
+          const needsSpecialDataOnly = specialType && (specialType === 'weather' || specialType === 'exchange-rate' || specialType === 'translation');
+          
+          if (specialType) {
+            // 特殊类别：收集特殊数据
+            try {
+              specialData = collectSpecialCategoryData(specialType);
+              // 只有 weather、exchange-rate、translation 不需要 htmlContent
+              // second-hand 和 rentals 仍然需要 htmlContent
+              if (!needsSpecialDataOnly) {
+                // 获取htmlContent（second-hand 和 rentals 需要）
+                if (wangEditor) {
+                  htmlContent = wangEditor.getHtml();
+                  // 确保所有URL都是完整的网络地址（兼容小程序等环境）
+                  htmlContent = ensureFullUrlsInHtml(htmlContent);
+                  // 清理所有base64图片和视频
+                  htmlContent = removeBase64Content(htmlContent);
                 }
+              } else {
+                // weather、exchange-rate、translation 不需要 htmlContent
+                htmlContent = undefined;
               }
+            } catch (error) {
+              showToast(error.message, 'error');
+              return;
             }
           } else {
-            // weather、exchange-rate、translation 不需要 htmlContent
-            htmlContent = undefined;
+            // 普通类别：获取htmlContent
+                if (wangEditor) {
+                  htmlContent = wangEditor.getHtml();
+                  // 确保所有URL都是完整的网络地址（兼容小程序等环境）
+                  htmlContent = ensureFullUrlsInHtml(htmlContent);
+                  // 清理所有base64图片和视频
+                  htmlContent = removeBase64Content(htmlContent);
+                }
           }
-        } catch (error) {
-          showToast(error.message, 'error');
-          return;
-        }
-      } else {
-        // 普通类别：获取htmlContent
-        if (currentEditorMode === 'html' && quillEditor) {
-          htmlContent = quillEditor.root.innerHTML;
-        } else {
-          // Markdown模式：将Markdown转换为HTML
-          const markdownContent = simpleMDE ? simpleMDE.value() : document.getElementById('postContent').value;
-          if (markdownContent) {
-            // 如果内容看起来像HTML，直接使用
-            if (markdownContent.trim().startsWith('<')) {
-              htmlContent = markdownContent;
-            } else {
-              // 否则，简单处理：将Markdown换行转换为HTML段落
-              htmlContent = '<p>' + markdownContent.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
-            }
-          }
-        }
-      }
       
       const published = document.getElementById('postPublished').checked;
 
@@ -3379,7 +4214,531 @@
     }
     
     /**
-     * 处理图片上传
+     * 上传图片到服务器（通用函数）
+     * @param {File} file - 图片文件
+     * @returns {Promise<string>} 返回图片URL
+     */
+    async function uploadImageToServer(file) {
+      // 验证文件类型
+      if (!file.type.startsWith('image/')) {
+        throw new Error('请选择图片文件');
+      }
+      
+      // 验证文件大小（10MB）
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error('图片文件大小不能超过10MB');
+      }
+      
+      // 创建FormData
+      const formData = new FormData();
+      formData.append('image', file);
+      
+      // 发送上传请求
+      const response = await fetch('/api/admin/custom-apis/upload-image', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin' // 包含cookie用于身份验证
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || '上传失败');
+      }
+      
+      // 返回图片URL
+      return result.image.url;
+    }
+    
+    /**
+     * 上传视频到服务器（通用函数）
+     * @param {File} file - 视频文件
+     * @param {Function} onProgress - 进度回调函数 (progress: number) => void
+     * @returns {Promise<string>} 返回视频URL
+     */
+    async function uploadVideoToServer(file, onProgress) {
+      // 验证文件类型
+      if (!file.type.startsWith('video/')) {
+        throw new Error('请选择视频文件');
+      }
+      
+      // 验证文件大小（200MB）
+      if (file.size > 200 * 1024 * 1024) {
+        throw new Error('视频文件大小不能超过200MB');
+      }
+      
+      // 检查文件格式
+      const ext = file.name.split('.').pop().toLowerCase();
+      const supportedFormats = ['mp4', 'mov', 'webm', 'ogg', 'ogv', 'avi', 'wmv', 'flv', 'mkv', 'm4v'];
+      if (!supportedFormats.includes(ext)) {
+        throw new Error(`不支持的视频格式（${ext}）。支持的格式：${supportedFormats.join(', ')}`);
+      }
+      
+      // 创建FormData
+      const formData = new FormData();
+      formData.append('video', file);
+      
+      // 使用XMLHttpRequest以支持上传进度
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        let uploadComplete = false;
+        let taskId = null;
+        let progressInterval = null;
+        
+        // 监听上传进度
+        if (onProgress) {
+          // 立即显示开始上传
+          onProgress(0, '开始上传...');
+          
+          xhr.upload.addEventListener('progress', function(e) {
+            if (e.lengthComputable && !uploadComplete) {
+              // 上传进度（0-30%），剩余70%用于服务器端处理（转换通常需要更长时间）
+              const percentComplete = Math.min((e.loaded / e.total) * 30, 30);
+              const uploadPercent = Math.round((e.loaded / e.total) * 100);
+              onProgress(percentComplete, `上传中... ${uploadPercent}%`);
+            }
+          });
+        }
+        
+        // 监听完成（上传完成，开始处理）
+        xhr.addEventListener('load', function() {
+          uploadComplete = true;
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const result = JSON.parse(xhr.responseText);
+              if (result.success && result.taskId) {
+                taskId = result.taskId;
+                
+                // 开始轮询进度
+                if (onProgress) {
+                  onProgress(30, '上传完成，开始处理...');
+                }
+                
+                // 轮询进度（每200ms）
+                progressInterval = setInterval(async () => {
+                  try {
+                    const progressResponse = await fetch(`/api/admin/custom-apis/video-upload-progress/${taskId}?t=${Date.now()}`, {
+                      credentials: 'include',
+                      cache: 'no-cache'
+                    });
+                    
+                    if (progressResponse.ok) {
+                      const progressData = await progressResponse.json();
+                      
+                      if (progressData.success) {
+                        if (progressData.running) {
+                          // 更新进度
+                          const progress = progressData.progress || {};
+                          const percent = Math.min(Math.max(progress.percent || 0, 0), 100);
+                          const message = progress.message || '处理中...';
+                          
+                          // 进度映射：30% - 100%（上传完成后，处理阶段）
+                          // 30% + (percent * 0.7) = 30% + 70%的处理进度
+                          const totalPercent = Math.min(30 + (percent * 0.7), 100);
+                          if (onProgress) {
+                            onProgress(totalPercent, message);
+                          }
+                        } else {
+                          // 处理完成或出错
+                          clearInterval(progressInterval);
+                          progressInterval = null;
+                          
+                          if (progressData.error) {
+                            if (onProgress) {
+                              onProgress(0, '处理失败');
+                            }
+                            reject(new Error(progressData.error));
+                          } else if (progressData.result) {
+                            // 完成，返回视频信息
+                            if (onProgress) {
+                              onProgress(100, '处理完成');
+                            }
+                            resolve(progressData.result);
+                          } else {
+                            if (onProgress) {
+                              onProgress(0, '处理失败');
+                            }
+                            reject(new Error('处理完成但未返回结果'));
+                          }
+                        }
+                      } else {
+                        clearInterval(progressInterval);
+                        progressInterval = null;
+                        if (onProgress) {
+                          onProgress(0, '获取进度失败');
+                        }
+                        reject(new Error(progressData.message || '获取进度失败'));
+                      }
+                    } else {
+                      clearInterval(progressInterval);
+                      progressInterval = null;
+                      if (onProgress) {
+                        onProgress(0, '获取进度失败');
+                      }
+                      reject(new Error('获取进度失败: ' + progressResponse.statusText));
+                    }
+                  } catch (pollError) {
+                    clearInterval(progressInterval);
+                    progressInterval = null;
+                    if (onProgress) {
+                      onProgress(0, '轮询失败');
+                    }
+                    reject(new Error('轮询进度失败: ' + pollError.message));
+                  }
+                }, 200); // 每200ms轮询一次
+                
+                // 设置最大轮询时间（10分钟）
+                setTimeout(() => {
+                  if (progressInterval) {
+                    clearInterval(progressInterval);
+                    progressInterval = null;
+                    if (onProgress) {
+                      onProgress(0, '处理超时');
+                    }
+                    reject(new Error('处理超时，请稍后重试'));
+                  }
+                }, 10 * 60 * 1000);
+              } else {
+                if (onProgress) {
+                  onProgress(0, '上传失败');
+                }
+                reject(new Error(result.message || '上传失败'));
+              }
+            } catch (e) {
+              if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+              }
+              if (onProgress) {
+                onProgress(0, '解析失败');
+              }
+              reject(new Error('解析响应失败'));
+            }
+          } else {
+            try {
+              const errorResult = JSON.parse(xhr.responseText);
+              reject(new Error(errorResult.message || '上传失败: ' + xhr.statusText));
+            } catch (e) {
+              reject(new Error('上传失败: ' + xhr.statusText));
+            }
+          }
+        });
+        
+        // 监听错误
+        xhr.addEventListener('error', function() {
+          if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+          }
+          if (onProgress) {
+            onProgress(0, '网络错误');
+          }
+          reject(new Error('网络错误，请检查网络连接'));
+        });
+        
+        // 监听超时
+        xhr.addEventListener('timeout', function() {
+          if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+          }
+          if (onProgress) {
+            onProgress(0, '上传超时');
+          }
+          reject(new Error('上传超时，视频文件可能过大或网络较慢'));
+        });
+        
+        // 设置超时时间（5分钟，因为视频上传可能需要时间）
+        xhr.timeout = 5 * 60 * 1000;
+        
+        // 发送请求
+        xhr.open('POST', '/api/admin/custom-apis/upload-video');
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.withCredentials = true; // 包含cookie用于身份验证
+        xhr.send(formData);
+      });
+    }
+    
+    /**
+     * 确保URL是完整的网络地址（兼容小程序等环境）
+     * @param {string} url - 可能是相对路径或完整URL
+     * @returns {string} 完整的网络地址
+     */
+    function ensureFullUrl(url) {
+      if (!url) return '';
+      
+      // 如果已经是完整的URL（http:// 或 https://），直接返回
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+      }
+      
+      // 如果是相对路径（以 / 开头），转换为完整URL
+      if (url.startsWith('/')) {
+        const protocol = window.location.protocol;
+        const host = window.location.host;
+        return `${protocol}//${host}${url}`;
+      }
+      
+      // 如果是相对路径（不以 / 开头），基于当前路径
+      if (!url.startsWith('//')) {
+        const protocol = window.location.protocol;
+        const host = window.location.host;
+        const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+        return `${protocol}//${host}${basePath}/${url}`;
+      }
+      
+      // 如果是协议相对URL（//example.com），添加当前协议
+      if (url.startsWith('//')) {
+        return `${window.location.protocol}${url}`;
+      }
+      
+      return url;
+    }
+    
+    /**
+     * 验证poster URL是否是图片（不能是视频）
+     * @param {string} posterUrl - poster URL
+     * @returns {boolean} 如果是图片返回true，如果是视频返回false
+     */
+    function isValidPosterUrl(posterUrl) {
+      if (!posterUrl) return false;
+      
+      // 视频文件扩展名
+      const videoExtensions = ['.mp4', '.mov', '.webm', '.ogg', '.ogv', '.avi', '.wmv', '.flv', '.mkv', '.m4v', '.mpg', '.mpeg', '.3gp'];
+      
+      // 检查URL是否包含视频扩展名
+      const urlLower = posterUrl.toLowerCase();
+      for (const ext of videoExtensions) {
+        if (urlLower.includes(ext)) {
+          return false; // 是视频文件，无效
+        }
+      }
+      
+      // 图片文件扩展名
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
+      
+      // 检查URL是否包含图片扩展名
+      for (const ext of imageExtensions) {
+        if (urlLower.includes(ext)) {
+          return true; // 是图片文件，有效
+        }
+      }
+      
+      // 如果没有明确的扩展名，检查URL路径中是否包含图片相关的关键词
+      if (urlLower.includes('/image') || urlLower.includes('/img') || urlLower.includes('/picture') || urlLower.includes('/photo')) {
+        return true; // 可能是图片
+      }
+      
+      // 如果包含视频相关的关键词，返回false
+      if (urlLower.includes('/video') || urlLower.includes('/videos')) {
+        return false;
+      }
+      
+      // 默认情况下，如果没有明确的视频扩展名，允许（可能是图片）
+      return true;
+    }
+    
+    /**
+     * 生成视频HTML代码
+     * @param {string} videoUrl - 视频URL
+     * @param {string} format - 视频格式：'video-tag' | 'video-source' | 'video-link'
+     * @param {string} posterUrl - 封面图片URL（可选）
+     * @returns {string} 视频HTML代码
+     */
+    /**
+     * 确保HTML内容中所有视频和图片URL都是完整的网络地址（兼容小程序等环境）
+     * @param {string} html - HTML内容
+     * @returns {string} 处理后的HTML内容
+     */
+    function ensureFullUrlsInHtml(html) {
+      if (!html) return html;
+      
+      // 处理img标签的src属性（确保图片URL是完整的网络地址）
+      html = html.replace(/<img([^>]*)>/gi, function(match, attrs) {
+        const srcMatch = attrs.match(/src=["']([^"']*)["']/i);
+        if (srcMatch) {
+          const originalSrc = srcMatch[1];
+          // 检查是否是根目录的文件（如 /IMG_1343.MOV），应该移动到uploads目录
+          // 但这里只转换URL，不移动文件
+          const fullSrc = ensureFullUrl(originalSrc);
+          const newAttrs = attrs.replace(/src=["'][^"']*["']/i, `src="${fullSrc}"`);
+          return `<img${newAttrs}>`;
+        }
+        return match;
+      });
+      
+      // 处理video标签的src和poster属性
+      html = html.replace(/<video([^>]*)>/gi, function(match, attrs) {
+        // 提取src和poster属性
+        const srcMatch = attrs.match(/src=["']([^"']*)["']/i);
+        const posterMatch = attrs.match(/poster=["']([^"']*)["']/i);
+        
+        let newAttrs = attrs;
+        
+        // 处理src属性
+        if (srcMatch) {
+          const originalSrc = srcMatch[1];
+          const fullSrc = ensureFullUrl(originalSrc);
+          newAttrs = newAttrs.replace(/src=["'][^"']*["']/i, `src="${fullSrc}"`);
+        }
+        
+        // 处理poster属性（验证必须是图片，不能是视频）
+        if (posterMatch) {
+          const originalPoster = posterMatch[1];
+          const fullPoster = ensureFullUrl(originalPoster);
+          
+          // 验证poster是否是图片（不能是视频）
+          if (isValidPosterUrl(fullPoster)) {
+            newAttrs = newAttrs.replace(/poster=["'][^"']*["']/i, `poster="${fullPoster}"`);
+          } else {
+            // poster是视频URL，移除poster属性（兼容微信小程序）
+            console.warn('检测到poster属性使用了视频URL，已移除（poster必须是图片）', { posterUrl: fullPoster });
+            newAttrs = newAttrs.replace(/poster=["'][^"']*["']/i, '');
+          }
+        }
+        
+        return `<video${newAttrs}>`;
+      });
+      
+      // 处理source标签的src属性（在video标签内）
+      html = html.replace(/<source([^>]*)>/gi, function(match, attrs) {
+        const srcMatch = attrs.match(/src=["']([^"']*)["']/i);
+        if (srcMatch) {
+          const originalSrc = srcMatch[1];
+          const fullSrc = ensureFullUrl(originalSrc);
+          const newAttrs = attrs.replace(/src=["'][^"']*["']/i, `src="${fullSrc}"`);
+          return `<source${newAttrs}>`;
+        }
+        return match;
+      });
+      
+      return html;
+    }
+    
+    /**
+     * 移除HTML内容中的所有base64图片和视频
+     * @param {string} html - HTML内容
+     * @returns {string} 清理后的HTML内容
+     */
+    function removeBase64Content(html) {
+      if (!html) return html;
+      
+      // 移除base64图片 (data:image/...)
+      html = html.replace(/<img[^>]*src=["']data:image\/[^"']*["'][^>]*>/gi, '');
+      
+      // 移除base64视频 (data:video/...)
+      html = html.replace(/<video[^>]*src=["']data:video\/[^"']*["'][^>]*>.*?<\/video>/gi, '');
+      html = html.replace(/<source[^>]*src=["']data:video\/[^"']*["'][^>]*>/gi, '');
+      
+      // 移除包含base64的style属性
+      html = html.replace(/style=["'][^"']*data:image\/[^"']*["']/gi, '');
+      html = html.replace(/style=["'][^"']*data:video\/[^"']*["']/gi, '');
+      
+      // 移除blob: URL
+      html = html.replace(/src=["']blob:[^"']*["']/gi, '');
+      html = html.replace(/href=["']blob:[^"']*["']/gi, '');
+      
+      return html;
+    }
+    
+    function generateVideoHtml(videoUrl, format, posterUrl = '') {
+      // 确保URL是完整的网络地址（兼容小程序等环境）
+      const fullVideoUrl = ensureFullUrl(videoUrl);
+      
+      // 验证并处理poster URL
+      let fullPosterUrl = '';
+      if (posterUrl) {
+        const fullPoster = ensureFullUrl(posterUrl);
+        // 验证poster是否是图片（不能是视频）
+        if (isValidPosterUrl(fullPoster)) {
+          fullPosterUrl = fullPoster;
+        } else {
+          // poster是视频URL，发出警告并忽略
+          console.warn('poster属性使用了视频URL，已忽略（poster必须是图片）', { posterUrl: fullPoster });
+          showToast('警告：封面图片URL不能是视频文件，已忽略poster属性', 'warning');
+        }
+      }
+      
+      // 转义URL中的特殊字符
+      const escapedVideoUrl = fullVideoUrl.replace(/"/g, '&quot;');
+      const escapedPosterUrl = fullPosterUrl ? fullPosterUrl.replace(/"/g, '&quot;') : '';
+      
+      switch (format) {
+        case 'video-tag':
+          // 方式1: 直接 video 标签（符合示例格式：<video src="..." poster="..."></video>）
+          // 确保使用完整的网络地址，兼容小程序环境
+          if (fullPosterUrl) {
+            return `<video src="${escapedVideoUrl}" poster="${escapedPosterUrl}"></video>`;
+          } else {
+            return `<video src="${escapedVideoUrl}"></video>`;
+          }
+        case 'video-source':
+          // 方式2: video 标签包含 source（支持多种格式）
+          // 检测视频文件扩展名来确定MIME类型
+          const videoExt = escapedVideoUrl.split('.').pop().toLowerCase();
+          let videoType = 'video/mp4'; // 默认
+          if (videoExt === 'mov' || videoExt === 'qt') {
+            videoType = 'video/quicktime';
+          } else if (videoExt === 'webm') {
+            videoType = 'video/webm';
+          } else if (videoExt === 'ogg' || videoExt === 'ogv') {
+            videoType = 'video/ogg';
+          } else if (videoExt === 'avi') {
+            videoType = 'video/x-msvideo';
+          } else if (videoExt === 'wmv') {
+            videoType = 'video/x-ms-wmv';
+          } else if (videoExt === 'flv') {
+            videoType = 'video/x-flv';
+          } else if (videoExt === 'mkv') {
+            videoType = 'video/x-matroska';
+          }
+          
+          // 确保使用完整的网络地址（poster已在上方验证）
+          if (fullPosterUrl) {
+            return `<video poster="${escapedPosterUrl}">
+  <source src="${escapedVideoUrl}" type="${videoType}">
+</video>`;
+          } else {
+            return `<video>
+  <source src="${escapedVideoUrl}" type="${videoType}">
+</video>`;
+          }
+        case 'youtube-iframe':
+          // 方式3: YouTube iframe嵌入（符合示例格式：<iframe src="https://www.youtube.com/embed/VIDEO_ID"></iframe>）
+          // 从YouTube URL中提取视频ID
+          let videoId = '';
+          if (videoUrl.includes('youtube.com/watch?v=')) {
+            videoId = videoUrl.split('v=')[1].split('&')[0];
+          } else if (videoUrl.includes('youtu.be/')) {
+            videoId = videoUrl.split('youtu.be/')[1].split('?')[0];
+          } else if (videoUrl.includes('youtube.com/embed/')) {
+            videoId = videoUrl.split('embed/')[1].split('?')[0];
+          } else {
+            // 假设直接输入的是视频ID
+            videoId = videoUrl.trim();
+          }
+          
+          if (!videoId) {
+            throw new Error('无法从URL中提取YouTube视频ID');
+          }
+          
+          return `<iframe src="https://www.youtube.com/embed/${videoId}"></iframe>`;
+        case 'video-link':
+          // 方式4: 视频链接（会显示为可点击的链接）
+          return `<a href="${escapedVideoUrl}" target="_blank" style="display: inline-block; padding: 0.5rem 1rem; background: #9333ea; color: white; text-decoration: none; border-radius: 0.25rem; margin: 1rem 0;">📹 视频链接</a>`;
+        default:
+          // 默认使用方式1（符合示例格式）
+          // 确保使用完整的网络地址（poster已在上方验证）
+          if (fullPosterUrl) {
+            return `<video src="${escapedVideoUrl}" poster="${escapedPosterUrl}"></video>`;
+          } else {
+            return `<video src="${escapedVideoUrl}"></video>`;
+          }
+      }
+    }
+    
+    /**
+     * 处理图片上传（用于表单中的图片URL输入框）
      */
     async function handleImageUpload(event) {
       const file = event.target.files[0];
@@ -3411,17 +4770,6 @@
       statusSpan.textContent = '上传中...';
       
       try {
-        // 创建FormData
-        const formData = new FormData();
-        formData.append('image', file);
-        
-        // 发送上传请求
-        const response = await fetch('/api/admin/custom-apis/upload-image', {
-          method: 'POST',
-          body: formData,
-          credentials: 'same-origin' // 包含cookie用于身份验证
-        });
-        
         // 模拟上传进度
         let progress = 0;
         const progressInterval = setInterval(() => {
@@ -3431,19 +4779,14 @@
           }
         }, 100);
         
-        const result = await response.json();
-        clearInterval(progressInterval);
+        // 使用通用上传函数
+        const imageUrl = await uploadImageToServer(file);
         
-        if (!response.ok || !result.success) {
-          throw new Error(result.message || '上传失败');
-        }
+        clearInterval(progressInterval);
         
         // 上传成功
         progressBar.style.width = '100%';
         statusSpan.textContent = '上传成功！';
-        
-        // 获取完整URL（根据当前请求域名）
-        const imageUrl = result.image.url;
         
         // 填充到图片URL输入框
         document.getElementById('postImage').value = imageUrl;
