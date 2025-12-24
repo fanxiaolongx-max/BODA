@@ -2,17 +2,248 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>博客管理 - DevBlog</title>
   <link rel="stylesheet" href="/css/blog.css">
   <link rel="stylesheet" href="/css/blog-unified.css">
   <style>
+    /* 全局防止溢出 */
+    html, body {
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow-x: hidden !important;
+      box-sizing: border-box !important;
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+    
+    /* 全局强制所有表格单元格左对齐（最高优先级，覆盖 blog-unified.css） */
+    .admin-table td,
+    .admin-table td *,
+    #tab-categories .admin-table td,
+    #tab-categories .admin-table td *,
+    #tab-tags .admin-table td,
+    #tab-tags .admin-table td *,
+    #tab-comments .admin-table td,
+    #tab-comments .admin-table td * {
+      text-align: left !important;
+    }
+    
+    /* 在所有媒体查询中都强制左对齐 */
+    @media (max-width: 640px) {
+      .admin-table td,
+      .admin-table td *,
+      #tab-categories .admin-table td,
+      #tab-categories .admin-table td *,
+      #tab-tags .admin-table td,
+      #tab-tags .admin-table td *,
+      #tab-comments .admin-table td,
+      #tab-comments .admin-table td * {
+        text-align: left !important;
+      }
+    }
+    
+    @media (max-width: 768px) {
+      .admin-table td,
+      .admin-table td *,
+      #tab-categories .admin-table td,
+      #tab-categories .admin-table td *,
+      #tab-tags .admin-table td,
+      #tab-tags .admin-table td *,
+      #tab-comments .admin-table td,
+      #tab-comments .admin-table td * {
+        text-align: left !important;
+      }
+    }
+    
     .admin-container {
       max-width: 1400px;
       margin: 0 auto;
       padding: 2rem 1rem;
       background-color: #F9FAFB;
       min-height: 100vh;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: hidden;
+    }
+    
+    /* 全局强制所有表格单元格左对齐（覆盖 blog-unified.css） */
+    .admin-table td,
+    #tab-categories .admin-table td,
+    #tab-tags .admin-table td,
+    #tab-comments .admin-table td {
+      text-align: left !important;
+    }
+    
+    /* 移动端容器优化 */
+    @media (max-width: 768px) {
+      /* 强制所有表格单元格左对齐 */
+      .admin-table td,
+      #tab-categories .admin-table td,
+      #tab-tags .admin-table td,
+      #tab-comments .admin-table td {
+        text-align: left !important;
+      }
+      /* 全局防止横向滚动 */
+      html, body {
+        overflow-x: hidden !important;
+        width: 100% !important;
+        max-width: 100vw !important;
+        padding-right: env(safe-area-inset-right, 0px) !important;
+        box-sizing: border-box !important;
+        position: relative !important;
+      }
+      
+      /* 确保所有直接子元素不超出 */
+      body > * {
+        max-width: 100vw !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+      }
+      
+      .admin-container {
+        padding: 1rem 0.5rem 1rem 0.5rem !important;
+        padding-right: calc(0.5rem + env(safe-area-inset-right, 0.5rem)) !important;
+        max-width: 100%;
+        width: 100%;
+        box-sizing: border-box;
+        overflow-x: hidden;
+      }
+      
+      /* iOS安全区域适配 */
+      @supports (padding: max(0px)) {
+        .admin-container {
+          padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+        }
+      }
+      
+      /* 确保表单不会溢出 */
+      form {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+      }
+      
+      /* 确保表单内的所有容器不会溢出 */
+      form > div,
+      form > div > div,
+      #postFormContent,
+      #postFormContent > div,
+      #postFormContent > div > div {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 强制覆盖所有内联样式中的固定max-width */
+      form div[style*="max-width: 500px"],
+      form div[style*="max-width: 400px"],
+      form div[style*="max-width: 300px"],
+      form div[style*="max-width: 350px"] {
+        max-width: 100% !important;
+      }
+      
+      /* 确保flex容器不会溢出 */
+      form div[style*="display: flex"] {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        flex-wrap: wrap !important;
+      }
+      
+      .admin-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 确保所有表单容器都能正确适配 */
+      .admin-form {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 1rem 0.75rem !important;
+      }
+      
+      /* 强制覆盖表单的grid布局 - 这是关键！ */
+      form > div[style*="grid-template-columns"],
+      form > div[style*="display: grid"],
+      #postFormContent > div[style*="grid-template-columns"],
+      #postFormContent > div[style*="display: grid"] {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 确保grid布局中的子元素不会溢出 */
+      form > div[style*="grid-template-columns"] > *,
+      form > div[style*="display: grid"] > *,
+      #postFormContent > div[style*="grid-template-columns"] > *,
+      #postFormContent > div[style*="display: grid"] > * {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+      }
+      
+      /* 确保侧边栏在移动端不sticky */
+      form > div[style*="grid-template-columns"] > div[style*="position: sticky"],
+      form > div[style*="display: grid"] > div[style*="position: sticky"],
+      #postFormContent > div[style*="grid-template-columns"] > div[style*="position: sticky"],
+      #postFormContent > div[style*="display: grid"] > div[style*="position: sticky"] {
+        position: static !important;
+        order: -1 !important; /* 移到顶部 */
+        margin-bottom: 1.5rem !important;
+      }
+      
+      /* 确保所有表单组都能正确适配 */
+      .admin-form-group {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 覆盖所有内联样式中的max-width */
+      div[style*="max-width"] {
+        max-width: 100% !important;
+      }
+      
+      /* 确保封面图容器正确适配 */
+      #coverImageContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        aspect-ratio: 16/9 !important;
+      }
+      
+      /* 确保编辑器容器正确适配 */
+      #htmlEditorContainer,
+      #wang-editor-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 确保所有输入框容器正确适配 */
+      input,
+      textarea,
+      select {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 确保所有flex容器不会溢出 */
+      div[style*="display: flex"] {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
     }
     .admin-header {
       display: flex;
@@ -60,7 +291,80 @@
       display: none;
     }
     .admin-tab-content.active {
-      display: block;
+      display: block !important;
+    }
+    
+    /* 确保移动端选项卡内容正确显示 */
+    @media (max-width: 768px) {
+      .admin-tab-content {
+        display: none !important;
+      }
+      .admin-tab-content.active {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 确保选项卡内容内的容器元素都能正确显示 */
+      .admin-tab-content.active > .admin-card-header {
+        display: flex !important;
+      }
+      
+      .admin-tab-content.active > .admin-card {
+        display: block !important;
+      }
+      
+      /* 只有明确设置了display: block的表单才显示，避免自动显示postForm */
+      .admin-tab-content.active > .admin-form[style*="display: block"] {
+        display: block !important;
+      }
+      
+      /* 确保postForm默认隐藏，除非明确显示 */
+      .admin-tab-content.active > #postForm {
+        display: none !important;
+      }
+      
+      .admin-tab-content.active > #postForm[style*="display: block"] {
+        display: block !important;
+      }
+      
+      /* 确保表格结构正确显示 */
+      .admin-tab-content.active table {
+        display: table !important;
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      
+      .admin-tab-content.active thead {
+        display: table-header-group !important;
+      }
+      
+      .admin-tab-content.active tbody {
+        display: table-row-group !important;
+      }
+      
+      .admin-tab-content.active tr {
+        display: table-row !important;
+      }
+      
+      .admin-tab-content.active td,
+      .admin-tab-content.active th {
+        display: table-cell !important;
+      }
+      
+      /* 确保分类、标签、评论选项卡的内容容器可见 */
+      #tab-categories,
+      #tab-tags,
+      #tab-comments {
+        display: none !important;
+      }
+      
+      #tab-categories.active,
+      #tab-tags.active,
+      #tab-comments.active {
+        display: block !important;
+      }
     }
     .admin-table {
       width: 100%;
@@ -68,6 +372,80 @@
       background: #FFFFFF;
       border-radius: 0;
       overflow: hidden;
+    }
+    
+    /* 覆盖 blog-unified.css 中的响应式表格规则，移除 ::before 伪元素的冒号 */
+    /* blog-unified.css 第292-297行有 .admin-table td:before { content: attr(data-label) ': '; } */
+    /* blog-unified.css 第286行有 text-align: right; 需要覆盖为左对齐 */
+    .admin-table td::before,
+    .admin-table td:before,
+    .admin-table th::before,
+    .admin-table th:before {
+      content: '' !important;
+      display: none !important;
+      visibility: hidden !important;
+      width: 0 !important;
+      height: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      float: none !important;
+      font-weight: normal !important;
+      color: transparent !important;
+    }
+    
+    /* 覆盖 blog-unified.css 中的右对齐规则，强制左对齐 */
+    .admin-table td {
+      text-align: left !important;
+    }
+    
+    /* 在所有媒体查询中都强制左对齐 */
+    @media (max-width: 640px) {
+      .admin-table td {
+        text-align: left !important;
+      }
+      
+      #tab-categories .admin-table td,
+      #tab-tags .admin-table td,
+      #tab-comments .admin-table td {
+        text-align: left !important;
+      }
+    }
+    
+    @media (max-width: 768px) {
+      .admin-table td {
+        text-align: left !important;
+      }
+      
+      #tab-categories .admin-table td,
+      #tab-tags .admin-table td,
+      #tab-comments .admin-table td {
+        text-align: left !important;
+      }
+    }
+    
+    /* 特别针对分类、标签、评论表格移除冒号 */
+    #tab-categories .admin-table td::before,
+    #tab-categories .admin-table td:before,
+    #tab-tags .admin-table td::before,
+    #tab-tags .admin-table td:before,
+    #tab-comments .admin-table td::before,
+    #tab-comments .admin-table td:before,
+    #tab-categories .admin-table th::before,
+    #tab-categories .admin-table th:before,
+    #tab-tags .admin-table th::before,
+    #tab-tags .admin-table th:before,
+    #tab-comments .admin-table th::before,
+    #tab-comments .admin-table th:before {
+      content: '' !important;
+      display: none !important;
+      visibility: hidden !important;
+      width: 0 !important;
+      height: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      float: none !important;
+      font-weight: normal !important;
+      color: transparent !important;
     }
     .admin-table th {
       background: #F9FAFB;
@@ -85,6 +463,15 @@
       padding: 1rem;
       border-top: 1px solid #F3F4F6;
       background: #FFFFFF;
+      text-align: left !important;
+    }
+    
+    /* 全局覆盖 blog-unified.css 中的右对齐规则 */
+    .admin-table td,
+    #tab-categories .admin-table td,
+    #tab-tags .admin-table td,
+    #tab-comments .admin-table td {
+      text-align: left !important;
     }
     .admin-table tbody tr {
       background: #FFFFFF;
@@ -115,6 +502,20 @@
       border: 1px solid #E5E7EB;
       margin-bottom: 1.5rem;
     }
+    
+    /* 移动端允许卡片内的按钮可见 */
+    @media (max-width: 768px) {
+      .admin-card {
+        overflow-x: visible !important;
+        overflow-y: hidden !important;
+      }
+      
+      /* 确保移动端卡片容器允许按钮溢出 */
+      #postsTableBodyMobile {
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+      }
+    }
     .admin-form {
       background: #FFFFFF;
       padding: 2rem;
@@ -142,15 +543,369 @@
     .category-tag {
       display: inline-flex;
       align-items: center;
-      padding: 0.25rem 0.75rem;
-      border-radius: 0.375rem;
-      font-size: 0.875rem;
+      padding: 0.1875rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
       font-weight: 500;
       background-color: #F3F4F6;
+      color: #6B7280;
+      border: none;
+    }
+    
+    /* 状态指示器样式 */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.1875rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      border: none;
+    }
+    
+    .status-badge.published {
+      background-color: #ECFDF5;
+      color: #059669;
+    }
+    
+    .status-badge.published::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: #10B981;
+      display: inline-block;
+    }
+    
+    .status-badge.draft {
+      background-color: #FEF3C7;
+      color: #D97706;
+    }
+    
+    .status-badge.draft::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: #F59E0B;
+      display: inline-block;
+    }
+    
+    /* 文章行样式优化 */
+    .category-post-row {
+      transition: all 0.2s ease;
+    }
+    
+    .category-post-row:hover {
+      background-color: #F9FAFB !important;
+    }
+    
+    .category-post-row:hover .admin-actions {
+      opacity: 1;
+      visibility: visible;
+    }
+    
+    /* 操作按钮组优化 */
+    .admin-actions {
+      display: flex !important;
+      gap: 0.375rem;
+      opacity: 1 !important;
+      visibility: visible !important;
+      transition: all 0.2s ease;
+      flex-wrap: nowrap !important;
+    }
+    
+    .category-post-row:hover .admin-actions {
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+    
+    /* 确保所有按钮都可见 */
+    .admin-actions .admin-btn-edit,
+    .admin-actions .admin-btn-copy,
+    .admin-actions .admin-btn-delete {
+      display: inline-flex !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      flex-shrink: 0 !important;
+    }
+    
+    /* 特别确保分类、标签、评论表格的删除按钮可见 */
+    #tab-categories .admin-actions .admin-btn-delete,
+    #tab-tags .admin-actions .admin-btn-delete,
+    #tab-comments .admin-actions .admin-btn-delete {
+      display: inline-flex !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      flex-shrink: 0 !important;
+      width: auto !important;
+      min-width: auto !important;
+    }
+    
+    .admin-btn-small {
+      padding: 0.375rem 0.625rem;
+      font-size: 0.75rem;
+      border-radius: 0.25rem;
+      border: 1px solid #E5E7EB;
+      background: white;
+      color: #6B7280;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 500;
+    }
+    
+    .admin-btn-small:hover {
+      background: #F9FAFB;
+      border-color: #D1D5DB;
       color: #374151;
+      transform: translateY(-1px);
+    }
+    
+    .admin-btn-edit:hover {
+      background: #EEF2FF;
+      border-color: #9333EA;
+      color: #9333EA;
+    }
+    
+    .admin-btn-copy:hover {
+      background: #F0FDF4;
+      border-color: #10B981;
+      color: #10B981;
+    }
+    
+    .admin-btn-delete:hover {
+      background: #FEF2F2;
+      border-color: #EF4444;
+      color: #EF4444;
+    }
+    
+    /* 分类标题行优化 */
+    .category-header-row {
+      border-bottom: 1px solid #E5E7EB;
+      background: #FAFBFC !important;
+    }
+    
+    .category-header-row:hover {
+      background: #F3F4F6 !important;
+    }
+    
+    /* 表格单元格紧凑化 */
+    .admin-table td {
+      padding: 0.625rem 0.75rem;
+      vertical-align: middle;
+    }
+    
+    .admin-table th {
+      padding: 0.625rem 0.75rem;
+    }
+    
+    /* 标题列加粗 */
+    .category-post-row td:first-child {
+      font-weight: 600;
+      font-size: 0.9375rem;
+      color: #111827;
     }
     .admin-form-group {
       margin-bottom: 1.5rem;
+    }
+    
+    /* 左右分栏布局 - 平板和移动端 */
+    @media (max-width: 1024px) {
+      /* 表单grid布局移动端改为单列 */
+      form > div[style*="grid-template-columns"],
+      .admin-form > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+      }
+      
+      form > div[style*="grid-template-columns"] > div:last-child,
+      .admin-form > div[style*="grid-template-columns"] > div:last-child {
+        position: static !important;
+        order: -1 !important; /* 侧边栏内容移到顶部 */
+        margin-bottom: 1.5rem !important;
+      }
+      
+      /* 确保侧边栏在移动端不sticky */
+      form > div[style*="grid-template-columns"] > div:last-child[style*="position: sticky"],
+      .admin-form > div[style*="grid-template-columns"] > div:last-child[style*="position: sticky"] {
+        position: static !important;
+      }
+    }
+    
+    /* 封面图容器样式 */
+    #coverImageContainer {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    
+    #coverImageContainer:hover #coverImageOverlay {
+      display: flex !important;
+    }
+    
+    #coverImageContainer:hover {
+      border-color: #9333ea;
+    }
+    
+    #coverImagePreview {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    
+    /* 移动端封面图容器优化 */
+    @media (max-width: 768px) {
+      #coverImageContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        aspect-ratio: 16/9 !important;
+      }
+      
+      #coverImagePreview {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      #coverImageContainer {
+        aspect-ratio: 16/9 !important;
+        border-radius: 0.375rem !important;
+      }
+    }
+    
+    /* 编辑器内图片和视频预览优化 */
+    #wang-editor-container img,
+    #wang-editor-container .w-e-text img,
+    #wang-editor-container video,
+    #wang-editor-container .w-e-text video,
+    #wang-editor-container iframe,
+    #wang-editor-container .w-e-text iframe {
+      border-radius: 8px !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      background: #ffffff !important;
+      max-width: 100% !important;
+      height: auto !important;
+      box-sizing: border-box !important;
+    }
+    
+    /* 编辑器内所有媒体元素通用响应式规则 */
+    #wang-editor-container img,
+    #wang-editor-container .w-e-text img {
+      max-width: 100% !important;
+      width: auto !important;
+      height: auto !important;
+      display: block !important;
+      margin: 1rem auto !important;
+    }
+    
+    #wang-editor-container video,
+    #wang-editor-container .w-e-text video {
+      max-width: 100% !important;
+      width: 100% !important;
+      height: auto !important;
+      display: block !important;
+      margin: 1rem auto !important;
+    }
+    
+    #wang-editor-container iframe,
+    #wang-editor-container .w-e-text iframe {
+      max-width: 100% !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 400px;
+      display: block !important;
+      margin: 1rem auto !important;
+    }
+    
+    /* 编辑器内所有容器和块级元素响应式 */
+    #wang-editor-container .w-e-text > * {
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    /* 编辑器内文字内容自动换行 */
+    #wang-editor-container .w-e-text p,
+    #wang-editor-container .w-e-text div,
+    #wang-editor-container .w-e-text span,
+    #wang-editor-container .w-e-text h1,
+    #wang-editor-container .w-e-text h2,
+    #wang-editor-container .w-e-text h3,
+    #wang-editor-container .w-e-text h4,
+    #wang-editor-container .w-e-text h5,
+    #wang-editor-container .w-e-text h6 {
+      word-wrap: break-word !important;
+      overflow-wrap: break-word !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    /* 确保编辑器内所有媒体元素响应式 */
+    #wang-editor-container img,
+    #wang-editor-container .w-e-text img {
+      max-width: 100% !important;
+      width: auto !important;
+      height: auto !important;
+      display: block !important;
+      margin: 1rem auto !important;
+    }
+    
+    #wang-editor-container video,
+    #wang-editor-container .w-e-text video {
+      max-width: 100% !important;
+      width: 100% !important;
+      height: auto !important;
+      display: block !important;
+      margin: 1rem auto !important;
+    }
+    
+    #wang-editor-container iframe,
+    #wang-editor-container .w-e-text iframe {
+      max-width: 100% !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 400px;
+      display: block !important;
+      margin: 1rem auto !important;
+    }
+    
+    /* 编辑器背景优化 */
+    #wang-editor-container .w-e-text-container {
+      background: #ffffff !important;
+    }
+    
+    /* 侧边栏卡片样式 */
+    form > div[style*="grid-template-columns"] > div:last-child > div {
+      transition: box-shadow 0.2s;
+    }
+    
+    form > div[style*="grid-template-columns"] > div:last-child > div:hover {
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+    }
+    
+    /* 输入框聚焦样式 */
+    .admin-form-input:focus,
+    .admin-form-select:focus,
+    .admin-form-textarea:focus {
+      outline: none;
+      border-color: #9333ea;
+      box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
+    }
+    
+    /* 统一间距 */
+    .admin-form-group {
+      margin-bottom: 1rem;
+    }
+    
+    .admin-form-label {
+      margin-bottom: 0.5rem;
+      font-size: 0.875rem;
+      color: #6b7280;
+      font-weight: 500;
     }
     .admin-form-label {
       display: block;
@@ -168,6 +923,27 @@
       border-radius: 0.375rem;
       font-size: 0.875rem;
       box-sizing: border-box;
+    }
+    
+    /* 确保所有输入框在移动端都能正确缩放 */
+    @media (max-width: 768px) {
+      .admin-form-input,
+      .admin-form-textarea,
+      .admin-form-select {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .admin-form-input,
+      .admin-form-textarea,
+      .admin-form-select {
+        padding: 0.625rem !important;
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+      }
     }
     
     /* 特殊类别表单中的输入框样式 */
@@ -245,6 +1021,43 @@
       }
     }
     
+    /* 可爱的加载动画 */
+    @keyframes bounce {
+      0%, 100% {
+        transform: translateY(0) scale(1);
+      }
+      50% {
+        transform: translateY(-10px) scale(1.1);
+      }
+    }
+    
+    @keyframes shimmer {
+      0% {
+        transform: translateX(-100%);
+      }
+      100% {
+        transform: translateX(100%);
+      }
+    }
+    
+    @keyframes rotateEmoji {
+      0% {
+        transform: rotate(0deg) scale(1);
+      }
+      25% {
+        transform: rotate(-10deg) scale(1.05);
+      }
+      50% {
+        transform: rotate(0deg) scale(1.1);
+      }
+      75% {
+        transform: rotate(10deg) scale(1.05);
+      }
+      100% {
+        transform: rotate(0deg) scale(1);
+      }
+    }
+    
     /* 加载时隐藏表单内容 */
     #postForm.loading #postFormContent {
       display: none;
@@ -260,6 +1073,8 @@
       padding: 1.5rem;
       border-bottom: 1px solid #E5E7EB;
       background: #FFFFFF;
+      flex-wrap: nowrap;
+      gap: 1rem;
     }
     .admin-actions {
       display: flex;
@@ -323,85 +1138,2376 @@
     }
     
     /* 移动端响应式优化 */
-    @media (max-width: 640px) {
+    @media (max-width: 768px) {
       .admin-container {
-        padding: 1rem 0.75rem;
+        padding: 1rem 0.5rem;
       }
       
       .admin-header {
         flex-direction: column;
         align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 1rem;
       }
       
       .admin-header h1 {
         font-size: 1.5rem;
+        margin: 0;
+      }
+      
+      .admin-header p {
+        font-size: 0.875rem;
+        margin-top: 0.25rem;
+      }
+      
+      .admin-header > div:last-child {
+        width: 100%;
+      }
+      
+      .admin-header .blog-btn {
+        width: 100%;
+        justify-content: center;
       }
       
       .admin-tabs {
         width: 100%;
         padding-bottom: 0.5rem;
+        margin-bottom: 1rem;
       }
       
       .admin-tab {
-        padding: 0.5rem 1rem;
+        padding: 0.5rem 0.75rem;
         font-size: 0.8125rem;
+        min-width: auto;
+      }
+      
+      .admin-card-header {
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 0.375rem !important;
+        flex-wrap: nowrap !important;
+        padding: 0.5rem 0.75rem !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
+      
+      /* 移动端隐藏"文章管理"标题 */
+      .admin-card-header h2 {
+        display: none !important;
+      }
+      
+      /* 强制覆盖内联样式，确保移动端不换行 - 使用更小的gap */
+      .admin-card-header > div,
+      .admin-card-header .admin-header-actions,
+      .admin-card-header .admin-header-actions-container {
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.25rem !important;
+        flex: 1 !important;
+        min-width: 0 !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: thin !important;
+      }
+      
+      /* 覆盖内联样式中的flex-wrap和gap - 使用!important强制覆盖 */
+      .admin-card-header > div[style*="flex-wrap"],
+      .admin-header-actions[style*="flex-wrap"],
+      .admin-header-actions-container[style*="flex-wrap"],
+      .admin-card-header > div[style*="gap"],
+      .admin-header-actions[style*="gap"],
+      .admin-header-actions-container[style*="gap"],
+      .admin-card-header > div[style*="gap: 0.75rem"],
+      .admin-header-actions[style*="gap: 0.75rem"],
+      .admin-header-actions-container[style*="gap: 0.75rem"] {
+        flex-wrap: nowrap !important;
+        gap: 0.25rem !important;
+      }
+      
+      /* 确保所有子元素都不换行 */
+      .admin-card-header > div > *,
+      .admin-header-actions > *,
+      .admin-header-actions-container > * {
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+      }
+      
+      /* 搜索框除外，它需要收缩 */
+      .admin-card-header > div > .admin-search-container,
+      .admin-header-actions > .admin-search-container,
+      .admin-header-actions-container > .admin-search-container {
+        flex-shrink: 1 !important;
+      }
+      
+      /* 搜索框移动端优化 - 缩小尺寸，确保不换行 */
+      .admin-card-header > div > div:first-child,
+      .admin-search-container {
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        flex-shrink: 1 !important;
+        width: 0 !important; /* 强制flex收缩 */
+      }
+      
+      .admin-card-header input[type="text"] {
+        font-size: 0.6875rem !important;
+        padding: 0.25rem 0.375rem 0.25rem 1.25rem !important;
+        min-width: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 0% !important;
+      }
+      
+      /* 搜索框图标缩小 */
+      .admin-card-header input[type="text"] + svg {
+        width: 12px !important;
+        height: 12px !important;
+        left: 0.375rem !important;
+      }
+      
+      /* 搜索框占位符文字缩小 */
+      .admin-card-header input[type="text"]::placeholder {
+        font-size: 0.6875rem !important;
+      }
+      
+      /* 状态筛选移动端优化 - 更紧凑，更小 */
+      .admin-card-header select {
+        font-size: 0.6875rem !important;
+        padding: 0.25rem 0.375rem !important;
+        flex-shrink: 0 !important;
+        min-width: auto !important;
+        width: auto !important;
+        max-width: 65px !important;
+        white-space: nowrap !important;
+      }
+      
+      /* 新建文章按钮移动端优化 - 更紧凑，确保显示"+ 新建" */
+      .admin-card-header .blog-btn {
+        padding: 0.25rem 0.375rem !important;
+        font-size: 0.6875rem !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        width: auto !important;
+        min-width: auto !important;
+        max-width: 60px !important;
+        line-height: 1.2 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+      
+      /* 确保按钮文字是"+ 新建" */
+      .admin-card-header .blog-btn[onclick*="openNewPostInNewWindow"] {
+        font-size: 0.6875rem !important;
+        padding: 0.25rem 0.375rem !important;
+      }
+      
+      /* 强制按钮文字显示"+ 新建"，防止被覆盖 */
+      #tab-posts .admin-card-header .blog-btn[onclick*="openNewPostInNewWindow"],
+      #tab-posts .admin-card-header .blog-btn-primary {
+        font-size: 0.6875rem !important;
+      }
+      
+      /* 确保按钮文字不被JavaScript修改 */
+      #tab-posts .admin-card-header .blog-btn[onclick*="openNewPostInNewWindow"]::before {
+        content: none !important;
+        display: none !important;
+      }
+      
+      /* 确保按钮文字不被覆盖，移除任何伪元素 */
+      .admin-card-header .blog-btn::before,
+      .admin-card-header .blog-btn::after {
+        display: none !important;
+        content: none !important;
+      }
+      
+      /* 确保搜索框容器不换行 */
+      .admin-card-header > div > div[style*="position: relative"],
+      .admin-search-container {
+        flex-shrink: 1 !important;
+        min-width: 0 !important;
+        max-width: none !important;
       }
       
       .admin-form {
-        padding: 1.5rem 1rem;
+        padding: 1rem 0.75rem;
       }
       
-      .admin-actions {
+      /* 表单顶部栏移动端优化 */
+      .admin-form > div:first-child {
         flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+        padding-bottom: 1rem;
       }
       
-      .admin-btn-small {
+      .admin-form > div:first-child > div:last-child {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      
+      .admin-form > div:first-child > div:last-child .blog-btn {
         width: 100%;
         justify-content: center;
       }
       
-      .admin-table-wrapper {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
+      /* 左右分栏布局改为单列 - 强制覆盖内联样式 */
+      form > div[style*="grid-template-columns"],
+      form > div[style*="display: grid"],
+      .admin-form > div[style*="grid-template-columns"],
+      .admin-form > div[style*="display: grid"],
+      #postFormElement > div[style*="grid-template-columns"],
+      #postFormElement > div[style*="display: grid"] {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 侧边栏卡片在移动端全宽显示 */
+      form > div[style*="grid-template-columns"] > div:last-child,
+      form > div[style*="display: grid"] > div:last-child,
+      .admin-form > div[style*="grid-template-columns"] > div:last-child,
+      .admin-form > div[style*="display: grid"] > div:last-child,
+      #postFormElement > div[style*="grid-template-columns"] > div:last-child,
+      #postFormElement > div[style*="display: grid"] > div:last-child {
+        position: static !important;
+        order: -1 !important; /* 侧边栏内容移到顶部 */
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 确保grid布局中的左侧内容区也不会溢出 */
+      form > div[style*="grid-template-columns"] > div:first-child,
+      form > div[style*="display: grid"] > div:first-child,
+      #postFormElement > div[style*="grid-template-columns"] > div:first-child,
+      #postFormElement > div[style*="display: grid"] > div:first-child {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+      }
+      
+      .admin-form-group {
+        margin-bottom: 1rem;
+      }
+      
+      .admin-form-label {
+        font-size: 0.875rem;
+        margin-bottom: 0.5rem;
+      }
+      
+      .admin-form-input,
+      .admin-form-select,
+      .admin-form-textarea {
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+        padding: 0.75rem;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+      }
+      
+      /* 确保输入框在移动端不会缩放 */
+      input[type="text"],
+      input[type="number"],
+      input[type="email"],
+      input[type="url"],
+      input[type="password"],
+      input[type="datetime-local"],
+      textarea,
+      select {
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 标题输入框特殊处理 */
+      #postName {
+        font-size: 1.125rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 摘要输入框特殊处理 */
+      #postExcerpt {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        resize: vertical !important;
+      }
+      
+      /* 图片URL输入框特殊处理 */
+      #postImage {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      @media (min-width: 481px) {
+        input[type="text"],
+        input[type="number"],
+        input[type="email"],
+        input[type="url"],
+        input[type="password"],
+        input[type="datetime-local"],
+        textarea,
+        select {
+          font-size: 0.9375rem !important;
+        }
+        
+        #postName {
+          font-size: 1.25rem !important;
+        }
+      }
+      
+      /* 表格移动端优化 - 隐藏表格，显示卡片列表 */
+      .admin-table-wrapper,
+      .admin-card > div.desktop-table-container {
+        display: none !important;
+      }
+      
+      /* 隐藏表格，使用卡片布局 */
+      .admin-table {
+        display: none !important;
+      }
+      
+      /* 显示移动端卡片容器 */
+      #postsTableBodyMobile {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+      }
+      
+      /* 桌面端显示表格，隐藏卡片 */
+      @media (min-width: 769px) {
+        .admin-card > div.desktop-table-container {
+          display: block !important;
+        }
+        
+        #postsTableBodyMobile {
+          display: none !important;
+        }
+      }
+      
+      /* 移动端卡片样式 */
+      .admin-post-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        padding: 0.625rem 0.75rem;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: auto;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: visible !important;
+        overflow-y: hidden !important;
+        flex-wrap: nowrap !important;
+      }
+      
+      .admin-post-card-header {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0;
+        overflow: hidden;
+      }
+      
+      .admin-post-card-title {
+        font-weight: 500;
+        font-size: 0.875rem;
+        color: #111827;
+        flex: 1;
+        min-width: 0;
+        word-break: break-word;
+        line-height: 1.3;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      
+      /* 状态标签在移动端显示在标题旁边 */
+      .admin-post-card-header .status-badge {
+        flex-shrink: 0;
+        font-size: 0.6875rem !important;
+        padding: 0.125rem 0.375rem !important;
+        white-space: nowrap;
+      }
+      
+      .admin-post-card-meta {
+        display: none; /* 移动端隐藏详细元信息 */
+      }
+      
+      .admin-post-card-meta-item {
+        display: none;
+      }
+      
+      /* 移动端显示简化的状态和分类 */
+      .admin-post-card-header::after {
+        content: '';
+        display: none;
+      }
+      
+      .admin-post-card-actions {
+        display: flex !important;
+        gap: 0.25rem;
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+        flex-shrink: 0 !important;
+        width: auto !important;
+        min-width: auto !important;
+        max-width: none !important;
+        box-sizing: border-box;
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+      }
+      
+      .admin-post-card-actions .admin-btn-small {
+        padding: 0.375rem 0.5rem !important;
+        font-size: 0.75rem !important;
+        min-width: auto !important;
+        flex: 0 0 auto !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        width: auto !important;
+      }
+      
+      /* 确保所有按钮都可见 */
+      .admin-post-card-actions .admin-btn-edit,
+      .admin-post-card-actions .admin-btn-copy,
+      .admin-post-card-actions .admin-btn-delete {
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      
+      /* 如果空间不足，让按钮可以横向滚动 */
+      @media (max-width: 480px) {
+        .admin-post-card {
+          flex-wrap: nowrap;
+          overflow-x: visible;
+        }
+        
+        .admin-post-card-header {
+          flex: 1;
+          min-width: 0;
+          max-width: none !important;
+          overflow: hidden;
+        }
+        
+        .admin-post-card {
+          overflow-x: visible !important;
+          overflow-y: hidden !important;
+        }
+        
+        .admin-post-card-header {
+          flex: 1 !important;
+          min-width: 0 !important;
+          max-width: none !important;
+          overflow: hidden !important;
+        }
+        
+        .admin-post-card-actions {
+          flex-shrink: 0 !important;
+          width: auto !important;
+          min-width: auto !important;
+          max-width: none !important;
+          overflow-x: visible !important;
+          overflow-y: visible !important;
+          display: flex !important;
+          visibility: visible !important;
+        }
+        
+        .admin-post-card-actions .admin-btn-small {
+          padding: 0.25rem 0.375rem !important;
+          font-size: 0.6875rem !important;
+          min-width: auto !important;
+          max-width: none !important;
+          white-space: nowrap !important;
+          display: inline-flex !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          flex-shrink: 0 !important;
+        }
+        
+        /* 确保所有按钮在超小屏幕也可见 */
+        .admin-post-card-actions .admin-btn-edit,
+        .admin-post-card-actions .admin-btn-copy,
+        .admin-post-card-actions .admin-btn-delete {
+          display: inline-flex !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+        }
+      }
+      
+      /* 确保文章卡片整体不溢出，但允许按钮可见 */
+      .admin-post-card {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: visible !important;
+        overflow-y: hidden !important;
+      }
+      
+      /* 确保标题区域不会挤压按钮 */
+      .admin-post-card-header {
+        min-width: 0 !important;
+        overflow: hidden !important;
+      }
+      
+      /* 移动端分类标题样式 */
+      .admin-category-header-mobile {
+        background: #f9fafb;
+        padding: 0.5rem 0.75rem;
+        font-weight: 600;
+        font-size: 0.8125rem;
+        color: #374151;
+        border-bottom: 1px solid #e5e7eb;
+        margin-top: 0.75rem;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        user-select: none;
+      }
+      
+      .admin-category-header-mobile:first-child {
+        margin-top: 0;
+      }
+      
+      .admin-category-header-mobile .category-expand-icon {
+        display: inline-block;
+        width: 12px;
+        text-align: center;
+        color: #6b7280;
+        font-size: 0.75rem;
+      }
+      
+      /* 折叠状态下的分类文章隐藏 */
+      .admin-category-mobile.collapsed ~ .admin-post-card {
+        display: none;
+      }
+      
+      .admin-category-mobile.collapsed ~ .admin-category-header-mobile ~ .admin-post-card {
+        display: none;
+      }
+      
+      /* 分类标签样式 */
+      .category-tag {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        background: #f3f4f6;
+        color: #6b7280;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+      
+      /* 状态标签样式 */
+      .status-badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+      
+      .status-badge.published {
+        background: #d1fae5;
+        color: #065f46;
+      }
+      
+      .status-badge.draft {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      
+      /* 分类标题行移动端样式 */
+      .category-header-row {
+        display: none !important;
+      }
+      
+      .admin-category-header-mobile {
+        display: block !important;
+        background: #f9fafb;
+        padding: 0.75rem 1rem;
+        margin: 1rem 0 0.5rem 0;
+        border-radius: 0.375rem;
+        font-weight: 600;
+        font-size: 0.875rem;
+        color: #374151;
+        border-left: 3px solid #9333ea;
+      }
+      
+      .admin-category-header-mobile:first-child {
+        margin-top: 0;
+      }
+      
+      .admin-table th {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.6875rem;
+      }
+      
+      .admin-table td {
+        padding: 0.75rem 0.5rem;
+      }
+      
+      /* 表格操作按钮移动端优化 - 移除sticky定位 */
+      .admin-table td:last-child {
+        position: static !important;
+        right: auto !important;
+        background: transparent !important;
+        z-index: auto !important;
+        min-width: auto;
+        white-space: nowrap;
+      }
+      
+      .admin-table tbody tr:hover td:last-child {
+        background: transparent !important;
+      }
+      
+      /* 表格中的按钮组移动端优化 */
+      .admin-table .admin-actions {
+        display: flex !important;
+        flex-direction: row;
+        gap: 0.25rem;
+        flex-wrap: wrap;
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+      
+      .admin-table .admin-btn-small {
+        padding: 0.375rem 0.5rem;
+        font-size: 0.75rem;
+        min-width: auto;
+        width: auto;
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      
+      /* 操作按钮组移动端优化 */
+      .admin-actions {
+        flex-direction: column;
+        gap: 0.5rem;
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+      
+      /* 确保所有操作按钮在移动端都可见 */
+      .admin-actions .admin-btn-edit,
+      .admin-actions .admin-btn-copy,
+      .admin-actions .admin-btn-delete {
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      
+      .admin-btn-small,
+      .admin-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 0.625rem 1rem;
+        font-size: 0.875rem;
+      }
+      
+      /* 按钮组横向排列时改为纵向（但排除表格内的按钮组） */
+      div[style*="display: flex"][style*="gap"]:not(.admin-actions):not(.admin-table .admin-actions) {
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+      }
+      
+      /* 表单底部的按钮组 */
+      form > div:last-child[style*="display: flex"],
+      .admin-form > div:last-child[style*="display: flex"] {
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+      }
+      
+      form > div:last-child[style*="display: flex"] .blog-btn,
+      .admin-form > div:last-child[style*="display: flex"] .blog-btn {
+        width: 100%;
+        justify-content: center;
+      }
+      
+      /* 特殊表单移动端优化 */
+      #specialForm-translation,
+      #specialForm-weather,
+      #specialForm-exchangeRate,
+      #specialForm-rentals {
+        max-width: 100% !important;
+      }
+      
+      #specialForm-translation .admin-form-group,
+      #specialForm-weather .admin-form-group,
+      #specialForm-exchangeRate .admin-form-group,
+      #specialForm-rentals .admin-form-group {
+        max-width: 100% !important;
+      }
+      
+      /* 特殊表单中的网格布局移动端优化 */
+      #specialForm-weather > div[style*="grid-template-columns"],
+      #specialForm-exchangeRate > div[style*="grid-template-columns"],
+      #specialForm-rentals > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+      }
+      
+      /* 封面图容器移动端优化 */
+      #coverImageContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      
+      /* 编辑器工具栏移动端优化 */
+      .editor-toolbar {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        flex-wrap: nowrap !important;
+        white-space: nowrap !important;
+        padding: 0.5rem !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      .editor-toolbar a {
+        margin: 0.125rem !important;
+        padding: 0.375rem 0.5rem !important;
+        font-size: 0.875rem !important;
+        flex-shrink: 0 !important;
+      }
+      
+      /* HTML编辑器容器移动端优化 */
+      #htmlEditorContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+      }
+      
+      #postHtmlContent {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      #wang-editor-toolbar {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        box-sizing: border-box !important;
+      }
+      
+      #wang-editor-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: 300px !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+      }
+      
+      /* WangEditor工具栏按钮组 */
+      #wang-editor-toolbar .w-e-bar-item {
+        flex-shrink: 0 !important;
+      }
+      
+      /* WangEditor编辑区域 */
+      #wang-editor-container .w-e-text-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+      }
+      
+      #wang-editor-container .w-e-text {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+      }
+      
+      /* 表单顶部栏移动端优化 */
+      form > div:first-child[style*="display: flex"],
+      #postFormContent > div:first-child[style*="display: flex"] {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 1rem !important;
+        padding-bottom: 1rem !important;
+      }
+      
+      form > div:first-child[style*="display: flex"] > div:last-child,
+      #postFormContent > div:first-child[style*="display: flex"] > div:last-child {
+        width: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+      }
+      
+      form > div:first-child[style*="display: flex"] > div:last-child button,
+      #postFormContent > div:first-child[style*="display: flex"] > div:last-child button {
+        width: 100% !important;
+        justify-content: center !important;
+      }
+      
+      /* 标题输入框移动端优化 */
+      #postName {
+        font-size: 1.125rem !important;
+        padding: 0.625rem 0 !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 摘要输入框移动端优化 */
+      #postExcerpt {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        resize: vertical !important;
+      }
+      
+      /* 侧边栏在移动端移到顶部 */
+      form > div[style*="grid-template-columns"] > div:last-child {
+        position: static !important;
+        order: -1 !important;
+        margin-bottom: 1.5rem !important;
+      }
+      
+      /* 侧边栏卡片移动端优化 */
+      form > div[style*="grid-template-columns"] > div:last-child > div {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 封面图容器移动端优化 */
+      #coverImageContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        aspect-ratio: 16/9 !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 所有输入框和选择框移动端优化 */
+      .admin-form-input,
+      .admin-form-select,
+      .admin-form-textarea {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 特殊表单中的按钮组移动端优化 */
+      #specialForm-translation button,
+      #specialForm-weather button,
+      #specialForm-exchangeRate button,
+      #specialForm-rentals button {
+        width: 100% !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.875rem !important;
+      }
+      
+      /* 特殊表单中的网格布局移动端改为单列 */
+      #specialForm-translation > div[style*="grid-template-columns"],
+      #specialForm-weather > div[style*="grid-template-columns"],
+      #specialForm-exchangeRate > div[style*="grid-template-columns"],
+      #specialForm-rentals > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+        gap: 0.75rem !important;
+      }
+      
+      /* 地址搜索按钮组移动端优化 */
+      div[style*="display: flex"][style*="gap"] button {
+        width: 100% !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+      }
+    }
+    
+    /* 超小屏幕优化 */
+    @media (max-width: 480px) {
+      .admin-container {
+        padding: 0.75rem 0.5rem;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      .admin-header h1 {
+        font-size: 1.25rem;
+      }
+      
+      .admin-tab {
+        padding: 0.5rem;
+        font-size: 0.75rem;
+      }
+      
+      .admin-form {
+        padding: 0.75rem 0.5rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      .admin-table {
+        min-width: 500px;
+        font-size: 0.8125rem;
+      }
+      
+      .admin-table th,
+      .admin-table td {
+        padding: 0.5rem 0.375rem;
+      }
+      
+      /* 超小屏幕下的卡片头部 */
+      .admin-card-header {
+        padding: 0.5rem 0.375rem !important;
+        gap: 0.25rem !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+      }
+      
+      /* 超小屏也隐藏标题 */
+      .admin-card-header h2 {
+        display: none !important;
+      }
+      
+      .admin-card-header > div,
+      .admin-header-actions,
+      .admin-header-actions-container {
+        gap: 0.125rem !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        flex: 1 !important;
+        min-width: 0 !important;
+      }
+      
+      /* 确保容器内的元素正确排列 */
+      .admin-header-actions-container {
+        display: flex !important;
+        align-items: center !important;
+        flex-wrap: nowrap !important;
+      }
+      
+      /* 确保搜索框、筛选、按钮都在一行 */
+      .admin-header-actions-container > * {
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+      }
+      
+      .admin-header-actions-container > .admin-search-container {
+        flex-shrink: 1 !important;
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+      }
+      
+      .admin-card-header input[type="text"] {
+        font-size: 0.625rem !important;
+        padding: 0.25rem 0.25rem 0.25rem 1rem !important;
+        min-width: 0 !important;
+      }
+      
+      .admin-card-header input[type="text"] + svg {
+        width: 10px !important;
+        height: 10px !important;
+        left: 0.25rem !important;
+      }
+      
+      .admin-card-header input[type="text"]::placeholder {
+        font-size: 0.625rem !important;
+      }
+      
+      .admin-card-header select {
+        font-size: 0.625rem !important;
+        padding: 0.25rem 0.25rem !important;
+        max-width: 60px !important;
+      }
+      
+      .admin-card-header .blog-btn {
+        font-size: 0.625rem !important;
+        padding: 0.25rem 0.25rem !important;
+        line-height: 1.2 !important;
+      }
+      
+      /* 确保表单默认不显示 - 强制隐藏 */
+      #postForm {
+        display: none !important;
+      }
+      
+      /* 只有明确设置了display: block时才显示 */
+      #postForm[style*="display: block"] {
+        display: block !important;
+      }
+      
+      /* 防止其他CSS规则覆盖 */
+      .admin-tab-content.active > #postForm:not([style*="display: block"]) {
+        display: none !important;
+      }
+      
+      /* 所有标签页内容增加右侧边距适配iOS */
+      .admin-tab-content {
+        padding-right: env(safe-area-inset-right, 0.5rem) !important;
+        box-sizing: border-box !important;
+      }
+      
+      @supports (padding: max(0px)) {
+        .admin-tab-content {
+          padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+        }
+      }
+      
+      .admin-card,
+      .admin-form {
+        padding-right: env(safe-area-inset-right, 0.5rem) !important;
+        box-sizing: border-box !important;
+      }
+      
+      @supports (padding: max(0px)) {
+        .admin-card,
+        .admin-form {
+          padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+        }
+      }
+      
+      .admin-card-header {
+        padding-right: env(safe-area-inset-right, 0.5rem) !important;
+        box-sizing: border-box !important;
+      }
+      
+      @supports (padding: max(0px)) {
+        .admin-card-header {
+          padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+        }
+      }
+      
+      /* 分类、标签、评论头部移动端优化 */
+      #tab-categories .admin-card-header,
+      #tab-tags .admin-card-header,
+      #tab-comments .admin-card-header {
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 0.375rem !important;
+        flex-wrap: nowrap !important;
+        padding: 0.5rem 0.75rem !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
+      
+      #tab-categories .admin-card-header h2,
+      #tab-tags .admin-card-header h2,
+      #tab-comments .admin-card-header h2 {
+        font-size: 0.875rem !important;
+        margin: 0 !important;
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+      }
+      
+      #tab-categories .admin-card-header .blog-btn,
+      #tab-tags .admin-card-header .blog-btn {
+        padding: 0.375rem 0.625rem !important;
+        font-size: 0.75rem !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        width: auto !important;
+      }
+      
+      /* 响应式表格：移动端显示卡片，桌面端显示表格 */
+      /* 移动端：隐藏表格，显示卡片 */
+      .categories-table-desktop,
+      .tags-table-desktop,
+      .comments-table-desktop {
+        display: none !important;
+      }
+      
+      .categories-table-mobile,
+      .tags-table-mobile,
+      .comments-table-mobile {
+        display: block !important;
+      }
+      
+      /* 桌面端：显示表格，隐藏卡片 */
+      @media (min-width: 769px) {
+        .categories-table-desktop,
+        .tags-table-desktop,
+        .comments-table-desktop {
+          display: block !important;
+        }
+        
+        .categories-table-mobile,
+        .tags-table-mobile,
+        .comments-table-mobile {
+          display: none !important;
+        }
+      }
+      
+      /* 移动端卡片样式 */
+      .admin-table-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        text-align: left !important;
+      }
+      
+      .admin-table-card-row {
+        display: flex;
+        align-items: flex-start;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #f3f4f6;
+        text-align: left !important;
+        justify-content: flex-start !important;
+      }
+      
+      .admin-table-card-row:last-child {
+        border-bottom: none;
+      }
+      
+      .admin-table-card-row.admin-table-card-actions-row {
+        padding-top: 0.75rem;
+        margin-top: 0.5rem;
+        border-top: 1px solid #e5e7eb;
+        border-bottom: none;
+        justify-content: flex-start !important;
+      }
+      
+      .admin-table-card-label {
+        font-weight: 600;
+        color: #6b7280;
+        font-size: 0.875rem;
+        min-width: 80px;
+        flex-shrink: 0;
+        margin-right: 0.5rem;
+        text-align: left !important;
+      }
+      
+      .admin-table-card-value {
+        flex: 1;
+        color: #111827;
+        font-size: 0.875rem;
+        word-break: break-word;
+        text-align: left !important;
+      }
+      
+      .admin-table-card-actions-row .admin-actions {
+        width: 100%;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: flex-start !important;
+      }
+      
+      /* 覆盖 blog-unified.css 中的右对齐规则 */
+      #tab-categories .admin-table td,
+      #tab-tags .admin-table td,
+      #tab-comments .admin-table td {
+        text-align: left !important;
+      }
+      
+      .categories-table-mobile,
+      .tags-table-mobile,
+      .comments-table-mobile {
+        text-align: left !important;
+      }
+      
+      .categories-table-mobile *,
+      .tags-table-mobile *,
+      .comments-table-mobile * {
+        text-align: left !important;
+      }
+      
+      /* 分类、标签、评论移动端表格优化 */
+      #tab-categories .admin-card,
+      #tab-tags .admin-card,
+      #tab-comments .admin-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: visible !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
+      
+      /* 移动端表格容器显示滚动条 */
+      .categories-table-desktop,
+      .tags-table-desktop,
+      .comments-table-desktop {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: thin !important; /* Firefox - 显示细滚动条 */
+        scrollbar-color: #d1d5db #f3f4f6 !important; /* Firefox - 滚动条颜色 */
+      }
+      
+      /* WebKit 浏览器滚动条样式（Chrome, Safari, Edge） */
+      .categories-table-desktop::-webkit-scrollbar,
+      .tags-table-desktop::-webkit-scrollbar,
+      .comments-table-desktop::-webkit-scrollbar {
+        height: 8px !important;
+        display: block !important; /* 始终显示滚动条 */
+      }
+      
+      .categories-table-desktop::-webkit-scrollbar-track,
+      .tags-table-desktop::-webkit-scrollbar-track,
+      .comments-table-desktop::-webkit-scrollbar-track {
+        background: #f3f4f6 !important;
+        border-radius: 4px !important;
+      }
+      
+      .categories-table-desktop::-webkit-scrollbar-thumb,
+      .tags-table-desktop::-webkit-scrollbar-thumb,
+      .comments-table-desktop::-webkit-scrollbar-thumb {
+        background: #d1d5db !important;
+        border-radius: 4px !important;
+      }
+      
+      .categories-table-desktop::-webkit-scrollbar-thumb:hover,
+      .tags-table-desktop::-webkit-scrollbar-thumb:hover,
+      .comments-table-desktop::-webkit-scrollbar-thumb:hover {
+        background: #9ca3af !important;
+      }
+      
+      /* 确保表格容器内的滚动容器也显示滚动条 */
+      .categories-table-desktop > div,
+      .tags-table-desktop > div,
+      .comments-table-desktop > div {
+        overflow-x: auto !important;
+        scrollbar-width: thin !important;
+        scrollbar-color: #d1d5db #f3f4f6 !important;
+      }
+      
+      .categories-table-desktop > div::-webkit-scrollbar,
+      .tags-table-desktop > div::-webkit-scrollbar,
+      .comments-table-desktop > div::-webkit-scrollbar {
+        height: 8px !important;
+        display: block !important;
+      }
+      
+      .categories-table-desktop > div::-webkit-scrollbar-track,
+      .tags-table-desktop > div::-webkit-scrollbar-track,
+      .comments-table-desktop > div::-webkit-scrollbar-track {
+        background: #f3f4f6 !important;
+        border-radius: 4px !important;
+      }
+      
+      .categories-table-desktop > div::-webkit-scrollbar-thumb,
+      .tags-table-desktop > div::-webkit-scrollbar-thumb,
+      .comments-table-desktop > div::-webkit-scrollbar-thumb {
+        background: #d1d5db !important;
+        border-radius: 4px !important;
+      }
+      
+      /* 移动端头部按钮组也显示滚动条 */
+      #tab-categories .admin-card-header,
+      #tab-tags .admin-card-header,
+      #tab-comments .admin-card-header {
+        scrollbar-width: thin !important;
+        scrollbar-color: #d1d5db #f3f4f6 !important;
+      }
+      
+      #tab-categories .admin-card-header::-webkit-scrollbar,
+      #tab-tags .admin-card-header::-webkit-scrollbar,
+      #tab-comments .admin-card-header::-webkit-scrollbar {
+        height: 6px !important;
+        display: block !important;
+      }
+      
+      #tab-categories .admin-card-header::-webkit-scrollbar-track,
+      #tab-tags .admin-card-header::-webkit-scrollbar-track,
+      #tab-comments .admin-card-header::-webkit-scrollbar-track {
+        background: #f3f4f6 !important;
+        border-radius: 3px !important;
+      }
+      
+      #tab-categories .admin-card-header::-webkit-scrollbar-thumb,
+      #tab-tags .admin-card-header::-webkit-scrollbar-thumb,
+      #tab-comments .admin-card-header::-webkit-scrollbar-thumb {
+        background: #d1d5db !important;
+        border-radius: 3px !important;
+      }
+      
+      #tab-categories table,
+      #tab-tags table,
+      #tab-comments table {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 0.8125rem !important;
+      }
+      
+      /* 确保分类、标签、评论表格在移动端正常显示 */
+      #tab-categories table,
+      #tab-tags table,
+      #tab-comments table {
+        display: table !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 0.8125rem !important;
+        table-layout: auto !important;
+        border-collapse: collapse !important;
+      }
+      
+      #tab-categories thead,
+      #tab-tags thead,
+      #tab-comments thead {
+        display: table-header-group !important;
+      }
+      
+      #tab-categories tbody,
+      #tab-tags tbody,
+      #tab-comments tbody {
+        display: table-row-group !important;
+      }
+      
+      #tab-categories tr,
+      #tab-tags tr,
+      #tab-comments tr {
+        display: table-row !important;
+      }
+      
+      #tab-categories th,
+      #tab-tags th,
+      #tab-comments th,
+      #tab-categories td,
+      #tab-tags td,
+      #tab-comments td {
+        display: table-cell !important;
+        padding: 0.5rem 0.375rem !important;
+        font-size: 0.75rem !important;
+        white-space: nowrap !important;
+        word-break: break-word !important;
+        max-width: 150px !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        text-align: left !important;
+        vertical-align: middle !important;
+        border: none !important;
+      }
+      
+      /* 移除移动端表格单元格的伪元素内容（如果有冒号） */
+      #tab-categories td::before,
+      #tab-tags td::before,
+      #tab-comments td::before,
+      #tab-categories td::after,
+      #tab-tags td::after,
+      #tab-comments td::after,
+      #tab-categories th::before,
+      #tab-tags th::before,
+      #tab-comments th::before,
+      #tab-categories th::after,
+      #tab-tags th::after,
+      #tab-comments th::after {
+        content: none !important;
+        display: none !important;
+      }
+      
+      /* 全局移除所有表格单元格的伪元素冒号（桌面端和移动端） */
+      #tab-categories table td::before,
+      #tab-tags table td::before,
+      #tab-comments table td::before,
+      #tab-categories table td::after,
+      #tab-tags table td::after,
+      #tab-comments table td::after,
+      #tab-categories table th::before,
+      #tab-tags table th::before,
+      #tab-comments table th::before,
+      #tab-categories table th::after,
+      #tab-tags table th::after,
+      #tab-comments table th::after {
+        content: '' !important;
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      
+      /* 确保表格列对齐，防止错位 */
+      #tab-categories table th,
+      #tab-tags table th,
+      #tab-comments table th {
+        text-align: left !important;
+        vertical-align: middle !important;
+        font-weight: 600 !important;
+      }
+      
+      #tab-categories table td,
+      #tab-tags table td,
+      #tab-comments table td {
+        text-align: left !important;
+        vertical-align: middle !important;
+      }
+      
+      /* 强制所有分类、标签、评论内容左对齐（覆盖 blog-unified.css 的右对齐规则） */
+      #tab-categories,
+      #tab-tags,
+      #tab-comments {
+        text-align: left !important;
+      }
+      
+      #tab-categories .admin-card,
+      #tab-tags .admin-card,
+      #tab-comments .admin-card {
+        text-align: left !important;
+      }
+      
+      /* 确保表格容器也左对齐 */
+      .categories-table-desktop,
+      .tags-table-desktop,
+      .comments-table-desktop,
+      .categories-table-mobile,
+      .tags-table-mobile,
+      .comments-table-mobile {
+        text-align: left !important;
+      }
+      
+      /* 确保表格内的所有元素都左对齐 */
+      .categories-table-desktop *,
+      .tags-table-desktop *,
+      .comments-table-desktop *,
+      .categories-table-mobile *,
+      .tags-table-mobile *,
+      .comments-table-mobile * {
+        text-align: left !important;
+      }
+      
+      /* 特别覆盖 blog-unified.css 中移动端的右对齐规则 */
+      @media (max-width: 640px) {
+        .admin-table td {
+          text-align: left !important;
+        }
+        
+        #tab-categories .admin-table td,
+        #tab-tags .admin-table td,
+        #tab-comments .admin-table td {
+          text-align: left !important;
+        }
+        
+        .categories-table-desktop .admin-table td,
+        .tags-table-desktop .admin-table td,
+        .comments-table-desktop .admin-table td {
+          text-align: left !important;
+        }
+      }
+      
+      @media (max-width: 768px) {
+        .admin-table td {
+          text-align: left !important;
+        }
+        
+        #tab-categories .admin-table td,
+        #tab-tags .admin-table td,
+        #tab-comments .admin-table td {
+          text-align: left !important;
+        }
+      }
+      
+      /* 操作按钮移动端优化 */
+      #tab-categories .admin-actions,
+      #tab-tags .admin-actions,
+      #tab-comments .admin-actions {
+        display: flex !important;
+        gap: 0.25rem !important;
+        flex-wrap: nowrap !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+      
+      #tab-categories .admin-btn-small,
+      #tab-tags .admin-btn-small,
+      #tab-comments .admin-btn-small {
+        padding: 0.25rem 0.5rem !important;
+        font-size: 0.6875rem !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      
+      /* 确保所有操作按钮在移动端都可见 */
+      #tab-categories .admin-btn-edit,
+      #tab-categories .admin-btn-delete,
+      #tab-tags .admin-btn-edit,
+      #tab-tags .admin-btn-delete,
+      #tab-comments .admin-btn-edit,
+      #tab-comments .admin-btn-delete {
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      
+      /* 确保操作列宽度足够显示所有按钮 */
+      #tab-categories table td:last-child,
+      #tab-tags table td:last-child,
+      #tab-comments table td:last-child {
+        min-width: 120px !important;
+        width: auto !important;
+        max-width: none !important;
+      }
+      
+      /* 确保操作按钮组不换行 */
+      #tab-categories .admin-actions,
+      #tab-tags .admin-actions,
+      #tab-comments .admin-actions {
+        flex-wrap: nowrap !important;
+        gap: 0.375rem !important;
+      }
+      
+      /* 分类、标签、评论表单移动端优化 - 默认隐藏 */
+      #categoryForm,
+      #tagForm {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 1rem 0.75rem !important;
+        display: none !important;
+      }
+      
+      /* 只有在显式显示时才显示 */
+      #categoryForm[style*="display: block"],
+      #tagForm[style*="display: block"] {
+        display: block !important;
+      }
+      
+      #categoryForm .admin-form-group,
+      #tagForm .admin-form-group {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      #categoryForm input,
+      #tagForm input {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+      }
+      
+      #categoryForm button,
+      #tagForm button {
+        width: 100% !important;
+        box-sizing: border-box !important;
+        margin-top: 0.5rem !important;
+      }
+      
+      #categoryForm > div[style*="display: flex"] {
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+      }
+      
+      #tagForm > div[style*="display: flex"] {
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+      }
+      
+      /* 超小屏幕进一步优化 */
+      @media (max-width: 480px) {
+        #tab-categories .admin-card-header,
+        #tab-tags .admin-card-header,
+        #tab-comments .admin-card-header {
+          padding: 0.5rem !important;
+          gap: 0.25rem !important;
+        }
+        
+        #tab-categories .admin-card-header h2,
+        #tab-tags .admin-card-header h2,
+        #tab-comments .admin-card-header h2 {
+          font-size: 0.8125rem !important;
+        }
+        
+        #tab-categories .admin-card-header .blog-btn,
+        #tab-tags .admin-card-header .blog-btn {
+          padding: 0.25rem 0.5rem !important;
+          font-size: 0.6875rem !important;
+        }
+        
+        #tab-categories th,
+        #tab-tags th,
+        #tab-comments th,
+        #tab-categories td,
+        #tab-tags td,
+        #tab-comments td {
+          padding: 0.375rem 0.25rem !important;
+          font-size: 0.6875rem !important;
+          max-width: 120px !important;
+        }
+        
+        #tab-categories .admin-btn-small,
+        #tab-tags .admin-btn-small,
+        #tab-comments .admin-btn-small {
+          padding: 0.25rem 0.375rem !important;
+          font-size: 0.625rem !important;
+        }
+      }
+      
+      /* 超小屏幕文章卡片优化 */
+      .admin-post-card {
+        padding: 0.5rem 0.625rem !important;
+        gap: 0.5rem !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: visible !important;
+        overflow-y: hidden !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        flex-wrap: nowrap !important;
+      }
+      
+      .admin-post-card-title {
+        font-size: 0.8125rem !important;
+        flex: 1 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+      }
+      
+      .admin-post-card-header {
+        flex: 1 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        max-width: none !important;
+      }
+      
+      .admin-post-card-actions {
+        flex-shrink: 0 !important;
+        gap: 0.25rem !important;
+        width: auto !important;
+        min-width: auto !important;
+        max-width: none !important;
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+        flex-wrap: nowrap !important;
+        display: flex !important;
+        align-items: center !important;
+      }
+      
+      .admin-post-card-actions .admin-btn-small {
+        padding: 0.25rem 0.375rem !important;
+        font-size: 0.6875rem !important;
+        flex: 0 0 auto !important;
+        min-width: auto !important;
+        max-width: none !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+      
+      /* 超小屏幕下的表单标题 */
+      .admin-form h3,
+      #postFormTitle {
+        font-size: 1.125rem !important;
+      }
+      
+      /* HTML编辑器超小屏幕优化 */
+      #wang-editor-container {
+        min-height: 250px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      #wang-editor-toolbar {
+        padding: 0.375rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      .editor-toolbar a {
+        padding: 0.25rem 0.375rem !important;
+        font-size: 0.8125rem !important;
+      }
+      
+      /* 标题输入框超小屏幕优化 */
+      #postName {
+        font-size: 1rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 摘要输入框超小屏幕优化 */
+      #postExcerpt {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-height: 80px !important;
+      }
+      
+      /* 封面图容器超小屏幕优化 */
+      #coverImageContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        aspect-ratio: 16/9 !important;
+      }
+      
+      /* 所有输入框超小屏幕优化 */
+      input[type="text"],
+      input[type="number"],
+      input[type="email"],
+      input[type="url"],
+      input[type="password"],
+      input[type="datetime-local"],
+      textarea,
+      select {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+      }
+      
+      /* 按钮超小屏幕优化 */
+      .blog-btn,
+      .admin-btn {
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.875rem !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* HTML编辑器容器超小屏幕优化 */
+      #htmlEditorContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      #postHtmlContent {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+    }
+    
+    /* 中等屏幕（平板横屏）优化 */
+    @media (min-width: 481px) and (max-width: 768px) {
+      .admin-container {
+        padding: 1rem;
+      }
+      
+      .admin-table {
+        min-width: 550px;
+      }
+      
+      /* 表格操作按钮可以横向排列 */
+      .admin-table .admin-actions {
+        flex-direction: row;
+        flex-wrap: wrap;
       }
     }
     .markdown-editor {
       min-height: 400px;
     }
     
+    /* 编辑器容器响应式样式 */
+    #wang-editor-container {
+      max-width: 100%;
+      overflow-x: auto;
+    }
+    
+    /* 编辑器内容区域响应式 */
+    #wang-editor-container .w-e-text-container {
+      max-width: 100%;
+      overflow-x: auto;
+    }
+    
+    /* 编辑器内所有图片响应式 */
+    #wang-editor-container img,
+    #wang-editor-container .w-e-text img {
+      max-width: 100% !important;
+      width: auto !important;
+      height: auto !important;
+      display: block !important;
+      margin: 1rem auto !important;
+      border-radius: 0.375rem !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      object-fit: contain !important;
+    }
+    
+    /* 编辑器内所有视频响应式 */
+    #wang-editor-container video,
+    #wang-editor-container .w-e-text video {
+      max-width: 100% !important;
+      width: 100% !important;
+      height: auto !important;
+      display: block !important;
+      margin: 1rem auto !important;
+      border-radius: 0.375rem !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+    }
+    
+    /* 编辑器内iframe响应式 */
+    #wang-editor-container iframe,
+    #wang-editor-container .w-e-text iframe {
+      max-width: 100% !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 400px;
+      display: block !important;
+      margin: 1rem auto !important;
+      border-radius: 0.375rem !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      border: none !important;
+    }
+    
+    /* 移动端编辑器内媒体元素优化 */
+    @media (max-width: 768px) {
+      #wang-editor-container img,
+      #wang-editor-container .w-e-text img {
+        max-width: 100% !important;
+        width: auto !important;
+        height: auto !important;
+        margin: 0.75rem auto !important;
+      }
+      
+      #wang-editor-container video,
+      #wang-editor-container .w-e-text video {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        margin: 0.75rem auto !important;
+      }
+      
+      #wang-editor-container iframe,
+      #wang-editor-container .w-e-text iframe {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: 250px !important;
+        min-height: 250px !important;
+        margin: 0.75rem auto !important;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      #wang-editor-container img,
+      #wang-editor-container .w-e-text img {
+        margin: 0.5rem auto !important;
+      }
+      
+      #wang-editor-container video,
+      #wang-editor-container .w-e-text video {
+        margin: 0.5rem auto !important;
+      }
+      
+      #wang-editor-container iframe,
+      #wang-editor-container .w-e-text iframe {
+        height: 200px !important;
+        min-height: 200px !important;
+        margin: 0.5rem auto !important;
+      }
+    }
+    
     /* 视频块样式（兼容Quill和WangEditor） */
     .ql-video-block,
     .video-block {
       margin: 1rem 0;
-      width: 100%;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: hidden;
+      box-sizing: border-box !important;
     }
     
     .ql-video-block video,
     .video-block video {
-      max-width: 100%;
-      height: auto;
-      display: block;
-      margin: 1rem 0;
-      border-radius: 0.375rem;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      max-width: 100% !important;
+      width: 100% !important;
+      height: auto !important;
+      display: block !important;
+      margin: 1rem 0 !important;
+      border-radius: 0.375rem !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      box-sizing: border-box !important;
     }
     
     .ql-video-block iframe,
     .video-block iframe {
-      max-width: 100%;
-      width: 100%;
-      height: 400px;
-      display: block;
-      margin: 1rem 0;
-      border-radius: 0.375rem;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      border: none;
+      max-width: 100% !important;
+      width: 100% !important;
+      height: 400px !important;
+      display: block !important;
+      margin: 1rem 0 !important;
+      border-radius: 0.375rem !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      border: none !important;
+      box-sizing: border-box !important;
     }
     
+    /* 移动端视频块优化 */
     @media (max-width: 768px) {
+      .ql-video-block,
+      .video-block {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0.75rem 0 !important;
+      }
+      
+      .ql-video-block video,
+      .video-block video {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        margin: 0.75rem 0 !important;
+      }
+      
       .ql-video-block iframe,
       .video-block iframe {
-        height: 250px;
+        max-width: 100% !important;
+        width: 100% !important;
+        height: 250px !important;
+        min-height: 250px !important;
+        margin: 0.75rem 0 !important;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .ql-video-block iframe,
+      .video-block iframe {
+        height: 200px !important;
+        min-height: 200px !important;
+        margin: 0.5rem 0 !important;
+      }
+    }
+    
+    /* 移动端响应式 */
+    @media (max-width: 768px) {
+      #wang-editor-container iframe,
+      #wang-editor-container .w-e-text iframe,
+      .ql-video-block iframe,
+      .video-block iframe {
+        height: 250px !important;
+        min-height: 250px;
+        max-width: 100% !important;
+        width: 100% !important;
+      }
+      
+      #wang-editor-container {
+        font-size: 14px;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow-x: hidden !important;
+      }
+      
+      /* 确保编辑器容器内的所有元素都不会溢出 */
+      #wang-editor-container * {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 强制覆盖编辑器内可能存在的固定宽度样式 */
+      #wang-editor-container [style*="width"],
+      #wang-editor-container [style*="max-width"],
+      #wang-editor-container [style*="min-width"] {
+        max-width: 100% !important;
+      }
+      
+      /* 确保编辑器内的图片不会超出容器 */
+      #wang-editor-container img[style*="width"],
+      #wang-editor-container .w-e-text img[style*="width"] {
+        max-width: 100% !important;
+        width: auto !important;
+        height: auto !important;
+      }
+      
+      /* WangEditor工具栏移动端优化 */
+      #wang-editor-toolbar {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        padding: 0.5rem !important;
+      }
+      
+      #wang-editor-toolbar .w-e-bar {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        min-width: max-content !important;
+        width: 100% !important;
+      }
+      
+      #wang-editor-toolbar .w-e-bar-item {
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+        padding: 0.375rem 0.5rem !important;
+        font-size: 0.875rem !important;
+      }
+      
+      /* WangEditor编辑区域移动端优化 */
+      #wang-editor-container .w-e-text-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow-x: hidden !important;
+      }
+      
+      #wang-editor-container .w-e-text {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        overflow-x: hidden !important;
+        padding: 0.75rem !important;
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+        line-height: 1.6 !important;
+      }
+      
+      /* 编辑器内所有内容强制响应式 */
+      #wang-editor-container .w-e-text *,
+      #wang-editor-container .w-e-text-container * {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 编辑器内所有图片强制响应式 */
+      #wang-editor-container .w-e-text img,
+      #wang-editor-container img {
+        max-width: 100% !important;
+        width: auto !important;
+        height: auto !important;
+        display: block !important;
+        margin: 0.75rem auto !important;
+        border-radius: 0.375rem !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      }
+      
+      /* 编辑器内所有视频强制响应式 */
+      #wang-editor-container .w-e-text video,
+      #wang-editor-container video {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        display: block !important;
+        margin: 0.75rem auto !important;
+        border-radius: 0.375rem !important;
+      }
+      
+      /* 编辑器内所有iframe强制响应式 */
+      #wang-editor-container .w-e-text iframe,
+      #wang-editor-container iframe {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: 250px !important;
+        min-height: 250px !important;
+        display: block !important;
+        margin: 0.75rem auto !important;
+        border-radius: 0.375rem !important;
+      }
+      
+      /* 编辑器内表格强制响应式 */
+      #wang-editor-container .w-e-text table,
+      #wang-editor-container table {
+        width: 100% !important;
+        max-width: 100% !important;
+        display: block !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
+      
+      #wang-editor-container .w-e-text table td,
+      #wang-editor-container table td,
+      #wang-editor-container .w-e-text table th,
+      #wang-editor-container table th {
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        max-width: 100% !important;
+      }
+      
+      /* 编辑器内所有div和容器强制响应式 */
+      #wang-editor-container .w-e-text > div,
+      #wang-editor-container .w-e-text > p,
+      #wang-editor-container .w-e-text > section,
+      #wang-editor-container .w-e-text > article {
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+      }
+      
+      /* 编辑器内所有内联元素强制换行 */
+      #wang-editor-container .w-e-text span,
+      #wang-editor-container .w-e-text a {
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        max-width: 100% !important;
+      }
+      
+      /* WangEditor中的图片和视频移动端优化 */
+      #wang-editor-container img,
+      #wang-editor-container .w-e-text img {
+        max-width: 100% !important;
+        width: auto !important;
+        height: auto !important;
+        display: block !important;
+        margin: 0.75rem auto !important;
+        border-radius: 0.375rem !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      }
+      
+      #wang-editor-container video,
+      #wang-editor-container .w-e-text video {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        display: block !important;
+        margin: 0.75rem auto !important;
+        border-radius: 0.375rem !important;
+      }
+      
+      /* 封面图容器移动端优化 */
+      #coverImageContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        aspect-ratio: 16/9 !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        border-radius: 0.5rem !important;
+      }
+      
+      #coverImagePreview {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+      }
+      
+      /* 所有输入框移动端优化 */
+      input[type="text"],
+      input[type="number"],
+      input[type="email"],
+      input[type="url"],
+      input[type="password"],
+      input[type="datetime-local"],
+      textarea,
+      select {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+        padding: 0.75rem !important;
+        border-radius: 0.375rem !important;
+        -webkit-appearance: none !important;
+        -moz-appearance: none !important;
+        appearance: none !important;
+      }
+      
+      /* 标题输入框特殊优化 */
+      #postName {
+        font-size: 1.125rem !important;
+        padding: 0.75rem 0 !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 摘要输入框优化 */
+      #postExcerpt {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-height: 100px !important;
+        resize: vertical !important;
+      }
+      
+      /* 图片URL输入框优化 */
+      #postImage {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        margin-top: 0.75rem !important;
+      }
+      
+      /* HTML编辑器容器优化 */
+      #htmlEditorContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow-x: hidden !important;
+      }
+      
+      #postHtmlContent {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+      }
+      
+      /* 确保编辑器容器内的所有内容都不会溢出 */
+      #htmlEditorContainer *,
+      #postHtmlContent * {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+    }
+    
+    /* 超小屏幕 */
+    @media (max-width: 480px) {
+      #wang-editor-container iframe,
+      #wang-editor-container .w-e-text iframe,
+      .ql-video-block iframe,
+      .video-block iframe {
+        height: 200px !important;
+        min-height: 200px;
+        max-width: 100% !important;
+        width: 100% !important;
+      }
+      
+      #wang-editor-container {
+        min-height: 250px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      
+      #wang-editor-container {
+        overflow-x: hidden !important;
+      }
+      
+      #wang-editor-container .w-e-text {
+        padding: 0.5rem !important;
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+      }
+      
+      /* 超小屏幕下编辑器内所有内容强制响应式 */
+      #wang-editor-container .w-e-text * {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 超小屏幕下编辑器内图片优化 */
+      #wang-editor-container .w-e-text img,
+      #wang-editor-container img {
+        max-width: 100% !important;
+        width: auto !important;
+        height: auto !important;
+        margin: 0.5rem auto !important;
+      }
+      
+      /* 超小屏幕下编辑器内视频优化 */
+      #wang-editor-container .w-e-text video,
+      #wang-editor-container video {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        margin: 0.5rem auto !important;
+      }
+      
+      /* 超小屏幕下编辑器内iframe优化 */
+      #wang-editor-container .w-e-text iframe,
+      #wang-editor-container iframe {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: 200px !important;
+        min-height: 200px !important;
+        margin: 0.5rem auto !important;
+      }
+      
+      #wang-editor-toolbar {
+        padding: 0.375rem !important;
+      }
+      
+      #wang-editor-toolbar .w-e-bar-item {
+        padding: 0.25rem 0.375rem !important;
+        font-size: 0.8125rem !important;
+      }
+      
+      /* 编辑器内图片超小屏幕优化 */
+      #wang-editor-container img,
+      #wang-editor-container .w-e-text img {
+        max-width: 100% !important;
+        width: auto !important;
+        height: auto !important;
+        margin: 0.5rem auto !important;
+      }
+      
+      /* 封面图容器超小屏幕优化 */
+      #coverImageContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        aspect-ratio: 16/9 !important;
+        box-sizing: border-box !important;
+        border-radius: 0.375rem !important;
+      }
+      
+      /* 所有输入框超小屏幕优化 */
+      input[type="text"],
+      input[type="number"],
+      input[type="email"],
+      input[type="url"],
+      input[type="password"],
+      input[type="datetime-local"],
+      textarea,
+      select {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 16px !important; /* 防止iOS自动缩放 */
+        padding: 0.625rem !important;
+      }
+      
+      /* 标题输入框超小屏幕优化 */
+      #postName {
+        font-size: 1rem !important;
+        padding: 0.625rem 0 !important;
+      }
+      
+      /* HTML编辑器容器超小屏幕优化 */
+      #htmlEditorContainer {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
       }
     }
     
@@ -481,7 +3587,39 @@
   <script src="https://cdn.jsdelivr.net/npm/@wangeditor/editor@5.1.23/dist/index.js"></script>
 </head>
 <body class="blog-page">
-  <div class="admin-container">
+  <!-- 登录页面 -->
+  <div id="loginPage" style="display: none; min-height: 100vh; align-items: center; justify-content: center; background: #F9FAFB;">
+    <div style="max-width: 400px; width: 100%; padding: 2rem; background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <div style="text-align: center; margin-bottom: 2rem;">
+        <h2 style="font-size: 1.5rem; font-weight: bold; color: #111827; margin-bottom: 0.5rem;">博客管理登录</h2>
+        <p style="color: #6b7280; font-size: 0.875rem;">请输入管理员账号和密码</p>
+      </div>
+      <form id="loginForm" onsubmit="handleLogin(event)" style="space-y: 1.5rem;">
+        <div style="margin-bottom: 1.5rem;">
+          <label style="display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.5rem;">用户名</label>
+          <input type="text" id="loginUsername" required
+                 style="width: 100%; padding: 0.75rem; border: 1px solid #D1D5DB; border-radius: 0.375rem; font-size: 1rem; box-sizing: border-box;"
+                 placeholder="请输入用户名">
+        </div>
+        <div style="margin-bottom: 1.5rem;">
+          <label style="display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.5rem;">密码</label>
+          <input type="password" id="loginPassword" required
+                 style="width: 100%; padding: 0.75rem; border: 1px solid #D1D5DB; border-radius: 0.375rem; font-size: 1rem; box-sizing: border-box;"
+                 placeholder="请输入密码">
+        </div>
+        <button type="submit" 
+                style="width: 100%; padding: 0.75rem; background-color: #9333ea; color: white; border: none; border-radius: 0.375rem; font-weight: 500; font-size: 1rem; cursor: pointer; transition: background-color 0.2s;"
+                onmouseover="this.style.backgroundColor='#7e22ce'" 
+                onmouseout="this.style.backgroundColor='#9333ea'">
+          登录
+        </button>
+      </form>
+      <div id="loginError" style="display: none; margin-top: 1rem; padding: 0.75rem; background: #FEE2E2; border: 1px solid #FECACA; border-radius: 0.375rem; color: #991B1B; font-size: 0.875rem;"></div>
+    </div>
+  </div>
+
+  <!-- 主内容区域 -->
+  <div id="mainContent" class="admin-container" style="display: none;">
     <div class="admin-header">
       <div>
         <h1 style="font-size: 2rem; font-weight: bold; color: #111827;">
@@ -489,7 +3627,9 @@
         </h1>
         <p style="color: #6b7280; margin-top: 0.5rem;">管理文章、分类、标签和评论</p>
       </div>
-      <div>
+      <div style="display: flex; gap: 1rem; align-items: center;">
+        <span id="adminNameDisplay" style="color: #6b7280; font-size: 0.875rem;"></span>
+        <button onclick="handleLogout()" class="blog-btn blog-btn-secondary" style="padding: 0.5rem 1rem;">退出登录</button>
         <a href="/blog.html" class="blog-btn blog-btn-secondary">返回博客</a>
       </div>
     </div>
@@ -504,9 +3644,9 @@
 
     <!-- 文章管理 -->
     <div id="tab-posts" class="admin-tab-content active">
-      <div class="admin-card-header">
+      <div class="admin-card-header" style="justify-content: flex-start; gap: 1rem;">
         <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">文章管理</h2>
-        <button class="blog-btn blog-btn-primary" onclick="showPostForm()" style="background-color: #9333ea; border-color: #9333ea;">+ 新建文章</button>
+        <button class="blog-btn blog-btn-primary" onclick="openNewPostInNewWindow(); return false;" style="background-color: #9333ea; border-color: #9333ea;">+ 新建文章</button>
       </div>
 
       <!-- 文章表单 -->
@@ -523,55 +3663,41 @@
         </div>
         <!-- 表单内容 -->
         <div id="postFormContent">
-        <h3 id="postFormTitle">新建文章</h3>
+        <!-- 顶部栏：标题和操作按钮 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid #e5e7eb;">
+          <h3 id="postFormTitle" style="margin: 0; font-size: 1.5rem; font-weight: 600; color: #111827;">新建文章</h3>
+          <div style="display: flex; gap: 0.75rem;">
+            <button type="button" class="blog-btn blog-btn-secondary" onclick="hidePostForm()" style="padding: 0.5rem 1rem;">取消</button>
+            <button type="submit" form="postFormElement" class="blog-btn blog-btn-primary" style="padding: 0.5rem 1.5rem; background-color: #9333ea; border-color: #9333ea;">保存</button>
+          </div>
+        </div>
+        
         <form id="postFormElement" onsubmit="savePost(event)">
           <input type="hidden" id="postId">
-          <div class="admin-form-group">
-            <label class="admin-form-label" for="postName">文章名称/标题 *</label>
-            <input type="text" id="postName" class="admin-form-input" required oninput="syncNameAndTitle()">
-            <p style="color: #6b7280; font-size: 0.875rem; margin-top: 0.25rem;">名称和标题会自动保持同步</p>
-          </div>
-          <div class="admin-form-group">
-            <label class="admin-form-label" for="postSlug">Slug</label>
-            <input type="text" id="postSlug" class="admin-form-input" placeholder="留空自动生成">
-          </div>
-          <div class="admin-form-group">
-            <label class="admin-form-label" for="postExcerpt">摘要</label>
-            <textarea id="postExcerpt" class="admin-form-input" rows="3"></textarea>
-          </div>
-          <div class="admin-form-group">
-            <label class="admin-form-label" for="postImage">图片URL</label>
-            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
-              <input type="text" id="postImage" class="admin-form-input" style="flex: 1;" placeholder="输入图片URL或点击上传按钮上传图片">
-              <button type="button" class="blog-btn blog-btn-secondary" onclick="document.getElementById('imageUploadInput').click()" style="white-space: nowrap;">
-                <i class="fa fa-upload" style="margin-right: 0.25rem;"></i>上传图片
-              </button>
-            </div>
-            <input type="file" id="imageUploadInput" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
-            <div id="imageUploadProgress" style="display: none; margin-top: 0.5rem;">
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <div style="flex: 1; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
-                  <div id="imageUploadProgressBar" style="height: 100%; background: #9333ea; width: 0%; transition: width 0.3s;"></div>
-                </div>
-                <span id="imageUploadStatus" style="font-size: 0.875rem; color: #6b7280;">上传中...</span>
+          
+          <!-- 左右分栏布局 -->
+          <div style="display: grid; grid-template-columns: 1fr 350px; gap: 2rem; align-items: start;">
+            
+            <!-- 左侧主内容区 (70%) -->
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+              <!-- 文章标题 -->
+              <div class="admin-form-group" style="margin-bottom: 0;">
+                <input type="text" id="postName" class="admin-form-input" required oninput="syncNameAndTitle()" placeholder="输入文章标题..." style="font-size: 1.25rem; font-weight: 600; padding: 0.75rem 0; border: none; border-bottom: 2px solid #e5e7eb; border-radius: 0; background: transparent;">
+                <p style="color: #9ca3af; font-size: 0.75rem; margin-top: 0.25rem; margin-bottom: 0;">名称和标题会自动保持同步</p>
               </div>
-            </div>
-            <div id="imagePreview" style="margin-top: 0.5rem; display: none;">
-              <img id="imagePreviewImg" src="" alt="预览" style="max-width: 200px; max-height: 200px; border-radius: 0.375rem; border: 1px solid #d1d5db;">
-            </div>
-          </div>
-          <div class="admin-form-group">
-            <label class="admin-form-label" for="postApiName">API/分类 *</label>
-            <select id="postApiName" class="admin-form-select" required onchange="onApiNameChange()">
-              <option value="">请选择API（分类）</option>
-            </select>
-            <p class="text-xs text-gray-500 mt-1">选择文章所属的API，API名称将作为文章分类</p>
-          </div>
-          <div class="admin-form-group" id="fieldMappingInfo" style="display: none;">
-            <div class="text-sm text-blue-600">
-              <p>此API已配置字段映射，文章将根据映射规则保存到对应字段</p>
-            </div>
-          </div>
+              
+              <!-- 摘要 -->
+              <div class="admin-form-group" style="margin-bottom: 0;">
+                <label class="admin-form-label" for="postExcerpt" style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">摘要</label>
+                <textarea id="postExcerpt" class="admin-form-input" rows="3" placeholder="输入文章摘要..." style="padding: 0.75rem; font-size: 0.9375rem; resize: vertical;"></textarea>
+              </div>
+              
+              <!-- 字段映射提示 -->
+              <div class="admin-form-group" id="fieldMappingInfo" style="display: none; margin-bottom: 0;">
+                <div style="padding: 0.75rem; background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 0.375rem;">
+                  <p style="margin: 0; font-size: 0.875rem; color: #1e40af;">此API已配置字段映射，文章将根据映射规则保存到对应字段</p>
+                </div>
+              </div>
           
           <!-- 特殊类别定制化表单 -->
           <!-- 翻译卡片 (translation) -->
@@ -677,16 +3803,19 @@
               </div>
               <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">点击"地图选点"在地图上选择位置，或点击"解析链接"粘贴谷歌地图链接自动获取位置</p>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 100%;">
-              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
-                <label class="admin-form-label" for="secondHandLatitude">纬度 *</label>
-                <input type="number" step="any" id="secondHandLatitude" name="secondHandLatitude" class="admin-form-input" placeholder="如：30.0444" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+            <details style="margin-top: 0.5rem;">
+              <summary style="cursor: pointer; font-size: 0.8125rem; color: #6b7280; padding: 0.5rem; border-radius: 0.375rem; background: #f9fafb; user-select: none;">高级位置信息（经纬度）</summary>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; padding: 0.75rem; background: #f9fafb; border-radius: 0.375rem;">
+                <div class="admin-form-group" style="margin-bottom: 0;">
+                  <label class="admin-form-label" for="secondHandLatitude" style="font-size: 0.75rem; margin-bottom: 0.25rem;">纬度 *</label>
+                  <input type="number" step="any" id="secondHandLatitude" name="secondHandLatitude" class="admin-form-input" placeholder="如：30.0444" style="padding: 0.5rem; font-size: 0.875rem;" required>
+                </div>
+                <div class="admin-form-group" style="margin-bottom: 0;">
+                  <label class="admin-form-label" for="secondHandLongitude" style="font-size: 0.75rem; margin-bottom: 0.25rem;">经度 *</label>
+                  <input type="number" step="any" id="secondHandLongitude" name="secondHandLongitude" class="admin-form-input" placeholder="如：31.2357" style="padding: 0.5rem; font-size: 0.875rem;" required>
+                </div>
               </div>
-              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
-                <label class="admin-form-label" for="secondHandLongitude">经度 *</label>
-                <input type="number" step="any" id="secondHandLongitude" name="secondHandLongitude" class="admin-form-input" placeholder="如：31.2357" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
-              </div>
-            </div>
+            </details>
           </div>
           
           <!-- 租房酒店 (rentals) 特殊字段 -->
@@ -727,16 +3856,19 @@
               </div>
               <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">点击"地图选点"在地图上选择位置，或点击"解析链接"粘贴谷歌地图链接自动获取位置</p>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 100%;">
-              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
-                <label class="admin-form-label" for="rentalsLatitude">纬度 *</label>
-                <input type="number" step="any" id="rentalsLatitude" name="rentalsLatitude" class="admin-form-input" placeholder="如：30.0444" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+            <details style="margin-top: 0.5rem;">
+              <summary style="cursor: pointer; font-size: 0.8125rem; color: #6b7280; padding: 0.5rem; border-radius: 0.375rem; background: #f9fafb; user-select: none;">高级位置信息（经纬度）</summary>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; padding: 0.75rem; background: #f9fafb; border-radius: 0.375rem;">
+                <div class="admin-form-group" style="margin-bottom: 0;">
+                  <label class="admin-form-label" for="rentalsLatitude" style="font-size: 0.75rem; margin-bottom: 0.25rem;">纬度 *</label>
+                  <input type="number" step="any" id="rentalsLatitude" name="rentalsLatitude" class="admin-form-input" placeholder="如：30.0444" style="padding: 0.5rem; font-size: 0.875rem;" required>
+                </div>
+                <div class="admin-form-group" style="margin-bottom: 0;">
+                  <label class="admin-form-label" for="rentalsLongitude" style="font-size: 0.75rem; margin-bottom: 0.25rem;">经度 *</label>
+                  <input type="number" step="any" id="rentalsLongitude" name="rentalsLongitude" class="admin-form-input" placeholder="如：31.2357" style="padding: 0.5rem; font-size: 0.875rem;" required>
+                </div>
               </div>
-              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
-                <label class="admin-form-label" for="rentalsLongitude">经度 *</label>
-                <input type="number" step="any" id="rentalsLongitude" name="rentalsLongitude" class="admin-form-input" placeholder="如：31.2357" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
-              </div>
-            </div>
+            </details>
           </div>
           
           <!-- 通用位置字段（用于其他需要位置的分类） -->
@@ -759,44 +3891,91 @@
               </div>
               <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">点击"地图选点"在地图上选择位置，或点击"解析链接"粘贴谷歌地图链接自动获取位置</p>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 100%;">
-              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
-                <label class="admin-form-label" id="commonLatitudeLabel" for="commonLatitude">纬度 *</label>
-                <input type="number" step="any" id="commonLatitude" name="commonLatitude" class="admin-form-input" placeholder="如：30.0444" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
+            <!-- 折叠的经纬度信息 -->
+            <details style="margin-top: 0.5rem;">
+              <summary style="cursor: pointer; font-size: 0.8125rem; color: #6b7280; padding: 0.5rem; border-radius: 0.375rem; background: #f9fafb; user-select: none;">高级位置信息（经纬度）</summary>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; padding: 0.75rem; background: #f9fafb; border-radius: 0.375rem;">
+                <div class="admin-form-group" style="margin-bottom: 0;">
+                  <label class="admin-form-label" id="commonLatitudeLabel" for="commonLatitude" style="font-size: 0.75rem; margin-bottom: 0.25rem;">纬度 *</label>
+                  <input type="number" step="any" id="commonLatitude" name="commonLatitude" class="admin-form-input" placeholder="如：30.0444" style="padding: 0.5rem; font-size: 0.875rem;" required>
+                </div>
+                <div class="admin-form-group" style="margin-bottom: 0;">
+                  <label class="admin-form-label" id="commonLongitudeLabel" for="commonLongitude" style="font-size: 0.75rem; margin-bottom: 0.25rem;">经度 *</label>
+                  <input type="number" step="any" id="commonLongitude" name="commonLongitude" class="admin-form-input" placeholder="如：31.2357" style="padding: 0.5rem; font-size: 0.875rem;" required>
+                </div>
               </div>
-              <div class="admin-form-group" style="margin-bottom: 0; width: 100%; max-width: 100%; box-sizing: border-box;">
-                <label class="admin-form-label" id="commonLongitudeLabel" for="commonLongitude">经度 *</label>
-                <input type="number" step="any" id="commonLongitude" name="commonLongitude" class="admin-form-input" placeholder="如：31.2357" style="width: 100%; max-width: 100%; box-sizing: border-box;" required>
-              </div>
-            </div>
-          </div>
-          
-          <div class="admin-form-group">
-            <label class="admin-form-label" for="postCategory">分类/标签 *</label>
-            <input type="text" id="postCategory" class="admin-form-input" placeholder="文章分类（作为标签使用）" required>
-            <p style="color: #6b7280; font-size: 0.875rem; margin-top: 0.25rem;">此分类用于在博客页面作为标签展示</p>
+            </details>
           </div>
           <div class="admin-form-group" style="display: none;">
             <label class="admin-form-label" for="postTags">标签（已废弃，使用上面的分类字段）</label>
             <input type="text" id="postTags" class="admin-form-input" placeholder="标签1, 标签2" disabled>
           </div>
-          <div class="admin-form-group" id="normalContentEditor">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-              <label class="admin-form-label" for="postContent" style="margin-bottom: 0;">内容 *</label>
+              <!-- 内容编辑器 -->
+              <div class="admin-form-group" id="normalContentEditor" style="margin-bottom: 0;">
+                <label class="admin-form-label" for="postContent" style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">内容 *</label>
+                <div id="htmlEditorContainer">
+                  <div id="postHtmlContent" style="min-height: 500px;"></div>
+                </div>
+              </div>
             </div>
-            <div id="htmlEditorContainer">
-              <div id="postHtmlContent" style="min-height: 400px;"></div>
+            
+            <!-- 右侧边栏 (30%) -->
+            <div style="display: flex; flex-direction: column; gap: 1.5rem; position: sticky; top: 1rem;">
+              <!-- 封面图卡片 -->
+              <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <label class="admin-form-label" style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem; display: block;">封面图</label>
+                <div id="coverImageContainer" style="position: relative; width: 100%; aspect-ratio: 16/9; background: #f9fafb; border: 2px dashed #d1d5db; border-radius: 0.5rem; overflow: hidden; cursor: pointer; transition: all 0.3s;" onclick="document.getElementById('imageUploadInput').click()">
+                  <div id="coverImagePlaceholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #9ca3af;">
+                    <i class="fa fa-image" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
+                    <span style="font-size: 0.875rem;">点击上传封面图</span>
+                  </div>
+                  <img id="coverImagePreview" src="" alt="封面预览" style="display: none; width: 100%; height: 100%; object-fit: cover;">
+                  <div id="coverImageOverlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; color: white; font-size: 0.875rem;">
+                    <span>点击更换</span>
+                  </div>
+                </div>
+                <input type="text" id="postImage" class="admin-form-input" placeholder="或输入图片URL" style="margin-top: 0.75rem; padding: 0.5rem; font-size: 0.875rem;" oninput="updateCoverImagePreview(this.value)">
+                <input type="file" id="imageUploadInput" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+                <div id="imageUploadProgress" style="display: none; margin-top: 0.5rem;">
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="flex: 1; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
+                      <div id="imageUploadProgressBar" style="height: 100%; background: #9333ea; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <span id="imageUploadStatus" style="font-size: 0.75rem; color: #6b7280;">上传中...</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 基本信息卡片 -->
+              <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <h4 style="font-size: 0.875rem; font-weight: 600; color: #374151; margin: 0 0 1rem 0; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">基本信息</h4>
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                  <div class="admin-form-group" style="margin-bottom: 0;">
+                    <label class="admin-form-label" for="postSlug" style="font-size: 0.8125rem; color: #6b7280; margin-bottom: 0.375rem;">Slug</label>
+                    <input type="text" id="postSlug" class="admin-form-input" placeholder="留空自动生成" style="padding: 0.5rem; font-size: 0.875rem;">
+                  </div>
+                  <div class="admin-form-group" style="margin-bottom: 0;">
+                    <label class="admin-form-label" for="postApiName" style="font-size: 0.8125rem; color: #6b7280; margin-bottom: 0.375rem;">API/分类 *</label>
+                    <select id="postApiName" class="admin-form-select" required onchange="onApiNameChange()" style="padding: 0.5rem; font-size: 0.875rem;">
+                      <option value="">请选择API（分类）</option>
+                    </select>
+                  </div>
+                  <div class="admin-form-group" style="margin-bottom: 0;">
+                    <label class="admin-form-label" for="postCategory" style="font-size: 0.8125rem; color: #6b7280; margin-bottom: 0.375rem;">分类/标签 *</label>
+                    <input type="text" id="postCategory" class="admin-form-input" placeholder="文章分类（作为标签使用）" required style="padding: 0.5rem; font-size: 0.875rem;">
+                  </div>
+                  <div class="admin-form-group" style="margin-bottom: 0;">
+                    <div class="admin-form-checkbox" style="display: flex; align-items: center; gap: 0.5rem;">
+                      <input type="checkbox" id="postPublished" style="width: 18px; height: 18px; cursor: pointer;">
+                      <label for="postPublished" style="margin: 0; font-size: 0.875rem; color: #374151; cursor: pointer;">发布</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 特殊类别表单将动态插入到这里 -->
+              <div id="specialCategorySidebar"></div>
             </div>
-          </div>
-          <div class="admin-form-group">
-            <div class="admin-form-checkbox">
-              <input type="checkbox" id="postPublished">
-              <label for="postPublished">发布</label>
-            </div>
-          </div>
-          <div style="display: flex; gap: 1rem;">
-            <button type="submit" class="blog-btn blog-btn-primary">保存</button>
-            <button type="button" class="blog-btn blog-btn-secondary" onclick="hidePostForm()">取消</button>
           </div>
         </form>
         </div>
@@ -804,34 +3983,49 @@
 
       <!-- 文章列表 -->
       <div class="admin-card">
-        <!-- 加载进度条 -->
-        <div id="postsLoadingProgress" style="display: none; padding: 1rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
-          <div style="display: flex; align-items: center; gap: 1rem;">
-            <div class="loading-spinner" style="width: 20px; height: 20px; border-width: 2px; margin: 0;"></div>
-            <div style="flex: 1;">
-              <div style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.25rem;">正在加载文章列表...</div>
-              <div style="height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
-                <div id="postsLoadingProgressBar" style="height: 100%; background: linear-gradient(90deg, #9333ea, #a855f7); width: 0%; transition: width 0.3s ease; border-radius: 2px;"></div>
+        <!-- 加载进度条 - 可爱动画版 -->
+        <div id="postsLoadingProgress" style="display: none; padding: 2rem; background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); border-bottom: 1px solid #e5e7eb;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+            <!-- 可爱的表情符号动画 -->
+            <div id="loadingEmoji" style="font-size: 3rem; animation: bounce 1s ease-in-out infinite; filter: drop-shadow(0 2px 4px rgba(147, 51, 234, 0.2));">📝✨</div>
+            
+            <!-- 有趣的加载提示文字 -->
+            <div id="loadingText" style="font-size: 1rem; color: #6b7280; font-weight: 500; text-align: center; min-height: 1.5rem;">
+              正在加载文章列表...
+            </div>
+            
+            <!-- 进度条 -->
+            <div style="width: 100%; max-width: 400px;">
+              <div style="height: 6px; background: #e5e7eb; border-radius: 10px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);">
+                <div id="postsLoadingProgressBar" style="height: 100%; background: linear-gradient(90deg, #9333ea, #a855f7, #ec4899); width: 0%; transition: width 0.3s ease; border-radius: 10px; box-shadow: 0 0 10px rgba(147, 51, 234, 0.5); position: relative; overflow: hidden;">
+                  <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); animation: shimmer 1.5s infinite;"></div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <div style="overflow-x: auto;">
+        <!-- 桌面端表格 -->
+        <div style="overflow-x: auto; width: 100%; max-width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch;" class="desktop-table-container">
           <table class="admin-table">
           <thead>
             <tr>
-              <th>标题</th>
-              <th>分类</th>
-              <th>状态</th>
-              <th>阅读量</th>
-              <th>日期</th>
-              <th>操作</th>
+              <th style="min-width: 200px;">标题</th>
+              <th style="min-width: 80px;">分类</th>
+              <th style="min-width: 80px;">状态</th>
+              <th style="min-width: 90px;">阅读量</th>
+              <th style="min-width: 110px;">日期</th>
+              <th style="min-width: 140px;">操作</th>
             </tr>
           </thead>
           <tbody id="postsTableBody">
             <tr><td colspan="6" class="blog-loading">加载中...</td></tr>
           </tbody>
-        </table>
+          </table>
+        </div>
+        
+        <!-- 移动端卡片列表 -->
+        <div id="postsTableBodyMobile" style="display: none;">
+          <div class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
         </div>
       </div>
     </div>
@@ -865,7 +4059,8 @@
       </div>
 
       <div class="admin-card">
-        <div style="overflow-x: auto;">
+        <!-- 桌面端表格 -->
+        <div class="categories-table-desktop" style="overflow-x: auto; width: 100%; max-width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch;">
           <table class="admin-table">
             <thead>
               <tr>
@@ -879,6 +4074,10 @@
               <tr><td colspan="4" class="blog-loading">加载中...</td></tr>
             </tbody>
           </table>
+        </div>
+        <!-- 移动端卡片 -->
+        <div id="categoriesTableMobile" class="categories-table-mobile" style="display: none;">
+          <div class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
         </div>
       </div>
     </div>
@@ -905,7 +4104,8 @@
       </div>
 
       <div class="admin-card">
-        <div style="overflow-x: auto;">
+        <!-- 桌面端表格 -->
+        <div class="tags-table-desktop" style="overflow-x: auto; width: 100%; max-width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch;">
           <table class="admin-table">
             <thead>
               <tr>
@@ -918,6 +4118,10 @@
             </tbody>
           </table>
         </div>
+        <!-- 移动端卡片 -->
+        <div id="tagsTableMobile" class="tags-table-mobile" style="display: none;">
+          <div class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
+        </div>
       </div>
     </div>
 
@@ -927,7 +4131,8 @@
         <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">评论管理</h2>
       </div>
       <div class="admin-card">
-        <div style="overflow-x: auto;">
+        <!-- 桌面端表格 -->
+        <div class="comments-table-desktop" style="overflow-x: auto; width: 100%; max-width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch;">
           <table class="admin-table">
             <thead>
               <tr>
@@ -944,9 +4149,43 @@
             </tbody>
           </table>
         </div>
+        <!-- 移动端卡片 -->
+        <div id="commentsTableMobile" class="comments-table-mobile" style="display: none;">
+          <div class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
+        </div>
       </div>
     </div>
   </div>
+  
+  
+  <style>
+    /* FAB按钮响应式 - 只在移动端和平板显示 */
+    @media (max-width: 1024px) {
+      #fabButton {
+        display: flex !important;
+      }
+    }
+    
+    @media (max-width: 768px) {
+      #fabButton {
+        bottom: 1.5rem;
+        right: 1.5rem;
+        width: 52px;
+        height: 52px;
+        font-size: 1.25rem;
+      }
+    }
+    
+    /* 当表单显示时隐藏FAB */
+    #postForm[style*="display: block"] ~ #fabButton {
+      display: none !important;
+    }
+    
+    /* 确保FAB按钮在滚动时保持可见 */
+    #fabButton {
+      position: fixed !important;
+    }
+  </style>
 
   <script src="/utils/blog.js"></script>
   <script>
@@ -1219,12 +4458,26 @@
         return;
       }
       
-      // 如果是特殊类别，显示对应的表单
+      // 如果是特殊类别，显示对应的表单（移到右侧边栏）
       if (specialType) {
         const specialForm = document.getElementById(`specialForm-${specialType}`);
-        if (specialForm) {
+        const specialCategorySidebar = document.getElementById('specialCategorySidebar');
+        
+        // 隐藏所有特殊表单
+        document.querySelectorAll('[id^="specialForm-"]').forEach(el => {
+          el.style.display = 'none';
+        });
+        
+        // 将特殊表单移到右侧边栏
+        if (specialForm && specialCategorySidebar) {
+          // 如果表单不在侧边栏中，移动它
+          if (specialForm.parentElement !== specialCategorySidebar) {
+            specialCategorySidebar.innerHTML = '';
+            specialCategorySidebar.appendChild(specialForm);
+          }
           specialForm.style.display = 'block';
         }
+        
         // 对于second-hand和rentals，也显示标准内容编辑器（因为它们需要编辑普通内容）
         const normalContentEditor = document.getElementById('normalContentEditor');
         if (specialType === 'second-hand' || specialType === 'rentals') {
@@ -1238,6 +4491,16 @@
         }
         mappingInfo.style.display = 'none';
         return;
+      } else {
+        // 非特殊类别，清空侧边栏
+        const specialCategorySidebar = document.getElementById('specialCategorySidebar');
+        if (specialCategorySidebar) {
+          specialCategorySidebar.innerHTML = '';
+        }
+        // 隐藏所有特殊表单
+        document.querySelectorAll('[id^="specialForm-"]').forEach(el => {
+          el.style.display = 'none';
+        });
       }
       
       // 普通类别，检查字段映射
@@ -1295,9 +4558,19 @@
         });
       }
 
+      // 切换标签页时隐藏所有表单（移动端默认不显示新建表单）
+      const categoryForm = document.getElementById('categoryForm');
+      const tagForm = document.getElementById('tagForm');
+      if (categoryForm) {
+        categoryForm.style.display = 'none';
+      }
+      if (tagForm) {
+        tagForm.style.display = 'none';
+      }
+      
       // 加载对应数据
       if (tabName === 'posts') {
-        loadPosts();
+        loadPosts(true); // 传递 true 重置展开状态，默认折叠
         loadApis(); // 加载API列表
       } else if (tabName === 'categories') {
         loadCategories();
@@ -1305,6 +4578,123 @@
         loadTags();
       } else if (tabName === 'comments') {
         loadComments();
+      }
+    }
+
+    // 当前登录的管理员信息
+    let currentAdmin = null;
+
+    // 显示登录页面
+    function showLoginPage() {
+      document.getElementById('loginPage').style.display = 'flex';
+      document.getElementById('mainContent').style.display = 'none';
+    }
+
+    // 显示主内容页面
+    function showMainPage() {
+      document.getElementById('loginPage').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+      if (currentAdmin) {
+        const adminNameDisplay = document.getElementById('adminNameDisplay');
+        if (adminNameDisplay) {
+          adminNameDisplay.textContent = `欢迎，${currentAdmin.name || currentAdmin.username}`;
+        }
+      }
+    }
+
+    // 检查认证状态
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/auth/admin/me', {
+          method: 'GET',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.success && data.admin) {
+            currentAdmin = data.admin;
+            showMainPage();
+            return true;
+          }
+        }
+        showLoginPage();
+        return false;
+      } catch (error) {
+        console.error('认证检查失败:', error);
+        showLoginPage();
+        return false;
+      }
+    }
+
+    // 登录处理
+    async function handleLogin(event) {
+      event.preventDefault();
+      const username = document.getElementById('loginUsername').value;
+      const password = document.getElementById('loginPassword').value;
+      const errorDiv = document.getElementById('loginError');
+
+      // 隐藏错误信息
+      if (errorDiv) {
+        errorDiv.style.display = 'none';
+        errorDiv.textContent = '';
+      }
+
+      try {
+        const response = await fetch('/api/auth/admin/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          currentAdmin = data.admin;
+          showMainPage();
+          // 重新加载数据
+          if (typeof loadPosts === 'function') {
+            loadPosts(true);
+          }
+          if (typeof loadApis === 'function') {
+            loadApis();
+          }
+        } else {
+          // 显示错误信息
+          if (errorDiv) {
+            errorDiv.style.display = 'block';
+            errorDiv.textContent = data.message || '登录失败，请检查用户名和密码';
+          }
+        }
+      } catch (error) {
+        console.error('登录失败:', error);
+        if (errorDiv) {
+          errorDiv.style.display = 'block';
+          errorDiv.textContent = '登录失败，请稍后重试';
+        }
+      }
+    }
+
+    // 登出处理
+    async function handleLogout() {
+      try {
+        await fetch('/api/auth/admin/logout', {
+          method: 'POST',
+          credentials: 'include'
+        });
+        currentAdmin = null;
+        showLoginPage();
+        // 清空表单
+        document.getElementById('loginUsername').value = '';
+        document.getElementById('loginPassword').value = '';
+      } catch (error) {
+        console.error('登出失败:', error);
+        // 即使登出失败，也显示登录页面
+        currentAdmin = null;
+        showLoginPage();
       }
     }
 
@@ -1321,8 +4711,10 @@
         });
 
         if (response.status === 401) {
+          // 未授权，显示登录页面
+          currentAdmin = null;
+          showLoginPage();
           showToast('请先登录', 'error');
-          window.location.href = '/admin.html';
           return null;
         }
 
@@ -1338,6 +4730,43 @@
       }
     }
 
+    // 可爱的加载提示文字数组
+    const loadingMessages = [
+      '📝 正在整理文章列表...',
+      '✨ 魔法正在发生中...',
+      '🐱 小猫咪正在帮你找文章...',
+      '🚀 加速加载中...',
+      '💫 文章们正在赶来...',
+      '🎨 正在美化文章列表...',
+      '🌟 马上就好啦...',
+      '📚 正在翻阅文章库...',
+      '🎯 精准定位文章中...',
+      '💡 灵感正在加载...'
+    ];
+    
+    // 可爱的表情符号数组
+    const loadingEmojis = [
+      '📝✨', '🐱', '🚀', '💫', '🎨', '🌟', '📚', '🎯', '💡', '✨'
+    ];
+    
+    // 更新加载提示文字和表情
+    function updateLoadingMessage() {
+      const loadingText = document.getElementById('loadingText');
+      const loadingEmoji = document.getElementById('loadingEmoji');
+      
+      if (loadingText) {
+        const randomMessage = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+        loadingText.textContent = randomMessage;
+      }
+      
+      if (loadingEmoji) {
+        const randomEmoji = loadingEmojis[Math.floor(Math.random() * loadingEmojis.length)];
+        loadingEmoji.textContent = randomEmoji;
+        // 添加旋转动画
+        loadingEmoji.style.animation = 'rotateEmoji 2s ease-in-out infinite';
+      }
+    }
+
     // 加载文章列表
     async function loadPosts(resetExpanded = false) {
       // 显示进度条
@@ -1348,24 +4777,45 @@
         progressContainer.style.display = 'block';
         progressBar.style.width = '0%';
         
+        // 初始化加载提示
+        updateLoadingMessage();
+        
+        // 每2秒更新一次加载提示，让等待更有趣
+        const messageInterval = setInterval(() => {
+          updateLoadingMessage();
+        }, 2000);
+        
         // 模拟进度动画
         let progress = 0;
         const progressInterval = setInterval(() => {
-          progress += 10;
-          if (progress < 90) {
-            progressBar.style.width = progress + '%';
+          progress += Math.random() * 5 + 2; // 随机增加2-7%
+          if (progress < 85) {
+            progressBar.style.width = Math.min(progress, 85) + '%';
           }
-        }, 100);
+        }, 150);
         
         try {
           const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
           
-          // 清除进度动画
+          // 清除进度动画和消息更新
           clearInterval(progressInterval);
+          clearInterval(messageInterval);
           
           if (response && response.success) {
             const posts = response.data || [];
             console.log('获取文章列表成功，文章数:', posts.length);
+            
+            // 更新加载提示为成功消息
+            const loadingText = document.getElementById('loadingText');
+            const loadingEmoji = document.getElementById('loadingEmoji');
+            if (loadingText) {
+              loadingText.textContent = `✅ 成功加载 ${posts.length} 篇文章！`;
+              loadingText.style.color = '#10b981';
+            }
+            if (loadingEmoji) {
+              loadingEmoji.textContent = '🎉';
+              loadingEmoji.style.animation = 'bounce 0.5s ease-in-out 3';
+            }
             
             // 完成进度条
             if (progressBar) {
@@ -1395,10 +4845,26 @@
               if (progressBar) {
                 progressBar.style.width = '0%';
               }
-            }, 300);
+              // 重置加载提示
+              if (loadingText) {
+                loadingText.textContent = '正在加载文章列表...';
+                loadingText.style.color = '#6b7280';
+              }
+              if (loadingEmoji) {
+                loadingEmoji.textContent = '📝✨';
+                loadingEmoji.style.animation = 'bounce 1s ease-in-out infinite';
+              }
+            }, 800);
           } else {
             console.error('获取文章列表失败:', response);
-            document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+            const tbody = document.getElementById('postsTableBody');
+            const mobileContainer = document.getElementById('postsTableBodyMobile');
+            if (tbody) {
+              tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+            }
+            if (mobileContainer) {
+              mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败</div>';
+            }
             
             // 隐藏进度条
             if (progressContainer) {
@@ -1410,7 +4876,14 @@
           }
         } catch (error) {
           console.error('加载文章列表异常:', error);
-          document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+          const tbody = document.getElementById('postsTableBody');
+          const mobileContainer = document.getElementById('postsTableBodyMobile');
+          if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败: ' + escapeHtml(error.message) + '</td></tr>';
+          }
+          if (mobileContainer) {
+            mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(error.message) + '</div>';
+          }
           
           // 清除进度动画
           clearInterval(progressInterval);
@@ -1446,22 +4919,47 @@
             displayPosts(posts);
           } else {
             console.error('获取文章列表失败:', response);
-            document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+            const tbody = document.getElementById('postsTableBody');
+            const mobileContainer = document.getElementById('postsTableBodyMobile');
+            if (tbody) {
+              tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+            }
+            if (mobileContainer) {
+              mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败</div>';
+            }
           }
         } catch (error) {
           console.error('加载文章列表异常:', error);
-          document.getElementById('postsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+          const tbody = document.getElementById('postsTableBody');
+          const mobileContainer = document.getElementById('postsTableBodyMobile');
+          if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败: ' + escapeHtml(error.message) + '</td></tr>';
+          }
+          if (mobileContainer) {
+            mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(error.message) + '</div>';
+          }
         }
       }
     }
 
     // 显示文章列表（按分类分组，默认折叠，延迟渲染）
     function displayPosts(posts) {
-      const tbody = document.getElementById('postsTableBody');
-      if (!posts || posts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">暂无文章</td></tr>';
-        return;
-      }
+      try {
+        const tbody = document.getElementById('postsTableBody');
+        const mobileContainer = document.getElementById('postsTableBodyMobile');
+        
+        if (!tbody) {
+          console.error('找不到 postsTableBody 元素');
+          return;
+        }
+        
+        if (!posts || posts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">暂无文章</td></tr>';
+          if (mobileContainer) {
+            mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无文章</div>';
+          }
+          return;
+        }
 
       console.log('displayPosts 接收到的文章数:', posts.length);
 
@@ -1500,7 +4998,11 @@
 
       // 使用 DocumentFragment 优化 DOM 操作
       const fragment = document.createDocumentFragment();
+      const mobileFragment = document.createDocumentFragment();
       const sortedCategories = Object.keys(postsByCategory).sort();
+      
+      // 移动端卡片HTML
+      let mobileHtml = '';
       
       // 只渲染分类标题行（性能优化：不渲染折叠的文章行）
       for (const apiName of sortedCategories) {
@@ -1519,42 +5021,180 @@
         // 添加点击展开/折叠功能 - 去掉文件夹图标
         const expandIcon = isExpanded ? '▼' : '▶';
         
+        // 应用筛选条件计算显示数量
+        let displayCount = categoryPosts.length;
+        if (currentSearchQuery || currentStatusFilter) {
+          let filtered = categoryPosts;
+          if (currentSearchQuery) {
+            filtered = filtered.filter(post => {
+              const title = (post.name || post.title || '').toLowerCase();
+              return title.includes(currentSearchQuery);
+            });
+          }
+          if (currentStatusFilter) {
+            filtered = filtered.filter(post => {
+              if (currentStatusFilter === 'published') {
+                return post.published === true || post.published === 'true';
+              } else if (currentStatusFilter === 'draft') {
+                return !post.published || post.published === 'false';
+              }
+              return true;
+            });
+          }
+          displayCount = filtered.length;
+        }
+        
         // 创建分类标题行
         const headerRow = document.createElement('tr');
         headerRow.className = 'category-header-row';
-        headerRow.style.cssText = 'background: #FFFFFF; font-weight: 600; cursor: pointer;';
+        headerRow.style.cssText = 'background: #FAFBFC; font-weight: 600; cursor: pointer;';
         headerRow.setAttribute('data-category-name', apiName);
         headerRow.onclick = function() {
           toggleCategory(this.dataset.categoryName);
         };
         
         headerRow.innerHTML = `
-          <td colspan="6" style="padding: 0.875rem 1rem;">
-            <span style="color: #374151; font-weight: 600; font-size: 0.875rem;">${expandIcon} ${escapeHtml(categoryDisplayName)}</span>
-            <span style="color: #6B7280; font-size: 0.875rem; font-weight: normal; margin-left: 0.5rem;">
-              (${categoryPosts.length} 篇文章)
-            </span>
+          <td colspan="6" style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #E5E7EB;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #6B7280; font-size: 0.75rem; font-weight: 500; min-width: 16px; text-align: center;">${expandIcon}</span>
+              <span style="color: #374151; font-weight: 600; font-size: 0.8125rem;">${escapeHtml(categoryDisplayName)}</span>
+              <span style="color: #9CA3AF; font-size: 0.75rem; font-weight: normal; margin-left: auto;">
+                ${displayCount}${displayCount !== categoryPosts.length ? `/${categoryPosts.length}` : ''} 篇
+              </span>
+            </div>
           </td>
         `;
         
         fragment.appendChild(headerRow);
         
         // 该分类下的文章（只渲染展开的分类，性能优化）
-        if (isExpanded) {
+        if (isExpanded && displayCount > 0) {
           renderCategoryPosts(apiName, categoryPosts, fragment);
+        }
+        
+        // 移动端：默认折叠，添加分类标题（可点击展开/折叠）
+        // 注意：specialType 和 categoryDisplayName 已在上面声明，直接复用
+        if (!window.expandedCategoriesMobile) {
+          window.expandedCategoriesMobile = new Set(); // 移动端默认全部折叠
+        }
+        const mobileExpanded = window.expandedCategoriesMobile.has(apiName);
+        const mobileExpandIcon = mobileExpanded ? '▼' : '▶';
+        mobileHtml += `<div class="admin-category-header-mobile" data-category-name="${escapeHtml(apiName)}" onclick="toggleCategoryMobile('${escapeHtml(apiName)}')">
+          <span class="category-expand-icon">${mobileExpandIcon}</span>
+          <span>${escapeHtml(categoryDisplayName)}</span>
+          <span style="margin-left: auto; color: #9ca3af; font-weight: normal; font-size: 0.75rem;">${categoryPosts.length}篇</span>
+        </div>`;
+        
+        // 添加该分类下的所有文章卡片（根据展开状态显示/隐藏）
+        if (mobileExpanded) {
+          categoryPosts.forEach(post => {
+            const date = formatDate(post.createdAt || post.created_at);
+            const postCategory = post.category || apiName;
+            const statusBadge = post.published 
+              ? '<span class="status-badge published" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">已发布</span>' 
+              : '<span class="status-badge draft" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">草稿</span>';
+            
+            mobileHtml += `
+              <div class="admin-post-card" data-post-id="${post.id}" data-category="${escapeHtml(apiName)}">
+                <div class="admin-post-card-header">
+                  <div class="admin-post-card-title">${escapeHtml(post.name || post.title || '未命名')}</div>
+                  ${statusBadge}
+                </div>
+                <div class="admin-post-card-actions">
+                  <button class="admin-btn-small admin-btn-edit" onclick="event.stopPropagation(); editPost('${post.id}')" title="编辑">编辑</button>
+                  <button class="admin-btn-small admin-btn-copy" onclick="event.stopPropagation(); copyPost('${post.id}')" title="复制文章">复制</button>
+                  <button class="admin-btn-small admin-btn-delete" onclick="event.stopPropagation(); deletePost('${post.id}')" title="删除">删除</button>
+                </div>
+              </div>
+            `;
+          });
         }
       }
 
+      // 更新移动端容器（mobileContainer已在函数开始处声明）
+      if (mobileContainer) {
+        mobileContainer.innerHTML = mobileHtml || '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无文章</div>';
+      }
+
       // 批量插入 DOM（性能优化）
-      tbody.innerHTML = '';
-      tbody.appendChild(fragment);
+      try {
+        tbody.innerHTML = '';
+        tbody.appendChild(fragment);
+        
+        // 确保进度条被隐藏
+        const progressContainer = document.getElementById('postsLoadingProgress');
+        const progressBar = document.getElementById('postsLoadingProgressBar');
+        if (progressContainer) {
+          progressContainer.style.display = 'none';
+        }
+        if (progressBar) {
+          progressBar.style.width = '0%';
+        }
+      } catch (error) {
+        console.error('渲染文章列表失败:', error);
+        const tbody = document.getElementById('postsTableBody');
+        const mobileContainer = document.getElementById('postsTableBodyMobile');
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">渲染失败: ' + escapeHtml(error.message) + '</td></tr>';
+        }
+        if (mobileContainer) {
+          mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">渲染失败: ' + escapeHtml(error.message) + '</div>';
+        }
+        
+        // 确保进度条被隐藏
+        const progressContainer = document.getElementById('postsLoadingProgress');
+        const progressBar = document.getElementById('postsLoadingProgressBar');
+        if (progressContainer) {
+          progressContainer.style.display = 'none';
+        }
+        if (progressBar) {
+          progressBar.style.width = '0%';
+        }
+      }
+      } catch (outerError) {
+        console.error('displayPosts 函数执行失败:', outerError);
+        const tbody = document.getElementById('postsTableBody');
+        const mobileContainer = document.getElementById('postsTableBodyMobile');
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">显示失败: ' + escapeHtml(outerError.message) + '</td></tr>';
+        }
+        if (mobileContainer) {
+          mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">显示失败: ' + escapeHtml(outerError.message) + '</div>';
+        }
+      }
     }
     
     // 渲染单个分类的文章行（延迟渲染函数）
     function renderCategoryPosts(apiName, categoryPosts, container) {
       const fragment = container || document.createDocumentFragment();
       
-      for (const post of categoryPosts) {
+      // 应用筛选条件
+      let filteredPosts = categoryPosts;
+      
+      if (currentSearchQuery) {
+        filteredPosts = filteredPosts.filter(post => {
+          const title = (post.name || post.title || '').toLowerCase();
+          return title.includes(currentSearchQuery);
+        });
+      }
+      
+      if (currentStatusFilter) {
+        filteredPosts = filteredPosts.filter(post => {
+          if (currentStatusFilter === 'published') {
+            return post.published === true || post.published === 'true';
+          } else if (currentStatusFilter === 'draft') {
+            return !post.published || post.published === 'false';
+          }
+          return true;
+        });
+      }
+      
+      // 如果没有匹配的文章，不渲染
+      if (filteredPosts.length === 0) {
+        return fragment;
+      }
+      
+      for (const post of filteredPosts) {
         const date = formatDate(post.createdAt || post.created_at);
         const postCategory = post.category || apiName;
         const categoryDisplay = `<span class="category-tag">${escapeHtml(postCategory)}</span>`;
@@ -1570,16 +5210,36 @@
         row.style.cssText = 'background: #FFFFFF;';
         
         row.innerHTML = `
-          <td style="font-weight: 500; color: #111827;">${escapeHtml(post.name || post.title || '未命名')}</td>
-          <td>${categoryDisplay}</td>
-          <td>${statusBadge}</td>
-          <td style="color: #6B7280;">${post.views || 0}</td>
-          <td style="color: #6B7280;">${date}</td>
-          <td>
+          <td style="font-weight: 600; font-size: 0.9375rem; color: #111827; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            ${escapeHtml(post.name || post.title || '未命名')}
+          </td>
+          <td style="white-space: nowrap;">${categoryDisplay}</td>
+          <td style="white-space: nowrap;">${statusBadge}</td>
+          <td style="color: #9CA3AF; font-size: 0.8125rem; white-space: nowrap;">
+            <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.6;">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              ${post.views || 0}
+            </span>
+          </td>
+          <td style="color: #9CA3AF; font-size: 0.8125rem; white-space: nowrap;">
+            <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.6;">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+              ${date}
+            </span>
+          </td>
+          <td style="white-space: nowrap; min-width: 140px;">
             <div class="admin-actions">
-              <button class="admin-btn-small admin-btn-edit" onclick="editPost('${post.id}')">编辑</button>
-              <button class="admin-btn-small admin-btn-copy" onclick="copyPost('${post.id}')" title="复制文章">复制</button>
-              <button class="admin-btn-small admin-btn-delete" onclick="deletePost('${post.id}')">删除</button>
+              <button class="admin-btn-small admin-btn-edit" onclick="event.stopPropagation(); editPost('${post.id}')" title="编辑">编辑</button>
+              <button class="admin-btn-small admin-btn-copy" onclick="event.stopPropagation(); copyPost('${post.id}')" title="复制文章">复制</button>
+              <button class="admin-btn-small admin-btn-delete" onclick="event.stopPropagation(); deletePost('${post.id}')" title="删除">删除</button>
             </div>
           </td>
         `;
@@ -1590,6 +5250,21 @@
       return fragment;
     }
 
+    // 筛选文章函数
+    let currentSearchQuery = '';
+    let currentStatusFilter = '';
+    
+    // 筛选功能已移除，保留变量以避免错误
+    function filterPosts() {
+      // 搜索和筛选功能已移除，此函数保留以避免错误
+      currentSearchQuery = '';
+      currentStatusFilter = '';
+      // 重新显示文章列表
+      if (allPostsData) {
+        displayPosts(allPostsData);
+      }
+    }
+    
     // 切换分类展开/折叠状态（优化：只更新相关行，不重新渲染整个列表）
     function toggleCategory(apiName) {
       const tbody = document.getElementById('postsTableBody');
@@ -1645,8 +5320,97 @@
         }
       }
     }
+    
+    // 移动端切换分类展开/折叠状态
+    function toggleCategoryMobile(apiName) {
+      if (!window.expandedCategoriesMobile) {
+        window.expandedCategoriesMobile = new Set();
+      }
+      
+      const mobileContainer = document.getElementById('postsTableBodyMobile');
+      if (!mobileContainer) return;
+      
+      const isExpanded = window.expandedCategoriesMobile.has(apiName);
+      const categoryHeader = mobileContainer.querySelector(`.admin-category-header-mobile[data-category-name="${escapeHtml(apiName)}"]`);
+      if (!categoryHeader) return;
+      
+      // 更新展开/折叠状态
+      if (isExpanded) {
+        window.expandedCategoriesMobile.delete(apiName);
+        // 折叠：隐藏该分类下的所有文章卡片
+        const categoryCards = mobileContainer.querySelectorAll(`.admin-post-card[data-category="${escapeHtml(apiName)}"]`);
+        categoryCards.forEach(card => {
+          card.style.display = 'none';
+        });
+        // 更新图标
+        const iconSpan = categoryHeader.querySelector('.category-expand-icon');
+        if (iconSpan) {
+          iconSpan.textContent = '▶';
+        }
+      } else {
+        window.expandedCategoriesMobile.add(apiName);
+        // 展开：显示该分类下的所有文章卡片
+        const categoryPosts = window.postsByCategoryData && window.postsByCategoryData[apiName];
+        if (categoryPosts) {
+          // 找到分类标题后面的位置
+          let nextSibling = categoryHeader.nextElementSibling;
+          const fragment = document.createDocumentFragment();
+          
+          categoryPosts.forEach(post => {
+            const date = formatDate(post.createdAt || post.created_at);
+            const postCategory = post.category || apiName;
+            const statusBadge = post.published 
+              ? '<span class="status-badge published" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">已发布</span>' 
+              : '<span class="status-badge draft" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">草稿</span>';
+            
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'admin-post-card';
+            cardDiv.setAttribute('data-post-id', post.id);
+            cardDiv.setAttribute('data-category', apiName);
+            cardDiv.innerHTML = `
+              <div class="admin-post-card-header">
+                <div class="admin-post-card-title">${escapeHtml(post.name || post.title || '未命名')}</div>
+                ${statusBadge}
+              </div>
+              <div class="admin-post-card-actions">
+                <button class="admin-btn-small admin-btn-edit" onclick="event.stopPropagation(); editPost('${post.id}')" title="编辑">编辑</button>
+                <button class="admin-btn-small admin-btn-copy" onclick="event.stopPropagation(); copyPost('${post.id}')" title="复制文章">复制</button>
+                <button class="admin-btn-small admin-btn-delete" onclick="event.stopPropagation(); deletePost('${post.id}')" title="删除">删除</button>
+              </div>
+            `;
+            fragment.appendChild(cardDiv);
+          });
+          
+          // 插入到分类标题后面
+          if (nextSibling) {
+            mobileContainer.insertBefore(fragment, nextSibling);
+          } else {
+            mobileContainer.appendChild(fragment);
+          }
+        } else {
+          // 如果没有缓存，显示已存在的卡片
+          const categoryCards = mobileContainer.querySelectorAll(`.admin-post-card[data-category="${escapeHtml(apiName)}"]`);
+          categoryCards.forEach(card => {
+            card.style.display = 'flex';
+          });
+        }
+        // 更新图标
+        const iconSpan = categoryHeader.querySelector('.category-expand-icon');
+        if (iconSpan) {
+          iconSpan.textContent = '▼';
+        }
+      }
+    }
 
     // 显示文章表单
+    // 在新窗口打开新建文章页面
+    function openNewPostInNewWindow() {
+      const newWindow = window.open('/blog-admin.html?action=new', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+      if (!newWindow) {
+        alert('无法打开新窗口，请检查浏览器弹窗设置');
+      }
+    }
+
     async function showPostForm(post = null) {
       const form = document.getElementById('postForm');
       const formTitle = document.getElementById('postFormTitle');
@@ -2218,7 +5982,13 @@
               customUpload: async (file, insertFn) => {
                 try {
                   const imageUrl = await uploadImageToServer(file);
-                  insertFn(imageUrl, file.name, imageUrl);
+                  // 插入带响应式样式的图片
+                  const imageHtml = `<img src="${imageUrl}" alt="${file.name}" style="max-width: 100%; height: auto; display: block; margin: 1rem auto; border-radius: 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />`;
+                  if (wangEditor && wangEditor.dangerouslyInsertHtml) {
+                    wangEditor.dangerouslyInsertHtml(imageHtml);
+                  } else {
+                    insertFn(imageUrl, file.name, imageUrl);
+                  }
                   showToast('图片上传成功', 'success');
                 } catch (error) {
                   showToast('图片上传失败: ' + error.message, 'error');
@@ -2291,7 +6061,13 @@
                     messageSpan.textContent = '上传完成！';
                   }
                   
-                  insertFn(videoInfo.url, file.name, videoInfo.url);
+                  // 插入带响应式样式的视频
+                  const videoHtml = `<div class="video-block" style="margin: 1rem 0; width: 100%; max-width: 100%; overflow: hidden;"><video src="${videoInfo.url}" controls style="max-width: 100%; width: 100%; height: auto; display: block; margin: 1rem auto; border-radius: 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></video></div>`;
+                  if (wangEditor && wangEditor.dangerouslyInsertHtml) {
+                    wangEditor.dangerouslyInsertHtml(videoHtml);
+                  } else {
+                    insertFn(videoInfo.url, file.name, videoInfo.url);
+                  }
                   showToast('视频上传成功', 'success');
                   
                   // 3秒后隐藏进度条
@@ -2422,7 +6198,11 @@
                   
                   try {
                     const imageUrl = await uploadImageToServer(file);
-                    if (wangEditor && wangEditor.insertNode) {
+                    // 插入带响应式样式的图片
+                    const imageHtml = `<img src="${imageUrl}" alt="${file.name}" style="max-width: 100%; height: auto; display: block; margin: 1rem auto; border-radius: 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />`;
+                    if (wangEditor && wangEditor.dangerouslyInsertHtml) {
+                      wangEditor.dangerouslyInsertHtml(imageHtml);
+                    } else if (wangEditor && wangEditor.insertNode) {
                       const imageNode = {
                         type: 'image',
                         src: imageUrl,
@@ -2430,8 +6210,6 @@
                         href: ''
                       };
                       wangEditor.insertNode(imageNode);
-                    } else if (wangEditor && wangEditor.dangerouslyInsertHtml) {
-                      wangEditor.dangerouslyInsertHtml(`<img src="${imageUrl}" alt="${file.name}" />`);
                     }
                     showToast('图片上传成功', 'success');
                   } catch (error) {
@@ -2470,7 +6248,11 @@
                 
                 const imageUrl = await uploadImageToServer(file);
                 
-                if (wangEditor && wangEditor.insertNode) {
+                // 插入带响应式样式的图片
+                const imageHtml = `<img src="${imageUrl}" alt="${fileName}" style="max-width: 100%; height: auto; display: block; margin: 1rem auto; border-radius: 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />`;
+                if (wangEditor && wangEditor.dangerouslyInsertHtml) {
+                  wangEditor.dangerouslyInsertHtml(imageHtml);
+                } else if (wangEditor && wangEditor.insertNode) {
                   const imageNode = {
                     type: 'image',
                     src: imageUrl,
@@ -2478,8 +6260,6 @@
                     href: ''
                   };
                   wangEditor.insertNode(imageNode);
-                } else if (wangEditor && wangEditor.dangerouslyInsertHtml) {
-                  wangEditor.dangerouslyInsertHtml(`<img src="${imageUrl}" alt="${fileName}" />`);
                 }
                 
                 showToast('图片上传成功', 'success');
@@ -2534,17 +6314,19 @@
               
               try {
                 const imageUrl = await uploadImageToServer(file);
-                if (wangEditor && wangEditor.insertNode) {
-                  const imageNode = {
-                    type: 'image',
-                    src: imageUrl,
-                    alt: file.name,
-                    href: ''
-                  };
-                  wangEditor.insertNode(imageNode);
-                } else if (wangEditor && wangEditor.dangerouslyInsertHtml) {
-                  wangEditor.dangerouslyInsertHtml(`<img src="${imageUrl}" alt="${file.name}" />`);
-                }
+                  // 插入带响应式样式的图片
+                  const imageHtml = `<img src="${imageUrl}" alt="${file.name}" style="max-width: 100%; height: auto; display: block; margin: 1rem auto; border-radius: 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />`;
+                  if (wangEditor && wangEditor.dangerouslyInsertHtml) {
+                    wangEditor.dangerouslyInsertHtml(imageHtml);
+                  } else if (wangEditor && wangEditor.insertNode) {
+                    const imageNode = {
+                      type: 'image',
+                      src: imageUrl,
+                      alt: file.name,
+                      href: ''
+                    };
+                    wangEditor.insertNode(imageNode);
+                  }
                 showToast(`图片 ${file.name} 上传成功`, 'success');
               } catch (error) {
                 showToast(`图片 ${file.name} 上传失败: ${error.message}`, 'error');
@@ -4096,13 +7878,24 @@
     // 分类管理函数
     async function loadCategories() {
       try {
+        const tbody = document.getElementById('categoriesTableBody');
+        const mobileContainer = document.getElementById('categoriesTableMobile');
+        
+        if (!tbody) {
+          console.error('找不到 categoriesTableBody 元素');
+          return;
+        }
+        
         const response = await adminApiRequest(`${BLOG_ADMIN_API}/categories`);
         if (response && response.success) {
-          const tbody = document.getElementById('categoriesTableBody');
           const categories = response.data || [];
           if (categories.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" class="blog-empty">暂无分类</td></tr>';
+            if (mobileContainer) {
+              mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无分类</div>';
+            }
           } else {
+            // 桌面端表格
             tbody.innerHTML = categories.map(cat => `
               <tr>
                 <td>${escapeHtml(cat.name)}</td>
@@ -4116,10 +7909,49 @@
                 </td>
               </tr>
             `).join('');
+            
+            // 移动端卡片
+            if (mobileContainer) {
+              mobileContainer.innerHTML = categories.map(cat => `
+                <div class="admin-table-card">
+                  <div class="admin-table-card-row">
+                    <span class="admin-table-card-label">名称：</span>
+                    <span class="admin-table-card-value">${escapeHtml(cat.name)}</span>
+                  </div>
+                  <div class="admin-table-card-row">
+                    <span class="admin-table-card-label">路径/描述：</span>
+                    <span class="admin-table-card-value">${escapeHtml(cat.description || cat.path || '')}</span>
+                  </div>
+                  <div class="admin-table-card-row">
+                    <span class="admin-table-card-label">文章数：</span>
+                    <span class="admin-table-card-value">${cat.postCount || 0}</span>
+                  </div>
+                  <div class="admin-table-card-row admin-table-card-actions-row">
+                    <div class="admin-actions">
+                      <button class="admin-btn-small admin-btn-edit" onclick="editCategory(${cat.id})">编辑</button>
+                      <button class="admin-btn-small admin-btn-delete" onclick="deleteCategory(${cat.id})">删除</button>
+                    </div>
+                  </div>
+                </div>
+              `).join('');
+            }
+          }
+        } else {
+          tbody.innerHTML = '<tr><td colspan="4" class="blog-empty">加载失败: ' + (response?.message || '未知错误') + '</td></tr>';
+          if (mobileContainer) {
+            mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(response?.message || '未知错误') + '</div>';
           }
         }
       } catch (error) {
-        document.getElementById('categoriesTableBody').innerHTML = '<tr><td colspan="4" class="blog-empty">加载失败</td></tr>';
+        console.error('加载分类失败:', error);
+        const tbody = document.getElementById('categoriesTableBody');
+        const mobileContainer = document.getElementById('categoriesTableMobile');
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="4" class="blog-empty">加载失败: ' + escapeHtml(error.message || '未知错误') + '</td></tr>';
+        }
+        if (mobileContainer) {
+          mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(error.message || '未知错误') + '</div>';
+        }
       }
     }
 
@@ -4221,23 +8053,63 @@
     // 标签管理函数
     async function loadTags() {
       try {
+        const tbody = document.getElementById('tagsTableBody');
+        const mobileContainer = document.getElementById('tagsTableMobile');
+        
+        if (!tbody) {
+          console.error('找不到 tagsTableBody 元素');
+          return;
+        }
+        
         const response = await adminApiRequest(`${BLOG_ADMIN_API}/tags`);
         if (response && response.success) {
-          const tbody = document.getElementById('tagsTableBody');
           const tags = response.data || [];
           if (tags.length === 0) {
             tbody.innerHTML = '<tr><td colspan="2" class="blog-empty">暂无标签</td></tr>';
+            if (mobileContainer) {
+              mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无标签</div>';
+            }
           } else {
+            // 桌面端表格
             tbody.innerHTML = tags.map(tag => `
               <tr>
                 <td>${escapeHtml(tag.name)}</td>
                 <td>${tag.postCount || 0}</td>
               </tr>
             `).join('');
+            
+            // 移动端卡片
+            if (mobileContainer) {
+              mobileContainer.innerHTML = tags.map(tag => `
+                <div class="admin-table-card">
+                  <div class="admin-table-card-row">
+                    <span class="admin-table-card-label">名称：</span>
+                    <span class="admin-table-card-value">${escapeHtml(tag.name)}</span>
+                  </div>
+                  <div class="admin-table-card-row">
+                    <span class="admin-table-card-label">文章数：</span>
+                    <span class="admin-table-card-value">${tag.postCount || 0}</span>
+                  </div>
+                </div>
+              `).join('');
+            }
+          }
+        } else {
+          tbody.innerHTML = '<tr><td colspan="2" class="blog-empty">加载失败: ' + (response?.message || '未知错误') + '</td></tr>';
+          if (mobileContainer) {
+            mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(response?.message || '未知错误') + '</div>';
           }
         }
       } catch (error) {
-        document.getElementById('tagsTableBody').innerHTML = '<tr><td colspan="2" class="blog-empty">加载失败</td></tr>';
+        console.error('加载标签失败:', error);
+        const tbody = document.getElementById('tagsTableBody');
+        const mobileContainer = document.getElementById('tagsTableMobile');
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="2" class="blog-empty">加载失败: ' + escapeHtml(error.message || '未知错误') + '</td></tr>';
+        }
+        if (mobileContainer) {
+          mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(error.message || '未知错误') + '</div>';
+        }
       }
     }
 
@@ -4273,13 +8145,24 @@
     // 评论管理函数
     async function loadComments() {
       try {
+        const tbody = document.getElementById('commentsTableBody');
+        const mobileContainer = document.getElementById('commentsTableMobile');
+        
+        if (!tbody) {
+          console.error('找不到 commentsTableBody 元素');
+          return;
+        }
+        
         const response = await adminApiRequest(`${BLOG_ADMIN_API}/comments`);
         if (response && response.success) {
-          const tbody = document.getElementById('commentsTableBody');
           const comments = response.data || [];
           if (comments.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">暂无评论</td></tr>';
+            if (mobileContainer) {
+              mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无评论</div>';
+            }
           } else {
+            // 桌面端表格
             tbody.innerHTML = comments.map(comment => {
               const date = formatDateTime(comment.createdAt || comment.created_at);
               return `
@@ -4298,10 +8181,60 @@
                 </tr>
               `;
             }).join('');
+            
+            // 移动端卡片
+            if (mobileContainer) {
+              mobileContainer.innerHTML = comments.map(comment => {
+                const date = formatDateTime(comment.createdAt || comment.created_at);
+                return `
+                  <div class="admin-table-card">
+                    <div class="admin-table-card-row">
+                      <span class="admin-table-card-label">文章：</span>
+                      <span class="admin-table-card-value">${escapeHtml(comment.postName || '')}</span>
+                    </div>
+                    <div class="admin-table-card-row">
+                      <span class="admin-table-card-label">作者：</span>
+                      <span class="admin-table-card-value">${escapeHtml(comment.authorName)}</span>
+                    </div>
+                    <div class="admin-table-card-row">
+                      <span class="admin-table-card-label">内容：</span>
+                      <span class="admin-table-card-value">${escapeHtml(truncate(comment.content, 50))}</span>
+                    </div>
+                    <div class="admin-table-card-row">
+                      <span class="admin-table-card-label">状态：</span>
+                      <span class="admin-table-card-value">${comment.approved ? '<span style="color: #10b981;">已审核</span>' : '<span style="color: #f59e0b;">待审核</span>'}</span>
+                    </div>
+                    <div class="admin-table-card-row">
+                      <span class="admin-table-card-label">日期：</span>
+                      <span class="admin-table-card-value">${date}</span>
+                    </div>
+                    <div class="admin-table-card-row admin-table-card-actions-row">
+                      <div class="admin-actions">
+                        ${!comment.approved ? `<button class="admin-btn-small admin-btn-approve" onclick="approveComment('${comment.id}')">审核</button>` : ''}
+                        <button class="admin-btn-small admin-btn-delete" onclick="deleteComment('${comment.id}')">删除</button>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }).join('');
+            }
+          }
+        } else {
+          tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败: ' + (response?.message || '未知错误') + '</td></tr>';
+          if (mobileContainer) {
+            mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(response?.message || '未知错误') + '</div>';
           }
         }
       } catch (error) {
-        document.getElementById('commentsTableBody').innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+        console.error('加载评论失败:', error);
+        const tbody = document.getElementById('commentsTableBody');
+        const mobileContainer = document.getElementById('commentsTableMobile');
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败: ' + escapeHtml(error.message || '未知错误') + '</td></tr>';
+        }
+        if (mobileContainer) {
+          mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(error.message || '未知错误') + '</div>';
+        }
       }
     }
 
@@ -4351,7 +8284,9 @@
     async function checkUrlParams() {
       const editId = getUrlParam('edit');
       const copyId = getUrlParam('copy');
+      const action = getUrlParam('action');
       
+      // 只有在明确有edit或copy参数时才显示表单
       if (editId) {
         // 等待页面加载完成后再执行编辑
         setTimeout(async () => {
@@ -4373,15 +8308,70 @@
           window.history.replaceState({}, '', url);
         }, 500);
       }
+      
+      // 如果有action=new参数，显示新建表单（仅在新窗口中）
+      if (action === 'new' && window.opener) {
+        setTimeout(() => {
+          showPostForm();
+        }, 500);
+      }
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
-      // 如果是在新窗口中打开编辑或复制页面，只加载必要的资源
+      // 首先检查认证状态
+      const isAuthenticated = await checkAuth();
+      
+      // 如果未认证，不继续初始化
+      if (!isAuthenticated) {
+        return;
+      }
+
+      // 确保所有表单默认隐藏（除非有明确的URL参数）
+      const postForm = document.getElementById('postForm');
+      const categoryForm = document.getElementById('categoryForm');
+      const tagForm = document.getElementById('tagForm');
+      
+      const action = getUrlParam('action');
       const editId = getUrlParam('edit');
       const copyId = getUrlParam('copy');
-      const isEditWindow = window.opener && (editId || copyId);
       
-      if (isEditWindow) {
+      // 只有在明确有edit、copy或action=new参数时才显示文章表单
+      if (postForm && !editId && !copyId && action !== 'new') {
+        postForm.style.display = 'none';
+      }
+      
+      // 确保分类和标签表单默认隐藏
+      if (categoryForm) {
+        categoryForm.style.display = 'none';
+      }
+      if (tagForm) {
+        tagForm.style.display = 'none';
+      }
+      
+      // 如果是在新窗口中打开编辑或复制页面，只加载必要的资源
+      const isEditWindow = window.opener && (editId || copyId || action === 'new');
+      
+      // 如果不是编辑窗口，初始化默认标签页
+      if (!isEditWindow) {
+        // 确保默认折叠所有分类
+        expandedCategories.clear();
+        
+        // 确保表单隐藏
+        if (postForm) {
+          postForm.style.display = 'none';
+        }
+        
+        // 确保文章标签页是激活状态并加载数据
+        const postsTab = document.querySelector('.admin-tab.active');
+        if (postsTab && postsTab.textContent.trim() === '文章') {
+          // 如果文章标签页已经是激活状态，直接加载数据（默认折叠）
+          loadPosts(true);
+          loadApis();
+        } else {
+          // 否则切换到文章标签页（会自动加载数据，默认折叠）
+          switchTab('posts');
+        }
+      } else if (isEditWindow) {
         // 新窗口：隐藏不相关的元素，只显示编辑表单
         hideUnnecessaryElements();
         // 更新页面标题
@@ -4946,14 +8936,18 @@
       const escapedVideoUrl = fullVideoUrl.replace(/"/g, '&quot;');
       const escapedPosterUrl = fullPosterUrl ? fullPosterUrl.replace(/"/g, '&quot;') : '';
       
+      // 响应式样式字符串
+      const responsiveVideoStyle = 'max-width: 100%; width: 100%; height: auto; display: block; margin: 1rem auto; border-radius: 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);';
+      const responsiveIframeStyle = 'max-width: 100%; width: 100%; height: 400px; min-height: 400px; display: block; margin: 1rem auto; border-radius: 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: none;';
+      
       switch (format) {
         case 'video-tag':
           // 方式1: 直接 video 标签（符合示例格式：<video src="..." poster="..."></video>）
           // 确保使用完整的网络地址，兼容小程序环境
           if (fullPosterUrl) {
-            return `<video src="${escapedVideoUrl}" poster="${escapedPosterUrl}"></video>`;
+            return `<video src="${escapedVideoUrl}" poster="${escapedPosterUrl}" controls style="${responsiveVideoStyle}"></video>`;
           } else {
-            return `<video src="${escapedVideoUrl}"></video>`;
+            return `<video src="${escapedVideoUrl}" controls style="${responsiveVideoStyle}"></video>`;
           }
         case 'video-source':
           // 方式2: video 标签包含 source（支持多种格式）
@@ -4978,11 +8972,11 @@
           
           // 确保使用完整的网络地址（poster已在上方验证）
           if (fullPosterUrl) {
-            return `<video poster="${escapedPosterUrl}">
+            return `<video poster="${escapedPosterUrl}" controls style="${responsiveVideoStyle}">
   <source src="${escapedVideoUrl}" type="${videoType}">
 </video>`;
           } else {
-            return `<video>
+            return `<video controls style="${responsiveVideoStyle}">
   <source src="${escapedVideoUrl}" type="${videoType}">
 </video>`;
           }
@@ -5005,7 +8999,7 @@
             throw new Error('无法从URL中提取YouTube视频ID');
           }
           
-          return `<iframe src="https://www.youtube.com/embed/${videoId}"></iframe>`;
+          return `<iframe src="https://www.youtube.com/embed/${videoId}" style="${responsiveIframeStyle}"></iframe>`;
         case 'video-link':
           // 方式4: 视频链接（会显示为可点击的链接）
           return `<a href="${escapedVideoUrl}" target="_blank" style="display: inline-block; padding: 0.5rem 1rem; background: #9333ea; color: white; text-decoration: none; border-radius: 0.25rem; margin: 1rem 0;">📹 视频链接</a>`;
@@ -5013,9 +9007,9 @@
           // 默认使用方式1（符合示例格式）
           // 确保使用完整的网络地址（poster已在上方验证）
           if (fullPosterUrl) {
-            return `<video src="${escapedVideoUrl}" poster="${escapedPosterUrl}"></video>`;
+            return `<video src="${escapedVideoUrl}" poster="${escapedPosterUrl}" controls style="${responsiveVideoStyle}"></video>`;
           } else {
-            return `<video src="${escapedVideoUrl}"></video>`;
+            return `<video src="${escapedVideoUrl}" controls style="${responsiveVideoStyle}"></video>`;
           }
       }
     }
@@ -5105,16 +9099,56 @@
      * 更新图片预览
      */
     function updateImagePreview(imageUrl) {
+      // 更新封面图预览
+      const coverImagePreview = document.getElementById('coverImagePreview');
+      const coverImagePlaceholder = document.getElementById('coverImagePlaceholder');
+      const coverImageOverlay = document.getElementById('coverImageOverlay');
+      
+      if (coverImagePreview && coverImagePlaceholder && coverImageOverlay) {
+        if (imageUrl && imageUrl.trim()) {
+          coverImagePreview.src = imageUrl;
+          coverImagePreview.style.display = 'block';
+          coverImagePlaceholder.style.display = 'none';
+          coverImageOverlay.style.display = 'none';
+        } else {
+          coverImagePreview.style.display = 'none';
+          coverImagePlaceholder.style.display = 'flex';
+          coverImageOverlay.style.display = 'none';
+        }
+      }
+      
+      // 兼容旧的预览方式
       const previewDiv = document.getElementById('imagePreview');
       const previewImg = document.getElementById('imagePreviewImg');
       
-      if (imageUrl && imageUrl.trim()) {
-        previewImg.src = imageUrl;
-        previewDiv.style.display = 'block';
-      } else {
-        previewDiv.style.display = 'none';
+      if (previewDiv && previewImg) {
+        if (imageUrl && imageUrl.trim()) {
+          previewImg.src = imageUrl;
+          previewDiv.style.display = 'block';
+        } else {
+          previewDiv.style.display = 'none';
+        }
       }
     }
+    
+    // 封面图容器鼠标事件
+    document.addEventListener('DOMContentLoaded', function() {
+      const coverImageContainer = document.getElementById('coverImageContainer');
+      const coverImageOverlay = document.getElementById('coverImageOverlay');
+      
+      if (coverImageContainer && coverImageOverlay) {
+        coverImageContainer.addEventListener('mouseenter', function() {
+          const coverImagePreview = document.getElementById('coverImagePreview');
+          if (coverImagePreview && coverImagePreview.style.display === 'block') {
+            coverImageOverlay.style.display = 'flex';
+          }
+        });
+        
+        coverImageContainer.addEventListener('mouseleave', function() {
+          coverImageOverlay.style.display = 'none';
+        });
+      }
+    });
     
     /**
      * 同步name和title字段

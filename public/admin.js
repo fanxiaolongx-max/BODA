@@ -580,6 +580,21 @@ async function checkAuth() {
     // 检查返回的数据是否成功
     if (data && data.success && data.admin) {
       currentAdmin = data.admin;
+      
+      // 检查是否有重定向参数（从博客管理页面跳转过来的）
+      const urlParams = new URLSearchParams(window.location.search);
+      const redirectUrl = urlParams.get('redirect');
+      
+      if (redirectUrl) {
+        // 如果有重定向参数，跳转到指定页面
+        console.log('检测到 redirect 参数，准备跳转到:', redirectUrl);
+        // 使用 setTimeout 确保页面完全加载后再跳转
+        setTimeout(() => {
+          window.location.href = redirectUrl;
+        }, 100);
+        return;
+      }
+      
       showMainPage();
       // 根据admin状态显示/隐藏Developer菜单
       updateDeveloperMenuVisibility();
@@ -753,6 +768,21 @@ async function login() {
 
     if (data.success) {
       currentAdmin = data.admin;
+      
+      // 检查是否有重定向参数（从博客管理页面跳转过来的）
+      const urlParams = new URLSearchParams(window.location.search);
+      const redirectUrl = urlParams.get('redirect');
+      
+      if (redirectUrl) {
+        // 如果有重定向参数，跳转到指定页面
+        console.log('登录成功，检测到 redirect 参数，准备跳转到:', redirectUrl);
+        // 使用 setTimeout 确保页面完全加载后再跳转
+        setTimeout(() => {
+          window.location.href = redirectUrl;
+        }, 100);
+        return;
+      }
+      
       showMainPage();
       updateDeveloperMenuVisibility();
       // 启动session检查

@@ -2,11 +2,31 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>博客 - DevBlog</title>
   <link rel="stylesheet" href="/css/blog.css">
   <link rel="stylesheet" href="/css/blog-unified.css">
   <style>
+    /* iOS Safari 修复 - 全局防止溢出（优化性能：减少 !important 使用） */
+    html, body {
+      width: 100%;
+      max-width: 100vw;
+      overflow-x: hidden;
+      box-sizing: border-box;
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+    
+    /* 只在移动端使用 !important 覆盖 */
+    @media (max-width: 768px) {
+      html, body {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+      }
+    }
+    
     /* 埃及主题背景 */
     .particles-background {
       position: fixed;
@@ -59,6 +79,49 @@
       33% { transform: translate(30px, -30px) rotate(120deg); }
       66% { transform: translate(-20px, 20px) rotate(240deg); }
     }
+    
+    /* 可爱的加载动画 */
+    @keyframes bounce {
+      0%, 100% {
+        transform: translateY(0) scale(1);
+      }
+      50% {
+        transform: translateY(-15px) scale(1.1);
+      }
+    }
+    
+    @keyframes shimmer {
+      0% {
+        transform: translateX(-100%);
+      }
+      100% {
+        transform: translateX(100%);
+      }
+    }
+    
+    @keyframes rotateEmoji {
+      0% {
+        transform: rotate(0deg) scale(1);
+      }
+      25% {
+        transform: rotate(-10deg) scale(1.05);
+      }
+      50% {
+        transform: rotate(0deg) scale(1.1);
+      }
+      75% {
+        transform: rotate(10deg) scale(1.05);
+      }
+      100% {
+        transform: rotate(0deg) scale(1);
+      }
+    }
+    
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
   </style>
 </head>
 <body class="blog-page">
@@ -66,9 +129,9 @@
   <div class="particles-background" id="particles"></div>
 
   <!-- 导航栏 -->
-  <nav class="blog-nav">
-    <div class="blog-nav-content">
-      <a href="/blog.html" class="blog-logo">
+  <nav class="blog-nav" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid #e5e7eb;">
+    <div class="blog-nav-content" style="max-width: 1600px; margin: 0 auto; padding: 0 1rem;">
+      <a href="/blog.html" class="blog-logo" style="font-size: 1.25rem; font-weight: 700;">
         <div class="blog-logo-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="currentColor" opacity="0.9"/>
@@ -76,16 +139,17 @@
             <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
-        <span>BLOG</span>
+        <span>PRO<span style="background: linear-gradient(to right, #d97706, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">EG</span></span>
       </a>
-      <div class="blog-nav-actions">
-        <div class="blog-search">
+      <div class="blog-nav-actions" style="display: flex; align-items: center; gap: 0.75rem;">
+        <div class="blog-search" style="max-width: 300px;">
           <input 
             type="text" 
             class="blog-search-input" 
             id="searchInput"
             placeholder="搜索文章..."
             onkeypress="handleSearchKeyPress(event)"
+            style="width: 100%;"
           >
         </div>
         <a href="/blog-admin.html" class="blog-btn blog-btn-secondary blog-btn-sm">管理</a>
@@ -93,58 +157,78 @@
     </div>
   </nav>
 
-  <!-- 首页标题区域 -->
-  <section class="blog-hero">
-    <h1>生产环境<span style="background: linear-gradient(to right, #d97706, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">博客端</span></h1>
-    <p>Production Environment</p>
-    <div class="blog-hero-actions">
-      <a href="#posts" class="blog-btn blog-btn-primary">浏览文章</a>
-      <a href="#archive" class="blog-btn blog-btn-secondary">文章归档</a>
-    </div>
-  </section>
-
-  <!-- 主要内容区域 -->
+  <!-- 主要内容区域 - 紧凑布局，侧边栏靠边，宽屏自适应 -->
   <div class="blog-main-layout">
-    <!-- 左侧分类 -->
+    <!-- 左侧边栏：热门文章和公告 -->
     <aside class="blog-sidebar blog-sidebar-left">
-      <div class="blog-taxonomy-card">
-        <h2 class="blog-taxonomy-title">分类</h2>
-        <div class="blog-taxonomy-list" id="categoriesList">
-          <div class="blog-loading">加载中...</div>
+      <!-- 热门文章 -->
+      <div style="background: white; border: 1px solid #e5e7eb; border-radius: 0.375rem; padding: 0.75rem; margin-bottom: 0.75rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+        <h3 style="font-size: 0.8125rem; font-weight: 600; color: #374151; margin: 0 0 0.5rem 0; text-transform: uppercase; letter-spacing: 0.05em;">🔥 热门文章</h3>
+        <div id="hotPostsList" style="display: flex; flex-direction: column; gap: 0.5rem; width: 100%;">
+          <div class="blog-loading" style="font-size: 0.8125rem;">加载中...</div>
         </div>
+      </div>
+      
+      <!-- 公告栏 -->
+      <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #fbbf24; border-radius: 0.375rem; padding: 0.75rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+        <h3 style="font-size: 0.8125rem; font-weight: 600; color: #92400e; margin: 0 0 0.375rem 0; display: flex; align-items: center; gap: 0.375rem;">
+          <span>📢</span> 公告
+        </h3>
+        <p style="font-size: 0.75rem; color: #78350f; margin: 0; line-height: 1.4;">欢迎来到生产环境博客端，这里汇集埃旅小工具微信小程序所有内容。</p>
       </div>
     </aside>
 
-    <!-- 右侧内容区域 -->
+    <!-- 中间内容区域：文章卡片（自适应网格，紧凑布局） -->
     <main class="blog-content">
-      <!-- 标签筛选器（顶部） -->
-      <div class="blog-tags-filter">
-        <div class="blog-tags-filter-label">标签筛选：</div>
-        <div class="blog-tags-filter-list" id="tagsList">
-          <div class="blog-loading">加载中...</div>
-        </div>
-      </div>
-
       <!-- 文章列表 -->
-      <section id="posts" class="blog-posts-section">
-        <div class="blog-posts-grid" id="postsGrid">
-          <div class="blog-loading">加载中...</div>
+      <section id="posts" class="blog-posts-section" style="width: 100%; overflow: hidden;">
+        <!-- 可爱的加载动画 -->
+        <div id="postsLoadingAnimation" style="display: none; padding: 3rem 2rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.375rem; margin-bottom: 1rem;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem;">
+            <!-- 可爱的表情符号动画 -->
+            <div id="postsLoadingEmoji" style="font-size: 4rem; animation: bounce 1s ease-in-out infinite; filter: drop-shadow(0 4px 8px rgba(217, 119, 6, 0.2));">📚✨</div>
+            
+            <!-- 有趣的加载提示文字 -->
+            <div id="postsLoadingText" style="font-size: 1.125rem; color: #6b7280; font-weight: 500; text-align: center; min-height: 1.75rem;">
+              正在加载文章...
+            </div>
+            
+            <!-- 进度条 -->
+            <div style="width: 100%; max-width: 500px;">
+              <div style="height: 8px; background: #e5e7eb; border-radius: 10px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);">
+                <div id="postsLoadingProgressBar" style="height: 100%; background: linear-gradient(90deg, #d97706, #f59e0b, #fbbf24); width: 0%; transition: width 0.3s ease; border-radius: 10px; box-shadow: 0 0 10px rgba(217, 119, 6, 0.4); position: relative; overflow: hidden;">
+                  <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); animation: shimmer 1.5s infinite;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="blog-pagination" id="pagination"></div>
+        
+        <div class="blog-posts-list" id="postsGrid" style="display: flex; flex-direction: column; gap: 0; width: 100%; background: white; border: 1px solid #e5e7eb; border-radius: 0.375rem; overflow: hidden;">
+          <div class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
+        </div>
+        <div class="blog-pagination" id="pagination" style="margin-top: 1.5rem; margin-bottom: 1rem; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 0.5rem; width: 100%;"></div>
       </section>
 
       <!-- 文章归档 -->
       <section id="archive" class="blog-posts-section" style="display: none;">
-        <!-- 加载进度条 -->
-        <div id="archiveLoadingProgress" style="display: none; padding: 2rem; background: #f9fafb; border-radius: 0.5rem; margin-bottom: 2rem;">
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
-            <div class="blog-loading" style="display: flex; align-items: center; gap: 0.75rem;">
-              <div style="width: 20px; height: 20px; border: 3px solid #e5e7eb; border-top-color: #d97706; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-              <span style="color: #6b7280; font-size: 0.875rem;">正在加载归档文章...</span>
+        <!-- 可爱的加载动画 -->
+        <div id="archiveLoadingProgress" style="display: none; padding: 3rem 2rem; background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); border-radius: 0.5rem; margin-bottom: 2rem; border: 1px solid #e5e7eb;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem;">
+            <!-- 可爱的表情符号动画 -->
+            <div id="archiveLoadingEmoji" style="font-size: 4rem; animation: bounce 1s ease-in-out infinite; filter: drop-shadow(0 4px 8px rgba(217, 119, 6, 0.2));">📂✨</div>
+            
+            <!-- 有趣的加载提示文字 -->
+            <div id="archiveLoadingText" style="font-size: 1.125rem; color: #6b7280; font-weight: 500; text-align: center; min-height: 1.75rem;">
+              正在整理归档文章...
             </div>
-            <div style="width: 100%; max-width: 400px;">
-              <div style="height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
-                <div id="archiveLoadingProgressBar" style="height: 100%; background: linear-gradient(90deg, #d97706, #f59e0b); width: 0%; transition: width 0.3s ease; border-radius: 2px;"></div>
+            
+            <!-- 进度条 -->
+            <div style="width: 100%; max-width: 500px;">
+              <div style="height: 8px; background: #e5e7eb; border-radius: 10px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);">
+                <div id="archiveLoadingProgressBar" style="height: 100%; background: linear-gradient(90deg, #d97706, #f59e0b, #fbbf24); width: 0%; transition: width 0.3s ease; border-radius: 10px; box-shadow: 0 0 10px rgba(217, 119, 6, 0.4); position: relative; overflow: hidden;">
+                  <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); animation: shimmer 1.5s infinite;"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -154,7 +238,785 @@
         </div>
       </section>
     </main>
+    
+    <!-- 右侧边栏：分类 -->
+    <aside class="blog-sidebar blog-sidebar-right">
+      <div class="blog-taxonomy-card" style="background: white; border: 1px solid #e5e7eb; border-radius: 0.375rem; padding: 0.75rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+        <h2 class="blog-taxonomy-title" style="font-size: 0.8125rem; font-weight: 600; color: #374151; margin: 0 0 0.5rem 0; text-transform: uppercase; letter-spacing: 0.05em;">分类</h2>
+        <div class="blog-taxonomy-list" id="categoriesList" style="display: flex; flex-direction: column; gap: 0.375rem; width: 100%;">
+          <div class="blog-loading" style="font-size: 0.8125rem;">加载中...</div>
+        </div>
+      </div>
+    </aside>
   </div>
+  
+  <!-- 响应式样式 -->
+  <style>
+    /* 论坛风格列表样式 */
+    .blog-posts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      width: 100%;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.375rem;
+      overflow: hidden;
+    }
+    
+    .blog-post-item {
+      border-bottom: 1px solid #f3f4f6;
+    }
+    
+    .blog-post-item:last-child {
+      border-bottom: none;
+    }
+    
+    .blog-post-item:hover {
+      background: #f9fafb;
+    }
+    
+    /* 电脑端编辑按钮不覆盖内容 */
+    @media (min-width: 769px) {
+      .blog-post-item .blog-post-edit-btn {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        z-index: 10;
+        width: 2rem;
+        height: 2rem;
+      }
+      
+      /* 确保右侧元信息区域不被编辑按钮遮挡（只在有编辑按钮时） */
+      .blog-post-item:has(.blog-post-edit-btn) > div:last-child {
+        padding-right: 2.5rem !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 兼容不支持:has()的浏览器 */
+      .blog-post-item .blog-post-edit-btn ~ * {
+        /* 这个规则会被内联样式覆盖，所以不需要 */
+      }
+    }
+    
+    /* 兼容旧的卡片样式 */
+    .blog-post-card {
+      transition: all 0.2s ease;
+    }
+    
+    /* 侧边栏列表项对齐优化 */
+    .blog-taxonomy-list,
+    #hotPostsList {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    
+    .blog-taxonomy-list a {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      text-align: left !important;
+    }
+    
+    .blog-taxonomy-list a > span:first-child {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .blog-taxonomy-list a > span:last-child {
+      flex-shrink: 0;
+      text-align: right;
+      margin-left: 0.5rem;
+    }
+    
+    #hotPostsList a {
+      display: flex !important;
+      align-items: start !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    #hotPostsList a > span:first-child {
+      flex-shrink: 0;
+      text-align: center;
+    }
+    
+    #hotPostsList a > div {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+    }
+    
+    #hotPostsList a > div > div:first-child {
+      text-align: left !important;
+    }
+    
+    #hotPostsList a > div > div:last-child {
+      text-align: left !important;
+    }
+    
+    /* 分页按钮样式优化 */
+    .blog-pagination-btn {
+      min-width: 36px;
+      height: 36px;
+      padding: 0 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.875rem;
+      border-radius: 0.375rem;
+      text-decoration: none;
+      color: #374151;
+      background: white;
+      border: 1px solid #e5e7eb;
+      transition: all 0.2s;
+    }
+    
+    .blog-pagination-btn:hover:not(.active):not([style*="opacity"]) {
+      background: #f9fafb;
+      border-color: #d1d5db;
+      color: #d97706;
+    }
+    
+    .blog-pagination-btn.active {
+      background: #d97706;
+      color: white;
+      border-color: #d97706;
+      font-weight: 600;
+    }
+    
+    /* 论坛风格列表布局 */
+    #postsGrid.blog-posts-list,
+    .blog-posts-list#postsGrid,
+    section#posts .blog-posts-list#postsGrid,
+    .blog-content .blog-posts-list#postsGrid,
+    main.blog-content .blog-posts-list#postsGrid {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0 !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      max-width: 100% !important;
+    }
+    
+    /* 兼容旧的网格布局（已废弃） */
+    #postsGrid.blog-posts-grid,
+    .blog-posts-grid#postsGrid {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0 !important;
+    }
+    
+    /* 主布局容器 - 使用grid布局，确保居中，覆盖CSS文件中的flex布局 */
+    .blog-main-layout {
+      display: grid !important;
+      grid-template-columns: 240px 1fr 240px !important;
+      gap: 1rem !important;
+      max-width: 1600px !important;
+      margin: 0 auto !important;
+      padding: 1rem 0.75rem !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      position: relative !important;
+      z-index: 10 !important;
+    }
+    
+    /* 确保中间内容区域有足够宽度，移除max-width限制 */
+    .blog-content {
+      min-width: 0 !important;
+      width: 100% !important;
+      max-width: none !important;
+      overflow: hidden !important;
+      flex: none !important;
+      order: 0 !important;
+    }
+    
+    /* 侧边栏样式重置，确保在grid中正确显示 */
+    .blog-sidebar {
+      width: 100% !important;
+      flex-shrink: 0 !important;
+      position: sticky !important;
+      top: 0.5rem !important;
+      align-self: start !important;
+      height: fit-content !important;
+      max-height: none !important;
+      overflow-y: visible !important;
+    }
+    
+    .blog-sidebar-left {
+      order: 0 !important;
+      padding-left: 0.5rem !important;
+    }
+    
+    .blog-sidebar-right {
+      padding-right: 0.5rem !important;
+    }
+    
+    .blog-posts-section {
+      width: 100% !important;
+      overflow: hidden !important;
+    }
+    
+    /* 导航栏宽屏适配 */
+    @media (min-width: 1921px) {
+      .blog-nav-content {
+        max-width: 1800px !important;
+      }
+    }
+    
+    @media (max-width: 1920px) and (min-width: 1601px) {
+      .blog-nav-content {
+        max-width: 1600px !important;
+      }
+    }
+    
+    @media (max-width: 1600px) and (min-width: 1400px) {
+      .blog-nav-content {
+        max-width: 1400px !important;
+      }
+    }
+    
+    /* 超宽屏适配（>1920px）：增加最大宽度，充分利用空间 */
+    @media (min-width: 1921px) {
+      .blog-main-layout {
+        max-width: 1800px !important;
+        grid-template-columns: 280px 1fr 280px !important;
+        gap: 1.5rem !important;
+      }
+    }
+    
+    /* 宽屏适配（1600px-1920px）：适度增加宽度 */
+    @media (max-width: 1920px) and (min-width: 1601px) {
+      .blog-main-layout {
+        max-width: 1600px !important;
+        grid-template-columns: 260px 1fr 260px !important;
+        gap: 1.25rem !important;
+      }
+    }
+    
+    /* 中等屏幕（1400px-1600px） */
+    @media (max-width: 1600px) and (min-width: 1400px) {
+      .blog-main-layout {
+        max-width: 1400px !important;
+        grid-template-columns: 220px 1fr 220px !important;
+      }
+    }
+    
+    /* 平板适配（1200px-1400px） */
+    @media (max-width: 1400px) and (min-width: 1200px) {
+      .blog-main-layout {
+        grid-template-columns: 200px 1fr 200px !important;
+        gap: 0.75rem !important;
+      }
+      .blog-sidebar-left,
+      .blog-sidebar-right {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .blog-sidebar-left > div,
+      .blog-sidebar-right > div {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+    }
+    
+    /* 小平板（1024px-1200px） */
+    @media (max-width: 1200px) and (min-width: 1024px) {
+      .blog-main-layout {
+        grid-template-columns: 180px 1fr 180px !important;
+        gap: 0.75rem !important;
+      }
+      .blog-sidebar-left,
+      .blog-sidebar-right {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .blog-sidebar-left > div,
+      .blog-sidebar-right > div {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+    }
+    
+    /* 平板（768px-1024px）：隐藏右侧边栏 */
+    @media (max-width: 1024px) and (min-width: 768px) {
+      .blog-main-layout {
+        grid-template-columns: 180px 1fr !important;
+        gap: 0.75rem !important;
+      }
+      .blog-sidebar-right {
+        display: none !important;
+      }
+      .blog-sidebar-left {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .blog-sidebar-left > div {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+    }
+    
+    /* 手机端适配（<768px） */
+    @media (max-width: 768px) {
+      /* 移除导航栏固定定位，让它可以滚动 */
+      .blog-nav {
+        position: static !important;
+        z-index: auto !important;
+      }
+      
+      /* 博客主页宽度优化，稍微比屏幕窄一点，增加右侧边距适配iOS */
+      .blog-main-layout {
+        grid-template-columns: 1fr !important;
+        gap: 0.75rem !important;
+        padding: 0.75rem 0.5rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: calc(0.5rem + env(safe-area-inset-right, 0px)) !important;
+        width: 100% !important;
+        max-width: 100vw !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        overflow-x: hidden !important;
+      }
+      
+      @supports (padding: max(0px)) {
+        .blog-main-layout {
+          padding-right: max(0.5rem, calc(0.5rem + env(safe-area-inset-right))) !important;
+        }
+      }
+      
+      /* 确保所有内容不超出屏幕（优化：减少 !important） */
+      .blog-content,
+      .blog-sidebar-left,
+      .blog-sidebar-right {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        padding-left: 0;
+        padding-right: 0;
+        overflow-x: hidden;
+      }
+      
+      /* 文章列表不超出 */
+      .blog-posts-list {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow-x: hidden;
+      }
+      
+      .blog-post-item {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      
+      /* Flex 容器防止溢出（关键属性保留 !important） */
+      .blog-post-item > div {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+      }
+      
+      /* 文本内容防止溢出 */
+      .blog-post-item .blog-post-title,
+      .blog-post-item .blog-post-excerpt {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        word-break: break-word;
+      }
+      
+      /* 确保body和html不超出屏幕，增加右侧边距适配iOS（优化：减少不必要的 !important） */
+      html, body {
+        width: 100%;
+        max-width: 100vw;
+        overflow-x: hidden;
+        box-sizing: border-box;
+        /* iOS安全区域适配 - 使用padding而不是margin */
+        padding-right: env(safe-area-inset-right, 0px);
+      }
+      
+      /* iOS安全区域适配 */
+      @supports (padding: max(0px)) {
+        html, body {
+          padding-right: max(0px, env(safe-area-inset-right));
+        }
+      }
+      
+      /* 确保所有直接子元素不超出（只在必要时使用 !important） */
+      body > * {
+        max-width: 100vw;
+        box-sizing: border-box;
+      }
+      
+      /* 只对可能溢出的容器使用 overflow-x: hidden */
+      body > .blog-main-layout,
+      body > .blog-nav {
+        overflow-x: hidden;
+      }
+      
+      /* 导航栏内容优化（优化：减少 !important） */
+      .blog-nav-content {
+        padding: 0 0.75rem;
+        padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
+        width: 100%;
+        max-width: 100vw;
+        box-sizing: border-box;
+        overflow-x: hidden;
+      }
+      
+      @supports (padding: max(0px)) {
+        .blog-nav-content {
+          padding-right: max(0.75rem, calc(0.75rem + env(safe-area-inset-right)));
+        }
+      }
+      
+      /* 导航栏本身也要限制宽度 */
+      .blog-nav {
+        width: 100%;
+        max-width: 100vw;
+        overflow-x: hidden;
+        box-sizing: border-box;
+      }
+      .blog-sidebar-left,
+      .blog-sidebar-right {
+        position: static !important;
+        order: 2;
+        padding: 0 !important;
+        width: 100% !important;
+      }
+      
+      .blog-sidebar-left > div,
+      .blog-sidebar-right > div {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      
+      .blog-taxonomy-list,
+      #hotPostsList {
+        width: 100% !important;
+      }
+      
+      .blog-taxonomy-list a {
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 热门文章容器移动端优化 */
+      .blog-sidebar-left > div:first-child {
+        padding: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+        overflow: hidden !important;
+      }
+      
+      .blog-sidebar-left > div:first-child h3 {
+        font-size: 0.75rem !important;
+        margin-bottom: 0.375rem !important;
+      }
+      
+      /* 移动端热门文章横向紧凑显示 */
+      #hotPostsList {
+        display: flex !important;
+        flex-direction: row !important;
+        gap: 0.375rem !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding: 0.25rem 0 !important;
+        scrollbar-width: thin;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      /* 热门文章容器防止溢出 */
+      .blog-sidebar-left > div:first-child {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+      }
+      
+      #hotPostsList::-webkit-scrollbar {
+        height: 4px;
+      }
+      
+      #hotPostsList::-webkit-scrollbar-thumb {
+        background: #d1d5db;
+        border-radius: 2px;
+      }
+      
+      #hotPostsList a {
+        flex-shrink: 0 !important;
+        width: auto !important;
+        min-width: 100px !important;
+        max-width: 150px !important;
+        padding: 0.375rem 0.5rem !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 0.375rem !important;
+        border-radius: 0.25rem !important;
+        background: #f9fafb !important;
+        border: 1px solid #e5e7eb !important;
+        box-sizing: border-box !important;
+        text-decoration: none !important;
+      }
+      
+      #hotPostsList a > span:first-child {
+        width: 16px !important;
+        height: 16px !important;
+        font-size: 0.625rem !important;
+        flex-shrink: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+      
+      #hotPostsList a > div {
+        flex: 1 !important;
+        min-width: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.125rem !important;
+        overflow: hidden !important;
+      }
+      
+      #hotPostsList a > div > div:first-child {
+        font-size: 0.6875rem !important;
+        line-height: 1.2 !important;
+        display: -webkit-box !important;
+        -webkit-line-clamp: 2 !important;
+        -webkit-box-orient: vertical !important;
+        overflow: hidden !important;
+        word-break: break-word !important;
+        color: #374151 !important;
+        font-weight: 500 !important;
+        text-overflow: ellipsis !important;
+      }
+      
+      #hotPostsList a > div > div:last-child {
+        font-size: 0.625rem !important;
+        color: #9ca3af !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+      
+      /* 超小屏幕进一步优化 */
+      @media (max-width: 480px) {
+        #hotPostsList {
+          gap: 0.25rem !important;
+        }
+        
+        #hotPostsList a {
+          min-width: 90px !important;
+          max-width: 130px !important;
+          padding: 0.25rem 0.375rem !important;
+          gap: 0.25rem !important;
+        }
+        
+        #hotPostsList a > span:first-child {
+          width: 14px !important;
+          height: 14px !important;
+          font-size: 0.5625rem !important;
+        }
+        
+        #hotPostsList a > div > div:first-child {
+          font-size: 0.625rem !important;
+          -webkit-line-clamp: 1 !important;
+        }
+        
+        #hotPostsList a > div > div:last-child {
+          font-size: 0.5625rem !important;
+        }
+      }
+      
+      .blog-content {
+        order: 1;
+      }
+      
+      /* 列表容器优化 */
+      .blog-posts-list {
+        gap: 0 !important;
+      }
+      
+      .blog-post-item {
+        border-bottom: 1px solid #f3f4f6 !important;
+      }
+      
+      /* 分页间距优化 */
+      .blog-pagination {
+        margin-top: 1rem !important;
+        margin-bottom: 0.75rem !important;
+        gap: 0.375rem !important;
+      }
+      
+      .blog-pagination-btn {
+        min-width: 32px !important;
+        height: 32px !important;
+        padding: 0 0.5rem !important;
+        font-size: 0.8125rem !important;
+      }
+      
+      /* 移动端列表项优化 - 横向紧凑布局，一行显示 */
+      .blog-post-item,
+      article.blog-post-item {
+        flex-direction: row !important;
+        align-items: center !important;
+        padding: 0.5rem 0.75rem !important;
+        gap: 0.5rem !important;
+        min-height: auto !important;
+        display: flex !important;
+        position: relative !important;
+      }
+      
+      /* 编辑按钮移动端优化 - 调整位置避免遮挡 */
+      .blog-post-item .blog-post-edit-btn {
+        position: absolute !important;
+        top: 0.5rem !important;
+        right: 0.5rem !important;
+        z-index: 10 !important;
+        width: 24px !important;
+        height: 24px !important;
+        padding: 0.25rem !important;
+      }
+      
+      /* 中间内容区域移动端添加右边距，避免被编辑按钮遮挡 */
+      .blog-post-item > div:nth-of-type(2) {
+        padding-right: 2rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      /* 标题防止溢出 */
+      .blog-post-item .blog-post-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        word-break: break-word;
+      }
+      
+      /* 图片缩小 - 缩略图可点击 */
+      .blog-post-item > a:first-child {
+        width: 50px !important;
+        height: 50px !important;
+        flex-shrink: 0 !important;
+        display: block !important;
+      }
+      
+      /* 隐藏右侧元信息 */
+      .blog-post-item > div:last-child {
+        display: none !important;
+      }
+      
+      /* 中间内容区域优化 */
+      .blog-post-item > div:nth-of-type(2) {
+        flex: 1 !important;
+        min-width: 0 !important;
+        gap: 0.25rem !important;
+      }
+      
+      /* 标题和分类一行显示 */
+      .blog-post-item > div:nth-of-type(2) > div:first-child {
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.375rem !important;
+        flex-wrap: wrap !important;
+      }
+      
+      /* 标题样式优化 */
+      .blog-post-item .blog-post-title {
+        font-size: 0.875rem !important;
+        line-height: 1.3 !important;
+        -webkit-line-clamp: 2 !important;
+        flex: 1 !important;
+        min-width: 0 !important;
+      }
+      
+      /* 分类标签缩小 */
+      .blog-post-item .blog-post-title + a {
+        font-size: 0.6875rem !important;
+        padding: 0.125rem 0.375rem !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+      }
+      
+      /* 摘要隐藏或单行显示 */
+      .blog-post-item .blog-post-excerpt {
+        font-size: 0.75rem !important;
+        -webkit-line-clamp: 1 !important;
+        margin: 0 !important;
+        display: none !important; /* 手机端隐藏摘要以节省空间 */
+      }
+      
+      /* 底部信息行优化 */
+      .blog-post-item > div:nth-of-type(2) > div:last-child {
+        font-size: 0.6875rem !important;
+        gap: 0.5rem !important;
+        margin-top: 0.125rem !important;
+      }
+      
+      /* 底部信息图标和文字 */
+      .blog-post-item > div:nth-child(2) > div:last-child span {
+        font-size: 0.6875rem !important;
+      }
+      
+      .blog-post-item > div:nth-child(2) > div:last-child svg {
+        width: 10px !important;
+        height: 10px !important;
+      }
+      .blog-nav-content {
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.75rem 0;
+      }
+      .blog-nav-actions {
+        width: 100%;
+      }
+      .blog-search {
+        max-width: 100% !important;
+      }
+    }
+    
+    /* 小手机（<480px）：进一步优化，更紧凑 */
+    @media (max-width: 480px) {
+      .blog-post-item {
+        padding: 0.375rem 0.5rem !important;
+        gap: 0.375rem !important;
+      }
+      
+      .blog-post-item > a:first-child {
+        width: 40px !important;
+        height: 40px !important;
+      }
+      
+      .blog-post-title {
+        font-size: 0.8125rem !important;
+        line-height: 1.25 !important;
+      }
+      
+      .blog-post-item .blog-post-title + a {
+        font-size: 0.625rem !important;
+        padding: 0.125rem 0.25rem !important;
+      }
+      
+      .blog-post-item > div:nth-child(2) > div:last-child {
+        font-size: 0.625rem !important;
+        gap: 0.375rem !important;
+      }
+      
+      .blog-post-item > div:nth-child(2) > div:last-child svg {
+        width: 9px !important;
+        height: 9px !important;
+      }
+    }
+  </style>
 
   <!-- 页脚 -->
   <footer class="blog-footer">
@@ -171,7 +1033,7 @@
   <script>
     // 当前页码
     let currentPage = 1;
-    const pageSize = 6;
+    const pageSize = 12; // 增加每页显示数量
     let totalPages = 1;
     let currentCategory = null;
     let currentTag = null;
@@ -198,9 +1060,81 @@
       }
     }
 
+    // 可爱的加载提示文字数组
+    const postsLoadingMessages = [
+      '📚 正在整理文章列表...',
+      '✨ 魔法正在发生中...',
+      '🐱 小猫咪正在帮你找文章...',
+      '🚀 加速加载中...',
+      '💫 文章们正在赶来...',
+      '🎨 正在美化文章列表...',
+      '🌟 马上就好啦...',
+      '📖 正在翻阅文章库...',
+      '🎯 精准定位文章中...',
+      '💡 灵感正在加载...'
+    ];
+    
+    // 可爱的表情符号数组
+    const postsLoadingEmojis = [
+      '📚✨', '🐱', '🚀', '💫', '🎨', '🌟', '📖', '🎯', '💡', '✨'
+    ];
+    
+    // 更新加载提示文字和表情
+    function updatePostsLoadingMessage() {
+      const loadingText = document.getElementById('postsLoadingText');
+      const loadingEmoji = document.getElementById('postsLoadingEmoji');
+      
+      if (loadingText) {
+        const randomMessage = postsLoadingMessages[Math.floor(Math.random() * postsLoadingMessages.length)];
+        loadingText.textContent = randomMessage;
+      }
+      
+      if (loadingEmoji) {
+        const randomEmoji = postsLoadingEmojis[Math.floor(Math.random() * postsLoadingEmojis.length)];
+        loadingEmoji.textContent = randomEmoji;
+        // 添加旋转动画
+        loadingEmoji.style.animation = 'rotateEmoji 2s ease-in-out infinite';
+      }
+    }
+
     // 加载文章列表
     async function loadPosts(page = 1) {
+      // 滚动到页面顶部（平滑滚动）
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+      
+      const loadingAnimation = document.getElementById('postsLoadingAnimation');
+      const postsGrid = document.getElementById('postsGrid');
+      const progressBar = document.getElementById('postsLoadingProgressBar');
+      
       try {
+        // 显示加载动画
+        if (loadingAnimation) {
+          loadingAnimation.style.display = 'block';
+        }
+        if (postsGrid) {
+          postsGrid.style.display = 'none';
+        }
+        
+        // 初始化加载提示
+        updatePostsLoadingMessage();
+        
+        // 每2秒更新一次加载提示，让等待更有趣
+        const messageInterval = setInterval(() => {
+          updatePostsLoadingMessage();
+        }, 2000);
+        
+        // 模拟进度动画
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+          progress += Math.random() * 5 + 2; // 随机增加2-7%
+          if (progressBar && progress < 85) {
+            progressBar.style.width = Math.min(progress, 85) + '%';
+          }
+        }, 150);
+        
         const options = {
           page,
           pageSize,
@@ -219,22 +1153,116 @@
         
         const response = await getPosts(options);
         
+        // 清除进度动画和消息更新
+        clearInterval(progressInterval);
+        clearInterval(messageInterval);
+        
         if (response.success) {
-          displayPosts(response.data);
-          currentPage = response.pagination.currentPage;
-          totalPages = response.pagination.totalPages;
-          displayPagination();
-          // 更新编辑按钮显示
-          if (isAdminLoggedIn) {
-            updateEditButtons();
+          // 更新加载提示为成功消息
+          const loadingText = document.getElementById('postsLoadingText');
+          const loadingEmoji = document.getElementById('postsLoadingEmoji');
+          if (loadingText) {
+            loadingText.textContent = `✅ 成功加载 ${response.data.length} 篇文章！`;
+            loadingText.style.color = '#10b981';
           }
+          if (loadingEmoji) {
+            loadingEmoji.textContent = '🎉';
+            loadingEmoji.style.animation = 'bounce 0.5s ease-in-out 3';
+          }
+          
+          // 完成进度条
+          if (progressBar) {
+            progressBar.style.width = '100%';
+          }
+          
+          // 延迟显示内容，让用户看到成功状态
+          setTimeout(() => {
+            displayPosts(response.data);
+            currentPage = response.pagination.currentPage;
+            totalPages = response.pagination.totalPages;
+            displayPagination();
+            
+            // 隐藏加载动画，显示内容
+            if (loadingAnimation) {
+              loadingAnimation.style.display = 'none';
+            }
+            if (postsGrid) {
+              postsGrid.style.display = 'flex';
+            }
+            
+            // 重置加载提示
+            if (loadingText) {
+              loadingText.textContent = '正在加载文章...';
+              loadingText.style.color = '#6b7280';
+            }
+            if (loadingEmoji) {
+              loadingEmoji.textContent = '📚✨';
+              loadingEmoji.style.animation = 'bounce 1s ease-in-out infinite';
+            }
+            if (progressBar) {
+              progressBar.style.width = '0%';
+            }
+            
+            // 更新编辑按钮显示
+            if (isAdminLoggedIn) {
+              updateEditButtons();
+            }
+          }, 500);
         } else {
+          // 隐藏加载动画
+          if (loadingAnimation) {
+            loadingAnimation.style.display = 'none';
+          }
+          if (postsGrid) {
+            postsGrid.style.display = 'flex';
+          }
           showToast('加载文章失败', 'error');
         }
       } catch (error) {
         console.error('加载文章失败:', error);
+        // 隐藏加载动画
+        if (loadingAnimation) {
+          loadingAnimation.style.display = 'none';
+        }
+        if (postsGrid) {
+          postsGrid.style.display = 'flex';
+        }
         showToast('加载文章失败: ' + error.message, 'error');
         document.getElementById('postsGrid').innerHTML = '<div class="blog-empty">加载失败，请刷新重试</div>';
+      }
+    }
+
+    // 归档加载提示文字数组
+    const archiveLoadingMessages = [
+      '📂 正在整理归档文章...',
+      '🗂️ 正在分类整理中...',
+      '📅 正在按时间排序...',
+      '✨ 魔法整理中...',
+      '🎯 精准归档中...',
+      '🌟 马上就好啦...',
+      '📚 正在翻阅文章库...',
+      '💫 归档魔法进行中...'
+    ];
+    
+    // 归档表情符号数组
+    const archiveLoadingEmojis = [
+      '📂✨', '🗂️', '📅', '✨', '🎯', '🌟', '📚', '💫'
+    ];
+    
+    // 更新归档加载提示
+    function updateArchiveLoadingMessage() {
+      const loadingText = document.getElementById('archiveLoadingText');
+      const loadingEmoji = document.getElementById('archiveLoadingEmoji');
+      
+      if (loadingText) {
+        const randomMessage = archiveLoadingMessages[Math.floor(Math.random() * archiveLoadingMessages.length)];
+        loadingText.textContent = randomMessage;
+      }
+      
+      if (loadingEmoji) {
+        const randomEmoji = archiveLoadingEmojis[Math.floor(Math.random() * archiveLoadingEmojis.length)];
+        loadingEmoji.textContent = randomEmoji;
+        loadingEmoji.style.animation = 'rotateEmoji 2s ease-in-out infinite';
       }
     }
 
@@ -298,27 +1326,44 @@
           options.search = currentSearch;
         }
         
+        // 初始化加载提示
+        updateArchiveLoadingMessage();
+        
+        // 每2秒更新一次加载提示
+        const messageInterval = setInterval(() => {
+          updateArchiveLoadingMessage();
+        }, 2000);
+        
         // 模拟进度更新
         let progress = 0;
         const progressInterval = setInterval(() => {
-          progress += 5;
-          if (progress < 80 && progressBar) {
-            progressBar.style.width = progress + '%';
+          progress += Math.random() * 4 + 2; // 随机增加2-6%
+          if (progress < 85 && progressBar) {
+            progressBar.style.width = Math.min(progress, 85) + '%';
           }
-        }, 100);
+        }, 120);
         
         // 获取所有文章（使用一个很大的pageSize，足够获取所有文章）
         const response = await getPosts(options);
         
-        // 清除进度动画
+        // 清除进度动画和消息更新
         clearInterval(progressInterval);
-        
-        if (progressBar) {
-          progressBar.style.width = '90%';
-        }
+        clearInterval(messageInterval);
         
         if (response.success) {
           const posts = response.data || [];
+          
+          // 更新加载提示为成功消息
+          const loadingText = document.getElementById('archiveLoadingText');
+          const loadingEmoji = document.getElementById('archiveLoadingEmoji');
+          if (loadingText) {
+            loadingText.textContent = `✅ 成功整理 ${posts.length} 篇文章！`;
+            loadingText.style.color = '#10b981';
+          }
+          if (loadingEmoji) {
+            loadingEmoji.textContent = '🎉';
+            loadingEmoji.style.animation = 'bounce 0.5s ease-in-out 3';
+          }
           
           // 更新进度条
           if (progressBar) {
@@ -343,11 +1388,21 @@
               progressBar.style.width = '0%';
             }
             
+            // 重置加载提示
+            if (loadingText) {
+              loadingText.textContent = '正在整理归档文章...';
+              loadingText.style.color = '#6b7280';
+            }
+            if (loadingEmoji) {
+              loadingEmoji.textContent = '📂✨';
+              loadingEmoji.style.animation = 'bounce 1s ease-in-out infinite';
+            }
+            
             // 更新编辑按钮显示
             if (isAdminLoggedIn) {
               updateEditButtons();
             }
-          }, 200);
+          }, 500);
         } else {
           // 隐藏进度条
           if (progressContainer) {
@@ -504,9 +1559,8 @@
         searchInput.value = '';
       }
       
-      // 更新分类和标签显示
+      // 更新分类显示
       loadCategories();
-      loadTags();
       
       // 根据当前视图模式重新加载
       if (viewMode === 'archive') {
@@ -533,12 +1587,12 @@
       }
     }
 
-    // 显示文章列表
+    // 显示文章列表（论坛风格）
     function displayPosts(posts) {
       const grid = document.getElementById('postsGrid');
       
       if (!posts || posts.length === 0) {
-        grid.innerHTML = '<div class="blog-empty">暂无文章</div>';
+        grid.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center; color: #9ca3af;">暂无文章</div>';
         return;
       }
       
@@ -554,33 +1608,26 @@
         const isTranslation = apiName.toLowerCase().includes('translation') || apiName.toLowerCase().includes('翻译');
         const isWeather = apiName.toLowerCase().includes('weather') || apiName.toLowerCase().includes('天气');
         
+        // 论坛风格：所有内容都转换为摘要形式
         let excerpt = '';
-        let customContent = '';
         
         if (isWeather && post._originalData) {
-          // 天气路况：显示预警和简要信息
+          // 天气路况：显示预警摘要
           if (post._originalData.globalAlert && post._originalData.globalAlert.message) {
-            const alertLevel = post._originalData.globalAlert.level || 'medium';
-            const levelColors = {
-              'low': { bg: '#dbeafe', border: '#3b82f6' },
-              'medium': { bg: '#fef3c7', border: '#f59e0b' },
-              'high': { bg: '#fee2e2', border: '#ef4444' }
-            };
-            const colors = levelColors[alertLevel] || levelColors['medium'];
             const message = post._originalData.globalAlert.message;
-            const shortMessage = message.length > 60 ? message.substring(0, 60) + '...' : message;
-            
-            customContent = `<div style="padding: 0.75rem; background: ${colors.bg}; border-left: 3px solid ${colors.border}; border-radius: 0.5rem; margin-top: 0.5rem;">
-              <div style="font-weight: 600; color: ${colors.border}; margin-bottom: 0.25rem; font-size: 0.875rem;">⚠️ 全局预警</div>
-              <div style="color: #374151; font-size: 0.9375rem; line-height: 1.5;">${escapeHtml(shortMessage)}</div>
-              ${(post._originalData.attractions && post._originalData.attractions.length > 0) || (post._originalData.traffic && post._originalData.traffic.length > 0) 
-                ? `<div style="margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280;">
-                    ${post._originalData.attractions && post._originalData.attractions.length > 0 ? `📍 ${post._originalData.attractions.length} 个景点` : ''}
-                    ${post._originalData.attractions && post._originalData.attractions.length > 0 && post._originalData.traffic && post._originalData.traffic.length > 0 ? ' • ' : ''}
-                    ${post._originalData.traffic && post._originalData.traffic.length > 0 ? `🚦 ${post._originalData.traffic.length} 条路况` : ''}
-                  </div>`
-                : ''}
-            </div>`;
+            excerpt = '⚠️ ' + truncate(message, 60);
+            const infoParts = [];
+            if (post._originalData.attractions && post._originalData.attractions.length > 0) {
+              infoParts.push(`${post._originalData.attractions.length}个景点`);
+            }
+            if (post._originalData.traffic && post._originalData.traffic.length > 0) {
+              infoParts.push(`${post._originalData.traffic.length}条路况`);
+            }
+            if (infoParts.length > 0) {
+              excerpt += ' • ' + infoParts.join(' • ');
+            }
+          } else {
+            excerpt = truncate(post.excerpt || post.description || '', 80);
           }
         } else if (isExchangeRate && post._originalData) {
           // 汇率转换：显示简要汇率信息
@@ -599,61 +1646,93 @@
               const firstTarget = Object.keys(firstRate)[0];
               const rateValue = firstRate[firstTarget];
               if (typeof rateValue === 'number') {
-                customContent = `<div style="padding: 0.75rem; background: linear-gradient(to right, #10b98115, #05966915); border-radius: 0.5rem; margin-top: 0.5rem;">
-                  <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <span style="font-weight: 600; color: #10b981;">${escapeHtml(firstCurrency)}</span>
-                    <span style="color: #6b7280;">→</span>
-                    <span style="font-weight: 600; color: #059669;">${escapeHtml(firstTarget)}</span>
-                    <span style="font-size: 1.25rem; font-weight: bold; color: #10b981;">${rateValue.toFixed(4)}</span>
-                  </div>
-                  ${currencies.length > 1 ? `<div style="margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280;">共 ${currencies.length} 种货币汇率</div>` : ''}
-                </div>`;
+                excerpt = `${firstCurrency} → ${firstTarget}: ${rateValue.toFixed(4)}`;
+                if (currencies.length > 1) {
+                  excerpt += ` (共${currencies.length}种)`;
+                }
+              } else {
+                excerpt = truncate(post.excerpt || post.description || '', 80);
               }
+            } else {
+              excerpt = truncate(post.excerpt || post.description || '', 80);
             }
+          } else {
+            excerpt = truncate(post.excerpt || post.description || '', 80);
           }
         } else if (isTranslation && post._originalData) {
-          // 翻译卡片：显示中阿对照
+          // 翻译卡片：显示中阿对照摘要
           if (post._originalData.chinese && post._originalData.arabic) {
-            customContent = `<div style="padding: 0.75rem; background: linear-gradient(to right, #9333ea15, #7c3aed15); border-radius: 0.5rem; margin-top: 0.5rem;">
-              <div style="display: grid; gap: 0.5rem;">
-                <div style="font-size: 1rem; color: #374151;">${escapeHtml(post._originalData.chinese)}</div>
-                <div style="font-size: 1rem; color: #374151; direction: rtl; text-align: right; font-family: 'Arial', 'Tahoma', sans-serif;">${escapeHtml(post._originalData.arabic)}</div>
-              </div>
-            </div>`;
+            excerpt = `${escapeHtml(truncate(post._originalData.chinese, 35))} / ${escapeHtml(truncate(post._originalData.arabic, 35))}`;
+          } else {
+            excerpt = truncate(post.excerpt || post.description || '', 80);
           }
         } else {
-          excerpt = truncate(post.excerpt || post.description || '', 100);
+          excerpt = truncate(post.excerpt || post.description || '', 80);
         }
         
+        const views = post.views || 0;
+        const comments = post.comments || 0;
+        
+        // 论坛风格：简洁列表布局
         return `
-          <article class="blog-post-card" style="animation-delay: ${index * 0.1}s; position: relative;">
+          <article class="blog-post-item" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #f3f4f6; background: white; transition: background 0.2s; position: relative;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='white'">
             ${isAdminLoggedIn ? `
-              <button class="blog-post-edit-btn" onclick="editPost('${post.id}'); event.stopPropagation();" title="编辑文章" style="display: ${isAdminLoggedIn ? 'inline-flex' : 'none'};">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <button class="blog-post-edit-btn" onclick="editPost('${post.id}'); event.stopPropagation();" title="编辑文章" style="display: ${isAdminLoggedIn ? 'inline-flex' : 'none'}; position: absolute; top: 0.5rem; right: 0.5rem; z-index: 10; background: rgba(255,255,255,0.95); backdrop-filter: blur(4px); border: 1px solid #e5e7eb; border-radius: 0.25rem; padding: 0.25rem; cursor: pointer; opacity: 0.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                 </svg>
               </button>
             ` : ''}
-            <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" class="blog-post-image">
-              ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHtml(post.name || post.title || '')}" loading="lazy">` : '<div style="width:100%;height:100%;background:linear-gradient(to bottom right, #f5f5f5, #e5e5e5);"></div>'}
+            <!-- 左侧缩略图 - 可点击跳转 -->
+            <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" style="flex-shrink: 0; width: 60px; height: 60px; border-radius: 0.25rem; overflow: hidden; background: linear-gradient(to bottom right, #f5f5f5, #e5e5e5); display: block; text-decoration: none; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+              ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHtml(post.name || post.title || '')}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; display: block;">` : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:1.25rem;">📄</div>'}
             </a>
-            <div style="padding: 0 0.5rem 0.5rem;">
-              <div class="blog-post-meta">
-                ${category ? `<a href="#" class="blog-post-tag-badge" onclick="filterByTag('${escapeHtml(category)}'); return false;">${escapeHtml(category)}</a>` : ''}
-                <span class="blog-post-date">${date}</span>
+            <!-- 中间内容区 -->
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.375rem; padding-right: ${isAdminLoggedIn ? '2rem' : '0'};">
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" class="blog-post-title" style="font-size: 0.9375rem; font-weight: 600; color: #111827; text-decoration: none; line-height: 1.4; flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;" onmouseover="this.style.color='#d97706'" onmouseout="this.style.color='#111827'">
+                  ${escapeHtml(post.name || post.title || '未命名')}
+                </a>
+                ${category ? `<a href="#" onclick="filterByCategory('${escapeHtml(category)}'); return false;" style="display: inline-flex; align-items: center; padding: 0.1875rem 0.5rem; background: #f3f4f6; color: #6b7280; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500; text-decoration: none; transition: background 0.2s; white-space: nowrap;" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">${escapeHtml(category)}</a>` : ''}
               </div>
-              <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" class="blog-post-title">
-                ${escapeHtml(post.name || post.title || '未命名')}
-              </a>
-              ${customContent || (excerpt ? `<p class="blog-post-excerpt">${escapeHtml(excerpt)}</p>` : '')}
+              ${excerpt ? `<p class="blog-post-excerpt" style="font-size: 0.8125rem; color: #6b7280; line-height: 1.4; margin: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(excerpt)}</p>` : ''}
+              <div style="display: flex; align-items: center; gap: 1rem; font-size: 0.75rem; color: #9ca3af;">
+                <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                  ${date}
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  ${views}
+                </span>
+                ${comments > 0 ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  ${comments}
+                </span>` : ''}
+              </div>
+            </div>
+            <!-- 右侧元信息 -->
+            <div style="flex-shrink: 0; text-align: right; min-width: 80px; display: flex; flex-direction: column; gap: 0.25rem; padding-right: ${isAdminLoggedIn ? '2.5rem' : '0'};">
+              <div style="font-size: 0.75rem; color: #9ca3af; white-space: nowrap;">${date.split(' ')[0]}</div>
+              ${views > 0 ? `<div style="font-size: 0.6875rem; color: #d1d5db;">${views} 次</div>` : ''}
             </div>
           </article>
         `;
       }).join('');
     }
 
-    // 显示分页
+    // 显示分页（优化显示更多页码）
     function displayPagination() {
       const pagination = document.getElementById('pagination');
       
@@ -666,13 +1745,41 @@
       
       // 上一页
       if (currentPage > 1) {
-        html += `<a href="#" class="blog-pagination-btn" onclick="loadPosts(${currentPage - 1}); return false;">上一页</a>`;
+        html += `<a href="#" class="blog-pagination-btn" onclick="loadPosts(${currentPage - 1}); return false;" style="display: inline-flex; align-items: center; gap: 0.25rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+          <span>上一页</span>
+        </a>`;
       } else {
-        html += `<span class="blog-pagination-btn" style="opacity: 0.5; cursor: not-allowed;">上一页</span>`;
+        html += `<span class="blog-pagination-btn" style="opacity: 0.4; cursor: not-allowed; display: inline-flex; align-items: center; gap: 0.25rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+          <span>上一页</span>
+        </span>`;
       }
       
-      // 页码
-      for (let i = 1; i <= totalPages; i++) {
+      // 页码显示逻辑：显示当前页前后各2页，以及首尾页
+      const maxVisiblePages = 7; // 最多显示7个页码按钮
+      let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+      
+      // 如果右侧页码不足，向左调整
+      if (endPage - startPage < maxVisiblePages - 1) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+      }
+      
+      // 显示首页
+      if (startPage > 1) {
+        html += `<a href="#" class="blog-pagination-btn" onclick="loadPosts(1); return false;">1</a>`;
+        if (startPage > 2) {
+          html += `<span class="blog-pagination-btn" style="border: none; background: transparent; cursor: default; color: #9ca3af;">...</span>`;
+        }
+      }
+      
+      // 显示页码范围
+      for (let i = startPage; i <= endPage; i++) {
         if (i === currentPage) {
           html += `<span class="blog-pagination-btn active">${i}</span>`;
         } else {
@@ -680,11 +1787,29 @@
         }
       }
       
+      // 显示末页
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+          html += `<span class="blog-pagination-btn" style="border: none; background: transparent; cursor: default; color: #9ca3af;">...</span>`;
+        }
+        html += `<a href="#" class="blog-pagination-btn" onclick="loadPosts(${totalPages}); return false;">${totalPages}</a>`;
+      }
+      
       // 下一页
       if (currentPage < totalPages) {
-        html += `<a href="#" class="blog-pagination-btn" onclick="loadPosts(${currentPage + 1}); return false;">下一页</a>`;
+        html += `<a href="#" class="blog-pagination-btn" onclick="loadPosts(${currentPage + 1}); return false;" style="display: inline-flex; align-items: center; gap: 0.25rem;">
+          <span>下一页</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </a>`;
       } else {
-        html += `<span class="blog-pagination-btn" style="opacity: 0.5; cursor: not-allowed;">下一页</span>`;
+        html += `<span class="blog-pagination-btn" style="opacity: 0.4; cursor: not-allowed; display: inline-flex; align-items: center; gap: 0.25rem;">
+          <span>下一页</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </span>`;
       }
       
       pagination.innerHTML = html;
@@ -702,49 +1827,22 @@
       }
     }
 
-    // 显示分类
+    // 显示分类（扁平化样式）
     function displayCategories(categories) {
       const list = document.getElementById('categoriesList');
       
       if (!categories || categories.length === 0) {
-        list.innerHTML = '<span style="color: #9ca3af;">暂无分类</span>';
+        list.innerHTML = '<span style="color: #9ca3af; font-size: 0.875rem;">暂无分类</span>';
         return;
       }
       
       list.innerHTML = categories.map(cat => {
         const count = cat.postCount || 0;
-        const isActive = currentCategory === cat.name ? 'active' : '';
-        return `<a href="#" class="blog-taxonomy-item ${isActive}" onclick="filterByCategory('${escapeHtml(cat.name)}'); return false;">${escapeHtml(cat.name)} <span style="color: #9ca3af; font-size: 0.8125rem;">(${count})</span></a>`;
+        const isActive = currentCategory === cat.name;
+        return `<a href="#" onclick="filterByCategory('${escapeHtml(cat.name)}'); return false;" style="display: flex; align-items: center; justify-content: space-between; padding: 0.375rem 0.5rem; border-radius: 0.25rem; text-decoration: none; font-size: 0.8125rem; color: ${isActive ? '#d97706' : '#374151'}; background: ${isActive ? '#fef3c7' : 'transparent'}; font-weight: ${isActive ? '600' : '500'}; transition: all 0.2s; width: 100%; box-sizing: border-box; word-break: break-word;" onmouseover="if(!${isActive}){this.style.background='#f9fafb';}" onmouseout="if(!${isActive}){this.style.background='transparent';}"><span style="flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(cat.name)}</span><span style="flex-shrink: 0; color: #9ca3af; font-size: 0.75rem; font-weight: normal; margin-left: 0.5rem; text-align: right;">${count}</span></a>`;
       }).join('');
     }
 
-    // 加载标签
-    async function loadTags() {
-      try {
-        const response = await getTags();
-        if (response.success) {
-          displayTags(response.data);
-        }
-      } catch (error) {
-        console.error('加载标签失败:', error);
-      }
-    }
-
-    // 显示标签
-    function displayTags(tags) {
-      const list = document.getElementById('tagsList');
-      
-      if (!tags || tags.length === 0) {
-        list.innerHTML = '<span style="color: #9ca3af; font-size: 0.875rem;">暂无标签</span>';
-        return;
-      }
-      
-      list.innerHTML = tags.map(tag => {
-        const count = tag.postCount || 0;
-        const isActive = currentTag === tag.name ? 'active' : '';
-        return `<a href="#" class="blog-taxonomy-item ${isActive}" onclick="filterByTag('${escapeHtml(tag.name)}'); return false;">#${escapeHtml(tag.name)} <span style="opacity: 0.7;">(${count})</span></a>`;
-      }).join('');
-    }
 
     // 按分类筛选
     function filterByCategory(category) {
@@ -779,38 +1877,6 @@
       }
     }
 
-    // 按标签筛选
-    function filterByTag(tag) {
-      // 如果点击的是当前标签，则取消筛选
-      if (currentTag === tag) {
-        currentTag = null;
-      } else {
-        currentTag = tag;
-      }
-      currentCategory = null;
-      currentSearch = null;
-      currentPage = 1;
-      
-      // 清除归档缓存（筛选条件改变）
-      archiveCache = null;
-      archiveCacheKey = null;
-      
-      // 更新标签显示
-      loadTags();
-      
-      // 根据当前视图模式调用相应的加载函数
-      if (viewMode === 'archive') {
-        loadArchive();
-      } else {
-        loadPosts(1);
-      }
-      
-      if (currentTag) {
-        showToast(`筛选标签: ${currentTag}`, 'info');
-      } else {
-        showToast('已清除标签筛选', 'info');
-      }
-    }
 
     // 搜索
     function handleSearchKeyPress(event) {
@@ -926,6 +1992,64 @@
       });
     }
 
+    // 加载热门文章（按浏览量排序）
+    async function loadHotPosts() {
+      try {
+        const response = await getPosts({
+          published: 'true',
+          pageSize: 20 // 获取更多文章以便排序
+        });
+        
+        if (response.success && response.data) {
+          const hotPostsList = document.getElementById('hotPostsList');
+          if (hotPostsList) {
+            // 按浏览量排序，取前5篇
+            const sortedPosts = [...(response.data || [])]
+              .sort((a, b) => (b.views || 0) - (a.views || 0))
+              .slice(0, 5);
+            
+            if (sortedPosts.length === 0) {
+              hotPostsList.innerHTML = '<p style="font-size: 0.8125rem; color: #9ca3af; margin: 0;">暂无热门文章</p>';
+              return;
+            }
+            
+            hotPostsList.innerHTML = sortedPosts.map((post, index) => {
+              const views = post.views || 0;
+              return `
+                <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" style="display: flex; align-items: start; gap: 0.5rem; padding: 0.375rem; border-radius: 0.25rem; text-decoration: none; transition: background 0.2s; width: 100%; box-sizing: border-box;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+                  <span style="flex-shrink: 0; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; background: ${index < 3 ? '#fef3c7' : '#f3f4f6'}; color: ${index < 3 ? '#d97706' : '#6b7280'}; border-radius: 0.25rem; font-size: 0.6875rem; font-weight: 600; text-align: center; line-height: 1;">${index + 1}</span>
+                  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.125rem;">
+                    <div style="font-size: 0.75rem; font-weight: 500; color: #374151; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: left; word-break: break-word;">${escapeHtml(post.name || post.title || '未命名')}</div>
+                    <div style="font-size: 0.6875rem; color: #9ca3af; text-align: left; white-space: nowrap;">👁️ ${views}</div>
+                  </div>
+                </a>
+              `;
+            }).join('');
+          }
+        }
+      } catch (error) {
+        console.error('加载热门文章失败:', error);
+        const hotPostsList = document.getElementById('hotPostsList');
+        if (hotPostsList) {
+          hotPostsList.innerHTML = '<p style="font-size: 0.8125rem; color: #9ca3af; margin: 0;">加载失败</p>';
+        }
+      }
+    }
+    
+    // 强制设置列表布局的函数（论坛风格）
+    function forceGridLayout() {
+      const grid = document.getElementById('postsGrid');
+      if (!grid) return;
+      
+      // 确保列表布局
+      grid.style.setProperty('display', 'flex', 'important');
+      grid.style.setProperty('flex-direction', 'column', 'important');
+      grid.style.setProperty('gap', '0', 'important');
+      grid.style.setProperty('width', '100%', 'important');
+      grid.style.setProperty('max-width', '100%', 'important');
+      grid.style.setProperty('box-sizing', 'border-box', 'important');
+    }
+
     // 初始化
     document.addEventListener('DOMContentLoaded', async () => {
       initParticles();
@@ -933,18 +2057,31 @@
       // 检查管理员登录状态
       await checkAdminAuth();
       
+      // 强制设置网格布局
+      forceGridLayout();
+      
       loadPosts(1);
       loadCategories();
-      loadTags();
+      loadHotPosts();
       
-      // 浏览文章按钮
+      // 窗口大小改变时重新设置布局
+      let resizeTimer;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          forceGridLayout();
+        }, 100);
+      });
+      
+      // 浏览文章按钮（如果存在）
       document.querySelector('a[href="#posts"]')?.addEventListener('click', (e) => {
         e.preventDefault();
         switchViewMode('posts');
         document.getElementById('posts').scrollIntoView({ behavior: 'smooth' });
+        setTimeout(forceGridLayout, 100);
       });
 
-      // 文章归档按钮
+      // 文章归档按钮（如果存在）
       document.querySelector('a[href="#archive"]')?.addEventListener('click', (e) => {
         e.preventDefault();
         switchViewMode('archive');
