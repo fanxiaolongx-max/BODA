@@ -1,11 +1,13 @@
 const express = require('express');
 const { body, query, validationResult } = require('express-validator');
-const { requireAuth } = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { requireBlogAuth } = require('../middleware/blog-auth');
 const {
   getBlogPosts,
   getBlogPost,
   getBlogCategories,
-  getBlogTags,
   getBlogComments,
   createBlogPost,
   updateBlogPost,
@@ -13,14 +15,116 @@ const {
   createBlogCategory,
   updateBlogCategory,
   deleteBlogCategory,
-  createBlogTag,
   createBlogComment,
   approveBlogComment,
-  deleteBlogComment
+  deleteBlogComment,
+  incrementPostViews
 } = require('../utils/blog-helper');
 const { logger, logAction } = require('../utils/logger');
 
 const router = express.Router();
+
+// 获取上传目录路径
+const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+
+// 确保上传目录存在
+const ensureUploadDirs = () => {
+  const dirs = [
+    path.join(UPLOADS_DIR, 'images'),
+    path.join(UPLOADS_DIR, 'videos')
+  ];
+  dirs.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  });
+};
+ensureUploadDirs();
+
+// 配置 multer 存储
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const type = req.body.type || 'image';
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const typeDir = type === 'video' ? 'videos' : 'images';
+    const dir = path.join(UPLOADS_DIR, typeDir, String(year), month);
+    
+    // 创建目录
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const uniqueSuffix = Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+    const filename = `${uniqueSuffix}${ext}`;
+    cb(null, filename);
+  }
+});
+
+// 文件类型验证（通过MIME类型自动判断，也支持通过req.body.type指定）
+const fileFilter = (req, file, cb) => {
+  const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  const allowedVideoTypes = ['video/mp4', 'video/quicktime'];
+  const allowedImageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+  const allowedVideoExts = ['.mp4', '.mov'];
+  
+  // 先通过MIME类型判断文件类型
+  const isImage = allowedImageTypes.includes(file.mimetype);
+  const isVideo = allowedVideoTypes.includes(file.mimetype);
+  
+  // 如果MIME类型无法判断，尝试通过扩展名判断
+  const ext = path.extname(file.originalname).toLowerCase();
+  const isImageByExt = allowedImageExts.includes(ext);
+  const isVideoByExt = allowedVideoExts.includes(ext);
+  
+  // 如果指定了type参数，优先使用指定的类型
+  const specifiedType = req.body && req.body.type;
+  let fileType = null;
+  
+  if (specifiedType === 'image' || specifiedType === 'video') {
+    fileType = specifiedType;
+  } else if (isImage || isImageByExt) {
+    fileType = 'image';
+  } else if (isVideo || isVideoByExt) {
+    fileType = 'video';
+  }
+  
+  if (!fileType) {
+    return cb(new Error('不支持的文件类型，仅支持 jpg, jpeg, png, gif, webp, mp4, mov'));
+  }
+  
+  // 验证文件扩展名
+  const allowedExts = fileType === 'video' ? allowedVideoExts : allowedImageExts;
+  if (!allowedExts.includes(ext)) {
+    return cb(new Error(`不支持的文件扩展名，${fileType === 'video' ? '视频' : '图片'}仅支持 ${allowedExts.join(', ')}`));
+  }
+  
+  // 验证MIME类型
+  const allowedMimeTypes = fileType === 'video' ? allowedVideoTypes : allowedImageTypes;
+  if (!allowedMimeTypes.includes(file.mimetype)) {
+    return cb(new Error(`不支持的文件MIME类型，${fileType === 'video' ? '视频' : '图片'}仅支持 ${allowedMimeTypes.map(m => m.split('/')[1]).join(', ')}`));
+  }
+  
+  // 保存文件类型到req，供后续使用
+  req.fileType = fileType;
+  
+  cb(null, true);
+};
+
+// 配置 multer
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB（最大限制，实际会根据文件类型进一步限制）
+  },
+  fileFilter: fileFilter
+});
 
 // 验证中间件
 const validate = (req, res, next) => {
@@ -39,17 +143,97 @@ const validate = (req, res, next) => {
 
 /**
  * GET /api/blog-admin/posts
- * 获取所有文章（包括草稿）
+ * 获取文章列表
+ * 支持分页：?page=1&pageSize=20
+ * 支持筛选：?published=true&category=xxx&search=xxx
+ * 
+ * 注意：小程序使用时，默认行为与博客首页保持一致：
+ * - 默认只返回已发布的文章（published=true）
+ * - 主页场景（无分类筛选）会过滤空内容的文章
+ * - 分类场景会包含所有文章（包括空内容的）
  */
-router.get('/posts', requireAuth, async (req, res) => {
+router.get('/posts', requireBlogAuth, async (req, res) => {
   try {
-    const posts = await getBlogPosts({ publishedOnly: false });
+    const { 
+      page = 1, 
+      pageSize,
+      published,  // 管理后台：默认返回所有文章（包括未发布的），可以通过参数筛选
+      category,
+      search
+    } = req.query;
     
-    res.json({
-      success: true,
-      data: posts,
-      total: posts.length
+    // 构建查询选项
+    // 管理后台默认显示所有文章（包括未发布的），这样才能管理草稿
+    // 如果明确指定了published参数为'true'，则只返回已发布的；否则返回所有文章
+    const options = {
+      publishedOnly: published === 'true' ? true : false, // 管理后台默认false（显示所有文章）
+      category: category || undefined,
+      search: search || undefined,
+      includeEmptyContent: true // 管理后台始终包含空内容的文章，这样才能管理所有文章
+    };
+    
+    // 获取文章列表（与博客首页使用相同的逻辑）
+    let posts = await getBlogPosts(options);
+    
+    // 过滤掉特殊分类：汇率转换、天气、翻译（这些分类不需要在管理后台显示）
+    const excludedCategories = ['汇率转换', '翻译卡片', '翻译', '天气', '天气路况', 'exchange-rate', 'translation', 'weather'];
+    posts = posts.filter(post => {
+      const apiName = post._sourceApiName || post.category || '';
+      const apiNameLower = apiName.toLowerCase();
+      
+      // 检查是否匹配排除的分类（支持中文和英文名称）
+      const isExcluded = excludedCategories.some(excluded => {
+        if (apiName === excluded) return true;
+        if (apiNameLower.includes(excluded.toLowerCase())) return true;
+        // 检查是否包含关键词
+        if (excluded === '汇率转换' && (apiName.includes('汇率') || apiName.includes('exchange'))) return true;
+        if (excluded === '翻译' && (apiName.includes('翻译') || apiName.includes('translation'))) return true;
+        if (excluded === '天气' && (apiName.includes('天气') || apiName.includes('weather'))) return true;
+        return false;
+      });
+      
+      return !isExcluded;
     });
+    
+    // 管理后台默认返回所有文章（不分页），除非明确指定了pageSize
+    // 这样可以确保所有分类都能显示
+    let cleanedPosts = posts;
+    let pagination = null;
+    
+    if (pageSize) {
+      // 如果指定了pageSize，才进行分页
+      const total = posts.length;
+      const pageSizeNum = parseInt(pageSize, 10);
+      const totalPages = Math.ceil(total / pageSizeNum);
+      const currentPage = parseInt(page, 10);
+      const startIndex = (currentPage - 1) * pageSizeNum;
+      const endIndex = startIndex + pageSizeNum;
+      const paginatedPosts = posts.slice(startIndex, endIndex);
+      
+      pagination = {
+        currentPage,
+        pageSize: pageSizeNum,
+        total,
+        totalPages
+      };
+      
+      cleanedPosts = paginatedPosts;
+    }
+    
+    // 清理内部字段，列表场景下htmlContent只保留前10个字节（与博客首页保持一致）
+    const { cleanPostForPublic } = require('../utils/blog-helper');
+    cleanedPosts = cleanedPosts.map(post => cleanPostForPublic(post, false, true)); // 第三个参数表示列表场景
+    
+    const response = {
+      success: true,
+      data: cleanedPosts
+    };
+    
+    if (pagination) {
+      response.pagination = pagination;
+    }
+    
+    res.json(response);
   } catch (error) {
     logger.error('获取文章列表失败', { error: error.message });
     res.status(500).json({ 
@@ -60,11 +244,54 @@ router.get('/posts', requireAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/blog-admin/posts/:id
+ * 获取单篇文章详情
+ */
+router.get('/posts/:id', requireBlogAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await getBlogPost(id);
+    
+    if (!post) {
+      return res.status(404).json({ 
+        success: false, 
+        message: '文章不存在' 
+      });
+    }
+    
+    // 增加阅读量（异步，不阻塞响应）
+    // 注意：管理API访问也会增加阅读量，因为小程序可能使用此API获取文章详情
+    incrementPostViews(post.slug || post.id).catch(err => {
+      logger.error('增加阅读量失败（管理API）', { 
+        id, 
+        slug: post.slug || post.id, 
+        error: err.message 
+      });
+    });
+    
+    // 详情场景返回完整的 HTML 内容（不裁剪）
+    const { cleanPostForPublic } = require('../utils/blog-helper');
+    const cleanedPost = cleanPostForPublic(post, true); // 第二个参数为true，表示包含完整htmlContent
+    
+    res.json({
+      success: true,
+      data: cleanedPost
+    });
+  } catch (error) {
+    logger.error('获取文章详情失败', { error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: '获取文章详情失败' 
+    });
+  }
+});
+
+/**
  * GET /api/blog-admin/apis
  * 获取所有可用的API列表（用于文章分类选择）
  * 排除博客系统专用的API路径
  */
-router.get('/apis', requireAuth, async (req, res) => {
+router.get('/apis', requireBlogAuth, async (req, res) => {
   try {
     const { allAsync } = require('../db/database');
     const apis = await allAsync(`
@@ -93,7 +320,7 @@ router.get('/apis', requireAuth, async (req, res) => {
  * GET /api/blog-admin/apis/:apiName/field-mapping
  * 获取API字段映射配置
  */
-router.get('/apis/:apiName/field-mapping', requireAuth, async (req, res) => {
+router.get('/apis/:apiName/field-mapping', requireBlogAuth, async (req, res) => {
   try {
     const { apiName } = req.params;
     const { getApiFieldMapping } = require('../utils/blog-helper');
@@ -116,7 +343,7 @@ router.get('/apis/:apiName/field-mapping', requireAuth, async (req, res) => {
  * PUT /api/blog-admin/apis/:apiName/field-mapping
  * 更新API字段映射配置
  */
-router.put('/apis/:apiName/field-mapping', requireAuth, [
+router.put('/apis/:apiName/field-mapping', requireBlogAuth, [
   body('mapping').isObject().withMessage('字段映射必须是对象'),
   validate
 ], async (req, res) => {
@@ -141,8 +368,9 @@ router.put('/apis/:apiName/field-mapping', requireAuth, [
       );
     }
     
+    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
     await logAction(
-      req.session.adminId,
+      req.session?.adminId || 'api-token',
       'UPDATE',
       'blog_api_field_mapping',
       apiName,
@@ -167,7 +395,7 @@ router.put('/apis/:apiName/field-mapping', requireAuth, [
  * POST /api/blog-admin/posts
  * 创建文章
  */
-router.post('/posts', requireAuth, [
+router.post('/posts', requireBlogAuth, [
   body('name').notEmpty().withMessage('文章名称不能为空'),
   body('apiName').notEmpty().withMessage('API名称（分类）不能为空'),
   body('htmlContent').optional().isString().withMessage('htmlContent必须是字符串'),
@@ -175,15 +403,29 @@ router.post('/posts', requireAuth, [
   body('excerpt').optional().isString(),
   body('description').optional().isString(),
   body('image').optional().isString(),
-  body('tags').optional(),
   body('published').optional().isBoolean(),
   validate
 ], async (req, res) => {
   try {
+    // 提取中文名称用于统一存储（避免"二手市场"和"二手市场 second-hand"不一致）
+    const extractChineseName = (name) => {
+      if (!name) return '';
+      const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+      const chineseMatches = name.match(chineseRegex);
+      return chineseMatches && chineseMatches.length > 0 
+        ? chineseMatches.join('').trim() 
+        : name;
+    };
+    
     // name和title保持一致
     const nameValue = req.body.name || req.body.title || '未命名';
     // excerpt和description保持一致
     const excerptValue = req.body.excerpt || req.body.description || '';
+    
+    // 统一使用中文名称作为apiName和category（保持数据一致性）
+    const rawApiName = req.body.apiName || '';
+    const apiNameChinese = extractChineseName(rawApiName) || rawApiName;
+    
     const postData = {
       id: req.body.id,
       name: nameValue,
@@ -192,9 +434,8 @@ router.post('/posts', requireAuth, [
       excerpt: excerptValue,
       description: excerptValue, // description和excerpt保持一致
       image: req.body.image || null,
-      apiName: req.body.apiName, // API名称（用于确定数据存储位置）
-      category: req.body.category || req.body.apiName, // 分类/标签（用于博客展示，默认使用apiName）
-      // tags字段已废弃，使用category作为标签
+      apiName: apiNameChinese, // 统一使用中文名称
+      category: apiNameChinese, // 统一使用中文名称
       published: req.body.published !== undefined ? req.body.published : false
     };
     
@@ -223,8 +464,9 @@ router.post('/posts', requireAuth, [
     
     const post = await createBlogPost(postData);
     
+    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
     await logAction(
-      req.session.adminId,
+      req.session?.adminId || 'api-token',
       'CREATE',
       'blog_post',
       post.id,
@@ -250,7 +492,7 @@ router.post('/posts', requireAuth, [
  * PUT /api/blog-admin/posts/:id
  * 更新文章
  */
-router.put('/posts/:id', requireAuth, [
+router.put('/posts/:id', requireBlogAuth, [
   body('name').optional().notEmpty().withMessage('文章名称不能为空'),
   body('content').optional().isString(),
   body('slug').optional().isString(),
@@ -258,11 +500,20 @@ router.put('/posts/:id', requireAuth, [
   body('description').optional().isString(),
   body('image').optional().isString(),
   body('apiName').optional().isString(),
-  body('tags').optional(),
   body('published').optional().isBoolean(),
   validate
 ], async (req, res) => {
   try {
+    // 提取中文名称用于统一存储（避免"二手市场"和"二手市场 second-hand"不一致）
+    const extractChineseName = (name) => {
+      if (!name) return '';
+      const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+      const chineseMatches = name.match(chineseRegex);
+      return chineseMatches && chineseMatches.length > 0 
+        ? chineseMatches.join('').trim() 
+        : name;
+    };
+    
     const { id } = req.params;
     const updateData = {};
     
@@ -284,8 +535,13 @@ router.put('/posts/:id', requireAuth, [
       updateData.description = req.body.description; // description和excerpt保持一致
     }
     if (req.body.image !== undefined) updateData.image = req.body.image;
-    if (req.body.apiName !== undefined) updateData.apiName = req.body.apiName; // 支持更改分类（API）
-    if (req.body.category !== undefined) updateData.category = req.body.category; // 分类/标签字段
+    if (req.body.apiName !== undefined) {
+      // 统一使用中文名称（保持数据一致性）
+      const rawApiName = req.body.apiName;
+      const apiNameChinese = extractChineseName(rawApiName) || rawApiName;
+      updateData.apiName = apiNameChinese; // 统一使用中文名称
+      updateData.category = apiNameChinese; // 统一使用中文名称
+    }
     
     // 特殊字段（二手市场和租房酒店）
     if (req.body.price !== undefined) updateData.price = req.body.price;
@@ -326,7 +582,6 @@ router.put('/posts/:id', requireAuth, [
     }
     
     if (req.body._specialType !== undefined) updateData._specialType = req.body._specialType;
-    // tags字段已废弃，使用category作为标签
     if (req.body.published !== undefined) updateData.published = req.body.published;
     
     // 处理特殊类别的数据
@@ -351,8 +606,9 @@ router.put('/posts/:id', requireAuth, [
       });
     }
     
+    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
     await logAction(
-      req.session.adminId,
+      req.session?.adminId || 'api-token',
       'UPDATE',
       'blog_post',
       id,
@@ -378,7 +634,7 @@ router.put('/posts/:id', requireAuth, [
  * DELETE /api/blog-admin/posts/:id
  * 删除文章
  */
-router.delete('/posts/:id', requireAuth, async (req, res) => {
+router.delete('/posts/:id', requireBlogAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const success = await deleteBlogPost(id);
@@ -390,8 +646,9 @@ router.delete('/posts/:id', requireAuth, async (req, res) => {
       });
     }
     
+    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
     await logAction(
-      req.session.adminId,
+      req.session?.adminId || 'api-token',
       'DELETE',
       'blog_post',
       id,
@@ -412,15 +669,114 @@ router.delete('/posts/:id', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/blog-admin/posts/batch-publish
+ * 批量发布文章
+ */
+router.post('/posts/batch-publish', requireBlogAuth, [
+  body('ids').isArray().withMessage('ids必须是数组'),
+  body('ids.*').isString().notEmpty().withMessage('每个id必须是非空字符串'),
+  validate
+], async (req, res) => {
+  try {
+    const { ids } = req.body;
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '请提供要发布的文章ID数组'
+      });
+    }
+    
+    const { runAsync, getAsync } = require('../db/database');
+    let successCount = 0;
+    let failedCount = 0;
+    const failedIds = [];
+    
+    // 批量更新文章发布状态
+    for (const id of ids) {
+      try {
+        // 检查文章是否存在
+        const post = await getAsync(
+          'SELECT id, published FROM blog_posts WHERE id = ?',
+          [id]
+        );
+        
+        if (!post) {
+          failedCount++;
+          failedIds.push(id);
+          logger.warn('批量发布：文章不存在', { id });
+          continue;
+        }
+        
+        // 如果已经是发布状态，跳过
+        if (post.published === 1) {
+          logger.debug('批量发布：文章已发布，跳过', { id });
+          continue;
+        }
+        
+        // 更新发布状态
+        await runAsync(
+          `UPDATE blog_posts 
+           SET published = 1, updated_at = datetime('now', 'localtime')
+           WHERE id = ?`,
+          [id]
+        );
+        
+        successCount++;
+        
+        // 记录操作日志
+        await logAction(
+          req.session?.adminId || 'api-token',
+          'UPDATE',
+          'blog_post',
+          id,
+          JSON.stringify({ published: true, batchPublish: true }),
+          req
+        );
+      } catch (error) {
+        failedCount++;
+        failedIds.push(id);
+        logger.error('批量发布单篇文章失败', { id, error: error.message });
+      }
+    }
+    
+    // 清除缓存
+    try {
+      const { clearPostsCache } = require('../utils/blog-helper');
+      clearPostsCache();
+    } catch (e) {
+      logger.warn('清除缓存失败', { error: e.message });
+    }
+    
+    res.json({
+      success: true,
+      message: `批量发布完成：成功 ${successCount} 篇，失败 ${failedCount} 篇`,
+      data: {
+        successCount,
+        failedCount,
+        failedIds: failedIds.length > 0 ? failedIds : undefined
+      }
+    });
+  } catch (error) {
+    logger.error('批量发布失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '批量发布失败: ' + error.message
+    });
+  }
+});
+
 // ==================== 分类管理 ====================
 
 /**
  * GET /api/blog-admin/categories
  * 获取所有分类
  */
-router.get('/categories', requireAuth, async (req, res) => {
+router.get('/categories', requireBlogAuth, async (req, res) => {
   try {
-    const categories = await getBlogCategories();
+    // 管理后台显示所有分类（包括只有未发布文章的分类）
+    const categories = await getBlogCategories({ includeUnpublished: true });
     
     res.json({
       success: true,
@@ -439,7 +795,7 @@ router.get('/categories', requireAuth, async (req, res) => {
  * POST /api/blog-admin/categories
  * 创建分类
  */
-router.post('/categories', requireAuth, [
+router.post('/categories', requireBlogAuth, [
   body('name').notEmpty().withMessage('分类名称不能为空'),
   body('path').optional().isString(),
   body('description').optional().isString(),
@@ -454,8 +810,9 @@ router.post('/categories', requireAuth, [
     
     const category = await createBlogCategory(categoryData);
     
+    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
     await logAction(
-      req.session.adminId,
+      req.session?.adminId || 'api-token',
       'CREATE',
       'blog_category',
       category.id.toString(),
@@ -481,7 +838,7 @@ router.post('/categories', requireAuth, [
  * PUT /api/blog-admin/categories/:id
  * 更新分类
  */
-router.put('/categories/:id', requireAuth, [
+router.put('/categories/:id', requireBlogAuth, [
   body('name').optional().notEmpty().withMessage('分类名称不能为空'),
   body('path').optional().isString(),
   body('description').optional().isString(),
@@ -509,8 +866,9 @@ router.put('/categories/:id', requireAuth, [
       });
     }
     
+    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
     await logAction(
-      req.session.adminId,
+      req.session?.adminId || 'api-token',
       'UPDATE',
       'blog_category',
       id,
@@ -536,7 +894,7 @@ router.put('/categories/:id', requireAuth, [
  * DELETE /api/blog-admin/categories/:id
  * 删除分类
  */
-router.delete('/categories/:id', requireAuth, async (req, res) => {
+router.delete('/categories/:id', requireBlogAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const success = await deleteBlogCategory(parseInt(id, 10));
@@ -548,8 +906,9 @@ router.delete('/categories/:id', requireAuth, async (req, res) => {
       });
     }
     
+    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
     await logAction(
-      req.session.adminId,
+      req.session?.adminId || 'api-token',
       'DELETE',
       'blog_category',
       id,
@@ -570,81 +929,21 @@ router.delete('/categories/:id', requireAuth, async (req, res) => {
   }
 });
 
-// ==================== 标签管理 ====================
-
-/**
- * GET /api/blog-admin/tags
- * 获取所有标签
- */
-router.get('/tags', requireAuth, async (req, res) => {
-  try {
-    const tags = await getBlogTags();
-    
-    res.json({
-      success: true,
-      data: tags
-    });
-  } catch (error) {
-    logger.error('获取标签列表失败', { error: error.message });
-    res.status(500).json({ 
-      success: false, 
-      message: '获取标签列表失败' 
-    });
-  }
-});
-
-/**
- * POST /api/blog-admin/tags
- * 创建标签
- */
-router.post('/tags', requireAuth, [
-  body('name').notEmpty().withMessage('标签名称不能为空'),
-  body('slug').optional().isString(),
-  validate
-], async (req, res) => {
-  try {
-    const tagData = {
-      name: req.body.name,
-      slug: req.body.slug
-    };
-    
-    const tag = await createBlogTag(tagData);
-    
-    await logAction(
-      req.session.adminId,
-      'CREATE',
-      'blog_tag',
-      tag.id,
-      JSON.stringify({ name: tag.name }),
-      req
-    );
-    
-    res.json({
-      success: true,
-      message: '标签创建成功',
-      data: tag
-    });
-  } catch (error) {
-    logger.error('创建标签失败', { error: error.message });
-    res.status(500).json({ 
-      success: false, 
-      message: '创建标签失败: ' + error.message 
-    });
-  }
-});
-
 // ==================== 评论管理 ====================
 
 /**
  * GET /api/blog-admin/comments
  * 获取所有评论
  */
-router.get('/comments', requireAuth, async (req, res) => {
+router.get('/comments', requireBlogAuth, async (req, res) => {
   try {
     const { page = 1, pageSize = 20, approved } = req.query;
     
-    // 获取所有文章的评论
-    const posts = await getBlogPosts({ publishedOnly: false });
+    // 获取所有文章的评论（包括空内容的文章）
+    const posts = await getBlogPosts({ 
+      publishedOnly: false,
+      includeEmptyContent: true 
+    });
     let allComments = [];
     
     for (const post of posts) {
@@ -699,7 +998,7 @@ router.get('/comments', requireAuth, async (req, res) => {
  * PUT /api/blog-admin/comments/:id/approve
  * 审核评论
  */
-router.put('/comments/:id/approve', requireAuth, [
+router.put('/comments/:id/approve', requireBlogAuth, [
   body('approved').isBoolean().withMessage('approved必须是布尔值'),
   validate
 ], async (req, res) => {
@@ -716,8 +1015,9 @@ router.put('/comments/:id/approve', requireAuth, [
       });
     }
     
+    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
     await logAction(
-      req.session.adminId,
+      req.session?.adminId || 'api-token',
       approved ? 'APPROVE' : 'REJECT',
       'blog_comment',
       id,
@@ -742,7 +1042,7 @@ router.put('/comments/:id/approve', requireAuth, [
  * DELETE /api/blog-admin/comments/:id
  * 删除评论
  */
-router.delete('/comments/:id', requireAuth, async (req, res) => {
+router.delete('/comments/:id', requireBlogAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const success = await deleteBlogComment(id);
@@ -754,8 +1054,9 @@ router.delete('/comments/:id', requireAuth, async (req, res) => {
       });
     }
     
+    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
     await logAction(
-      req.session.adminId,
+      req.session?.adminId || 'api-token',
       'DELETE',
       'blog_comment',
       id,
@@ -772,6 +1073,291 @@ router.delete('/comments/:id', requireAuth, async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: '删除评论失败: ' + error.message 
+    });
+  }
+});
+
+// ==================== 文件上传 ====================
+
+/**
+ * POST /api/blog-admin/upload
+ * 上传文件（图片或视频）
+ */
+router.post('/upload', requireBlogAuth, (req, res, next) => {
+  // 根据文件类型设置不同的文件大小限制
+  // 默认使用图片限制，实际类型会在 fileFilter 中确定
+  const defaultMaxSize = 50 * 1024 * 1024; // 50MB（最大限制）
+  
+  // 创建 multer 实例
+  const uploadMiddleware = multer({
+    storage: storage,
+    limits: {
+      fileSize: defaultMaxSize
+    },
+    fileFilter: fileFilter
+  });
+  
+  uploadMiddleware.single('file')(req, res, (err) => {
+    if (err) {
+      // 处理 multer 错误
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          // 根据文件类型返回不同的错误信息
+          const fileType = req.fileType || '文件';
+          const maxSizeMB = fileType === 'video' ? 50 : 10;
+          return res.status(413).json({
+            success: false,
+            message: `${fileType === 'video' ? '视频' : '图片'}大小超过限制（最大${maxSizeMB}MB）`
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          message: err.message || '文件上传失败'
+        });
+      }
+      // 处理文件过滤错误
+      return res.status(400).json({
+        success: false,
+        message: err.message || '不支持的文件类型'
+      });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: '未选择文件'
+      });
+    }
+    
+    // 检查文件大小限制（根据实际文件类型）
+    const fileType = req.fileType || 'image';
+    const maxSize = fileType === 'video' ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (req.file.size > maxSize) {
+      const maxSizeMB = maxSize / (1024 * 1024);
+      return res.status(413).json({
+        success: false,
+        message: `${fileType === 'video' ? '视频' : '图片'}大小超过限制（最大${maxSizeMB}MB）`
+      });
+    }
+    
+    try {
+      // 构建文件URL
+      // 文件路径格式：uploads/images/2025/01/xxx.jpg
+      // URL格式：https://bobapro.life/uploads/images/2025/01/xxx.jpg
+      const filePath = req.file.path;
+      const relativePath = path.relative(DATA_DIR, filePath).replace(/\\/g, '/'); // Windows路径转Unix格式
+      const baseUrl = process.env.BASE_URL || 'https://bobapro.life';
+      const fileUrl = `${baseUrl}/${relativePath}`;
+      
+      logger.info('文件上传成功', {
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        type: fileType,
+        url: fileUrl
+      });
+      
+      res.json({
+        success: true,
+        url: fileUrl,
+        message: '上传成功'
+      });
+    } catch (error) {
+      logger.error('文件上传处理失败', { error: error.message });
+      res.status(500).json({
+        success: false,
+        message: '文件上传处理失败: ' + error.message
+      });
+    }
+  });
+});
+
+// ==================== 特殊内容管理（天气、汇率、翻译）====================
+
+const { getAsync, runAsync, allAsync } = require('../db/database');
+
+/**
+ * GET /api/blog-admin/special-content/:type
+ * 获取特殊内容（天气、汇率、翻译）
+ * type: weather, exchange-rate, translation
+ */
+router.get('/special-content/:type', requireBlogAuth, async (req, res) => {
+  try {
+    const { type } = req.params;
+    
+    // 验证类型
+    const validTypes = ['weather', 'exchange-rate', 'translation'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: '无效的内容类型'
+      });
+    }
+    
+    // 根据类型确定API路径
+    const apiPath = `/${type}`;
+    
+    // 从数据库获取API数据
+    const api = await getAsync(
+      `SELECT id, name, path, method, response_content, description, status, updated_at
+       FROM custom_apis
+       WHERE path = ? AND method = 'GET' AND status = 'active'`,
+      [apiPath]
+    );
+    
+    if (!api) {
+      return res.status(404).json({
+        success: false,
+        message: `未找到${type}内容，请先创建对应的API`
+      });
+    }
+    
+    // 解析响应内容
+    let content = {};
+    try {
+      content = JSON.parse(api.response_content);
+    } catch (e) {
+      logger.warn('解析特殊内容数据失败', { type, error: e.message });
+      content = {};
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        id: api.id,
+        name: api.name,
+        path: api.path,
+        description: api.description,
+        updatedAt: api.updated_at,
+        content: content
+      }
+    });
+  } catch (error) {
+    logger.error('获取特殊内容失败', { type: req.params.type, error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '获取特殊内容失败: ' + error.message
+    });
+  }
+});
+
+/**
+ * PUT /api/blog-admin/special-content/:type
+ * 更新特殊内容（天气、汇率、翻译）
+ */
+router.put('/special-content/:type', requireBlogAuth, [
+  body('content').notEmpty().withMessage('内容不能为空'),
+  validate
+], async (req, res) => {
+  try {
+    const { type } = req.params;
+    const { content } = req.body;
+    
+    // 验证类型
+    const validTypes = ['weather', 'exchange-rate', 'translation'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: '无效的内容类型'
+      });
+    }
+    
+    // 根据类型确定API路径
+    const apiPath = `/${type}`;
+    
+    // 查找API记录
+    const api = await getAsync(
+      `SELECT id, name, path, method, response_content, status
+       FROM custom_apis
+       WHERE path = ? AND method = 'GET' AND status = 'active'`,
+      [apiPath]
+    );
+    
+    if (!api) {
+      return res.status(404).json({
+        success: false,
+        message: `未找到${type}内容，请先创建对应的API`
+      });
+    }
+    
+    // 验证内容格式
+    let contentObj;
+    try {
+      contentObj = typeof content === 'string' ? JSON.parse(content) : content;
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        message: '内容格式无效，必须是有效的JSON'
+      });
+    }
+    
+    // 根据类型验证内容结构
+    if (type === 'weather') {
+      if (!contentObj.globalAlert || !contentObj.attractions || !contentObj.traffic) {
+        return res.status(400).json({
+          success: false,
+          message: '天气内容必须包含 globalAlert、attractions 和 traffic 字段'
+        });
+      }
+    } else if (type === 'exchange-rate') {
+      // 汇率内容可以是数组或对象
+      if (!Array.isArray(contentObj) && typeof contentObj !== 'object') {
+        return res.status(400).json({
+          success: false,
+          message: '汇率内容必须是数组或对象'
+        });
+      }
+    } else if (type === 'translation') {
+      // 翻译内容应该是数组
+      if (!Array.isArray(contentObj)) {
+        return res.status(400).json({
+          success: false,
+          message: '翻译内容必须是数组'
+        });
+      }
+    }
+    
+    // 更新数据库
+    const responseContent = JSON.stringify(contentObj);
+    await runAsync(
+      `UPDATE custom_apis
+       SET response_content = ?, updated_at = datetime('now', 'localtime')
+       WHERE id = ?`,
+      [responseContent, api.id]
+    );
+    
+    // 记录操作日志
+    await logAction(
+      req.session?.adminId || 'api-token',
+      'UPDATE',
+      'special_content',
+      `${type}:${api.id}`,
+      JSON.stringify({ type, content: contentObj }),
+      req
+    );
+    
+    // 重新加载自定义API路由（使更改生效）
+    try {
+      const { reloadCustomApiRoutes } = require('../utils/custom-api-router');
+      await reloadCustomApiRoutes();
+    } catch (reloadError) {
+      logger.warn('重新加载API路由失败', { error: reloadError.message });
+    }
+    
+    res.json({
+      success: true,
+      message: `${type}内容更新成功`,
+      data: {
+        id: api.id,
+        content: contentObj
+      }
+    });
+  } catch (error) {
+    logger.error('更新特殊内容失败', { type: req.params.type, error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '更新特殊内容失败: ' + error.message
     });
   }
 });

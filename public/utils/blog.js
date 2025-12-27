@@ -39,7 +39,6 @@ async function getPosts(options = {}) {
   if (options.page) params.append('page', options.page);
   if (options.pageSize) params.append('pageSize', options.pageSize);
   if (options.category) params.append('category', options.category);
-  if (options.tag) params.append('tag', options.tag);
   if (options.search) params.append('search', options.search);
   if (options.published !== undefined) params.append('published', options.published);
   
@@ -59,13 +58,6 @@ async function getPost(slug) {
  */
 async function getCategories() {
   return await apiRequest(`${BLOG_API_BASE}/categories`);
-}
-
-/**
- * 获取标签列表
- */
-async function getTags() {
-  return await apiRequest(`${BLOG_API_BASE}/tags`);
 }
 
 /**
@@ -281,7 +273,6 @@ if (typeof module !== 'undefined' && module.exports) {
     getPosts,
     getPost,
     getCategories,
-    getTags,
     getComments,
     createComment,
     searchPosts,

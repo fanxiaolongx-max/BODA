@@ -47,18 +47,23 @@ function formatPhoneNumber(phone) {
   // 移除所有空格和特殊字符，只保留数字和+
   let formatted = phone.replace(/[^\d+]/g, '');
 
-  // 如果没有+号，根据长度判断是否需要添加国家代码
+  // 如果没有+号，根据长度和格式判断是否需要添加国家代码
   if (!formatted.startsWith('+')) {
+    // 埃及手机号：11位，以0开头，去掉0后添加+20
+    // 例如：01017739088 -> 1017739088 -> +201017739088
+    if (formatted.length === 11 && formatted.startsWith('0')) {
+      formatted = '+20' + formatted.substring(1); // 去掉开头的0，添加+20
+    }
     // 如果长度是11位且以1开头，可能是中国手机号，添加+86
-    if (formatted.length === 11 && formatted.startsWith('1')) {
+    else if (formatted.length === 11 && formatted.startsWith('1')) {
       formatted = '+86' + formatted;
     }
     // 如果长度是10位，可能是美国手机号，添加+1
-    else if (formatted.length === 10) {
+    else if (formatted.length === 10 && !formatted.startsWith('0')) {
       formatted = '+1' + formatted;
     }
-    // 埃及手机号通常是10位，添加+20
-    else if (formatted.length === 10) {
+    // 如果长度是10位且以1开头，可能是埃及手机号（已去掉0），添加+20
+    else if (formatted.length === 10 && formatted.startsWith('1')) {
       formatted = '+20' + formatted;
     }
     // 其他情况，假设用户已经输入了正确的格式

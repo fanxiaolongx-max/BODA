@@ -8,6 +8,8 @@ const { updateExchangeRateAPI } = require('./exchange-rate-updater');
 let checkInterval = null;
 let pushCheckInterval = null;
 let exchangeRateCheckInterval = null;
+let apiLogsCleanupInterval = null;
+let backupAndLogCleanupInterval = null;
 
 // 启动定时任务（已禁用，不再执行自动开放时间检查）
 function startScheduler() {
@@ -19,6 +21,12 @@ function startScheduler() {
   
   // 启动汇率更新调度器
   startExchangeRateScheduler();
+  
+  // 启动API日志清理调度器
+  startApiLogsCleanupScheduler();
+  
+  // 启动备份和日志清理调度器
+  startBackupAndLogCleanupScheduler();
 }
 
 // 启动远程备份推送调度器
@@ -165,28 +173,32 @@ function startExchangeRateScheduler() {
 
         try {
           // 获取汇率
-          const exchangeRates = await fetchExchangeRates({
+          const exchangeRatesResult = await fetchExchangeRates({
             freecurrencyapi_api_key: freecurrencyapiKey,
             exchangerate_api_key: exchangerateKey,
             exchange_rate_base_currencies: settingsObj.exchange_rate_base_currencies || 'CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB',
             exchange_rate_target_currency: settingsObj.exchange_rate_target_currency || 'EGP'
           });
 
-          // 更新API
-          await updateExchangeRateAPI(exchangeRates);
+          // 更新API（updateExchangeRateAPI会自动处理新格式和旧格式）
+          const updateResult = await updateExchangeRateAPI(exchangeRatesResult);
 
-          // 更新最后更新时间
+          // 获取实际的汇率数据（兼容新格式和旧格式）
+          const ratesData = exchangeRatesResult.rates || exchangeRatesResult;
+
+          // 更新最后更新时间（统一使用UTC时间，避免时区混淆）
           const { runAsync } = require('../db/database');
           await runAsync(
             `INSERT INTO settings (key, value, updated_at) 
-             VALUES (?, ?, datetime('now', 'localtime'))
-             ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now', 'localtime')`,
+             VALUES (?, ?, datetime('now'))
+             ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
             [lastUpdateKey, now.toISOString(), now.toISOString()]
           );
 
           logger.info('汇率自动更新成功', {
-            currencies: Object.keys(exchangeRates).length,
-            updatedAt: now.toISOString()
+            currencies: Object.keys(ratesData).length,
+            updatedAt: updateResult.updateTime || now.toISOString(),
+            apiUpdateTime: exchangeRatesResult.updateTime || '未提供'
           });
           
           // 重置计数器
@@ -209,6 +221,107 @@ function startExchangeRateScheduler() {
   logger.info('汇率更新调度器已启动（每小时检查一次）');
 }
 
+// 启动API日志清理调度器
+function startApiLogsCleanupScheduler() {
+  // 每小时清理一次超过3小时的消息体（request_body 和 response_body）
+  apiLogsCleanupInterval = setInterval(async () => {
+    try {
+      const { runAsync, allAsync } = require('../db/database');
+      
+      // 先统计要清理的记录数
+      const countResult = await allAsync(`
+        SELECT COUNT(*) as count
+        FROM custom_api_logs
+        WHERE created_at < datetime('now', '-3 hours')
+          AND (
+            (request_body IS NOT NULL AND request_body != '')
+            OR (response_body IS NOT NULL AND response_body != '')
+          )
+      `);
+      
+      const countToClean = countResult[0]?.count || 0;
+      
+      if (countToClean === 0) {
+        return; // 没有需要清理的记录
+      }
+      
+      // 执行清理：同时清理 request_body 和 response_body
+      await runAsync(`
+        UPDATE custom_api_logs
+        SET 
+          request_body = NULL,
+          response_body = NULL
+        WHERE created_at < datetime('now', '-3 hours')
+          AND (
+            (request_body IS NOT NULL AND request_body != '')
+            OR (response_body IS NOT NULL AND response_body != '')
+          )
+      `);
+      
+      logger.info('自动清理超过3小时的消息体（request_body 和 response_body）', {
+        cleaned: countToClean
+      });
+    } catch (error) {
+      logger.error('自动清理消息体失败', { error: error.message });
+    }
+  }, 60 * 60 * 1000); // 每小时执行一次
+  
+  logger.info('API日志清理调度器已启动（每小时清理一次超过3小时的消息体）');
+}
+
+// 启动备份和日志清理调度器
+function startBackupAndLogCleanupScheduler() {
+  // 每天凌晨2点执行一次清理任务
+  const cleanupInterval = 24 * 60 * 60 * 1000; // 24小时
+  let lastCleanupTime = 0;
+  
+  // 立即执行一次（如果距离上次清理超过12小时）
+  const checkAndCleanup = async () => {
+    const now = Date.now();
+    // 如果距离上次清理超过12小时，执行清理
+    if (now - lastCleanupTime > 12 * 60 * 60 * 1000) {
+      lastCleanupTime = now;
+      
+      try {
+        // 清理超过7天的备份文件
+        const { cleanupOldBackups } = require('../scripts/backup');
+        const backupResult = cleanupOldBackups(7);
+        
+        // 清理超过7天的日志文件
+        const { cleanupAllLogs } = require('./log-cleanup');
+        const logResult = await cleanupAllLogs(7);
+        
+        logger.info('自动清理备份和日志完成', {
+          backups: {
+            deletedFiles: backupResult.deletedCount,
+            freedSpaceMB: (backupResult.freedSpace / 1024 / 1024).toFixed(2)
+          },
+          logs: {
+            appLogs: {
+              deletedFiles: logResult.appLogs.deletedFiles,
+              freedSpaceMB: (logResult.appLogs.freedSpace / 1024 / 1024).toFixed(2)
+            },
+            systemLogs: {
+              deletedFiles: logResult.systemLogs.deletedFiles,
+              freedSpaceMB: (logResult.systemLogs.freedSpace / 1024 / 1024).toFixed(2)
+            }
+          }
+        });
+      } catch (error) {
+        logger.error('自动清理备份和日志失败', { error: error.message });
+      }
+    }
+  };
+  
+  // 立即检查一次
+  checkAndCleanup();
+  
+  // 每12小时检查一次
+  setInterval(checkAndCleanup, 12 * 60 * 60 * 1000);
+  
+  logger.info('备份和日志清理调度器已启动（每12小时清理一次超过7天的备份和日志）');
+}
+
 // 停止定时任务
 function stopScheduler() {
   if (checkInterval) {
@@ -227,6 +340,18 @@ function stopScheduler() {
     clearInterval(exchangeRateCheckInterval);
     exchangeRateCheckInterval = null;
     logger.info('汇率更新调度器已停止');
+  }
+  
+  if (apiLogsCleanupInterval) {
+    clearInterval(apiLogsCleanupInterval);
+    apiLogsCleanupInterval = null;
+    logger.info('API日志清理调度器已停止');
+  }
+  
+  if (backupAndLogCleanupInterval) {
+    clearInterval(backupAndLogCleanupInterval);
+    backupAndLogCleanupInterval = null;
+    logger.info('备份和日志清理调度器已停止');
   }
 }
 

@@ -1036,7 +1036,6 @@
     const pageSize = 12; // 增加每页显示数量
     let totalPages = 1;
     let currentCategory = null;
-    let currentTag = null;
     let currentSearch = null;
     let viewMode = 'posts'; // 'posts' 或 'archive'
     let isAdminLoggedIn = false; // 管理员登录状态
@@ -1143,9 +1142,6 @@
         
         if (currentCategory) {
           options.category = currentCategory;
-        }
-        if (currentTag) {
-          options.tag = currentTag;
         }
         if (currentSearch) {
           options.search = currentSearch;
@@ -1280,12 +1276,11 @@
         // 构建缓存键
         const cacheKey = JSON.stringify({
           category: currentCategory,
-          tag: currentTag,
           search: currentSearch
         });
         
         // 检查缓存（仅在没有任何筛选条件时使用缓存）
-        if (!currentCategory && !currentTag && !currentSearch && archiveCache && archiveCacheKey === cacheKey) {
+        if (!currentCategory && !currentSearch && archiveCache && archiveCacheKey === cacheKey) {
           console.log('使用缓存的归档数据');
           displayArchive(archiveCache);
           if (isAdminLoggedIn) {
@@ -1314,11 +1309,6 @@
         // 应用分类筛选
         if (currentCategory) {
           options.category = currentCategory;
-        }
-        
-        // 应用标签筛选
-        if (currentTag) {
-          options.tag = currentTag;
         }
         
         // 应用搜索
@@ -1371,7 +1361,7 @@
           }
           
           // 缓存数据（仅在没有任何筛选条件时缓存）
-          if (!currentCategory && !currentTag && !currentSearch) {
+          if (!currentCategory && !currentSearch) {
             archiveCache = posts;
             archiveCacheKey = cacheKey;
           }
@@ -1440,7 +1430,7 @@
         let emptyMessage = '<div class="blog-empty">暂无文章</div>';
         
         // 如果有筛选条件，显示清除筛选的提示
-        if (currentCategory || currentTag || currentSearch) {
+        if (currentCategory || currentSearch) {
           emptyMessage = `
             <div class="blog-empty">
               <div style="margin-bottom: 1rem;">暂无符合条件的文章</div>
@@ -1457,10 +1447,9 @@
 
       // 显示筛选状态
       let filterInfo = '';
-      if (currentCategory || currentTag || currentSearch) {
+      if (currentCategory || currentSearch) {
         const filters = [];
         if (currentCategory) filters.push(`分类: ${currentCategory}`);
-        if (currentTag) filters.push(`标签: ${currentTag}`);
         if (currentSearch) filters.push(`搜索: ${currentSearch}`);
         
         filterInfo = `
@@ -1545,7 +1534,6 @@
     // 清除筛选条件
     function clearFilters() {
       currentCategory = null;
-      currentTag = null;
       currentSearch = null;
       currentPage = 1;
       
@@ -1631,7 +1619,7 @@
           }
         } else if (isExchangeRate && post._originalData) {
           // 汇率转换：显示简要汇率信息
-          const excludeFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
+          const excludeFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
           const currencies = Object.keys(post._originalData).filter(k => 
             !excludeFields.includes(k) && 
             post._originalData[k] && 
@@ -1852,7 +1840,6 @@
       } else {
         currentCategory = category;
       }
-      currentTag = null;
       currentSearch = null;
       currentPage = 1;
       
@@ -1885,7 +1872,6 @@
         if (query) {
           currentSearch = query;
           currentCategory = null;
-          currentTag = null;
           currentPage = 1;
           
           // 清除归档缓存（搜索条件改变）

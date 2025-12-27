@@ -3,7 +3,6 @@ const {
   getBlogPosts, 
   getBlogPost, 
   getBlogCategories, 
-  getBlogTags, 
   getBlogComments,
   incrementPostViews,
   createBlogComment
@@ -22,7 +21,6 @@ router.get('/posts', async (req, res) => {
       page = 1, 
       pageSize = 6, 
       category, 
-      tag, 
       search,
       published = 'true' 
     } = req.query;
@@ -30,7 +28,6 @@ router.get('/posts', async (req, res) => {
     const options = {
       publishedOnly: published === 'true',
       category: category || undefined,
-      tag: tag || undefined,
       search: search || undefined
     };
     
@@ -45,8 +42,9 @@ router.get('/posts', async (req, res) => {
     const paginatedPosts = posts.slice(startIndex, endIndex);
     
     // 清理内部字段（不对外暴露）
+    // 列表场景只保留 HTML 内容的前10个字节，减少响应体积
     const { cleanPostForPublic } = require('../utils/blog-helper');
-    const cleanedPosts = paginatedPosts.map(post => cleanPostForPublic(post));
+    const cleanedPosts = paginatedPosts.map(post => cleanPostForPublic(post, false, true)); // 第三个参数表示列表场景
     
     res.json({
       success: true,
@@ -89,8 +87,9 @@ router.get('/posts/:slug', async (req, res) => {
     });
     
     // 清理内部字段（不对外暴露）
+    // 详情场景返回完整的 HTML 内容
     const { cleanPostForPublic } = require('../utils/blog-helper');
-    const cleanedPost = cleanPostForPublic(post);
+    const cleanedPost = cleanPostForPublic(post, true);
     
     res.json({
       success: true,
@@ -122,27 +121,6 @@ router.get('/categories', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: '获取分类列表失败' 
-    });
-  }
-});
-
-/**
- * GET /api/blog/tags
- * 获取标签列表
- */
-router.get('/tags', async (req, res) => {
-  try {
-    const tags = await getBlogTags();
-    
-    res.json({
-      success: true,
-      data: tags
-    });
-  } catch (error) {
-    logger.error('获取标签列表失败', { error: error.message });
-    res.status(500).json({ 
-      success: false, 
-      message: '获取标签列表失败' 
     });
   }
 });
@@ -287,9 +265,14 @@ router.get('/search', async (req, res) => {
     const endIndex = startIndex + parseInt(pageSize, 10);
     const paginatedPosts = posts.slice(startIndex, endIndex);
     
+    // 清理内部字段（不对外暴露）
+    // 搜索场景也是列表场景，只保留 HTML 内容的前10个字节
+    const { cleanPostForPublic } = require('../utils/blog-helper');
+    const cleanedPosts = paginatedPosts.map(post => cleanPostForPublic(post, false, true)); // 第三个参数表示列表场景
+    
     res.json({
       success: true,
-      data: paginatedPosts,
+      data: cleanedPosts,
       pagination: {
         currentPage,
         pageSize: parseInt(pageSize, 10),

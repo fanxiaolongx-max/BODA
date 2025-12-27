@@ -151,11 +151,168 @@ function initCustomApiRouter(app) {
       let responseStatus = 200;
       let errorMessage = null;
       
-      try {
-        responseData = JSON.parse(api.response_content);
-      } catch (e) {
-        // 如果不是JSON，直接返回字符串
-        responseData = api.response_content;
+      // 检查是否是文章详情API（路径包含 /detail）
+      const isDetailApi = requestPath.includes('/detail');
+      let postId = null;
+      
+      if (isDetailApi) {
+        // 从路径中提取文章ID（例如：/translation/f4706920-0de9-44a8-afd4-b3f6a8a34ce9/detail）
+        const pathParts = requestPath.split('/').filter(p => p); // 过滤空字符串
+        const detailIndex = pathParts.indexOf('detail');
+        if (detailIndex > 0) {
+          postId = pathParts[detailIndex - 1];
+        }
+        
+        // 如果找到文章ID，尝试查找文章并增加阅读量
+        if (postId) {
+          try {
+            const { getBlogPost, incrementPostViews, cleanPostForPublic } = require('./blog-helper');
+            
+            // 通过ID或slug查找文章（getBlogPost支持两者）
+            const post = await getBlogPost(postId);
+            
+            if (post) {
+              // 增加阅读量（异步，不阻塞响应）
+              incrementPostViews(post.slug || post.id).catch(err => {
+                logger.error('增加阅读量失败（自定义API）', { 
+                  postId, 
+                  slug: post.slug || post.id, 
+                  error: err.message 
+                });
+              });
+              
+              logger.info('文章详情API访问，已增加阅读量', {
+                apiName: api.name,
+                postId,
+                postSlug: post.slug || post.id,
+                path: requestPath
+              });
+              
+              // 如果是详情API，直接返回单篇文章（覆盖后续的列表处理）
+              // 清理内部字段，返回完整的 HTML 内容
+              const cleanedPost = cleanPostForPublic(post, true);
+              responseData = cleanedPost;
+              
+              // 记录日志
+              const responseTime = Date.now() - startTime;
+              const responseBody = JSON.stringify(responseData);
+              logApiRequest(api.id, requestMethod, req.path, requestHeaders, requestQuery, requestBody, 200, responseBody, responseTime, req.ip, req.get('user-agent'), null).catch(err => {
+                logger.error('记录API日志失败', { error: err.message, apiId: api.id });
+              });
+              
+              return res.json(responseData);
+            }
+          } catch (detailError) {
+            // 如果查找文章失败，记录警告但继续使用原始 response_content
+            logger.warn('查找文章详情失败（自定义API），使用原始响应', {
+              postId,
+              path: requestPath,
+              error: detailError.message
+            });
+          }
+        }
+      }
+      
+      // 检查是否是博客文章API（GET方法且不是博客系统专用路径）
+      // 如果是，从 blog_posts 表读取数据
+      if (api.method === 'GET' && !api.path.startsWith('/blog/')) {
+        try {
+          const { getBlogPosts } = require('./blog-helper');
+          const { allAsync } = require('../db/database');
+          
+          // 提取中文名称用于匹配（兼容不同格式的api_name）
+          const extractChineseName = (name) => {
+            if (!name) return '';
+            const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+            const chineseMatches = name.match(chineseRegex);
+            return chineseMatches && chineseMatches.length > 0 
+              ? chineseMatches.join('').trim() 
+              : name;
+          };
+          
+          const apiNameChinese = extractChineseName(api.name);
+          
+          // 检查是否有文章属于这个API（支持完整匹配和中文部分匹配）
+          // 现在特殊类型API（汇率、天气、翻译）也可以从 blog_posts 读取，因为更新时会同步更新
+          const posts = await allAsync(
+            `SELECT COUNT(*) as count FROM blog_posts 
+             WHERE api_name = ? OR api_name = ? OR category = ? OR category = ?`,
+            [api.name, apiNameChinese, api.name, apiNameChinese]
+          );
+          
+          if (posts[0].count > 0) {
+            // 从 blog_posts 表读取文章数据
+            // 同时使用中文名称和完整名称匹配，然后合并结果（去重）
+            const blogPostsChinese = await getBlogPosts({ 
+              publishedOnly: false,
+              category: apiNameChinese // 使用中文名称，可以匹配到所有格式的文章
+            });
+            
+            const blogPostsFull = await getBlogPosts({ 
+              publishedOnly: false,
+              category: api.name // 使用完整名称，匹配使用完整格式的文章
+            });
+            
+            // 合并结果并去重（基于文章ID）
+            const blogPostsMap = new Map();
+            [...blogPostsChinese, ...blogPostsFull].forEach(post => {
+              blogPostsMap.set(post.id, post);
+            });
+            const blogPosts = Array.from(blogPostsMap.values());
+            
+            // 转换为API格式（保持原有格式兼容性）
+            // 检查原始 response_content 的格式
+            let originalFormat = 'array'; // 默认数组格式
+            try {
+              const originalContent = JSON.parse(api.response_content);
+              if (originalContent && typeof originalContent === 'object' && !Array.isArray(originalContent)) {
+                originalFormat = 'object';
+              }
+            } catch (e) {
+              // 忽略解析错误，使用默认格式
+            }
+            
+            // 根据原始格式返回数据
+            if (originalFormat === 'object') {
+              responseData = { data: blogPosts };
+            } else {
+              responseData = blogPosts;
+            }
+            
+            logger.debug('从 blog_posts 表读取文章数据', {
+              apiName: api.name,
+              path: api.path,
+              postCount: blogPosts.length,
+              format: originalFormat
+            });
+          } else {
+            // 没有文章，使用原始 response_content
+            try {
+              responseData = JSON.parse(api.response_content);
+            } catch (e) {
+              responseData = api.response_content;
+            }
+          }
+        } catch (blogError) {
+          // 如果从 blog_posts 读取失败，回退到原始方式
+          logger.warn('从 blog_posts 读取数据失败，使用原始 response_content', {
+            error: blogError.message,
+            apiName: api.name
+          });
+          try {
+            responseData = JSON.parse(api.response_content);
+          } catch (e) {
+            responseData = api.response_content;
+          }
+        }
+      } else {
+        // 非博客文章API，使用原始方式
+        try {
+          responseData = JSON.parse(api.response_content);
+        } catch (e) {
+          // 如果不是JSON，直接返回字符串
+          responseData = api.response_content;
+        }
       }
 
       // 支持动态内容替换（可选功能）
@@ -199,6 +356,12 @@ function initCustomApiRouter(app) {
       // 计算响应时间
       const responseTime = Date.now() - startTime;
       const responseBody = JSON.stringify(responseData);
+      
+      // 设置缓存控制头（禁用缓存，确保每次请求都获取最新数据）
+      // 对于API接口，通常应该禁用缓存或设置较短的缓存时间
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       
       // 记录日志到数据库（异步，不阻塞响应）
       logApiRequest(api.id, requestMethod, req.path, requestHeaders, requestQuery, requestBody, responseStatus, responseBody, responseTime, req.ip, req.get('user-agent'), null).catch(err => {
@@ -428,6 +591,52 @@ function applyPagination(data, page, pageSize, returnArrayOnly = false) {
   return data;
 }
 
+// 清理任务锁，避免并发清理
+let cleanupInProgress = false;
+let lastCleanupTime = 0;
+const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1小时清理一次
+
+/**
+ * 清理超过3小时的消息体（request_body 和 response_body）（异步，不阻塞）
+ */
+async function cleanupOldResponseBodies() {
+  // 如果正在清理或距离上次清理不到1小时，跳过
+  if (cleanupInProgress || (Date.now() - lastCleanupTime < CLEANUP_INTERVAL)) {
+    return;
+  }
+  
+  cleanupInProgress = true;
+  lastCleanupTime = Date.now();
+  
+  try {
+    // 异步清理，不阻塞主流程
+    setImmediate(async () => {
+      try {
+        const { runAsync } = require('../db/database');
+        await runAsync(`
+          UPDATE custom_api_logs
+          SET 
+            request_body = NULL,
+            response_body = NULL
+          WHERE created_at < datetime('now', '-3 hours')
+            AND (
+              (request_body IS NOT NULL AND request_body != '')
+              OR (response_body IS NOT NULL AND response_body != '')
+            )
+        `);
+        logger.debug('自动清理超过3小时的消息体（request_body 和 response_body）完成');
+      } catch (error) {
+        logger.error('自动清理消息体失败', { error: error.message });
+      } finally {
+        cleanupInProgress = false;
+      }
+    });
+  } catch (error) {
+    cleanupInProgress = false;
+    logger.error('启动清理任务失败', { error: error.message });
+  }
+}
+
 /**
  * 记录API请求日志到数据库
  */
@@ -455,6 +664,11 @@ async function logApiRequest(apiId, requestMethod, requestPath, requestHeaders, 
       errorMessage,
       currentTime
     ]);
+    
+    // 异步触发清理任务（不阻塞日志记录）
+    cleanupOldResponseBodies().catch(err => {
+      // 忽略清理错误，不影响日志记录
+    });
   } catch (error) {
     logger.error('记录API日志失败', { error: error.message, apiId });
   }

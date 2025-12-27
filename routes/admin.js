@@ -9292,22 +9292,26 @@ router.post('/exchange-rate/update', requireAuth, async (req, res) => {
       hasExchangeRateAPI: !!exchangerateKey
     });
 
-    const exchangeRates = await fetchExchangeRates({
+    const exchangeRatesResult = await fetchExchangeRates({
       freecurrencyapi_api_key: freecurrencyapiKey,
       exchangerate_api_key: exchangerateKey,
       exchange_rate_base_currencies: settingsObj.exchange_rate_base_currencies || 'CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB',
       exchange_rate_target_currency: settingsObj.exchange_rate_target_currency || 'EGP'
     });
 
-    // 更新API
-    const result = await updateExchangeRateAPI(exchangeRates);
+    // 更新API（updateExchangeRateAPI会自动处理新格式和旧格式）
+    const result = await updateExchangeRateAPI(exchangeRatesResult);
 
-    // 更新最后更新时间
+    // 获取实际的汇率数据（兼容新格式和旧格式）
+    const ratesData = exchangeRatesResult.rates || exchangeRatesResult;
+    const currencies = Object.keys(ratesData);
+
+    // 更新最后更新时间（统一使用UTC时间，避免时区混淆）
     const now = new Date();
     await runAsync(
       `INSERT INTO settings (key, value, updated_at) 
-       VALUES (?, ?, datetime('now', 'localtime'))
-       ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now', 'localtime')`,
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
       ['exchange_rate_last_update', now.toISOString(), now.toISOString()]
     );
 
@@ -9317,8 +9321,8 @@ router.post('/exchange-rate/update', requireAuth, async (req, res) => {
       'exchange_rate',
       'manual',
       JSON.stringify({
-        currencies: Object.keys(exchangeRates).length,
-        updatedCurrencies: Object.keys(exchangeRates)
+        currencies: currencies.length,
+        updatedCurrencies: currencies
       }),
       req
     );
@@ -9328,8 +9332,8 @@ router.post('/exchange-rate/update', requireAuth, async (req, res) => {
       message: '汇率更新成功',
       data: {
         currencies: result.currencies,
-        updatedCurrencies: Object.keys(exchangeRates),
-        updateTime: now.toISOString()
+        updatedCurrencies: currencies,
+        updateTime: result.updateTime || now.toISOString()
       }
     });
   } catch (error) {

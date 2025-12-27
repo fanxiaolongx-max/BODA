@@ -24,8 +24,6 @@
     .admin-table td *,
     #tab-categories .admin-table td,
     #tab-categories .admin-table td *,
-    #tab-tags .admin-table td,
-    #tab-tags .admin-table td *,
     #tab-comments .admin-table td,
     #tab-comments .admin-table td * {
       text-align: left !important;
@@ -37,8 +35,6 @@
       .admin-table td *,
       #tab-categories .admin-table td,
       #tab-categories .admin-table td *,
-      #tab-tags .admin-table td,
-      #tab-tags .admin-table td *,
       #tab-comments .admin-table td,
       #tab-comments .admin-table td * {
         text-align: left !important;
@@ -50,8 +46,6 @@
       .admin-table td *,
       #tab-categories .admin-table td,
       #tab-categories .admin-table td *,
-      #tab-tags .admin-table td,
-      #tab-tags .admin-table td *,
       #tab-comments .admin-table td,
       #tab-comments .admin-table td * {
         text-align: left !important;
@@ -73,7 +67,6 @@
     /* 全局强制所有表格单元格左对齐（覆盖 blog-unified.css） */
     .admin-table td,
     #tab-categories .admin-table td,
-    #tab-tags .admin-table td,
     #tab-comments .admin-table td {
       text-align: left !important;
     }
@@ -83,7 +76,6 @@
       /* 强制所有表格单元格左对齐 */
       .admin-table td,
       #tab-categories .admin-table td,
-      #tab-tags .admin-table td,
       #tab-comments .admin-table td {
         text-align: left !important;
       }
@@ -353,15 +345,13 @@
         display: table-cell !important;
       }
       
-      /* 确保分类、标签、评论选项卡的内容容器可见 */
+      /* 确保分类、评论选项卡的内容容器可见 */
       #tab-categories,
-      #tab-tags,
       #tab-comments {
         display: none !important;
       }
       
       #tab-categories.active,
-      #tab-tags.active,
       #tab-comments.active {
         display: block !important;
       }
@@ -2687,9 +2677,8 @@
         gap: 0.375rem !important;
       }
       
-      /* 分类、标签、评论表单移动端优化 - 默认隐藏 */
-      #categoryForm,
-      #tagForm {
+      /* 分类、评论表单移动端优化 - 默认隐藏 */
+      #categoryForm {
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
@@ -2698,39 +2687,30 @@
       }
       
       /* 只有在显式显示时才显示 */
-      #categoryForm[style*="display: block"],
-      #tagForm[style*="display: block"] {
+      #categoryForm[style*="display: block"] {
         display: block !important;
       }
       
-      #categoryForm .admin-form-group,
-      #tagForm .admin-form-group {
+      #categoryForm .admin-form-group {
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
       }
       
-      #categoryForm input,
-      #tagForm input {
+      #categoryForm input {
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
         font-size: 16px !important; /* 防止iOS自动缩放 */
       }
       
-      #categoryForm button,
-      #tagForm button {
+      #categoryForm button {
         width: 100% !important;
         box-sizing: border-box !important;
         margin-top: 0.5rem !important;
       }
       
       #categoryForm > div[style*="display: flex"] {
-        flex-direction: column !important;
-        gap: 0.5rem !important;
-      }
-      
-      #tagForm > div[style*="display: flex"] {
         flex-direction: column !important;
         gap: 0.5rem !important;
       }
@@ -3581,6 +3561,122 @@
       padding: 1rem;
       background: white;
     }
+    
+    /* WangEditor全屏模式z-index优化 - 确保全屏时位于最顶层 */
+    /* 覆盖所有可能的WangEditor全屏类名 */
+    .w-e-full-screen-container,
+    .w-e-full-screen,
+    .w-e-fullscreen-container,
+    .w-e-fullscreen,
+    [class*="w-e"][class*="full-screen"],
+    [class*="w-e"][class*="fullscreen"],
+    [class*="full-screen"][class*="w-e"],
+    [class*="fullscreen"][class*="w-e"] {
+      z-index: 99999 !important;
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: white !important;
+      pointer-events: auto !important; /* 确保全屏容器本身可交互 */
+    }
+    
+    /* 全屏模式下确保编辑器内容在最上层且可交互 */
+    .w-e-full-screen-container *,
+    .w-e-full-screen *,
+    .w-e-fullscreen-container *,
+    .w-e-fullscreen *,
+    [class*="w-e"][class*="full-screen"] *,
+    [class*="w-e"][class*="fullscreen"] * {
+      pointer-events: auto !important; /* 确保编辑器内所有元素可交互 */
+    }
+    
+    .w-e-full-screen-container .w-e-text-container,
+    .w-e-full-screen .w-e-text-container,
+    .w-e-fullscreen-container .w-e-text-container,
+    .w-e-fullscreen .w-e-text-container {
+      z-index: 100000 !important;
+      pointer-events: auto !important;
+    }
+    
+    /* 全屏模式下确保工具栏在最上层且可交互 */
+    .w-e-full-screen-container .w-e-toolbar,
+    .w-e-full-screen .w-e-toolbar,
+    .w-e-fullscreen-container .w-e-toolbar,
+    .w-e-fullscreen .w-e-toolbar,
+    .w-e-full-screen-container .w-e-bar,
+    .w-e-full-screen .w-e-bar,
+    .w-e-fullscreen-container .w-e-bar,
+    .w-e-fullscreen .w-e-bar {
+      z-index: 100001 !important;
+      pointer-events: auto !important;
+    }
+    
+    /* 确保全屏模式下侧边栏和其他背景元素被遮挡且不可交互 */
+    /* 只针对侧边栏等背景元素，不影响全屏编辑器 */
+    body:has(.w-e-full-screen-container) .admin-card:not(.w-e-full-screen-container):not([class*="w-e"]),
+    body:has(.w-e-full-screen-container) .admin-form > div:last-child:not(.w-e-full-screen-container):not([class*="w-e"]),
+    body:has(.w-e-full-screen) .admin-card:not(.w-e-full-screen):not([class*="w-e"]),
+    body:has(.w-e-full-screen) .admin-form > div:last-child:not(.w-e-full-screen):not([class*="w-e"]),
+    body:has(.w-e-fullscreen-container) .admin-card:not(.w-e-fullscreen-container):not([class*="w-e"]),
+    body:has(.w-e-fullscreen-container) .admin-form > div:last-child:not(.w-e-fullscreen-container):not([class*="w-e"]),
+    body:has(.w-e-fullscreen) .admin-card:not(.w-e-fullscreen):not([class*="w-e"]),
+    body:has(.w-e-fullscreen) .admin-form > div:last-child:not(.w-e-fullscreen):not([class*="w-e"]) {
+      z-index: 1 !important;
+      pointer-events: none !important; /* 只对背景元素禁用交互 */
+    }
+    
+    /* 兼容性：使用属性选择器确保全屏模式 */
+    [data-fullscreen="true"],
+    [data-full-screen="true"],
+    [class*="fullscreen"][class*="w-e"],
+    [class*="full-screen"][class*="w-e"] {
+      z-index: 99999 !important;
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: white !important;
+      pointer-events: auto !important;
+    }
+    
+    /* 移动端和桌面端通用：确保全屏时所有其他元素都在下方 */
+    @media (max-width: 768px) {
+      .w-e-full-screen-container,
+      .w-e-full-screen,
+      .w-e-fullscreen-container,
+      .w-e-fullscreen {
+        z-index: 99999 !important;
+        pointer-events: auto !important;
+      }
+      
+      /* 移动端也确保编辑器内容可交互 */
+      .w-e-full-screen-container *,
+      .w-e-full-screen *,
+      .w-e-fullscreen-container *,
+      .w-e-fullscreen * {
+        pointer-events: auto !important;
+      }
+      
+      /* 移动端只对背景元素禁用交互 */
+      body:has(.w-e-full-screen-container) .admin-card:not(.w-e-full-screen-container):not([class*="w-e"]),
+      body:has(.w-e-full-screen-container) .admin-form:not(.w-e-full-screen-container):not([class*="w-e"]),
+      body:has(.w-e-full-screen) .admin-card:not(.w-e-full-screen):not([class*="w-e"]),
+      body:has(.w-e-full-screen) .admin-form:not(.w-e-full-screen):not([class*="w-e"]),
+      body:has(.w-e-fullscreen-container) .admin-card:not(.w-e-fullscreen-container):not([class*="w-e"]),
+      body:has(.w-e-fullscreen-container) .admin-form:not(.w-e-fullscreen-container):not([class*="w-e"]),
+      body:has(.w-e-fullscreen) .admin-card:not(.w-e-fullscreen):not([class*="w-e"]),
+      body:has(.w-e-fullscreen) .admin-form:not(.w-e-fullscreen):not([class*="w-e"]) {
+        z-index: 1 !important;
+        pointer-events: none !important;
+      }
+    }
   </style>
   <!-- WangEditor v5 (使用jsdelivr CDN以符合CSP策略) -->
   <link href="https://cdn.jsdelivr.net/npm/@wangeditor/editor@5.1.23/dist/css/style.css" rel="stylesheet">
@@ -3625,7 +3721,7 @@
         <h1 style="font-size: 2rem; font-weight: bold; color: #111827;">
           博客管理
         </h1>
-        <p style="color: #6b7280; margin-top: 0.5rem;">管理文章、分类、标签和评论</p>
+        <p style="color: #6b7280; margin-top: 0.5rem;">管理文章、分类和评论</p>
       </div>
       <div style="display: flex; gap: 1rem; align-items: center;">
         <span id="adminNameDisplay" style="color: #6b7280; font-size: 0.875rem;"></span>
@@ -3638,15 +3734,100 @@
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('posts', this)">文章</button>
       <button class="admin-tab" onclick="switchTab('categories', this)">分类</button>
-      <button class="admin-tab" onclick="switchTab('tags', this)">标签</button>
       <button class="admin-tab" onclick="switchTab('comments', this)">评论</button>
+      <button class="admin-tab" onclick="switchTab('weather', this)">天气</button>
+      <button class="admin-tab" onclick="switchTab('exchange-rate', this)">汇率</button>
+      <button class="admin-tab" onclick="switchTab('translation', this)">翻译</button>
     </div>
 
     <!-- 文章管理 -->
     <div id="tab-posts" class="admin-tab-content active">
-      <div class="admin-card-header" style="justify-content: flex-start; gap: 1rem;">
+      <div class="admin-card-header" style="justify-content: flex-start; gap: 1rem; flex-wrap: wrap;">
         <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">文章管理</h2>
         <button class="blog-btn blog-btn-primary" onclick="openNewPostInNewWindow(); return false;" style="background-color: #9333ea; border-color: #9333ea;">+ 新建文章</button>
+        <!-- 批量操作区域 -->
+        <div id="batchActions" style="display: none; gap: 0.5rem; align-items: center; margin-left: auto;">
+          <span id="selectedCount" style="color: #6b7280; font-size: 0.875rem;">已选择 <strong id="selectedCountNum">0</strong> 篇</span>
+          <button class="blog-btn blog-btn-secondary" onclick="selectAllDrafts()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">全选草稿</button>
+          <button class="blog-btn blog-btn-primary" onclick="batchPublish()" style="padding: 0.5rem 1rem; font-size: 0.875rem; background-color: #10b981; border-color: #10b981;">批量发布</button>
+          <button class="blog-btn blog-btn-secondary" onclick="clearSelection()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">取消选择</button>
+        </div>
+      </div>
+      
+      <!-- 搜索和展开控制栏 -->
+      <div style="padding: 1rem; background: white; border-radius: 0.5rem; margin-bottom: 1rem; border: 1px solid #e5e7eb; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+        <!-- 搜索框 -->
+        <div style="flex: 1; min-width: 250px; position: relative;">
+          <div style="position: relative;">
+            <input 
+              type="text" 
+              id="postsSearchInput" 
+              placeholder="搜索文章标题..." 
+              style="width: 100%; padding: 0.625rem 2.5rem 0.625rem 2.75rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 0.875rem; transition: all 0.2s;"
+              oninput="handlePostsSearch(this.value)"
+              onkeydown="if(event.key === 'Enter') event.preventDefault()"
+            >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none;">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <button 
+              type="button" 
+              id="clearSearchBtn" 
+              onclick="clearPostsSearch()" 
+              style="display: none; position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 0.25rem; color: #9ca3af; transition: color 0.2s;"
+              onmouseover="this.style.color='#ef4444'"
+              onmouseout="this.style.color='#9ca3af'"
+              title="清除搜索"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <!-- 展开/折叠控制 -->
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <button 
+            class="blog-btn blog-btn-secondary" 
+            onclick="expandAllCategories()" 
+            id="expandAllBtn"
+            style="padding: 0.625rem 1rem; font-size: 0.875rem; white-space: nowrap;"
+            title="展开所有分类"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline-block; vertical-align: middle; margin-right: 0.25rem;">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+            展开全部
+          </button>
+          <button 
+            class="blog-btn blog-btn-secondary" 
+            onclick="collapseAllCategories()" 
+            id="collapseAllBtn"
+            style="padding: 0.625rem 1rem; font-size: 0.875rem; white-space: nowrap;"
+            title="折叠所有分类"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline-block; vertical-align: middle; margin-right: 0.25rem;">
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+            折叠全部
+          </button>
+        </div>
+        
+        <!-- 状态筛选 -->
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <select 
+            id="statusFilterSelect" 
+            onchange="handleStatusFilter(this.value)"
+            style="padding: 0.625rem 2rem 0.625rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 0.875rem; background: white; cursor: pointer; appearance: none; background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%236b7280\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'></polyline></svg>'); background-repeat: no-repeat; background-position: right 0.5rem center; background-size: 16px;"
+          >
+            <option value="">全部状态</option>
+            <option value="published">已发布</option>
+            <option value="draft">草稿</option>
+          </select>
+        </div>
       </div>
 
       <!-- 文章表单 -->
@@ -3906,10 +4087,6 @@
               </div>
             </details>
           </div>
-          <div class="admin-form-group" style="display: none;">
-            <label class="admin-form-label" for="postTags">标签（已废弃，使用上面的分类字段）</label>
-            <input type="text" id="postTags" class="admin-form-input" placeholder="标签1, 标签2" disabled>
-          </div>
               <!-- 内容编辑器 -->
               <div class="admin-form-group" id="normalContentEditor" style="margin-bottom: 0;">
                 <label class="admin-form-label" for="postContent" style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">内容 *</label>
@@ -3961,10 +4138,6 @@
                     </select>
                   </div>
                   <div class="admin-form-group" style="margin-bottom: 0;">
-                    <label class="admin-form-label" for="postCategory" style="font-size: 0.8125rem; color: #6b7280; margin-bottom: 0.375rem;">分类/标签 *</label>
-                    <input type="text" id="postCategory" class="admin-form-input" placeholder="文章分类（作为标签使用）" required style="padding: 0.5rem; font-size: 0.875rem;">
-                  </div>
-                  <div class="admin-form-group" style="margin-bottom: 0;">
                     <div class="admin-form-checkbox" style="display: flex; align-items: center; gap: 0.5rem;">
                       <input type="checkbox" id="postPublished" style="width: 18px; height: 18px; cursor: pointer;">
                       <label for="postPublished" style="margin: 0; font-size: 0.875rem; color: #374151; cursor: pointer;">发布</label>
@@ -4009,6 +4182,9 @@
           <table class="admin-table">
           <thead>
             <tr>
+              <th style="min-width: 40px; width: 40px;">
+                <input type="checkbox" id="selectAllPosts" onchange="toggleSelectAll(this)" style="width: 18px; height: 18px; cursor: pointer;" title="全选">
+              </th>
               <th style="min-width: 200px;">标题</th>
               <th style="min-width: 80px;">分类</th>
               <th style="min-width: 80px;">状态</th>
@@ -4018,7 +4194,7 @@
             </tr>
           </thead>
           <tbody id="postsTableBody">
-            <tr><td colspan="6" class="blog-loading">加载中...</td></tr>
+            <tr><td colspan="7" class="blog-loading">加载中...</td></tr>
           </tbody>
           </table>
         </div>
@@ -4082,49 +4258,6 @@
       </div>
     </div>
 
-    <!-- 标签管理 -->
-    <div id="tab-tags" class="admin-tab-content">
-      <div class="admin-card-header">
-        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">标签管理</h2>
-        <button class="blog-btn blog-btn-primary" onclick="showTagForm()" style="background-color: #9333ea; border-color: #9333ea;">+ 新建标签</button>
-      </div>
-
-      <div id="tagForm" class="admin-form" style="display: none;">
-        <h3>新建标签</h3>
-        <form onsubmit="saveTag(event)">
-          <div class="admin-form-group">
-            <label class="admin-form-label" for="tagName">标签名称 *</label>
-            <input type="text" id="tagName" class="admin-form-input" required>
-          </div>
-          <div style="display: flex; gap: 1rem;">
-            <button type="submit" class="blog-btn blog-btn-primary">保存</button>
-            <button type="button" class="blog-btn blog-btn-secondary" onclick="hideTagForm()">取消</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="admin-card">
-        <!-- 桌面端表格 -->
-        <div class="tags-table-desktop" style="overflow-x: auto; width: 100%; max-width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch;">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>名称</th>
-                <th>文章数</th>
-              </tr>
-            </thead>
-            <tbody id="tagsTableBody">
-              <tr><td colspan="2" class="blog-loading">加载中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <!-- 移动端卡片 -->
-        <div id="tagsTableMobile" class="tags-table-mobile" style="display: none;">
-          <div class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
-        </div>
-      </div>
-    </div>
-
     <!-- 评论管理 -->
     <div id="tab-comments" class="admin-tab-content">
       <div class="admin-card-header">
@@ -4153,6 +4286,159 @@
         <div id="commentsTableMobile" class="comments-table-mobile" style="display: none;">
           <div class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
         </div>
+      </div>
+    </div>
+
+    <!-- 天气管理 -->
+    <div id="tab-weather" class="admin-tab-content">
+      <div class="admin-card-header" style="justify-content: flex-start; gap: 1rem; flex-wrap: wrap;">
+        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">天气路况管理</h2>
+        <span id="weatherLastUpdate" style="color: #6b7280; font-size: 0.875rem; margin-left: auto; align-self: center;"></span>
+        <button class="blog-btn blog-btn-secondary" onclick="showWeatherEditForm()" id="weatherEditBtn" style="background-color: #9333ea; border-color: #9333ea;">编辑</button>
+        <button class="blog-btn blog-btn-secondary" onclick="hideWeatherEditForm()" id="weatherCancelBtn" style="display: none;">取消</button>
+      </div>
+      
+      <!-- 编辑表单 -->
+      <div id="weatherEditForm" class="admin-form" style="display: none;">
+        <form id="weatherFormElement" onsubmit="saveWeatherContent(event)">
+          <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <!-- 全局预警 -->
+            <div style="padding: 1.5rem; background: #f9fafb; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
+              <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin-bottom: 1rem;">全局预警</h3>
+              <div style="display: grid; gap: 1rem;">
+                <div class="admin-form-group">
+                  <label class="admin-form-label" for="weatherGlobalAlertLevel">预警级别 *</label>
+                  <select id="weatherGlobalAlertLevel" class="admin-form-select" required>
+                    <option value="low">低</option>
+                    <option value="medium" selected>中</option>
+                    <option value="high">高</option>
+                  </select>
+                </div>
+                <div class="admin-form-group">
+                  <label class="admin-form-label" for="weatherGlobalAlertMessage">预警消息 *</label>
+                  <textarea id="weatherGlobalAlertMessage" class="admin-form-input" rows="3" required placeholder="输入预警消息..."></textarea>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 景点信息 -->
+            <div style="padding: 1.5rem; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">景点信息</h3>
+                <button type="button" class="blog-btn blog-btn-primary" onclick="addWeatherAttraction()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">+ 添加景点</button>
+              </div>
+              <div id="weatherAttractionsList"></div>
+            </div>
+            
+            <!-- 交通信息 -->
+            <div style="padding: 1.5rem; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">交通信息</h3>
+                <button type="button" class="blog-btn blog-btn-primary" onclick="addWeatherTraffic()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">+ 添加路况</button>
+              </div>
+              <div id="weatherTrafficList"></div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div style="display: flex; gap: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
+              <button type="submit" class="blog-btn blog-btn-primary" style="padding: 0.75rem 1.5rem;">保存</button>
+              <button type="button" class="blog-btn blog-btn-secondary" onclick="hideWeatherEditForm()">取消</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      
+      <!-- 显示内容 -->
+      <div class="admin-card">
+        <div id="weatherContent" class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 汇率管理 -->
+    <div id="tab-exchange-rate" class="admin-tab-content">
+      <div class="admin-card-header" style="justify-content: flex-start; gap: 1rem; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 0;">
+          <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0 0 0.25rem 0;">汇率转换管理</h2>
+          <span id="exchangeRateLastUpdate" style="color: #6b7280; font-size: 0.875rem;"></span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+          <button class="blog-btn blog-btn-secondary" onclick="showExchangeRateEditForm()" id="exchangeRateEditBtn" style="background-color: #10b981; border-color: #10b981;">编辑</button>
+          <button class="blog-btn blog-btn-secondary" onclick="hideExchangeRateEditForm()" id="exchangeRateCancelBtn" style="display: none;">取消</button>
+        </div>
+      </div>
+      
+      <!-- 编辑表单 -->
+      <div id="exchangeRateEditForm" class="admin-form" style="display: none;">
+        <form id="exchangeRateFormElement" onsubmit="saveExchangeRateContent(event)">
+          <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <!-- 汇率列表 -->
+            <div style="padding: 1.5rem; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">汇率列表</h3>
+                <button type="button" class="blog-btn blog-btn-primary" onclick="addExchangeRate()" style="padding: 0.5rem 1rem; font-size: 0.875rem; background-color: #10b981; border-color: #10b981;">+ 添加汇率</button>
+              </div>
+              <div id="exchangeRatesList"></div>
+            </div>
+            
+            <!-- 更新时间 -->
+            <div class="admin-form-group">
+              <label class="admin-form-label" for="exchangeUpdateTime">更新时间</label>
+              <input type="datetime-local" id="exchangeUpdateTime" class="admin-form-input">
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div style="display: flex; gap: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
+              <button type="submit" class="blog-btn blog-btn-primary" style="padding: 0.75rem 1.5rem; background-color: #10b981; border-color: #10b981;">保存</button>
+              <button type="button" class="blog-btn blog-btn-secondary" onclick="hideExchangeRateEditForm()">取消</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      
+      <!-- 显示内容 -->
+      <div class="admin-card">
+        <div id="exchangeRateContent" class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 翻译管理 -->
+    <div id="tab-translation" class="admin-tab-content">
+      <div class="admin-card-header" style="justify-content: flex-start; gap: 1rem; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 0;">
+          <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0 0 0.25rem 0;">翻译卡片管理</h2>
+          <span id="translationLastUpdate" style="color: #6b7280; font-size: 0.875rem;"></span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+          <button class="blog-btn blog-btn-secondary" onclick="showTranslationEditForm()" id="translationEditBtn" style="background-color: #9333ea; border-color: #9333ea;">编辑</button>
+          <button class="blog-btn blog-btn-secondary" onclick="hideTranslationEditForm()" id="translationCancelBtn" style="display: none;">取消</button>
+        </div>
+      </div>
+      
+      <!-- 编辑表单 -->
+      <div id="translationEditForm" class="admin-form" style="display: none;">
+        <form id="translationFormElement" onsubmit="saveTranslationContent(event)">
+          <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <!-- 翻译列表 -->
+            <div style="padding: 1.5rem; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">翻译列表</h3>
+                <button type="button" class="blog-btn blog-btn-primary" onclick="addTranslationItem()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">+ 添加翻译</button>
+              </div>
+              <div id="translationList"></div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div style="display: flex; gap: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
+              <button type="submit" class="blog-btn blog-btn-primary" style="padding: 0.75rem 1.5rem;">保存</button>
+              <button type="button" class="blog-btn blog-btn-secondary" onclick="hideTranslationEditForm()">取消</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      
+      <!-- 显示内容 -->
+      <div class="admin-card">
+        <div id="translationContent" class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>
       </div>
     </div>
   </div>
@@ -4214,13 +4500,25 @@
       const select = document.getElementById('postApiName');
       if (!select) return;
       
+      // 提取中文名称的函数
+      const extractChineseName = (name) => {
+        if (!name) return '';
+        const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+        const chineseMatches = name.match(chineseRegex);
+        return chineseMatches && chineseMatches.length > 0 
+          ? chineseMatches.join('').trim() 
+          : name;
+      };
+      
       const currentValue = select.value;
       select.innerHTML = '<option value="">请选择API（分类）</option>';
       
       availableApis.forEach(api => {
         const option = document.createElement('option');
-        option.value = api.name;
-        option.textContent = `${api.name} (${api.path})`;
+        option.value = api.name; // value仍然使用完整的api.name，用于后端匹配
+        // 显示文本只显示中文名称
+        const displayName = extractChineseName(api.name) || api.name;
+        option.textContent = displayName;
         select.appendChild(option);
       });
       
@@ -4551,8 +4849,10 @@
           const text = btn.textContent.trim();
           if ((tabName === 'posts' && text === '文章') ||
               (tabName === 'categories' && text === '分类') ||
-              (tabName === 'tags' && text === '标签') ||
-              (tabName === 'comments' && text === '评论')) {
+              (tabName === 'comments' && text === '评论') ||
+              (tabName === 'weather' && text === '天气') ||
+              (tabName === 'exchange-rate' && text === '汇率') ||
+              (tabName === 'translation' && text === '翻译')) {
             btn.classList.add('active');
           }
         });
@@ -4560,12 +4860,8 @@
 
       // 切换标签页时隐藏所有表单（移动端默认不显示新建表单）
       const categoryForm = document.getElementById('categoryForm');
-      const tagForm = document.getElementById('tagForm');
       if (categoryForm) {
         categoryForm.style.display = 'none';
-      }
-      if (tagForm) {
-        tagForm.style.display = 'none';
       }
       
       // 加载对应数据
@@ -4574,10 +4870,14 @@
         loadApis(); // 加载API列表
       } else if (tabName === 'categories') {
         loadCategories();
-      } else if (tabName === 'tags') {
-        loadTags();
       } else if (tabName === 'comments') {
         loadComments();
+      } else if (tabName === 'weather') {
+        loadSpecialContent('weather');
+      } else if (tabName === 'exchange-rate') {
+        loadSpecialContent('exchange-rate');
+      } else if (tabName === 'translation') {
+        loadSpecialContent('translation');
       }
     }
 
@@ -4860,7 +5160,7 @@
             const tbody = document.getElementById('postsTableBody');
             const mobileContainer = document.getElementById('postsTableBodyMobile');
             if (tbody) {
-              tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+              tbody.innerHTML = '<tr><td colspan="7" class="blog-empty">加载失败</td></tr>';
             }
             if (mobileContainer) {
               mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败</div>';
@@ -4879,7 +5179,7 @@
           const tbody = document.getElementById('postsTableBody');
           const mobileContainer = document.getElementById('postsTableBodyMobile');
           if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败: ' + escapeHtml(error.message) + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="blog-empty">加载失败: ' + escapeHtml(error.message) + '</td></tr>';
           }
           if (mobileContainer) {
             mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(error.message) + '</div>';
@@ -4916,13 +5216,14 @@
             if (resetExpanded) {
               expandedCategories.clear();
             }
-            displayPosts(posts);
+            // 应用搜索和筛选（如果有）
+            filterAndDisplayPosts();
           } else {
             console.error('获取文章列表失败:', response);
             const tbody = document.getElementById('postsTableBody');
             const mobileContainer = document.getElementById('postsTableBodyMobile');
             if (tbody) {
-              tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败</td></tr>';
+              tbody.innerHTML = '<tr><td colspan="7" class="blog-empty">加载失败</td></tr>';
             }
             if (mobileContainer) {
               mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败</div>';
@@ -4933,7 +5234,7 @@
           const tbody = document.getElementById('postsTableBody');
           const mobileContainer = document.getElementById('postsTableBodyMobile');
           if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">加载失败: ' + escapeHtml(error.message) + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="blog-empty">加载失败: ' + escapeHtml(error.message) + '</td></tr>';
           }
           if (mobileContainer) {
             mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(error.message) + '</div>';
@@ -4954,7 +5255,7 @@
         }
         
         if (!posts || posts.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">暂无文章</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="blog-empty">暂无文章</td></tr>';
           if (mobileContainer) {
             mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无文章</div>';
           }
@@ -4979,7 +5280,30 @@
         seenIds.add(postId);
         
         // 按apiName（_sourceApiName）分组，而不是category
-        const apiName = post._sourceApiName || post.category || '无分类';
+        // 提取中文名称用于统一分组（避免"二手市场"和"二手市场 second-hand"分成两组）
+        const extractChineseName = (name) => {
+          if (!name) return '';
+          const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+          const chineseMatches = name.match(chineseRegex);
+          return chineseMatches && chineseMatches.length > 0 
+            ? chineseMatches.join('').trim() 
+            : name;
+        };
+        
+        const rawApiName = post._sourceApiName || post.category || '无分类';
+        const apiName = extractChineseName(rawApiName) || rawApiName; // 统一使用中文名称分组
+        
+        // 排除"标签"相关的分类，标签管理应该在标签选项卡中显示，不应该出现在文章列表中
+        const excludedCategories = ['标签', '标签管理', '博客标签列表', '博客标签列表API'];
+        const apiNameLower = apiName.toLowerCase();
+        if (excludedCategories.includes(apiName) || 
+            apiNameLower === 'tag' || 
+            apiNameLower === 'tags' ||
+            apiName.includes('标签') ||
+            apiName.includes('标签列表')) {
+          continue;
+        }
+        
         if (!postsByCategory[apiName]) {
           postsByCategory[apiName] = [];
         }
@@ -5028,7 +5352,11 @@
           if (currentSearchQuery) {
             filtered = filtered.filter(post => {
               const title = (post.name || post.title || '').toLowerCase();
-              return title.includes(currentSearchQuery);
+              const category = (post.category || post._sourceApiName || '').toLowerCase();
+              const excerpt = (post.excerpt || post.description || '').toLowerCase();
+              return title.includes(currentSearchQuery) || 
+                     category.includes(currentSearchQuery) || 
+                     excerpt.includes(currentSearchQuery);
             });
           }
           if (currentStatusFilter) {
@@ -5054,7 +5382,7 @@
         };
         
         headerRow.innerHTML = `
-          <td colspan="6" style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #E5E7EB;">
+          <td colspan="7" style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #E5E7EB;">
             <div style="display: flex; align-items: center; gap: 0.5rem;">
               <span style="color: #6B7280; font-size: 0.75rem; font-weight: 500; min-width: 16px; text-align: center;">${expandIcon}</span>
               <span style="color: #374151; font-weight: 600; font-size: 0.8125rem;">${escapeHtml(categoryDisplayName)}</span>
@@ -5079,25 +5407,77 @@
         }
         const mobileExpanded = window.expandedCategoriesMobile.has(apiName);
         const mobileExpandIcon = mobileExpanded ? '▼' : '▶';
+        // 计算移动端显示数量（考虑搜索和筛选）
+        let mobileDisplayCount = categoryPosts.length;
+        if (currentSearchQuery || currentStatusFilter) {
+          let filtered = categoryPosts;
+          if (currentSearchQuery) {
+            filtered = filtered.filter(post => {
+              const title = (post.name || post.title || '').toLowerCase();
+              const category = (post.category || post._sourceApiName || '').toLowerCase();
+              const excerpt = (post.excerpt || post.description || '').toLowerCase();
+              return title.includes(currentSearchQuery) || 
+                     category.includes(currentSearchQuery) || 
+                     excerpt.includes(currentSearchQuery);
+            });
+          }
+          if (currentStatusFilter) {
+            filtered = filtered.filter(post => {
+              if (currentStatusFilter === 'published') {
+                return post.published === true || post.published === 'true';
+              } else if (currentStatusFilter === 'draft') {
+                return !post.published || post.published === 'false';
+              }
+              return true;
+            });
+          }
+          mobileDisplayCount = filtered.length;
+        }
+        
         mobileHtml += `<div class="admin-category-header-mobile" data-category-name="${escapeHtml(apiName)}" onclick="toggleCategoryMobile('${escapeHtml(apiName)}')">
           <span class="category-expand-icon">${mobileExpandIcon}</span>
           <span>${escapeHtml(categoryDisplayName)}</span>
-          <span style="margin-left: auto; color: #9ca3af; font-weight: normal; font-size: 0.75rem;">${categoryPosts.length}篇</span>
+          <span style="margin-left: auto; color: #9ca3af; font-weight: normal; font-size: 0.75rem;">${mobileDisplayCount}${mobileDisplayCount !== categoryPosts.length ? `/${categoryPosts.length}` : ''}篇</span>
         </div>`;
         
         // 添加该分类下的所有文章卡片（根据展开状态显示/隐藏）
         if (mobileExpanded) {
-          categoryPosts.forEach(post => {
+          // 应用搜索和筛选
+          let filteredPosts = categoryPosts;
+          if (currentSearchQuery) {
+            filteredPosts = filteredPosts.filter(post => {
+              const title = (post.name || post.title || '').toLowerCase();
+              const category = (post.category || post._sourceApiName || '').toLowerCase();
+              const excerpt = (post.excerpt || post.description || '').toLowerCase();
+              return title.includes(currentSearchQuery) || 
+                     category.includes(currentSearchQuery) || 
+                     excerpt.includes(currentSearchQuery);
+            });
+          }
+          if (currentStatusFilter) {
+            filteredPosts = filteredPosts.filter(post => {
+              if (currentStatusFilter === 'published') {
+                return post.published === true || post.published === 'true';
+              } else if (currentStatusFilter === 'draft') {
+                return !post.published || post.published === 'false';
+              }
+              return true;
+            });
+          }
+          
+          filteredPosts.forEach(post => {
             const date = formatDate(post.createdAt || post.created_at);
             const postCategory = post.category || apiName;
             const statusBadge = post.published 
               ? '<span class="status-badge published" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">已发布</span>' 
               : '<span class="status-badge draft" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">草稿</span>';
             
+            const isDraft = !post.published || post.published === 'false';
             mobileHtml += `
               <div class="admin-post-card" data-post-id="${post.id}" data-category="${escapeHtml(apiName)}">
-                <div class="admin-post-card-header">
-                  <div class="admin-post-card-title">${escapeHtml(post.name || post.title || '未命名')}</div>
+                <div class="admin-post-card-header" style="display: flex; align-items: center; gap: 0.5rem;">
+                  <input type="checkbox" class="post-checkbox" value="${post.id}" data-published="${post.published ? 'true' : 'false'}" onchange="updateSelection()" style="width: 18px; height: 18px; cursor: pointer; flex-shrink: 0;">
+                  <div class="admin-post-card-title" style="flex: 1;">${escapeHtml(post.name || post.title || '未命名')}</div>
                   ${statusBadge}
                 </div>
                 <div class="admin-post-card-actions">
@@ -5135,7 +5515,7 @@
         const tbody = document.getElementById('postsTableBody');
         const mobileContainer = document.getElementById('postsTableBodyMobile');
         if (tbody) {
-          tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">渲染失败: ' + escapeHtml(error.message) + '</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="blog-empty">渲染失败: ' + escapeHtml(error.message) + '</td></tr>';
         }
         if (mobileContainer) {
           mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">渲染失败: ' + escapeHtml(error.message) + '</div>';
@@ -5156,7 +5536,7 @@
         const tbody = document.getElementById('postsTableBody');
         const mobileContainer = document.getElementById('postsTableBodyMobile');
         if (tbody) {
-          tbody.innerHTML = '<tr><td colspan="6" class="blog-empty">显示失败: ' + escapeHtml(outerError.message) + '</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="blog-empty">显示失败: ' + escapeHtml(outerError.message) + '</td></tr>';
         }
         if (mobileContainer) {
           mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">显示失败: ' + escapeHtml(outerError.message) + '</div>';
@@ -5207,9 +5587,14 @@
         const row = document.createElement('tr');
         row.className = 'category-post-row';
         row.setAttribute('data-category', apiName);
+        row.setAttribute('data-post-id', post.id);
         row.style.cssText = 'background: #FFFFFF;';
         
+        const isDraft = !post.published || post.published === 'false';
         row.innerHTML = `
+          <td style="text-align: center;">
+            <input type="checkbox" class="post-checkbox" value="${post.id}" data-published="${post.published ? 'true' : 'false'}" onchange="updateSelection()" style="width: 18px; height: 18px; cursor: pointer;">
+          </td>
           <td style="font-weight: 600; font-size: 0.9375rem; color: #111827; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
             ${escapeHtml(post.name || post.title || '未命名')}
           </td>
@@ -5254,15 +5639,118 @@
     let currentSearchQuery = '';
     let currentStatusFilter = '';
     
-    // 筛选功能已移除，保留变量以避免错误
-    function filterPosts() {
-      // 搜索和筛选功能已移除，此函数保留以避免错误
+    // 处理搜索
+    function handlePostsSearch(query) {
+      currentSearchQuery = query.toLowerCase().trim();
+      const clearBtn = document.getElementById('clearSearchBtn');
+      
+      if (clearBtn) {
+        clearBtn.style.display = currentSearchQuery ? 'block' : 'none';
+      }
+      
+      // 实时过滤显示
+      filterAndDisplayPosts();
+    }
+    
+    // 清除搜索
+    function clearPostsSearch() {
+      const searchInput = document.getElementById('postsSearchInput');
+      if (searchInput) {
+        searchInput.value = '';
+      }
       currentSearchQuery = '';
-      currentStatusFilter = '';
-      // 重新显示文章列表
+      const clearBtn = document.getElementById('clearSearchBtn');
+      if (clearBtn) {
+        clearBtn.style.display = 'none';
+      }
+      filterAndDisplayPosts();
+    }
+    
+    // 处理状态筛选
+    function handleStatusFilter(status) {
+      currentStatusFilter = status;
+      filterAndDisplayPosts();
+    }
+    
+    // 过滤并显示文章
+    function filterAndDisplayPosts() {
+      if (!allPostsData || allPostsData.length === 0) {
+        return;
+      }
+      
+      // 应用搜索和筛选
+      let filteredPosts = allPostsData;
+      
+      if (currentSearchQuery) {
+        filteredPosts = filteredPosts.filter(post => {
+          const title = (post.name || post.title || '').toLowerCase();
+          const category = (post.category || post._sourceApiName || '').toLowerCase();
+          const excerpt = (post.excerpt || post.description || '').toLowerCase();
+          return title.includes(currentSearchQuery) || 
+                 category.includes(currentSearchQuery) || 
+                 excerpt.includes(currentSearchQuery);
+        });
+      }
+      
+      if (currentStatusFilter) {
+        filteredPosts = filteredPosts.filter(post => {
+          if (currentStatusFilter === 'published') {
+            return post.published === true || post.published === 'true';
+          } else if (currentStatusFilter === 'draft') {
+            return !post.published || post.published === 'false';
+          }
+          return true;
+        });
+      }
+      
+      // 重新显示过滤后的文章
+      displayPosts(filteredPosts);
+      
+      // 如果有搜索条件，自动展开所有分类以便查看结果
+      if (currentSearchQuery || currentStatusFilter) {
+        expandAllCategories(true); // true表示静默展开，不显示提示
+      }
+    }
+    
+    // 展开所有分类
+    function expandAllCategories(silent = false) {
+      if (!window.postsByCategoryData) {
+        if (!silent) showToast('请先加载文章列表', 'warning');
+        return;
+      }
+      
+      const categories = Object.keys(window.postsByCategoryData);
+      categories.forEach(category => {
+        if (!expandedCategories.has(category)) {
+          expandedCategories.add(category);
+        }
+      });
+      
+      // 重新渲染以应用展开状态
       if (allPostsData) {
         displayPosts(allPostsData);
       }
+      
+      if (!silent) {
+        showToast(`已展开 ${categories.length} 个分类`, 'success');
+      }
+    }
+    
+    // 折叠所有分类
+    function collapseAllCategories() {
+      expandedCategories.clear();
+      
+      // 重新渲染以应用折叠状态
+      if (allPostsData) {
+        displayPosts(allPostsData);
+      }
+      
+      showToast('已折叠所有分类', 'success');
+    }
+    
+    // 筛选功能已移除，保留函数以避免错误
+    function filterPosts() {
+      filterAndDisplayPosts();
     }
     
     // 切换分类展开/折叠状态（优化：只更新相关行，不重新渲染整个列表）
@@ -5349,50 +5837,60 @@
         }
       } else {
         window.expandedCategoriesMobile.add(apiName);
-        // 展开：显示该分类下的所有文章卡片
-        const categoryPosts = window.postsByCategoryData && window.postsByCategoryData[apiName];
-        if (categoryPosts) {
-          // 找到分类标题后面的位置
-          let nextSibling = categoryHeader.nextElementSibling;
-          const fragment = document.createDocumentFragment();
-          
-          categoryPosts.forEach(post => {
-            const date = formatDate(post.createdAt || post.created_at);
-            const postCategory = post.category || apiName;
-            const statusBadge = post.published 
-              ? '<span class="status-badge published" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">已发布</span>' 
-              : '<span class="status-badge draft" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">草稿</span>';
-            
-            const cardDiv = document.createElement('div');
-            cardDiv.className = 'admin-post-card';
-            cardDiv.setAttribute('data-post-id', post.id);
-            cardDiv.setAttribute('data-category', apiName);
-            cardDiv.innerHTML = `
-              <div class="admin-post-card-header">
-                <div class="admin-post-card-title">${escapeHtml(post.name || post.title || '未命名')}</div>
-                ${statusBadge}
-              </div>
-              <div class="admin-post-card-actions">
-                <button class="admin-btn-small admin-btn-edit" onclick="event.stopPropagation(); editPost('${post.id}')" title="编辑">编辑</button>
-                <button class="admin-btn-small admin-btn-copy" onclick="event.stopPropagation(); copyPost('${post.id}')" title="复制文章">复制</button>
-                <button class="admin-btn-small admin-btn-delete" onclick="event.stopPropagation(); deletePost('${post.id}')" title="删除">删除</button>
-              </div>
-            `;
-            fragment.appendChild(cardDiv);
-          });
-          
-          // 插入到分类标题后面
-          if (nextSibling) {
-            mobileContainer.insertBefore(fragment, nextSibling);
-          } else {
-            mobileContainer.appendChild(fragment);
-          }
-        } else {
-          // 如果没有缓存，显示已存在的卡片
-          const categoryCards = mobileContainer.querySelectorAll(`.admin-post-card[data-category="${escapeHtml(apiName)}"]`);
-          categoryCards.forEach(card => {
+        // 展开：先检查该分类下的文章卡片是否已存在
+        const existingCards = mobileContainer.querySelectorAll(`.admin-post-card[data-category="${escapeHtml(apiName)}"]`);
+        
+        if (existingCards.length > 0) {
+          // 如果卡片已存在，只需显示它们（可能是之前被隐藏了）
+          existingCards.forEach(card => {
             card.style.display = 'flex';
           });
+        } else {
+          // 如果卡片不存在，创建新的卡片
+          const categoryPosts = window.postsByCategoryData && window.postsByCategoryData[apiName];
+          if (categoryPosts) {
+            // 找到分类标题后面的位置
+            let nextSibling = categoryHeader.nextElementSibling;
+            const fragment = document.createDocumentFragment();
+            
+            categoryPosts.forEach(post => {
+              const date = formatDate(post.createdAt || post.created_at);
+              const postCategory = post.category || apiName;
+              const statusBadge = post.published 
+                ? '<span class="status-badge published" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">已发布</span>' 
+                : '<span class="status-badge draft" style="font-size: 0.6875rem; padding: 0.125rem 0.375rem;">草稿</span>';
+              
+              const cardDiv = document.createElement('div');
+              cardDiv.className = 'admin-post-card';
+              cardDiv.setAttribute('data-post-id', post.id);
+              cardDiv.setAttribute('data-category', apiName);
+              cardDiv.innerHTML = `
+                <div class="admin-post-card-header">
+                  <div class="admin-post-card-title">${escapeHtml(post.name || post.title || '未命名')}</div>
+                  ${statusBadge}
+                </div>
+                <div class="admin-post-card-actions">
+                  <button class="admin-btn-small admin-btn-edit" onclick="event.stopPropagation(); editPost('${post.id}')" title="编辑">编辑</button>
+                  <button class="admin-btn-small admin-btn-copy" onclick="event.stopPropagation(); copyPost('${post.id}')" title="复制文章">复制</button>
+                  <button class="admin-btn-small admin-btn-delete" onclick="event.stopPropagation(); deletePost('${post.id}')" title="删除">删除</button>
+                </div>
+              `;
+              fragment.appendChild(cardDiv);
+            });
+            
+            // 插入到分类标题后面
+            if (nextSibling) {
+              mobileContainer.insertBefore(fragment, nextSibling);
+            } else {
+              mobileContainer.appendChild(fragment);
+            }
+          } else {
+            // 如果没有缓存数据，尝试显示已存在的卡片（如果存在）
+            const categoryCards = mobileContainer.querySelectorAll(`.admin-post-card[data-category="${escapeHtml(apiName)}"]`);
+            categoryCards.forEach(card => {
+              card.style.display = 'flex';
+            });
+          }
         }
         // 更新图标
         const iconSpan = categoryHeader.querySelector('.category-expand-icon');
@@ -5444,8 +5942,6 @@
       document.getElementById('postExcerpt').value = '';
       document.getElementById('postImage').value = '';
       updateImagePreview('');
-      document.getElementById('postCategory').value = '';
-      document.getElementById('postTags').value = '';
       document.getElementById('postPublished').checked = true;
       
       // 清空位置和联系方式字段
@@ -5488,11 +5984,61 @@
         document.getElementById('postImage').value = imageUrl;
         updateImagePreview(imageUrl);
         const apiName = post._sourceApiName || post.category || '';
-        document.getElementById('postApiName').value = apiName;
-        // category字段作为标签使用
-        const category = post.category || post._sourceApiName || '';
-        document.getElementById('postCategory').value = category;
-        // tags字段已废弃，不再使用
+        
+        // 提取中文名称用于匹配（API下拉框中的名称格式可能是"中文 英文"）
+        const extractChineseName = (name) => {
+          if (!name) return '';
+          const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+          const chineseMatches = name.match(chineseRegex);
+          return chineseMatches && chineseMatches.length > 0 
+            ? chineseMatches.join('').trim() 
+            : name;
+        };
+        
+        const apiNameChinese = extractChineseName(apiName);
+        
+        // 尝试匹配API下拉框中的选项
+        // 首先尝试精确匹配
+        let matchedApiName = '';
+        if (apiName) {
+          // 先尝试精确匹配
+          const exactMatch = availableApis.find(api => {
+            const apiNameChineseOnly = extractChineseName(api.name);
+            return api.name === apiName || 
+                   api.name === apiNameChinese || 
+                   apiNameChineseOnly === apiNameChinese ||
+                   apiNameChineseOnly === apiName;
+          });
+          
+          if (exactMatch) {
+            matchedApiName = exactMatch.name;
+          } else {
+            // 如果精确匹配失败，尝试部分匹配（包含关系）
+            const partialMatch = availableApis.find(api => {
+              const apiNameChineseOnly = extractChineseName(api.name);
+              return api.name.includes(apiName) || 
+                     api.name.includes(apiNameChinese) ||
+                     apiName.includes(apiNameChineseOnly) ||
+                     apiNameChineseOnly.includes(apiNameChinese) ||
+                     apiNameChinese.includes(apiNameChineseOnly);
+            });
+            
+            if (partialMatch) {
+              matchedApiName = partialMatch.name;
+            } else {
+              // 如果还是找不到，使用原始值（可能API列表中没有对应的选项）
+              matchedApiName = apiName;
+            }
+          }
+        }
+        
+        document.getElementById('postApiName').value = matchedApiName;
+        console.log('设置API名称:', { 
+          原始值: apiName, 
+          中文部分: apiNameChinese, 
+          匹配结果: matchedApiName,
+          可用API列表: availableApis.map(a => a.name)
+        });
         document.getElementById('postPublished').checked = post.published !== false; // 默认为true
         
         // 触发API选择改变事件
@@ -6061,14 +6607,76 @@
                     messageSpan.textContent = '上传完成！';
                   }
                   
-                  // 插入带响应式样式的视频
-                  const videoHtml = `<div class="video-block" style="margin: 1rem 0; width: 100%; max-width: 100%; overflow: hidden;"><video src="${videoInfo.url}" controls style="max-width: 100%; width: 100%; height: auto; display: block; margin: 1rem auto; border-radius: 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></video></div>`;
-                  if (wangEditor && wangEditor.dangerouslyInsertHtml) {
-                    wangEditor.dangerouslyInsertHtml(videoHtml);
-                  } else {
-                    insertFn(videoInfo.url, file.name, videoInfo.url);
+                  // 使用WangEditor v5的标准方法插入视频
+                  // insertFn是WangEditor提供的标准插入函数，会自动创建正确的Slate节点结构
+                  let inserted = false;
+                  
+                  try {
+                    // 确保编辑器有焦点，这样可以确保光标位置正确
+                    if (wangEditor && wangEditor.focus) {
+                      wangEditor.focus();
+                    }
+                    
+                    // insertFn的参数: (videoUrl, posterUrl)
+                    // 根据WangEditor v5文档，insertFn接收视频URL和可选的poster URL
+                    const posterUrl = videoInfo.posterUrl || '';
+                    
+                    // 调用WangEditor提供的标准插入函数
+                    // 这个函数会自动创建正确的Slate节点结构（包括data-slate-node等属性）
+                    insertFn(videoInfo.url, posterUrl);
+                    inserted = true;
+                    showToast('视频上传成功', 'success');
+                  } catch (error) {
+                    console.error('insertFn插入视频失败:', error);
+                    console.log('尝试使用备用方法插入视频...');
+                    
+                    // 如果insertFn失败，尝试使用WangEditor的API
+                    if (wangEditor) {
+                      try {
+                        // 方法1: 尝试使用restoreSelection和insertNode
+                        if (wangEditor.restoreSelection && wangEditor.insertNode) {
+                          wangEditor.restoreSelection();
+                          const videoNode = {
+                            type: 'video',
+                            src: videoInfo.url,
+                            poster: videoInfo.posterUrl || ''
+                          };
+                          wangEditor.insertNode(videoNode);
+                          inserted = true;
+                          showToast('视频上传成功', 'success');
+                        } 
+                        // 方法2: 直接使用insertNode（如果restoreSelection不存在）
+                        else if (wangEditor.insertNode) {
+                          const videoNode = {
+                            type: 'video',
+                            src: videoInfo.url,
+                            poster: videoInfo.posterUrl || ''
+                          };
+                          wangEditor.insertNode(videoNode);
+                          inserted = true;
+                          showToast('视频上传成功', 'success');
+                        } 
+                        // 方法3: 使用setHtml追加（最后的后备方案）
+                        else if (wangEditor.getHtml && wangEditor.setHtml) {
+                          const currentHtml = wangEditor.getHtml() || '';
+                          const videoHtml = `<p><video src="${videoInfo.url}"${videoInfo.posterUrl ? ` poster="${videoInfo.posterUrl}"` : ''} controls></video></p>`;
+                          wangEditor.setHtml(currentHtml + videoHtml);
+                          inserted = true;
+                          showToast('视频上传成功', 'success');
+                        }
+                      } catch (e) {
+                        console.error('所有插入方法都失败:', e);
+                        showToast('视频上传成功，但插入编辑器失败，请手动插入视频URL: ' + videoInfo.url, 'warning');
+                      }
+                    } else {
+                      console.error('编辑器未初始化');
+                      showToast('视频上传成功，但编辑器未初始化，请手动插入视频URL: ' + videoInfo.url, 'warning');
+                    }
                   }
-                  showToast('视频上传成功', 'success');
+                  
+                  if (!inserted) {
+                    console.warn('视频插入失败，视频URL:', videoInfo.url);
+                  }
                   
                   // 3秒后隐藏进度条
                   setTimeout(() => {
@@ -7153,7 +7761,15 @@
       const excerpt = document.getElementById('postExcerpt').value.trim();
       const image = document.getElementById('postImage').value.trim();
       const apiName = document.getElementById('postApiName').value.trim();
-      const category = document.getElementById('postCategory').value.trim();
+      
+      // 验证API/分类是否已选择
+      if (!apiName) {
+        showToast('请选择API/分类', 'error');
+        return;
+      }
+      
+      // category直接使用apiName
+      const category = apiName;
       
       // 检查是否是特殊类别
       const specialType = isSpecialCategory(apiName);
@@ -7307,11 +7923,6 @@
         }
       }
 
-      if (!category) {
-        showToast('请填写分类/标签', 'error');
-        return;
-      }
-
       try {
         // 直接使用id（id现在是全局唯一的UUID）
         // 如果ID为空字符串或null/undefined，则创建新文章
@@ -7326,7 +7937,7 @@
           excerpt,
           image: image || undefined,
           apiName: apiName, // API名称（用于确定数据存储位置）
-          category: category, // 分类/标签（用于博客展示，替代原来的tags字段）
+          category: category, // 分类（用于博客展示）
           published
         };
         
@@ -7548,114 +8159,66 @@
         
         console.log('编辑文章，ID:', id);
         
-        // 先检查是否已有文章数据（优化：避免重复加载）
-        let posts = [];
-        let post = null;
+        // 直接通过文章ID获取完整内容（不使用列表API，避免htmlContent被裁剪）
+        console.log('通过文章ID获取完整内容，ID:', id);
         
-        if (window.allPostsData && Array.isArray(window.allPostsData) && window.allPostsData.length > 0) {
-          console.log('使用已有的文章数据，文章数:', window.allPostsData.length);
-          posts = window.allPostsData;
-          
-          // 更新进度条
-          if (progressBar) {
-            progressBar.style.width = '50%';
-          }
-          
-          // 直接使用id匹配（id现在是全局唯一的UUID）
-          post = posts.find(p => {
-            const pId = String(p.id || '');
-            const searchId = String(id || '');
-            return pId === searchId;
-          });
+        // 更新进度条
+        if (progressBar) {
+          progressBar.style.width = '50%';
         }
         
-        // 如果没有找到文章，需要加载所有文章
-        if (!post) {
-          console.log('未在已有数据中找到文章，开始加载所有文章...');
+        let post = null;
+        try {
+          // 使用单篇文章详情API获取完整内容
+          const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts/${id}`);
           
-          // 模拟进度
           if (progressBar) {
-            let progress = 10;
-            progressBar.style.width = progress + '%';
-            const progressInterval = setInterval(() => {
-              progress += 5;
-              if (progress < 80) {
-                progressBar.style.width = progress + '%';
-              }
-            }, 100);
-            
-            try {
-              const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
-              clearInterval(progressInterval);
-              
-              if (progressBar) {
-                progressBar.style.width = '90%';
-              }
-              
-              console.log('获取文章列表响应:', response);
-              
-              if (response && response.success && response.data) {
-                posts = response.data;
-                // 保存到全局变量，供下次使用
-                window.allPostsData = posts;
-                
-                // 直接使用id匹配（id现在是全局唯一的UUID）
-                post = posts.find(p => {
-                  const pId = String(p.id || '');
-                  const searchId = String(id || '');
-                  return pId === searchId;
-                });
-              } else {
-                console.error('获取文章列表失败:', response);
-                if (progressBar) {
-                  progressBar.style.width = '0%';
-                }
-                if (postForm) {
-                  postForm.classList.remove('loading');
-                }
-                if (postFormLoading) {
-                  postFormLoading.style.display = 'none';
-                }
-                if (postForm) {
-                  postForm.style.display = 'none';
-                }
-                showToast('获取文章列表失败', 'error');
-                return;
-              }
-            } catch (error) {
-              clearInterval(progressInterval);
-              throw error;
-            }
-          } else {
-            const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
-            console.log('获取文章列表响应:', response);
-            
-            if (response && response.success && response.data) {
-              posts = response.data;
-              // 保存到全局变量，供下次使用
-              window.allPostsData = posts;
-              
-              // 直接使用id匹配（id现在是全局唯一的UUID）
-              post = posts.find(p => {
-                const pId = String(p.id || '');
-                const searchId = String(id || '');
-                return pId === searchId;
-              });
-            } else {
-              console.error('获取文章列表失败:', response);
-              if (postForm) {
-                postForm.classList.remove('loading');
-              }
-              if (postFormLoading) {
-                postFormLoading.style.display = 'none';
-              }
-              if (postForm) {
-                postForm.style.display = 'none';
-              }
-              showToast('获取文章列表失败', 'error');
-              return;
-            }
+            progressBar.style.width = '90%';
           }
+          
+          console.log('获取文章详情响应:', response);
+          
+          if (response && response.success && response.data) {
+            post = response.data;
+            console.log('获取到完整文章数据:', {
+              id: post.id,
+              name: post.name,
+              hasHtmlContent: !!post.htmlContent,
+              htmlContentLength: post.htmlContent ? post.htmlContent.length : 0
+            });
+          } else {
+            console.error('获取文章详情失败:', response);
+            if (progressBar) {
+              progressBar.style.width = '0%';
+            }
+            if (postForm) {
+              postForm.classList.remove('loading');
+            }
+            if (postFormLoading) {
+              postFormLoading.style.display = 'none';
+            }
+            if (postForm) {
+              postForm.style.display = 'none';
+            }
+            showToast('获取文章详情失败: ' + (response?.message || '未知错误'), 'error');
+            return;
+          }
+        } catch (error) {
+          console.error('获取文章详情异常:', error);
+          if (progressBar) {
+            progressBar.style.width = '0%';
+          }
+          if (postForm) {
+            postForm.classList.remove('loading');
+          }
+          if (postFormLoading) {
+            postFormLoading.style.display = 'none';
+          }
+          if (postForm) {
+            postForm.style.display = 'none';
+          }
+          showToast('获取文章详情失败: ' + (error.message || '未知错误'), 'error');
+          return;
         }
         
         // 完成进度条
@@ -7769,18 +8332,15 @@
         }
         
         console.log('复制文章，ID:', id);
-        const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts`);
-        console.log('获取文章列表响应:', response);
+        // 使用单篇文章详情API获取完整内容（包括完整的htmlContent）
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts/${encodeURIComponent(id)}`);
+        console.log('获取文章详情响应:', response);
         
         if (response && response.success && response.data) {
-          // 直接使用id匹配（id现在是全局唯一的UUID）
-          const post = response.data.find(p => {
-            const pId = String(p.id || '');
-            const searchId = String(id || '');
-            return pId === searchId;
-          });
+          const post = response.data;
           
           console.log('找到的文章:', post);
+          console.log('文章HTML内容长度:', post.htmlContent ? post.htmlContent.length : 0);
           
           if (post) {
             // 创建文章副本，清除ID和slug，修改标题
@@ -7812,7 +8372,7 @@
             // 填充表单数据
             showPostForm(copiedPost);
           } else {
-            console.error('未找到文章，ID:', id, '可用文章ID:', response.data.map(p => p.id));
+            console.error('未找到文章，ID:', id);
             // 隐藏加载提示
             if (postForm) {
               postForm.classList.remove('loading');
@@ -7826,7 +8386,7 @@
             showToast('未找到要复制的文章', 'error');
           }
         } else {
-          console.error('获取文章列表失败:', response);
+          console.error('获取文章详情失败:', response);
           // 隐藏加载提示
           if (postForm) {
             postForm.classList.remove('loading');
@@ -7837,7 +8397,7 @@
           if (postForm) {
             postForm.style.display = 'none';
           }
-          showToast('获取文章列表失败', 'error');
+          showToast('获取文章详情失败: ' + (response?.message || '未知错误'), 'error');
         }
       } catch (error) {
         console.error('加载文章失败:', error);
@@ -8050,98 +8610,6 @@
       }
     }
 
-    // 标签管理函数
-    async function loadTags() {
-      try {
-        const tbody = document.getElementById('tagsTableBody');
-        const mobileContainer = document.getElementById('tagsTableMobile');
-        
-        if (!tbody) {
-          console.error('找不到 tagsTableBody 元素');
-          return;
-        }
-        
-        const response = await adminApiRequest(`${BLOG_ADMIN_API}/tags`);
-        if (response && response.success) {
-          const tags = response.data || [];
-          if (tags.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="2" class="blog-empty">暂无标签</td></tr>';
-            if (mobileContainer) {
-              mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无标签</div>';
-            }
-          } else {
-            // 桌面端表格
-            tbody.innerHTML = tags.map(tag => `
-              <tr>
-                <td>${escapeHtml(tag.name)}</td>
-                <td>${tag.postCount || 0}</td>
-              </tr>
-            `).join('');
-            
-            // 移动端卡片
-            if (mobileContainer) {
-              mobileContainer.innerHTML = tags.map(tag => `
-                <div class="admin-table-card">
-                  <div class="admin-table-card-row">
-                    <span class="admin-table-card-label">名称：</span>
-                    <span class="admin-table-card-value">${escapeHtml(tag.name)}</span>
-                  </div>
-                  <div class="admin-table-card-row">
-                    <span class="admin-table-card-label">文章数：</span>
-                    <span class="admin-table-card-value">${tag.postCount || 0}</span>
-                  </div>
-                </div>
-              `).join('');
-            }
-          }
-        } else {
-          tbody.innerHTML = '<tr><td colspan="2" class="blog-empty">加载失败: ' + (response?.message || '未知错误') + '</td></tr>';
-          if (mobileContainer) {
-            mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(response?.message || '未知错误') + '</div>';
-          }
-        }
-      } catch (error) {
-        console.error('加载标签失败:', error);
-        const tbody = document.getElementById('tagsTableBody');
-        const mobileContainer = document.getElementById('tagsTableMobile');
-        if (tbody) {
-          tbody.innerHTML = '<tr><td colspan="2" class="blog-empty">加载失败: ' + escapeHtml(error.message || '未知错误') + '</td></tr>';
-        }
-        if (mobileContainer) {
-          mobileContainer.innerHTML = '<div class="blog-empty" style="padding: 2rem; text-align: center;">加载失败: ' + escapeHtml(error.message || '未知错误') + '</div>';
-        }
-      }
-    }
-
-    function showTagForm() {
-      document.getElementById('tagForm').style.display = 'block';
-    }
-
-    function hideTagForm() {
-      document.getElementById('tagForm').style.display = 'none';
-      document.getElementById('tagForm').querySelector('form').reset();
-    }
-
-    async function saveTag(event) {
-      event.preventDefault();
-      const name = document.getElementById('tagName').value.trim();
-
-      try {
-        const response = await adminApiRequest(`${BLOG_ADMIN_API}/tags`, {
-          method: 'POST',
-          body: JSON.stringify({ name })
-        });
-
-        if (response && response.success) {
-          showToast('标签创建成功', 'success');
-          hideTagForm();
-          loadTags();
-        }
-      } catch (error) {
-        console.error('创建标签失败:', error);
-      }
-    }
-
     // 评论管理函数
     async function loadComments() {
       try {
@@ -8273,6 +8741,919 @@
       }
     }
 
+    // 特殊内容管理函数（天气、汇率、翻译）
+    async function loadSpecialContent(type) {
+      try {
+        // 将type转换为实际的元素ID（exchange-rate -> exchangeRate）
+        const contentElementIdMap = {
+          'weather': 'weatherContent',
+          'exchange-rate': 'exchangeRateContent',
+          'translation': 'translationContent'
+        };
+        const contentElementId = contentElementIdMap[type] || `${type}Content`;
+        const contentElement = document.getElementById(contentElementId);
+        if (!contentElement) {
+          console.error(`找不到 ${contentElementId} 元素`);
+          return;
+        }
+
+        contentElement.innerHTML = '<div class="blog-loading" style="padding: 2rem; text-align: center;">加载中...</div>';
+
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/${type}`);
+        
+        let html = '';
+        let lastUpdateEl = null;
+        let updatedAt = null;
+        
+        if (response && response.success && response.data) {
+          const data = response.data;
+          const content = data.content || {};
+          updatedAt = data.updatedAt;
+          
+          if (type === 'weather') {
+            html = renderWeatherContent(content);
+            lastUpdateEl = document.getElementById('weatherLastUpdate');
+          } else if (type === 'exchange-rate') {
+            html = renderExchangeRateContent(content);
+            lastUpdateEl = document.getElementById('exchangeRateLastUpdate');
+          } else if (type === 'translation') {
+            html = renderTranslationContent(content);
+            lastUpdateEl = document.getElementById('translationLastUpdate');
+          }
+          
+          // 确保html不为空
+          if (!html || html.trim() === '') {
+            html = '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无数据</div>';
+          }
+          
+          // 更新最后更新时间
+          if (lastUpdateEl && updatedAt) {
+            lastUpdateEl.textContent = `最后更新: ${formatDateTime(updatedAt)}`;
+          }
+          
+          contentElement.innerHTML = html;
+        } else {
+          // 即使API返回失败，也尝试渲染空内容
+          if (type === 'exchange-rate') {
+            html = renderExchangeRateContent({});
+            lastUpdateEl = document.getElementById('exchangeRateLastUpdate');
+          } else if (type === 'translation') {
+            html = renderTranslationContent([]);
+            lastUpdateEl = document.getElementById('translationLastUpdate');
+          } else if (type === 'weather') {
+            html = renderWeatherContent({});
+            lastUpdateEl = document.getElementById('weatherLastUpdate');
+          }
+          
+          if (!html || html.trim() === '') {
+            html = `<div class="blog-empty" style="padding: 2rem; text-align: center;">
+              <p>${response?.message || '未找到内容'}</p>
+              <p style="color: #6b7280; font-size: 0.875rem; margin-top: 0.5rem;">请先创建对应的API</p>
+            </div>`;
+          }
+          
+          contentElement.innerHTML = html;
+        }
+      } catch (error) {
+        console.error(`加载${type}内容失败:`, error);
+        // 将type转换为实际的元素ID（exchange-rate -> exchangeRate）
+        const contentElementIdMap = {
+          'weather': 'weatherContent',
+          'exchange-rate': 'exchangeRateContent',
+          'translation': 'translationContent'
+        };
+        const contentElementId = contentElementIdMap[type] || `${type}Content`;
+        const contentElement = document.getElementById(contentElementId);
+        if (contentElement) {
+          // 尝试渲染空内容而不是显示错误
+          let html = '';
+          if (type === 'exchange-rate') {
+            html = renderExchangeRateContent({});
+          } else if (type === 'translation') {
+            html = renderTranslationContent([]);
+          } else if (type === 'weather') {
+            html = renderWeatherContent({});
+          }
+          
+          if (!html || html.trim() === '') {
+            html = `<div class="blog-empty" style="padding: 2rem; text-align: center;">
+              加载失败: ${escapeHtml(error.message || '未知错误')}
+            </div>`;
+          }
+          
+          contentElement.innerHTML = html;
+        }
+      }
+    }
+
+    function renderWeatherContent(content) {
+      if (!content.globalAlert && !content.attractions && !content.traffic) {
+        return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无天气数据</div>';
+      }
+
+      let html = '<div style="display: flex; flex-direction: column; gap: 1.5rem;">';
+      
+      // 全局预警
+      if (content.globalAlert) {
+        const levelColors = {
+          low: '#10b981',
+          medium: '#f59e0b',
+          high: '#ef4444'
+        };
+        const levelText = {
+          low: '低',
+          medium: '中',
+          high: '高'
+        };
+        html += `
+          <div style="padding: 1rem; background: #f9fafb; border-radius: 0.5rem; border-left: 4px solid ${levelColors[content.globalAlert.level] || '#6b7280'};">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <span style="font-weight: 600; color: #111827;">全局预警</span>
+              <span style="padding: 0.25rem 0.5rem; background: ${levelColors[content.globalAlert.level] || '#6b7280'}; color: white; border-radius: 0.25rem; font-size: 0.75rem;">
+                ${levelText[content.globalAlert.level] || content.globalAlert.level}
+              </span>
+            </div>
+            <p style="color: #374151; margin: 0;">${escapeHtml(content.globalAlert.message || '')}</p>
+          </div>
+        `;
+      }
+      
+      // 景点信息
+      if (content.attractions && Array.isArray(content.attractions) && content.attractions.length > 0) {
+        html += '<div><h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin-bottom: 0.75rem;">景点信息</h3>';
+        html += '<div style="display: grid; gap: 0.75rem;">';
+        content.attractions.forEach((attraction, index) => {
+          html += `
+            <div style="padding: 1rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.375rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <span style="font-weight: 600; color: #111827; font-size: 1rem;">${escapeHtml(attraction.name || `景点 ${index + 1}`)}</span>
+                ${attraction.id ? `<span style="color: #6b7280; font-size: 0.75rem;">ID: ${attraction.id}</span>` : ''}
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; margin-top: 0.5rem;">
+                ${attraction.temperature !== undefined ? `
+                  <div>
+                    <span style="color: #6b7280; font-size: 0.75rem;">温度：</span>
+                    <span style="color: #111827; font-weight: 500;">${attraction.temperature}°C</span>
+                  </div>
+                ` : ''}
+                ${attraction.visibility ? `
+                  <div>
+                    <span style="color: #6b7280; font-size: 0.75rem;">能见度：</span>
+                    <span style="color: #111827;">${escapeHtml(attraction.visibility)}</span>
+                  </div>
+                ` : ''}
+                ${attraction.uvIndex !== undefined ? `
+                  <div>
+                    <span style="color: #6b7280; font-size: 0.75rem;">紫外线指数：</span>
+                    <span style="color: #111827;">${attraction.uvIndex}</span>
+                  </div>
+                ` : ''}
+                ${attraction.windSpeed ? `
+                  <div>
+                    <span style="color: #6b7280; font-size: 0.75rem;">风速：</span>
+                    <span style="color: #111827;">${escapeHtml(attraction.windSpeed)}</span>
+                  </div>
+                ` : ''}
+              </div>
+              ${attraction.suggestion ? `
+                <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e5e7eb;">
+                  <span style="color: #6b7280; font-size: 0.75rem;">建议：</span>
+                  <div style="color: #374151; font-size: 0.875rem; margin-top: 0.25rem;">${escapeHtml(attraction.suggestion)}</div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        });
+        html += '</div></div>';
+      }
+      
+      // 交通信息
+      if (content.traffic && Array.isArray(content.traffic) && content.traffic.length > 0) {
+        html += '<div><h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin-bottom: 0.75rem;">交通信息</h3>';
+        html += '<div style="display: grid; gap: 0.75rem;">';
+        content.traffic.forEach((traffic, index) => {
+          html += `
+            <div style="padding: 1rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.375rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <span style="font-weight: 600; color: #111827; font-size: 1rem;">${escapeHtml(traffic.route || traffic.location || `路况 ${index + 1}`)}</span>
+                ${traffic.id ? `<span style="color: #6b7280; font-size: 0.75rem;">ID: ${traffic.id}</span>` : ''}
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem; margin-top: 0.5rem;">
+                ${traffic.time ? `
+                  <div>
+                    <span style="color: #6b7280; font-size: 0.75rem;">时间：</span>
+                    <span style="color: #111827;">${escapeHtml(traffic.time)}</span>
+                  </div>
+                ` : ''}
+                ${traffic.type ? `
+                  <div>
+                    <span style="color: #6b7280; font-size: 0.75rem;">类型：</span>
+                    <span style="color: #111827; font-weight: 500;">${escapeHtml(traffic.type)}</span>
+                  </div>
+                ` : ''}
+                ${traffic.location ? `
+                  <div>
+                    <span style="color: #6b7280; font-size: 0.75rem;">位置：</span>
+                    <span style="color: #111827;">${escapeHtml(traffic.location)}</span>
+                  </div>
+                ` : ''}
+                ${traffic.status ? `
+                  <div>
+                    <span style="color: #6b7280; font-size: 0.75rem;">状态：</span>
+                    <span style="color: #111827;">${escapeHtml(traffic.status)}</span>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        });
+        html += '</div></div>';
+      }
+      
+      html += '</div>';
+      return html;
+    }
+
+    function renderExchangeRateContent(content) {
+      // 检查内容是否为空
+      if (!content) {
+        return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
+      }
+      
+      // 检查是否是空对象
+      if (typeof content === 'object' && !Array.isArray(content)) {
+        const keys = Object.keys(content);
+        // 排除标准字段
+        const standardFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
+        const rateKeys = keys.filter(key => !standardFields.includes(key));
+        if (rateKeys.length === 0) {
+          return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
+        }
+      }
+
+      let html = '<div style="overflow-x: auto;">';
+      
+      // 如果是数组格式
+      if (Array.isArray(content)) {
+        if (content.length === 0) {
+          return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
+        }
+        html += '<table class="admin-table" style="width: 100%;">';
+        html += '<thead><tr><th>来源货币</th><th>目标货币</th><th>汇率</th><th>更新时间</th></tr></thead>';
+        html += '<tbody>';
+        content.forEach(item => {
+          html += `
+            <tr>
+              <td>${escapeHtml(item.fromCurrency || '')}</td>
+              <td>${escapeHtml(item.toCurrency || '')}</td>
+              <td>${escapeHtml(String(item.rate || ''))}</td>
+              <td>${escapeHtml(item.updateTime || '')}</td>
+            </tr>
+          `;
+        });
+        html += '</tbody></table>';
+      } else {
+        // 对象格式：{CNY: {EGP: 6.74}, USD: {EGP: 30.5}}
+        const standardFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
+        const rateKeys = Object.keys(content).filter(key => !standardFields.includes(key));
+        
+        if (rateKeys.length === 0) {
+          return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
+        }
+        
+        // 先收集所有有效的汇率数据
+        let hasValidRates = false;
+        let tableRows = '';
+        
+        rateKeys.forEach(fromCurrency => {
+          const rates = content[fromCurrency];
+          if (typeof rates === 'object' && rates !== null && !Array.isArray(rates)) {
+            Object.keys(rates).forEach(toCurrency => {
+              const rateValue = rates[toCurrency];
+              if (rateValue !== null && rateValue !== undefined && rateValue !== '') {
+                hasValidRates = true;
+                tableRows += `
+                  <tr>
+                    <td>${escapeHtml(fromCurrency)}</td>
+                    <td>${escapeHtml(toCurrency)}</td>
+                    <td>${escapeHtml(String(rateValue))}</td>
+                  </tr>
+                `;
+              }
+            });
+          }
+        });
+        
+        // 如果没有有效的汇率数据，返回空状态
+        if (!hasValidRates) {
+          return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
+        }
+        
+        html += '<table class="admin-table" style="width: 100%;">';
+        html += '<thead><tr><th>来源货币</th><th>目标货币</th><th>汇率</th></tr></thead>';
+        html += '<tbody>';
+        html += tableRows;
+        html += '</tbody></table>';
+      }
+      
+      html += '</div>';
+      return html;
+    }
+
+    function renderTranslationContent(content) {
+      if (!Array.isArray(content) || content.length === 0) {
+        return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无翻译数据</div>';
+      }
+
+      // 响应式网格布局：根据窗口大小自动调整列数
+      // 使用CSS Grid的auto-fit和minmax实现响应式，减小卡片尺寸以显示更多列
+      // 确保容器有正确的宽度，让Grid布局能正确计算列数
+      let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; padding: 0.5rem; width: 100%; box-sizing: border-box;">';
+      content.forEach((item, index) => {
+        html += `
+          <div style="padding: 0.625rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.375rem; transition: box-shadow 0.2s; min-width: 0;" onmouseover="this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div style="min-width: 0;">
+                <div style="font-size: 0.625rem; color: #6b7280; margin-bottom: 0.125rem; font-weight: 500;">中文</div>
+                <div style="font-weight: 500; color: #111827; font-size: 0.8125rem; word-break: break-word; line-height: 1.4;">${escapeHtml(item.chinese || '')}</div>
+              </div>
+              <div style="min-width: 0;">
+                <div style="font-size: 0.625rem; color: #6b7280; margin-bottom: 0.125rem; font-weight: 500;">阿拉伯文</div>
+                <div style="font-weight: 500; color: #111827; font-size: 0.8125rem; direction: rtl; text-align: right; word-break: break-word; line-height: 1.4;">${escapeHtml(item.arabic || '')}</div>
+              </div>
+            </div>
+            ${item.category ? `<div style="font-size: 0.625rem; color: #6b7280; padding-top: 0.375rem; border-top: 1px solid #f3f4f6;">分类: ${escapeHtml(item.category)}</div>` : ''}
+          </div>
+        `;
+      });
+      html += '</div>';
+      return html;
+    }
+
+    // 天气编辑表单管理
+    async function showWeatherEditForm() {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/weather`);
+        if (!response || !response.success || !response.data) {
+          showToast('未找到天气API，请先创建', 'error');
+          return;
+        }
+        
+        const content = response.data.content || {};
+        loadWeatherDataToForm(content);
+        
+        document.getElementById('weatherEditForm').style.display = 'block';
+        document.getElementById('weatherEditBtn').style.display = 'none';
+        document.getElementById('weatherCancelBtn').style.display = 'inline-block';
+        document.getElementById('weatherContent').style.display = 'none';
+      } catch (error) {
+        console.error('加载天气数据失败:', error);
+        showToast('加载失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+    
+    function hideWeatherEditForm() {
+      document.getElementById('weatherEditForm').style.display = 'none';
+      document.getElementById('weatherEditBtn').style.display = 'inline-block';
+      document.getElementById('weatherCancelBtn').style.display = 'none';
+      document.getElementById('weatherContent').style.display = 'block';
+      // 重新加载天气内容，确保正确显示
+      loadSpecialContent('weather');
+    }
+    
+    function loadWeatherDataToForm(content) {
+      // 加载全局预警
+      if (content.globalAlert) {
+        document.getElementById('weatherGlobalAlertLevel').value = content.globalAlert.level || 'medium';
+        document.getElementById('weatherGlobalAlertMessage').value = content.globalAlert.message || '';
+      }
+      
+      // 加载景点
+      const attractionsContainer = document.getElementById('weatherAttractionsList');
+      attractionsContainer.innerHTML = '';
+      weatherAttractionsCounter = 0;
+      if (content.attractions && Array.isArray(content.attractions)) {
+        content.attractions.forEach((attraction, index) => {
+          attraction._index = index;
+          addWeatherAttraction(attraction);
+          weatherAttractionsCounter++;
+        });
+      }
+      if (weatherAttractionsCounter === 0) {
+        addWeatherAttraction();
+      }
+      
+      // 加载交通
+      const trafficContainer = document.getElementById('weatherTrafficList');
+      trafficContainer.innerHTML = '';
+      weatherTrafficCounter = 0;
+      if (content.traffic && Array.isArray(content.traffic)) {
+        content.traffic.forEach((traffic, index) => {
+          traffic._index = index;
+          addWeatherTraffic(traffic);
+          weatherTrafficCounter++;
+        });
+      }
+      if (weatherTrafficCounter === 0) {
+        addWeatherTraffic();
+      }
+    }
+    
+    async function saveWeatherContent(event) {
+      event.preventDefault();
+      try {
+        const data = collectWeatherData();
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/weather`, {
+          method: 'PUT',
+          body: JSON.stringify({ content: data })
+        });
+        
+        if (response && response.success) {
+          showToast('天气内容保存成功', 'success');
+          hideWeatherEditForm();
+          loadSpecialContent('weather');
+        } else {
+          showToast('保存失败: ' + (response?.message || '未知错误'), 'error');
+        }
+      } catch (error) {
+        console.error('保存天气内容失败:', error);
+        showToast('保存失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+    
+    function collectWeatherData() {
+      const data = {
+        globalAlert: {
+          level: document.getElementById('weatherGlobalAlertLevel').value,
+          message: document.getElementById('weatherGlobalAlertMessage').value.trim()
+        },
+        attractions: [],
+        traffic: []
+      };
+      
+      // 收集景点
+      const attractionsContainer = document.getElementById('weatherAttractionsList');
+      const attractionItems = attractionsContainer.querySelectorAll('.weather-item');
+      attractionItems.forEach((item, index) => {
+        const idInput = item.querySelector('.weather-attraction-id');
+        const nameInput = item.querySelector('.weather-attraction-name');
+        const tempInput = item.querySelector('.weather-attraction-temperature');
+        const visibilityInput = item.querySelector('.weather-attraction-visibility');
+        const uvIndexInput = item.querySelector('.weather-attraction-uvIndex');
+        const windSpeedInput = item.querySelector('.weather-attraction-windSpeed');
+        const suggestionInput = item.querySelector('.weather-attraction-suggestion');
+        
+        const name = nameInput.value.trim();
+        const temperature = tempInput.value.trim();
+        
+        if (!name || !temperature) {
+          return; // 跳过空项
+        }
+        
+        const attraction = {
+          id: idInput.value ? parseInt(idInput.value) : index + 1,
+          name: name,
+          temperature: parseInt(temperature),
+        };
+        
+        if (visibilityInput.value.trim()) attraction.visibility = visibilityInput.value.trim();
+        if (uvIndexInput.value) attraction.uvIndex = parseInt(uvIndexInput.value);
+        if (windSpeedInput.value.trim()) attraction.windSpeed = windSpeedInput.value.trim();
+        if (suggestionInput.value.trim()) attraction.suggestion = suggestionInput.value.trim();
+        
+        data.attractions.push(attraction);
+      });
+      
+      // 收集交通
+      const trafficContainer = document.getElementById('weatherTrafficList');
+      const trafficItems = trafficContainer.querySelectorAll('.weather-item');
+      trafficItems.forEach((item, index) => {
+        const idInput = item.querySelector('.weather-traffic-id');
+        const timeInput = item.querySelector('.weather-traffic-time');
+        const typeInput = item.querySelector('.weather-traffic-type');
+        const locationInput = item.querySelector('.weather-traffic-location');
+        const routeInput = item.querySelector('.weather-traffic-route');
+        const statusInput = item.querySelector('.weather-traffic-status');
+        
+        const time = timeInput.value.trim();
+        const type = typeInput.value;
+        
+        if (!time || !type) {
+          return; // 跳过空项
+        }
+        
+        const traffic = {
+          id: idInput.value ? parseInt(idInput.value) : index + 1,
+          time: time,
+          type: type,
+        };
+        
+        if (locationInput.value.trim()) traffic.location = locationInput.value.trim();
+        if (routeInput.value.trim()) traffic.route = routeInput.value.trim();
+        if (statusInput.value.trim()) traffic.status = statusInput.value.trim();
+        
+        data.traffic.push(traffic);
+      });
+      
+      return data;
+    }
+    
+    // 汇率编辑表单管理
+    async function showExchangeRateEditForm() {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/exchange-rate`);
+        if (!response || !response.success || !response.data) {
+          showToast('未找到汇率API，请先创建', 'error');
+          return;
+        }
+        
+        const content = response.data.content || {};
+        loadExchangeRateDataToForm(content);
+        
+        document.getElementById('exchangeRateEditForm').style.display = 'block';
+        document.getElementById('exchangeRateEditBtn').style.display = 'none';
+        document.getElementById('exchangeRateCancelBtn').style.display = 'inline-block';
+        document.getElementById('exchangeRateContent').style.display = 'none';
+      } catch (error) {
+        console.error('加载汇率数据失败:', error);
+        showToast('加载失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+    
+    function hideExchangeRateEditForm() {
+      document.getElementById('exchangeRateEditForm').style.display = 'none';
+      document.getElementById('exchangeRateEditBtn').style.display = 'inline-block';
+      document.getElementById('exchangeRateCancelBtn').style.display = 'none';
+      document.getElementById('exchangeRateContent').style.display = 'block';
+      // 重新加载汇率内容，确保正确显示
+      loadSpecialContent('exchange-rate');
+    }
+    
+    function loadExchangeRateDataToForm(content) {
+      const ratesContainer = document.getElementById('exchangeRatesList');
+      ratesContainer.innerHTML = '';
+      exchangeRatesCounter = 0;
+      
+      // 处理数组格式
+      if (Array.isArray(content)) {
+        content.forEach((item, index) => {
+          addExchangeRate({
+            fromCurrency: item.fromCurrency,
+            toCurrency: item.toCurrency,
+            rate: item.rate,
+            _index: index
+          });
+          exchangeRatesCounter++;
+        });
+      } else if (typeof content === 'object') {
+        // 处理对象格式 {CNY: {EGP: 6.74}}
+        Object.keys(content).forEach(fromCurrency => {
+          if (['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'].includes(fromCurrency)) {
+            return;
+          }
+          const rates = content[fromCurrency];
+          if (typeof rates === 'object' && !Array.isArray(rates)) {
+            Object.keys(rates).forEach(toCurrency => {
+              addExchangeRate({
+                fromCurrency: fromCurrency,
+                toCurrency: toCurrency,
+                rate: rates[toCurrency],
+                _index: exchangeRatesCounter
+              });
+              exchangeRatesCounter++;
+            });
+          }
+        });
+      }
+      
+      if (exchangeRatesCounter === 0) {
+        addExchangeRate();
+      }
+      
+      // 加载更新时间
+      if (content.updateTime) {
+        const date = new Date(content.updateTime);
+        const localDateTime = date.toISOString().slice(0, 16);
+        document.getElementById('exchangeUpdateTime').value = localDateTime;
+      }
+    }
+    
+    async function saveExchangeRateContent(event) {
+      event.preventDefault();
+      try {
+        const data = collectExchangeRateData();
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/exchange-rate`, {
+          method: 'PUT',
+          body: JSON.stringify({ content: data })
+        });
+        
+        if (response && response.success) {
+          showToast('汇率内容保存成功', 'success');
+          hideExchangeRateEditForm();
+          loadSpecialContent('exchange-rate');
+        } else {
+          showToast('保存失败: ' + (response?.message || '未知错误'), 'error');
+        }
+      } catch (error) {
+        console.error('保存汇率内容失败:', error);
+        showToast('保存失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+    
+    function collectExchangeRateData() {
+      const rates = [];
+      const updateTime = document.getElementById('exchangeUpdateTime').value;
+      
+      const ratesContainer = document.getElementById('exchangeRatesList');
+      const rateItems = ratesContainer.querySelectorAll('.exchange-rate-item');
+      
+      rateItems.forEach(item => {
+        const fromInput = item.querySelector('.exchange-rate-from');
+        const toInput = item.querySelector('.exchange-rate-to');
+        const rateInput = item.querySelector('.exchange-rate-value');
+        
+        const fromCurrency = fromInput.value.trim().toUpperCase();
+        const toCurrency = toInput.value.trim().toUpperCase();
+        const rate = parseFloat(rateInput.value);
+        
+        if (fromCurrency && toCurrency && !isNaN(rate) && rate > 0) {
+          rates.push({
+            fromCurrency: fromCurrency,
+            toCurrency: toCurrency,
+            rate: rate
+          });
+        }
+      });
+      
+      const result = {};
+      rates.forEach(item => {
+        if (!result[item.fromCurrency]) {
+          result[item.fromCurrency] = {};
+        }
+        result[item.fromCurrency][item.toCurrency] = item.rate;
+      });
+      
+      if (updateTime) {
+        result.updateTime = updateTime;
+      }
+      
+      return result;
+    }
+    
+    // 翻译编辑表单管理
+    let translationCounter = 0;
+    
+    async function showTranslationEditForm() {
+      try {
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/translation`);
+        if (!response || !response.success || !response.data) {
+          showToast('未找到翻译API，请先创建', 'error');
+          return;
+        }
+        
+        const content = response.data.content || [];
+        loadTranslationDataToForm(content);
+        
+        document.getElementById('translationEditForm').style.display = 'block';
+        document.getElementById('translationEditBtn').style.display = 'none';
+        document.getElementById('translationCancelBtn').style.display = 'inline-block';
+        document.getElementById('translationContent').style.display = 'none';
+      } catch (error) {
+        console.error('加载翻译数据失败:', error);
+        showToast('加载失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+    
+    function hideTranslationEditForm() {
+      document.getElementById('translationEditForm').style.display = 'none';
+      document.getElementById('translationEditBtn').style.display = 'inline-block';
+      document.getElementById('translationCancelBtn').style.display = 'none';
+      document.getElementById('translationContent').style.display = 'block';
+      // 重新加载翻译内容，确保正确显示多列布局
+      loadSpecialContent('translation');
+    }
+    
+    function loadTranslationDataToForm(content) {
+      const translationContainer = document.getElementById('translationList');
+      translationContainer.innerHTML = '';
+      translationCounter = 0;
+      
+      if (Array.isArray(content) && content.length > 0) {
+        content.forEach((item, index) => {
+          addTranslationItem(item, index);
+          translationCounter++;
+        });
+      } else {
+        addTranslationItem();
+      }
+    }
+    
+    function addTranslationItem(item = null, index = null) {
+      const container = document.getElementById('translationList');
+      const itemIndex = index !== null ? index : translationCounter++;
+      
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'translation-item';
+      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db;';
+      itemDiv.dataset.index = itemIndex;
+      
+      itemDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <strong style="color: #9333ea;">翻译 #${itemIndex + 1}</strong>
+          <button type="button" class="blog-btn blog-btn-secondary" onclick="removeTranslationItem(${itemIndex})" style="font-size: 0.875rem; padding: 0.25rem 0.5rem; background: #ef4444; color: white;">删除</button>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.75rem;">
+          <div class="admin-form-group" style="margin-bottom: 0;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">中文 *</label>
+            <input type="text" class="admin-form-input translation-chinese" value="${item ? escapeHtml(item.chinese || '') : ''}" placeholder="输入中文" required style="font-size: 0.875rem;">
+          </div>
+          <div class="admin-form-group" style="margin-bottom: 0;">
+            <label class="admin-form-label" style="font-size: 0.875rem;">阿拉伯文 *</label>
+            <input type="text" class="admin-form-input translation-arabic" value="${item ? escapeHtml(item.arabic || '') : ''}" placeholder="输入阿拉伯文" required dir="rtl" style="font-size: 0.875rem;">
+          </div>
+        </div>
+        <div class="admin-form-group" style="margin-bottom: 0;">
+          <label class="admin-form-label" style="font-size: 0.875rem;">分类</label>
+          <input type="text" class="admin-form-input translation-category" value="${item ? escapeHtml(item.category || '') : ''}" placeholder="输入分类（可选）" style="font-size: 0.875rem;">
+        </div>
+      `;
+      
+      container.appendChild(itemDiv);
+    }
+    
+    function removeTranslationItem(index) {
+      const container = document.getElementById('translationList');
+      const item = container.querySelector(`[data-index="${index}"]`);
+      if (item && confirm('确定要删除这条翻译吗？')) {
+        item.remove();
+      }
+    }
+    
+    async function saveTranslationContent(event) {
+      event.preventDefault();
+      try {
+        const data = collectTranslationData();
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/translation`, {
+          method: 'PUT',
+          body: JSON.stringify({ content: data })
+        });
+        
+        if (response && response.success) {
+          showToast('翻译内容保存成功', 'success');
+          hideTranslationEditForm();
+          loadSpecialContent('translation');
+        } else {
+          showToast('保存失败: ' + (response?.message || '未知错误'), 'error');
+        }
+      } catch (error) {
+        console.error('保存翻译内容失败:', error);
+        showToast('保存失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+    
+    function collectTranslationData() {
+      const translations = [];
+      const translationContainer = document.getElementById('translationList');
+      const translationItems = translationContainer.querySelectorAll('.translation-item');
+      
+      translationItems.forEach(item => {
+        const chineseInput = item.querySelector('.translation-chinese');
+        const arabicInput = item.querySelector('.translation-arabic');
+        const categoryInput = item.querySelector('.translation-category');
+        
+        const chinese = chineseInput.value.trim();
+        const arabic = arabicInput.value.trim();
+        const category = categoryInput.value.trim();
+        
+        if (chinese && arabic) {
+          const translation = {
+            chinese: chinese,
+            arabic: arabic
+          };
+          if (category) {
+            translation.category = category;
+          }
+          translations.push(translation);
+        }
+      });
+      
+      return translations;
+    }
+
+    // 批量操作相关函数
+    let selectedPostIds = new Set();
+    
+    // 更新选择状态
+    function updateSelection() {
+      const checkboxes = document.querySelectorAll('.post-checkbox:checked');
+      selectedPostIds.clear();
+      checkboxes.forEach(checkbox => {
+        selectedPostIds.add(checkbox.value);
+      });
+      
+      const count = selectedPostIds.size;
+      const selectedCountNum = document.getElementById('selectedCountNum');
+      const batchActions = document.getElementById('batchActions');
+      
+      if (selectedCountNum) {
+        selectedCountNum.textContent = count;
+      }
+      
+      if (batchActions) {
+        batchActions.style.display = count > 0 ? 'flex' : 'none';
+      }
+      
+      // 更新全选复选框状态
+      const selectAllCheckbox = document.getElementById('selectAllPosts');
+      if (selectAllCheckbox) {
+        const allCheckboxes = document.querySelectorAll('.post-checkbox:not(#selectAllPosts)');
+        const allChecked = allCheckboxes.length > 0 && Array.from(allCheckboxes).every(cb => cb.checked);
+        selectAllCheckbox.checked = allChecked;
+        selectAllCheckbox.indeterminate = !allChecked && count > 0;
+      }
+    }
+    
+    // 全选/取消全选
+    function toggleSelectAll(checkbox) {
+      const allCheckboxes = document.querySelectorAll('.post-checkbox:not(#selectAllPosts)');
+      allCheckboxes.forEach(cb => {
+        cb.checked = checkbox.checked;
+      });
+      updateSelection();
+    }
+    
+    // 全选草稿
+    function selectAllDrafts() {
+      const draftCheckboxes = document.querySelectorAll('.post-checkbox[data-published="false"]');
+      draftCheckboxes.forEach(cb => {
+        cb.checked = true;
+      });
+      updateSelection();
+      
+      const count = draftCheckboxes.length;
+      if (count > 0) {
+        showToast(`已选择 ${count} 篇草稿文章`, 'success');
+      } else {
+        showToast('没有找到草稿文章', 'info');
+      }
+    }
+    
+    // 清除选择
+    function clearSelection() {
+      const allCheckboxes = document.querySelectorAll('.post-checkbox');
+      allCheckboxes.forEach(cb => {
+        cb.checked = false;
+      });
+      selectedPostIds.clear();
+      updateSelection();
+    }
+    
+    // 批量发布
+    async function batchPublish() {
+      const selectedIds = Array.from(selectedPostIds);
+      
+      if (selectedIds.length === 0) {
+        showToast('请先选择要发布的文章', 'warning');
+        return;
+      }
+      
+      // 确认对话框
+      const confirmed = confirm(`确定要批量发布选中的 ${selectedIds.length} 篇文章吗？`);
+      if (!confirmed) {
+        return;
+      }
+      
+      try {
+        showToast('正在批量发布...', 'info');
+        
+        // 调用批量发布API
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts/batch-publish`, {
+          method: 'POST',
+          body: JSON.stringify({ ids: selectedIds })
+        });
+        
+        if (response && response.success) {
+          const successCount = response.data?.successCount || 0;
+          const failedCount = response.data?.failedCount || 0;
+          
+          if (failedCount === 0) {
+            showToast(`成功发布 ${successCount} 篇文章`, 'success');
+          } else {
+            showToast(`成功发布 ${successCount} 篇，失败 ${failedCount} 篇`, 'warning');
+          }
+          
+          // 清除选择并刷新列表
+          clearSelection();
+          loadPosts(false);
+        } else {
+          showToast('批量发布失败: ' + (response?.message || '未知错误'), 'error');
+        }
+      } catch (error) {
+        console.error('批量发布失败:', error);
+        showToast('批量发布失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+
     // 初始化
     // 获取URL参数
     function getUrlParam(name) {
@@ -8329,7 +9710,6 @@
       // 确保所有表单默认隐藏（除非有明确的URL参数）
       const postForm = document.getElementById('postForm');
       const categoryForm = document.getElementById('categoryForm');
-      const tagForm = document.getElementById('tagForm');
       
       const action = getUrlParam('action');
       const editId = getUrlParam('edit');
@@ -8340,12 +9720,9 @@
         postForm.style.display = 'none';
       }
       
-      // 确保分类和标签表单默认隐藏
+      // 确保分类表单默认隐藏
       if (categoryForm) {
         categoryForm.style.display = 'none';
-      }
-      if (tagForm) {
-        tagForm.style.display = 'none';
       }
       
       // 如果是在新窗口中打开编辑或复制页面，只加载必要的资源
@@ -8433,10 +9810,45 @@
         postsHeader.style.display = 'none';
       }
       
-      // 隐藏文章列表表格
-      const postsTable = document.querySelector('#tab-posts > div:last-child');
-      if (postsTable && postsTable.querySelector('#postsTableBody')) {
-        postsTable.style.display = 'none';
+      // 隐藏文章列表 - 使用更精确的选择器
+      // 查找包含文章列表表格的admin-card容器
+      const postsTableBody = document.getElementById('postsTableBody');
+      if (postsTableBody) {
+        // 向上查找包含它的admin-card容器
+        let parent = postsTableBody.closest('.admin-card');
+        if (parent) {
+          parent.style.display = 'none';
+        }
+      }
+      
+      // 也隐藏移动端的文章列表容器
+      const postsTableMobile = document.getElementById('postsTableBodyMobile');
+      if (postsTableMobile) {
+        let parent = postsTableMobile.closest('.admin-card');
+        if (parent && parent.style.display !== 'none') {
+          parent.style.display = 'none';
+        }
+      }
+      
+      // 隐藏文章列表的加载进度条容器
+      const postsLoadingProgress = document.getElementById('postsLoadingProgress');
+      if (postsLoadingProgress) {
+        let parent = postsLoadingProgress.closest('.admin-card');
+        if (parent && parent.style.display !== 'none') {
+          parent.style.display = 'none';
+        }
+      }
+      
+      // 隐藏所有文章列表相关的加载提示（包括移动端）
+      const blogLoadingElements = document.querySelectorAll('#tab-posts .blog-loading');
+      blogLoadingElements.forEach(element => {
+        element.style.display = 'none';
+      });
+      
+      // 确保移动端文章列表容器也被隐藏
+      const postsTableBodyMobile = document.getElementById('postsTableBodyMobile');
+      if (postsTableBodyMobile) {
+        postsTableBodyMobile.style.display = 'none';
       }
       
       // 隐藏其他标签页内容

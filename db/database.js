@@ -450,6 +450,26 @@ async function initDatabase() {
     // 迁移自定义API表
     const { migrateCustomApis } = require('./migrate-custom-apis');
     await migrateCustomApis();
+
+    // 迁移 blog_posts 表
+    const { migrateBlogPosts } = require('./migrate-blog-posts');
+    await migrateBlogPosts();
+    
+    // 迁移 user_tokens 表
+    const { migrateUserTokens } = require('./migrate-user-tokens');
+    await migrateUserTokens();
+    
+    // 迁移category字段：将category更新为api_name
+    const { migrateCategoryToApiName } = require('./migrate-category-to-apiname');
+    await migrateCategoryToApiName();
+    
+    // 迁移分类名称：将分类名称更新为只保留中文
+    const { migrateCategoryNamesToChineseOnly } = require('./migrate-category-names-to-chinese-only');
+    await migrateCategoryNamesToChineseOnly();
+    
+    // 清理blog_posts表：删除博客标签列表数据，更新api_name为只保留中文
+    const { migrateCleanBlogPosts } = require('./migrate-clean-blog-posts');
+    await migrateCleanBlogPosts();
     
     // 迁移自定义API日志表
     const { migrateCustomApiLogs } = require('./migrate-custom-api-logs');

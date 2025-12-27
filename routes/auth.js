@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { getAsync, runAsync } = require('../db/database');
 const { loginValidation, phoneValidation, codeValidation, validate } = require('../middleware/validation');
 const { logAction, logger } = require('../utils/logger');
@@ -8,6 +9,83 @@ const { createVerificationCode, verifyCode } = require('../utils/verification');
 const { getAdminSessionTimeoutMs, getUserSessionTimeoutMs } = require('../utils/session-config');
 
 const router = express.Router();
+
+/**
+ * 生成用户Token
+ * @param {number} userId - 用户ID
+ * @returns {Promise<string>} Token字符串
+ */
+async function generateUserToken(userId) {
+  // 生成随机Token（64字符）
+  const token = crypto.randomBytes(32).toString('hex');
+  
+  // 获取Token过期时间（默认2小时，与Session一致）
+  const userTimeoutMs = await getUserSessionTimeoutMs();
+  const expiresAtSeconds = Math.floor(userTimeoutMs / 1000);
+  
+  // 保存Token到数据库（使用SQLite的datetime函数计算过期时间）
+  await runAsync(
+    `INSERT INTO user_tokens (user_id, token, expires_at) 
+     VALUES (?, ?, datetime('now', '+' || ? || ' seconds'))`,
+    [userId, token, expiresAtSeconds]
+  );
+  
+  return token;
+}
+
+/**
+ * 验证用户Token
+ * @param {string} token - Token字符串
+ * @returns {Promise<Object|null>} 用户信息或null
+ */
+async function verifyUserToken(token) {
+  if (!token) return null;
+  
+  try {
+    // 查找有效的Token（使用UTC时间比较，因为expires_at存储的是UTC）
+    const tokenRecord = await getAsync(
+      `SELECT ut.user_id, ut.expires_at, u.id, u.phone, u.name 
+       FROM user_tokens ut 
+       JOIN users u ON ut.user_id = u.id 
+       WHERE ut.token = ? AND ut.expires_at > datetime('now')`,
+      [token]
+    );
+    
+    if (!tokenRecord) {
+      return null;
+    }
+    
+    return {
+      id: tokenRecord.user_id,
+      phone: tokenRecord.phone,
+      name: tokenRecord.name
+    };
+  } catch (error) {
+    logger.error('验证用户Token失败', { error: error.message });
+    return null;
+  }
+}
+
+/**
+ * 清除用户的所有过期Token
+ * @param {number} userId - 用户ID（可选）
+ */
+async function cleanupExpiredTokens(userId = null) {
+  try {
+    if (userId) {
+      await runAsync(
+        'DELETE FROM user_tokens WHERE user_id = ? AND expires_at <= datetime("now")',
+        [userId]
+      );
+    } else {
+      await runAsync(
+        'DELETE FROM user_tokens WHERE expires_at <= datetime("now")'
+      );
+    }
+  } catch (error) {
+    logger.error('清理过期Token失败', { error: error.message });
+  }
+}
 
 /**
  * 获取管理员锁定配置（从数据库设置或使用默认值）
@@ -920,15 +998,23 @@ router.post('/admin/login', loginValidation, async (req, res) => {
 
     logger.info('管理员登录成功', { username, ip: ipAddress });
 
-    res.json({
-      success: true,
-      message: '登录成功',
-      admin: {
-        id: admin.id,
-        username: admin.username,
-        name: admin.name,
-        role: admin.role
+    // 确保Session保存并设置Cookie
+    req.session.save((err) => {
+      if (err) {
+        logger.error('Session保存失败', { error: err.message, adminId: admin.id });
+        return res.status(500).json({ success: false, message: '登录失败' });
       }
+      
+      res.json({
+        success: true,
+        message: '登录成功',
+        admin: {
+          id: admin.id,
+          username: admin.username,
+          name: admin.name,
+          role: admin.role
+        }
+      });
     });
   } catch (error) {
     logger.error('管理员登录错误', { 
@@ -1046,16 +1132,8 @@ router.post('/user/login', [
       });
     }
 
-    // 检查短信验证码是否启用
-    const smsEnabled = await getAsync("SELECT value FROM settings WHERE key = 'sms_enabled'");
-    if (smsEnabled && smsEnabled.value === 'true') {
-      // 如果启用了短信验证码，要求使用验证码登录
-      return res.status(400).json({
-        success: false,
-        message: 'SMS verification is required. Please use login-with-code endpoint.',
-        requiresCode: true
-      });
-    }
+    // 注意：即使启用了短信验证码，用户也可以选择使用PIN码单独登录
+    // 验证码和PIN码是二选一的关系，不强制要求验证码
 
     // 查找或创建用户
     let user = await getAsync('SELECT * FROM users WHERE phone = ?', [phone]);
@@ -1226,14 +1304,29 @@ router.post('/user/login', [
 
     logger.info('用户登录成功（PIN）', { phone, userId: user.id });
 
-    res.json({
-      success: true,
-      message: '登录成功',
-      user: {
-        id: user.id,
-        phone: user.phone,
-        name: user.name
+    // 生成用户Token（用于小程序）
+    const userToken = await generateUserToken(user.id);
+    
+    // 清理该用户的过期Token
+    await cleanupExpiredTokens(user.id);
+
+    // 确保Session保存并设置Cookie（用于浏览器）
+    req.session.save((err) => {
+      if (err) {
+        logger.error('Session保存失败', { error: err.message, userId: user.id });
+        return res.status(500).json({ success: false, message: '登录失败' });
       }
+      
+      res.json({
+        success: true,
+        message: '登录成功',
+        user: {
+          id: user.id,
+          phone: user.phone,
+          name: user.name
+        },
+        token: userToken // 返回Token供小程序使用
+      });
     });
   } catch (error) {
     logger.error('用户登录错误', { 
@@ -1255,37 +1348,70 @@ router.post('/user/login', [
 /**
  * POST /api/auth/user/logout
  * User logout
+ * 支持两种认证方式：
+ * 1. Session认证（浏览器）
+ * 2. Token认证（小程序）
  * @returns {Object} Success message
  */
-router.post('/user/logout', (req, res) => {
-  const userId = req.session.userId;
-  const adminId = req.session.adminId; // 保存管理员信息
-  const adminUsername = req.session.adminUsername;
-  const adminRole = req.session.adminRole;
-  const adminName = req.session.adminName;
+router.post('/user/logout', async (req, res) => {
+  let userId = null;
+  
+  // 优先检查Session认证（浏览器）
+  if (req.session && req.session.userId) {
+    userId = req.session.userId;
+  } else {
+    // 没有Session，尝试Token认证（小程序）
+    const token = req.headers['x-user-token'] || 
+                  req.headers['X-User-Token'] || 
+                  req.headers['authorization']?.replace(/^Bearer\s+/i, '') ||
+                  req.query.token;
+    
+    if (token) {
+      const tokenUser = await verifyUserToken(token);
+      if (tokenUser) {
+        userId = tokenUser.id;
+        // 清除该Token
+        await runAsync('DELETE FROM user_tokens WHERE token = ?', [token]);
+      }
+    }
+  }
+  
+  const adminId = req.session?.adminId; // 保存管理员信息
+  const adminUsername = req.session?.adminUsername;
+  const adminRole = req.session?.adminRole;
+  const adminName = req.session?.adminName;
   
   // 只清除用户相关的 session 字段，保留管理员 session（如果存在）
-  delete req.session.userId;
-  delete req.session.userPhone;
-  delete req.session.userName;
-  // 清除堂食模式相关标记
-  delete req.session.isDineIn;
-  delete req.session.tableNumber;
+  if (req.session) {
+    delete req.session.userId;
+    delete req.session.userPhone;
+    delete req.session.userName;
+    // 清除堂食模式相关标记
+    delete req.session.isDineIn;
+    delete req.session.tableNumber;
+    
+    // 确保管理员信息被保留
+    if (adminId) {
+      req.session.adminId = adminId;
+    }
+    if (adminUsername) {
+      req.session.adminUsername = adminUsername;
+    }
+    if (adminRole) {
+      req.session.adminRole = adminRole;
+    }
+    if (adminName) {
+      req.session.adminName = adminName;
+    }
+  }
   
-  // 确保管理员信息被保留
-  if (adminId) {
-    req.session.adminId = adminId;
-  }
-  if (adminUsername) {
-    req.session.adminUsername = adminUsername;
-  }
-  if (adminRole) {
-    req.session.adminRole = adminRole;
-  }
-  if (adminName) {
-    req.session.adminName = adminName;
+  // 如果使用Token认证，Token已经清除，直接返回
+  if (userId && !req.session?.userId) {
+    logger.info('用户登出成功（Token认证）', { userId });
+    return res.json({ success: true, message: '登出成功' });
   }
   
+  // Session认证，保存Session
   req.session.save((err) => {
     if (err) {
       logger.error('用户登出失败', { error: err.message, userId });
@@ -1567,14 +1693,29 @@ router.post('/user/login-with-code', [
 
     logger.info('用户登录成功（验证码+PIN）', { phone, userId: user.id });
 
-    res.json({
-      success: true,
-      message: '登录成功',
-      user: {
-        id: user.id,
-        phone: user.phone,
-        name: user.name
+    // 生成用户Token（用于小程序）
+    const userToken = await generateUserToken(user.id);
+    
+    // 清理该用户的过期Token
+    await cleanupExpiredTokens(user.id);
+
+    // 确保Session保存并设置Cookie（用于浏览器）
+    req.session.save((err) => {
+      if (err) {
+        logger.error('Session保存失败', { error: err.message, userId: user.id });
+        return res.status(500).json({ success: false, message: '登录失败' });
       }
+      
+      res.json({
+        success: true,
+        message: '登录成功',
+        user: {
+          id: user.id,
+          phone: user.phone,
+          name: user.name
+        },
+        token: userToken // 返回Token供小程序使用
+      });
     });
   } catch (error) {
     logger.error('验证码登录错误', { error: error.message, stack: error.stack });
@@ -1620,25 +1761,65 @@ router.post('/user/check-pin-status', [
 /**
  * GET /api/auth/user/me
  * Get current user information
+ * 支持两种认证方式：
+ * 1. Session认证（浏览器）- 优先使用
+ * 2. Token认证（小程序）- 备用方案
  * @returns {Object} User object with id, phone, and name
  */
 router.get('/user/me', async (req, res) => {
-  if (!req.session.userId) {
+  let user = null;
+  let userId = null;
+  
+  // 优先检查Session认证（浏览器）
+  if (req.session && req.session.userId) {
+    userId = req.session.userId;
+  } else {
+    // 没有Session，尝试Token认证（小程序）
+    const token = req.headers['x-user-token'] || 
+                  req.headers['X-User-Token'] || 
+                  req.headers['authorization']?.replace(/^Bearer\s+/i, '') ||
+                  req.query.token;
+    
+    if (token) {
+      const tokenUser = await verifyUserToken(token);
+      if (tokenUser) {
+        userId = tokenUser.id;
+        user = tokenUser; // 直接使用Token验证返回的用户信息
+      }
+    }
+  }
+  
+  // 如果两种方式都失败
+  if (!userId) {
     return res.status(401).json({ success: false, message: '未登录' });
   }
 
   try {
-    const user = await getAsync(
-      'SELECT id, phone, name, created_at FROM users WHERE id = ?',
-      [req.session.userId]
-    );
-
+    // 如果还没有用户信息（Session认证），从数据库查询
     if (!user) {
-      // 只清除用户相关的 session 字段，保留管理员 session（如果存在）
-      delete req.session.userId;
-      delete req.session.userPhone;
-      delete req.session.userName;
-      return res.status(401).json({ success: false, message: '用户不存在' });
+      user = await getAsync(
+        'SELECT id, phone, name, created_at FROM users WHERE id = ?',
+        [userId]
+      );
+
+      if (!user) {
+        // 只清除用户相关的 session 字段，保留管理员 session（如果存在）
+        if (req.session) {
+          delete req.session.userId;
+          delete req.session.userPhone;
+          delete req.session.userName;
+        }
+        return res.status(401).json({ success: false, message: '用户不存在' });
+      }
+    } else {
+      // Token认证已经返回了用户信息，但需要添加 created_at
+      const fullUser = await getAsync(
+        'SELECT id, phone, name, created_at FROM users WHERE id = ?',
+        [userId]
+      );
+      if (fullUser) {
+        user.created_at = fullUser.created_at;
+      }
     }
 
     res.json({ success: true, user });

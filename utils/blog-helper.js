@@ -231,8 +231,7 @@ function convertApiItemToPost(item, apiName, fieldMapping = null) {
     description: excerptValue, // description和excerpt保持一致
     htmlContent: item[mapping.htmlContent] || item.htmlContent || item.html || '',
     image: item[mapping.image] || item.image || null,
-    category: item.category || apiName, // 分类/标签字段（优先使用item中的category，否则使用apiName）
-    tags: item.tags || item.tag ? (Array.isArray(item.tags || item.tag) ? (item.tags || item.tag) : [item.tags || item.tag]) : [],
+    category: apiName, // 分类直接使用apiName
     published: mapping.published ? (item[mapping.published] !== undefined ? item[mapping.published] : true) : true,
     views: item[mapping.views] || item.views || 0,
     createdAt: item[mapping.createdAt] || item.createdAt || item.created_at || getCurrentLocalTimeISOString(),
@@ -261,7 +260,7 @@ function convertApiItemToPost(item, apiName, fieldMapping = null) {
  * @param {Object} post - 文章对象
  * @returns {Object} 清理后的文章对象
  */
-function cleanPostForPublic(post) {
+function cleanPostForPublic(post, includeHtmlContent = false, isList = false) {
   if (!post) return post;
   
   // 创建副本，保留必要的内部字段供前端使用
@@ -269,231 +268,196 @@ function cleanPostForPublic(post) {
   const cleaned = { ...post };
   // 保留_sourceApiName和_originalData，因为前端可能需要用于更新操作
   
+  // 处理 HTML 内容
+  if (!includeHtmlContent) {
+    // 检查 htmlContent 是否存在且不为空
+    // 将 "无"、"null"、"undefined" 等无效值也视为空
+    const htmlContentStr = cleaned.htmlContent !== undefined && cleaned.htmlContent !== null 
+                          ? String(cleaned.htmlContent).trim() 
+                          : '';
+    const isEmptyValues = ['', '无', 'null', 'undefined', 'none', 'n/a', 'na'];
+    const hasHtmlContent = htmlContentStr !== '' && !isEmptyValues.includes(htmlContentStr.toLowerCase());
+    
+    if (isList) {
+      // 列表场景：如果htmlContent存在且不为空，只保留前10个字节用于快速预览
+      // 如果htmlContent为空或不存在，则不返回该字段（小程序端无需过滤）
+      if (hasHtmlContent) {
+        if (htmlContentStr.length > 10) {
+          cleaned.htmlContent = htmlContentStr.substring(0, 10);
+        } else {
+          cleaned.htmlContent = htmlContentStr;
+        }
+        // 如果截取后为空或无效值，也删除该字段
+        const trimmed = cleaned.htmlContent.trim();
+        if (trimmed === '' || isEmptyValues.includes(trimmed.toLowerCase())) {
+          delete cleaned.htmlContent;
+        }
+      } else {
+        // htmlContent为空或不存在，删除该字段
+        delete cleaned.htmlContent;
+      }
+    } else {
+      // 非列表场景：完全移除 HTML 内容
+      delete cleaned.htmlContent;
+    }
+  }
+  
   return cleaned;
 }
 
 /**
  * 获取文章列表
- * 从所有custom_apis表的response_content.data中读取并合并
+ * 从 blog_posts 表直接查询
  * @param {Object} options - 查询选项
  * @param {boolean} options.publishedOnly - 仅获取已发布的文章
  * @param {string} options.category - 分类筛选（API名称）
- * @param {string} options.tag - 标签筛选
  * @param {string} options.search - 搜索关键词
+ * @param {boolean} options.includeEmptyContent - 是否包含空内容的文章（默认：有分类筛选时包含，主页场景不包含）
  * @returns {Promise<Array>} 文章列表
  */
 async function getBlogPosts(options = {}) {
   try {
     // 检查缓存（仅在没有任何筛选条件时使用缓存）
-    const hasFilters = options.publishedOnly === false || options.category || options.tag || options.search;
+    const hasFilters = options.publishedOnly === false || options.category || options.search;
     if (!hasFilters && isCacheValid()) {
       logger.debug('使用缓存的文章列表');
       return postsCache.data;
     }
     
-    // 从custom_apis表读取所有GET方法的API
-    // 排除博客系统专用的API路径（如/blog/posts, /blog/categories等）
-    const apis = await allAsync(`
-      SELECT id, name, path, response_content, status
-      FROM custom_apis
-      WHERE method = 'GET' 
-        AND status = 'active'
-        AND path NOT LIKE '/blog/%'
-      ORDER BY name ASC
-    `);
-    
-    let allPosts = [];
-    
-    // 批量获取所有API的字段映射配置（性能优化）
-    const apiNames = apis.map(api => api.name);
-    const allFieldMappings = await getAllApiFieldMappings(apiNames);
-    
-    // 遍历每个API，读取其response_content.data
-    const skippedApis = [];
-    const processedApis = [];
-    
-    for (const api of apis) {
-      try {
-        const responseContent = JSON.parse(api.response_content);
-        
-        // 支持多种格式：数组、{data: [...]}、或天气路况的对象格式
-        let items = [];
-        
-        // 优先检查是否是天气路况的对象格式（包含globalAlert、attractions、traffic）
-        if (responseContent.globalAlert && responseContent.attractions && responseContent.traffic) {
-          // 天气路况的对象格式：将整个对象作为一个"文章"处理，只创建一个文章
-          items = [responseContent];
-        } else if (Array.isArray(responseContent)) {
-          // 数组格式
-          items = responseContent;
-        } else if (responseContent.data && Array.isArray(responseContent.data)) {
-          // 对象格式，包含data数组
-          items = responseContent.data;
-        } else {
-          skippedApis.push({ name: api.name, reason: '无效的数据格式（不是数组、不是{data:[]}、也不是天气对象）', contentType: typeof responseContent });
-          continue; // 跳过无效格式
-        }
-        
-        if (items.length === 0) {
-          skippedApis.push({ name: api.name, reason: '数据数组为空' });
-          continue;
-        }
-        
-        // 从批量查询的Map中获取字段映射配置（性能优化：避免N次数据库查询）
-        const fieldMapping = allFieldMappings.get(api.name) || null;
-        
-        // 将每个数据项转换为文章格式
-        const posts = items.map(item => convertApiItemToPost(item, api.name, fieldMapping));
-        allPosts = allPosts.concat(posts);
-        processedApis.push({ name: api.name, postCount: posts.length });
-      } catch (e) {
-        skippedApis.push({ name: api.name, reason: '解析失败', error: e.message });
-        logger.warn('解析API响应内容失败', { apiName: api.name, error: e.message });
-        continue;
-      }
-    }
-    
-    // 记录处理结果
-    if (skippedApis.length > 0 || processedApis.length > 0) {
-      logger.info('API处理统计', {
-        总API数: apis.length,
-        成功处理的API数: processedApis.length,
-        跳过的API数: skippedApis.length,
-        跳过的API详情: skippedApis,
-        处理的API详情: processedApis.map(a => ({ name: a.name, posts: a.postCount }))
-      });
-    }
+    // 构建SQL查询
+    let whereConditions = [];
+    let queryParams = [];
     
     // 筛选已发布的文章
-    if (options.publishedOnly !== false) {
-      allPosts = allPosts.filter(post => post.published === true);
+    // 只有当 publishedOnly 明确为 true 时才筛选已发布的文章
+    // 如果为 false 或 undefined，则返回所有文章（包括未发布的）
+    if (options.publishedOnly === true) {
+      whereConditions.push('published = 1');
     }
     
-    // 分类筛选（分类就是API名称）
+    // 分类筛选（api_name字段）
     if (options.category) {
-      const categoryLower = options.category.toLowerCase();
-      const beforeFilterCount = allPosts.length;
-      
-      // 收集所有文章的分类信息用于调试（在筛选前）
-      const allCategories = new Set();
-      const allSourceApiNames = new Set();
-      const samplePostsBeforeFilter = [];
-      allPosts.forEach((post, index) => {
-        if (post.category) allCategories.add(post.category);
-        if (post._sourceApiName) allSourceApiNames.add(post._sourceApiName);
-        if (index < 5) {
-          samplePostsBeforeFilter.push({
-            id: post.id,
-            name: post.name,
-            category: post.category,
-            _sourceApiName: post._sourceApiName
-          });
-        }
-      });
-      
-      allPosts = allPosts.filter(post => {
-        // 优先使用_sourceApiName匹配（因为分类是基于API名称的）
-        // _sourceApiName应该总是等于api.name，这是最可靠的匹配方式
-        const sourceApiName = post._sourceApiName || '';
-        if (sourceApiName) {
-          const exactMatch = sourceApiName === options.category;
-          const caseInsensitiveMatch = sourceApiName.toLowerCase() === categoryLower;
-          if (exactMatch || caseInsensitiveMatch) {
-            return true;
-          }
-        }
-        
-        // 如果_sourceApiName不匹配，检查category字段（可能来自item.category）
-        // 但这种情况应该很少见，因为category通常是item.category || apiName
-        const category = post.category || '';
-        if (category) {
-          const exactMatch = category === options.category;
-          const caseInsensitiveMatch = category.toLowerCase() === categoryLower;
-          if (exactMatch || caseInsensitiveMatch) {
-            return true;
-          }
-        }
-        
-        return false;
-      });
-      
-      // 调试日志：如果筛选后没有结果，记录详细信息
-      if (allPosts.length === 0 && beforeFilterCount > 0) {
-        logger.warn('分类筛选结果为空', {
-          requestedCategory: options.category,
-          requestedCategoryLower: categoryLower,
-          beforeFilterCount,
-          allCategoriesInPosts: Array.from(allCategories),
-          allSourceApiNamesInPosts: Array.from(allSourceApiNames),
-          samplePostsBeforeFilter
-        });
-      }
-    }
-    
-    // 标签筛选（使用category字段作为标签）
-    if (options.tag) {
-      allPosts = allPosts.filter(post => {
-        // 使用category字段作为标签
-        const category = post.category || post._sourceApiName || '';
-        return category === options.tag || category.toLowerCase() === options.tag.toLowerCase();
-      });
+      whereConditions.push('(api_name = ? OR category = ?)');
+      queryParams.push(options.category, options.category);
     }
     
     // 搜索
     if (options.search) {
-      const searchLower = options.search.toLowerCase();
-      allPosts = allPosts.filter(post => {
-        const name = (post.name || '').toLowerCase();
-        const title = (post.title || '').toLowerCase();
-        const excerpt = (post.excerpt || '').toLowerCase();
-        const description = (post.description || '').toLowerCase();
-        const htmlContent = (post.htmlContent || '').toLowerCase();
-        return name.includes(searchLower) || 
-               title.includes(searchLower) || 
-               excerpt.includes(searchLower) ||
-               description.includes(searchLower) ||
-               htmlContent.includes(searchLower);
+      whereConditions.push(`(
+        name LIKE ? OR 
+        title LIKE ? OR 
+        excerpt LIKE ? OR 
+        description LIKE ? OR 
+        html_content LIKE ?
+      )`);
+      const searchPattern = `%${options.search}%`;
+      queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
+    }
+    
+    const whereClause = whereConditions.length > 0 
+      ? 'WHERE ' + whereConditions.join(' AND ')
+      : '';
+    
+    // 从 blog_posts 表查询
+    const rows = await allAsync(`
+      SELECT 
+        id, api_name, name, title, slug, excerpt, description,
+        html_content, image, category, published, views,
+        created_at, updated_at, custom_fields
+      FROM blog_posts
+      ${whereClause}
+      ORDER BY api_name ASC, id ASC
+    `, queryParams);
+    
+    // 批量获取所有API的字段映射配置（性能优化）
+    const apiNames = [...new Set(rows.map(row => row.api_name))];
+    const allFieldMappings = await getAllApiFieldMappings(apiNames);
+    
+    // 转换为文章格式
+    const allPosts = rows.map(row => {
+      // 解析 custom_fields JSON
+      let customFields = {};
+      try {
+        if (row.custom_fields) {
+          customFields = JSON.parse(row.custom_fields);
+        }
+      } catch (e) {
+        logger.warn('解析custom_fields失败', { id: row.id, error: e.message });
+      }
+      
+      // 获取字段映射配置
+      const fieldMapping = allFieldMappings.get(row.api_name) || null;
+      
+      // 构建文章对象
+      const post = {
+        id: row.id,
+        name: row.name,
+        title: row.title || row.name,
+        slug: row.slug,
+        excerpt: row.excerpt,
+        description: row.description || row.excerpt,
+        htmlContent: row.html_content,
+        image: row.image,
+        category: row.category || row.api_name,
+        _sourceApiName: row.api_name, // 保留源API名称
+        published: row.published === 1,
+        views: row.views || 0,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      };
+      
+      // 添加特殊字段（从custom_fields中提取）
+      if (customFields.price !== undefined) post.price = customFields.price;
+      if (customFields.rooms !== undefined) post.rooms = customFields.rooms;
+      if (customFields.area !== undefined) post.area = customFields.area;
+      if (customFields.phone !== undefined) post.phone = customFields.phone;
+      if (customFields.address !== undefined) post.address = customFields.address;
+      if (customFields.latitude !== undefined) post.latitude = customFields.latitude;
+      if (customFields.longitude !== undefined) post.longitude = customFields.longitude;
+      
+      // 添加其他自定义字段
+      for (const key in customFields) {
+        if (!['price', 'rooms', 'area', 'phone', 'address', 'latitude', 'longitude'].includes(key)) {
+          post[key] = customFields[key];
+        }
+      }
+      
+      // 应用字段映射（如果需要）
+      if (fieldMapping) {
+        return convertApiItemToPost(post, row.api_name, fieldMapping);
+      }
+      
+      return post;
+    });
+    
+    // 主页场景（没有分类筛选）：过滤掉空内容的文章
+    // 分类页场景（有分类筛选）：保留所有文章，包括空内容的
+    // 管理后台：始终包含所有文章，包括空内容的
+    let filteredPosts = allPosts;
+    
+    // 如果明确指定 includeEmptyContent 为 true，或者有分类筛选，则不过滤空内容
+    const shouldIncludeEmpty = options.includeEmptyContent === true || options.category;
+    
+    if (!shouldIncludeEmpty) {
+      // 主页场景：过滤掉空内容的文章
+      // 空内容的判断：html_content、excerpt、description 都为空或null
+      filteredPosts = allPosts.filter(post => {
+        const hasHtmlContent = post.htmlContent && post.htmlContent.trim() !== '';
+        const hasExcerpt = post.excerpt && post.excerpt.trim() !== '';
+        const hasDescription = post.description && post.description.trim() !== '';
+        // 至少有一个内容字段不为空，就显示
+        return hasHtmlContent || hasExcerpt || hasDescription;
       });
     }
-    
-    // 去重：基于id去重，保留第一个出现的
-    const seenIds = new Set();
-    const uniquePosts = [];
-    for (const post of allPosts) {
-      const postId = String(post.id || '');
-      if (postId && !seenIds.has(postId)) {
-        seenIds.add(postId);
-        uniquePosts.push(post);
-      } else if (!postId) {
-        // 如果没有id，也保留（但这种情况不应该发生）
-        uniquePosts.push(post);
-      }
-    }
-    
-    // 按分类分组，然后按id排序（确保顺序一致）
-    uniquePosts.sort((a, b) => {
-      // 首先按分类排序（分类名称）
-      const categoryA = (a.category || a._sourceApiName || '').toLowerCase();
-      const categoryB = (b.category || b._sourceApiName || '').toLowerCase();
-      
-      if (categoryA !== categoryB) {
-        return categoryA.localeCompare(categoryB);
-      }
-      
-      // 同一分类内，按id排序（确保顺序一致）
-      // id现在是UUID格式，可以直接字符串比较
-      const idA = String(a.id || '');
-      const idB = String(b.id || '');
-      return idA.localeCompare(idB);
-    });
+    // 如果有分类筛选，或者明确指定 includeEmptyContent，不过滤空内容，显示所有文章
     
     // 缓存结果（仅在没有任何筛选条件时缓存）
     if (!hasFilters) {
-      postsCache.data = uniquePosts;
+      postsCache.data = filteredPosts;
       postsCache.timestamp = Date.now();
     }
     
-    return uniquePosts;
+    return filteredPosts;
   } catch (error) {
     logger.error('获取文章列表失败', { error: error.message });
     return [];
@@ -609,27 +573,33 @@ async function findPostSourceApi(postId, apiName) {
 
 /**
  * 获取分类列表
- * 从custom_apis表读取，Name作为分类名称，Path作为分类描述
+ * 从blog_posts表中的文章自动提取分类名称，而不是从custom_apis表读取
+ * @param {Object} options - 选项
+ * @param {boolean} options.includeUnpublished - 是否包含未发布文章的分类（默认false，只统计已发布的文章）
  * @returns {Promise<Array>} 分类列表
  */
-async function getBlogCategories() {
+async function getBlogCategories(options = {}) {
   try {
-    // 从custom_apis表直接读取所有记录作为分类
-    // 排除博客系统专用的API路径（与getBlogPosts保持一致）
-    const apis = await allAsync(`
-      SELECT id, name, path, description, status, created_at, updated_at
-      FROM custom_apis
-      WHERE method = 'GET' 
-        AND status = 'active'
-        AND path NOT LIKE '/blog/%'
-      ORDER BY name ASC
-    `);
+    const { includeUnpublished = false } = options;
+    // 根据选项获取文章：管理后台需要包含未发布的，博客前端只显示已发布的
+    const posts = await getBlogPosts({ publishedOnly: !includeUnpublished });
     
-    // 获取文章列表以计算每个分类的文章数
-    const posts = await getBlogPosts({ publishedOnly: false });
+    /**
+     * 提取中文名称（用于匹配）
+     * @param {string} name - 原始名称
+     * @returns {string} 只包含中文的名称
+     */
+    const extractChineseName = (name) => {
+      if (!name) return '';
+      const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+      const chineseMatches = name.match(chineseRegex);
+      return chineseMatches && chineseMatches.length > 0 
+        ? chineseMatches.join('').trim() 
+        : name;
+    };
     
-    // 统计每个分类的文章数（按_sourceApiName分组，因为文章是按apiName分组的）
-    const categoryPostCount = {};
+    // 统计每个分类的文章数（从文章数据中提取分类）
+    const categoryMap = new Map(); // 使用Map存储分类信息，key为分类名称
     const seenPostIds = new Set(); // 用于去重，避免重复统计
     
     posts.forEach(post => {
@@ -640,81 +610,56 @@ async function getBlogCategories() {
       }
       seenPostIds.add(postId);
       
-      // 使用_sourceApiName作为分类名称（因为文章是按apiName分组的）
+      // 使用_sourceApiName或category作为分类名称
       const apiName = post._sourceApiName || post.category || '';
       if (apiName) {
-        categoryPostCount[apiName] = (categoryPostCount[apiName] || 0) + 1;
+        // 提取中文名称（统一使用中文名称作为分类标识）
+        const chineseApiName = extractChineseName(apiName);
+        const categoryName = chineseApiName || apiName;
+        
+        // 如果该分类已存在，增加文章数；否则创建新分类
+        if (categoryMap.has(categoryName)) {
+          const category = categoryMap.get(categoryName);
+          category.postCount++;
+          // 更新最新文章的创建时间（用于排序）
+          if (post.createdAt && (!category.latestPostDate || post.createdAt > category.latestPostDate)) {
+            category.latestPostDate = post.createdAt;
+          }
+        } else {
+          // 创建新分类
+          categoryMap.set(categoryName, {
+            name: categoryName,
+            slug: categoryName.toLowerCase().replace(/\s+/g, '-').replace(/[^\u4e00-\u9fa5a-z0-9-]/g, ''),
+            description: categoryName,
+            postCount: 1,
+            latestPostDate: post.createdAt || null
+          });
+        }
       }
     });
     
-    // 转换为分类格式：name作为分类名称，path作为描述
-    const categories = apis.map(api => ({
-      id: api.id,
-      name: api.name,
-      slug: api.path.replace(/^\//, '').replace(/\//g, '-'), // 从path生成slug
-      description: api.path, // Path作为描述
-      postCount: categoryPostCount[api.name] || 0, // 使用api.name匹配_sourceApiName
-      createdAt: api.created_at,
-      updatedAt: api.updated_at
-    }));
+    // 转换为数组并按名称排序
+    const categories = Array.from(categoryMap.values()).sort((a, b) => {
+      // 按分类名称排序
+      return a.name.localeCompare(b.name, 'zh-CN');
+    });
     
-    // 检查哪些分类有文章，哪些没有
-    const categoriesWithPosts = categories.filter(cat => cat.postCount > 0);
-    const categoriesWithoutPosts = categories.filter(cat => cat.postCount === 0);
+    // 为每个分类添加id（使用索引+1作为临时ID，或者使用slug的hash）
+    categories.forEach((cat, index) => {
+      cat.id = index + 1;
+    });
     
-    logger.info('分类文章数统计', {
+    logger.info('分类文章数统计（从文章数据提取）', {
+      包含未发布: includeUnpublished,
       总分类数: categories.length,
-      有文章的分类数: categoriesWithPosts.length,
-      无文章的分类数: categoriesWithoutPosts.length,
       总文章数: posts.length,
       去重后文章数: seenPostIds.size,
-      分类统计: categoryPostCount,
-      有文章的分类: categoriesWithPosts.map(cat => ({ name: cat.name, count: cat.postCount })),
-      无文章的分类: categoriesWithoutPosts.map(cat => cat.name),
-      所有文章的分类字段: Array.from(new Set(posts.map(p => p._sourceApiName || p.category).filter(Boolean)))
+      分类列表: categories.map(cat => ({ name: cat.name, count: cat.postCount }))
     });
     
     return categories;
   } catch (error) {
     logger.error('获取分类列表失败', { error: error.message });
-    return [];
-  }
-}
-
-/**
- * 获取标签列表（从所有文章的category字段中提取）
- * @returns {Promise<Array>} 标签列表
- */
-async function getBlogTags() {
-  try {
-    // 从所有文章中提取category字段作为标签
-    const posts = await getBlogPosts({ publishedOnly: true });
-    
-    // 统计每个category的文章数量
-    const tagCountMap = new Map();
-    posts.forEach(post => {
-      const category = post.category || post._sourceApiName || '';
-      if (category) {
-        tagCountMap.set(category, (tagCountMap.get(category) || 0) + 1);
-      }
-    });
-    
-    // 转换为标签数组
-    const tags = Array.from(tagCountMap.entries()).map(([name, count]) => ({
-      id: name, // 使用category名称作为ID
-      name: name,
-      slug: name.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-'),
-      postCount: count
-    }));
-    
-    // 按文章数量降序排序
-    tags.sort((a, b) => b.postCount - a.postCount);
-    
-    logger.info('从文章category字段提取标签', { tagCount: tags.length });
-    
-    return tags;
-  } catch (error) {
-    logger.error('获取标签列表失败', { error: error.message });
     return [];
   }
 }
@@ -781,52 +726,16 @@ async function incrementPostViews(slug) {
       return false;
     }
     
-    const apiName = post._sourceApiName || post.category;
-    if (!apiName) {
-      return false;
-    }
-    
-    // 查找文章所在的API
-    const sourceApi = await findPostSourceApi(post.id, apiName);
-    if (!sourceApi) {
-      return false;
-    }
-    
-    // 增加阅读量
-    const item = sourceApi.items[sourceApi.itemIndex];
-    if (!item.views) {
-      item.views = 0;
-    }
-    item.views += 1;
-    item.updatedAt = getCurrentLocalTimeISOString();
-    
-    // 更新API的response_content，保持原有格式
-    let responseContent;
-    let isArrayFormat = false;
-    
-    try {
-      const parsed = JSON.parse(sourceApi.api.response_content);
-      if (Array.isArray(parsed)) {
-        // 原始是数组格式，保持数组格式
-        isArrayFormat = true;
-        responseContent = sourceApi.items;
-      } else {
-        // 原始是对象格式，保持对象格式
-        isArrayFormat = false;
-        responseContent = { ...parsed, data: sourceApi.items };
-      }
-    } catch (e) {
-      // 解析失败，默认使用数组格式
-      isArrayFormat = true;
-      responseContent = sourceApi.items;
-    }
-    
+    // 直接从 blog_posts 表更新阅读量
     await runAsync(
-      `UPDATE custom_apis 
-       SET response_content = ?, updated_at = datetime('now', 'localtime')
+      `UPDATE blog_posts 
+       SET views = views + 1, updated_at = datetime('now', 'localtime')
        WHERE id = ?`,
-      [JSON.stringify(responseContent), sourceApi.api.id]
+      [post.id]
     );
+    
+    // 清除缓存
+    clearPostsCache();
     
     return true;
   } catch (error) {
@@ -889,50 +798,69 @@ async function createBlogPost(postData) {
       throw new Error('必须指定API名称（分类）');
     }
     
-    // 查找目标API
-    const targetApi = await getAsync(`
-      SELECT id, name, path, response_content
+    // 提取中文名称用于匹配（API的name可能是"中文 英文"格式）
+    const extractChineseName = (name) => {
+      if (!name) return '';
+      const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+      const chineseMatches = name.match(chineseRegex);
+      return chineseMatches && chineseMatches.length > 0 
+        ? chineseMatches.join('').trim() 
+        : name;
+    };
+    
+    const apiNameChinese = extractChineseName(postData.apiName);
+    
+    // 验证API是否存在（支持中文名称和完整名称匹配）
+    let targetApi = await getAsync(`
+      SELECT id, name, path
       FROM custom_apis
       WHERE name = ? AND method = 'GET' AND status = 'active'
     `, [postData.apiName]);
+    
+    // 如果精确匹配失败，尝试中文名称匹配
+    if (!targetApi) {
+      const allApis = await allAsync(`
+        SELECT id, name, path
+        FROM custom_apis
+        WHERE method = 'GET' AND status = 'active'
+      `);
+      
+      targetApi = allApis.find(api => {
+        const apiNameChineseOnly = extractChineseName(api.name);
+        return apiNameChineseOnly === apiNameChinese || api.name === postData.apiName;
+      });
+    }
     
     if (!targetApi) {
       throw new Error(`API "${postData.apiName}" 不存在`);
     }
     
-    // 生成文章ID（全局唯一的UUID）- 先生成ID，用于生成稳定的slug
-    // UUID格式的正则表达式
+    // 生成文章ID（全局唯一的UUID）
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     
     let postId;
     if (postData.id) {
-      // 如果提供了id，验证是否是有效的UUID格式
       const idStr = String(postData.id);
       if (UUID_REGEX.test(idStr)) {
-        // 检查是否已存在（确保全局唯一）
-        const posts = await getBlogPosts({ publishedOnly: false });
-        const exists = posts.some(p => String(p.id) === idStr);
-        if (exists) {
-          // ID已存在，生成新的UUID
+        // 检查是否已存在
+        const existing = await getAsync('SELECT id FROM blog_posts WHERE id = ?', [idStr]);
+        if (existing) {
           logger.warn('提供的ID已存在，生成新的UUID', { providedId: idStr });
           postId = uuidv4();
         } else {
           postId = idStr;
         }
       } else {
-        // 不是UUID格式，生成新的UUID
         logger.warn('提供的ID不是UUID格式，生成新的UUID', { providedId: idStr });
         postId = uuidv4();
       }
     } else {
-      // 没有提供id，生成新的UUID
       postId = uuidv4();
     }
     
-    // 生成稳定的slug（基于ID，确保唯一性和稳定性）
+    // 生成稳定的slug
     let slug = postData.slug;
     if (!slug && postData.name) {
-      // 基础slug从名称生成
       let baseSlug = postData.name
         .toLowerCase()
         .replace(/[^\w\s-]/g, '')
@@ -940,31 +868,49 @@ async function createBlogPost(postData) {
         .replace(/-+/g, '-')
         .trim();
       
-      // 如果slug为空，使用id的前8位
       if (!baseSlug) {
         baseSlug = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
       }
       
-      // 添加ID的前8位确保唯一性
       const idSuffix = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
       slug = `${baseSlug}-${idSuffix}`;
     }
     
-    // 确保slug唯一（检查是否与其他文章冲突，排除当前文章）
-    const posts = await getBlogPosts({ publishedOnly: false });
-    let finalSlug = slug;
-    let counter = 1;
-    while (posts.some(p => p.slug === finalSlug && String(p.id) !== String(postId))) {
-      // 如果冲突，在基础slug后添加计数器
-      const baseSlug = slug.split('-').slice(0, -1).join('-') || slug;
-      finalSlug = `${baseSlug}-${counter}`;
-      counter++;
+    // 确保slug唯一
+    let finalSlug = slug || '';
+    if (finalSlug) {
+      let counter = 1;
+      let existingSlug = await getAsync('SELECT id FROM blog_posts WHERE slug = ? AND id != ?', [finalSlug, postId]);
+      while (existingSlug) {
+        const baseSlug = slug.split('-').slice(0, -1).join('-') || slug;
+        finalSlug = `${baseSlug}-${counter}`;
+        existingSlug = await getAsync('SELECT id FROM blog_posts WHERE slug = ? AND id != ?', [finalSlug, postId]);
+        counter++;
+      }
     }
     
-    // 构建文章数据（根据字段映射配置）
-    const fieldMapping = await getApiFieldMapping(postData.apiName);
+    // 准备基本字段
+    const nameValue = postData.name || postData.title || '未命名';
+    const titleValue = postData.title || nameValue;
+    const excerptValue = postData.excerpt || postData.description || '';
+    const descriptionValue = postData.description || excerptValue;
+    const htmlContent = postData.htmlContent || '';
+    const image = postData.image || null;
+    const category = postData.category || postData.apiName;
+    const published = postData.published !== undefined ? (postData.published ? 1 : 0) : 0;
+    const views = postData.views !== undefined ? parseInt(postData.views) || 0 : 0;
     
-    // 检查是否是特殊类别
+    // 构建 custom_fields JSON
+    const customFields = {};
+    if (postData.price !== undefined) customFields.price = postData.price;
+    if (postData.rooms !== undefined) customFields.rooms = postData.rooms;
+    if (postData.area !== undefined) customFields.area = postData.area;
+    if (postData.phone !== undefined) customFields.phone = postData.phone;
+    if (postData.address !== undefined) customFields.address = postData.address;
+    if (postData.latitude !== undefined) customFields.latitude = postData.latitude;
+    if (postData.longitude !== undefined) customFields.longitude = postData.longitude;
+    
+    // 处理特殊类别数据（天气、汇率、翻译等）
     const isSpecialCategory = (apiName) => {
       if (!apiName) return null;
       const lowerName = apiName.toLowerCase();
@@ -974,196 +920,84 @@ async function createBlogPost(postData) {
       return null;
     };
     
-    // 生成特殊类别名称的辅助函数
-    const generateSpecialCategoryName = (type, data) => {
-      if (type === 'translation') {
-        return `${data.chinese || ''} / ${data.arabic || ''}`;
-      } else if (type === 'weather') {
-        return `${data.city || ''} - ${data.temperature || ''}`;
-      } else if (type === 'exchange-rate') {
-        return `${data.fromCurrency || ''} → ${data.toCurrency || ''}: ${data.rate || ''}`;
-      }
-      return '未命名';
-    };
-    
     const specialType = isSpecialCategory(postData.apiName);
-    
-    // 构建原始数据项（用于存储到API的response_content中）
-    let newItem;
-    let isWeatherObjectFormat = false;
-    
     if (specialType && postData._specialData) {
-      if (specialType === 'weather') {
-        // 天气路况：整个对象格式，需要特殊处理
-        isWeatherObjectFormat = true;
-        
-        // 构建完整的天气路况对象（只包含globalAlert、attractions、traffic）
-        // 只提取需要的字段，不要使用展开运算符，避免包含其他字段
-        newItem = {
-          globalAlert: postData._specialData.globalAlert ? { ...postData._specialData.globalAlert } : undefined,
-          attractions: postData._specialData.attractions ? [...postData._specialData.attractions] : [],
-          traffic: postData._specialData.traffic ? [...postData._specialData.traffic] : []
-        };
-        
-        // 确保所有字段都存在
-        if (!newItem.globalAlert) {
-          throw new Error('天气路况必须包含globalAlert字段');
-        }
-        if (!Array.isArray(newItem.attractions)) {
-          newItem.attractions = [];
-        }
-        if (!Array.isArray(newItem.traffic)) {
-          newItem.traffic = [];
-        }
-        // 注意：天气路况对象格式不使用slug字段，因为它是整个对象而不是数组中的项
-      } else {
-        // 其他特殊类别：直接使用特殊数据
-        const specialName = postData.name || generateSpecialCategoryName(specialType, postData._specialData);
-        // 为特殊类别生成稳定的slug
-        let specialSlug = postData.slug;
-        if (!specialSlug) {
-          let baseSlug = specialName
-            .toLowerCase()
-            .replace(/[^\w\s-]/g, '')
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-')
-            .trim();
-          
-          if (!baseSlug) {
-            baseSlug = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
-          }
-          
-          const idSuffix = String(postId).substring(0, 8).replace(/[^a-z0-9]/g, '');
-          specialSlug = `${baseSlug}-${idSuffix}`;
-        }
-        
-        // 从特殊数据中排除detailApi字段（已废弃）
-        const { detailApi, ...specialDataWithoutDetailApi } = postData._specialData || {};
-        newItem = {
-          id: postId,
-          slug: specialSlug,
-          ...specialDataWithoutDetailApi,
-          // 为特殊类别生成name字段（用于显示）
-          name: specialName
-        };
-      }
-    } else {
-      // 普通类别：使用标准格式
-      // name和title保持一致
-      const nameValue = postData.name || postData.title || '未命名';
-      // excerpt和description保持一致
-      const excerptValue = postData.excerpt || postData.description || '';
-      // 从postData中排除detailApi字段（已废弃）
-      const { detailApi: _, ...postDataWithoutDetailApi } = postData;
-      newItem = {
-        id: postId, // id现在是全局唯一的UUID
-        name: nameValue,
-        title: nameValue, // name和title保持一致
-        slug: finalSlug, // 使用基于ID的稳定slug
-        excerpt: excerptValue,
-        description: excerptValue, // description和excerpt保持一致
-        htmlContent: postData.htmlContent || '',
-        image: postData.image || null,
-        category: postData.category || postData.apiName, // 分类/标签字段（用于博客展示，替代原来的tags字段）
-        // tags字段已废弃，不再使用
-        published: postData.published !== undefined ? postData.published : false,
-        views: 0,
-        createdAt: getCurrentLocalTimeISOString(),
-        updatedAt: getCurrentLocalTimeISOString()
-      };
-      
-      // 添加特殊字段（二手市场和租房酒店）
-      if (postData.price !== undefined) {
-        newItem.price = postData.price;
-      }
-      if (postData.rooms !== undefined) {
-        newItem.rooms = postData.rooms;
-      }
-      if (postData.area !== undefined) {
-        newItem.area = postData.area;
-      }
-      if (postData.views !== undefined && typeof postData.views === 'number') {
-        newItem.views = postData.views;
-      }
-      
-      // 保存位置和联系方式字段
-      if (postData.phone !== undefined) {
-        newItem.phone = postData.phone;
-      }
-      if (postData.address !== undefined) {
-        newItem.address = postData.address;
-      }
-      if (postData.latitude !== undefined) {
-        newItem.latitude = postData.latitude;
-      }
-      if (postData.longitude !== undefined) {
-        newItem.longitude = postData.longitude;
+      // 将特殊数据存储到 custom_fields
+      customFields._specialType = specialType;
+      customFields._specialData = postData._specialData;
+    }
+    
+    // 添加其他未映射的字段到 custom_fields
+    const excludedFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 
+      'htmlContent', 'image', 'category', 'apiName', 'published', 'views',
+      'price', 'rooms', 'area', 'phone', 'address', 'latitude', 'longitude',
+      '_specialData', 'createdAt', 'updatedAt'];
+    
+    for (const key in postData) {
+      if (!excludedFields.includes(key) && postData[key] !== undefined && postData[key] !== null) {
+        customFields[key] = postData[key];
       }
     }
     
-    // 解析现有API数据，保持原有格式（数组或对象）
-    let responseContent;
-    let isArrayFormat = false;
-    let items = [];
+    const createdAt = getCurrentLocalTimeISOString();
+    const updatedAt = createdAt;
     
-    // 如果是天气路况的对象格式，直接替换整个对象
-    if (isWeatherObjectFormat) {
-      finalContent = newItem;
-    } else {
-      try {
-        const parsed = JSON.parse(targetApi.response_content);
-        // 检查原始格式
-        if (Array.isArray(parsed)) {
-          // 原始是数组格式，保持数组格式
-          isArrayFormat = true;
-          items = parsed;
-        } else if (parsed.data && Array.isArray(parsed.data)) {
-          // 原始是对象格式，包含data数组
-          isArrayFormat = false;
-          items = parsed.data;
-          responseContent = { ...parsed }; // 保留其他字段
-        } else {
-          // 其他格式，默认使用对象格式
-          isArrayFormat = false;
-          items = [];
-          responseContent = parsed || {};
-        }
-      } catch (e) {
-        // 解析失败，默认使用数组格式
-        isArrayFormat = true;
-        items = [];
-      }
-      
-      // 添加新文章到数组
-      items.push(newItem);
-      
-      // 根据原始格式保存
-      if (isArrayFormat) {
-        // 保持数组格式
-        finalContent = items;
-      } else {
-        // 保持对象格式
-        if (!responseContent) {
-          responseContent = {};
-        }
-        responseContent.data = items;
-        finalContent = responseContent;
-      }
-    }
+    // 直接插入到 blog_posts 表
+    await runAsync(`
+      INSERT INTO blog_posts (
+        id, api_name, name, title, slug, excerpt, description,
+        html_content, image, category, published, views,
+        created_at, updated_at, custom_fields
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      postId,
+      postData.apiName,
+      nameValue,
+      titleValue,
+      finalSlug,
+      excerptValue,
+      descriptionValue,
+      htmlContent,
+      image,
+      category,
+      published,
+      views,
+      createdAt,
+      updatedAt,
+      JSON.stringify(customFields)
+    ]);
     
-    // 更新API的response_content，保持原有格式
-    await runAsync(
-      `UPDATE custom_apis 
-       SET response_content = ?, updated_at = datetime('now', 'localtime')
-       WHERE id = ?`,
-      [JSON.stringify(finalContent), targetApi.id]
-    );
-    
-    // 清除缓存（文章已变更）
+    // 清除缓存
     clearPostsCache();
     
-    // 返回文章对象（转换为标准格式）
-    return convertApiItemToPost(newItem, postData.apiName, fieldMapping);
+    // 获取字段映射配置（用于返回格式转换）
+    const fieldMapping = await getApiFieldMapping(postData.apiName);
+    
+    // 构建返回的文章对象
+    const newPost = {
+      id: postId,
+      name: nameValue,
+      title: titleValue,
+      slug: finalSlug,
+      excerpt: excerptValue,
+      description: descriptionValue,
+      htmlContent: htmlContent,
+      image: image,
+      category: category,
+      _sourceApiName: postData.apiName,
+      published: published === 1,
+      views: views,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      ...customFields
+    };
+    
+    // 应用字段映射（如果需要）
+    if (fieldMapping) {
+      return convertApiItemToPost(newPost, postData.apiName, fieldMapping);
+    }
+    
+    return newPost;
   } catch (error) {
     logger.error('创建文章失败', { error: error.message });
     throw error;
@@ -1178,583 +1012,259 @@ async function createBlogPost(postData) {
  */
 async function updateBlogPost(postId, postData) {
   try {
-    // 先找到文章（id现在是全局唯一的UUID）
-    const posts = await getBlogPosts({ publishedOnly: false });
-    const post = posts.find(p => {
-      const pId = String(p.id || '');
-      const searchId = String(postId || '');
-      return pId === searchId;
-    });
+    // 从 blog_posts 表查找文章
+    const post = await getAsync(`
+      SELECT id, api_name, name, title, slug, excerpt, description,
+        html_content, image, category, published, views,
+        created_at, updated_at, custom_fields
+      FROM blog_posts
+      WHERE id = ?
+    `, [postId]);
     
     if (!post) {
-      logger.warn('更新文章失败：未找到文章', { postId, availableIds: posts.map(p => p.id) });
+      logger.warn('更新文章失败：未找到文章', { postId });
       return null;
     }
     
-    const apiName = post._sourceApiName || post.category;
-    if (!apiName) {
-      throw new Error('无法确定文章的源API');
-    }
-    
-    // 直接使用postId查找（id现在是全局唯一的UUID）
-    const sourceApi = await findPostSourceApi(postId, apiName);
-    if (!sourceApi) {
-      throw new Error('无法找到文章的源API');
-    }
-    
-    // 更新文章数据
-    // 保留原始ID（现在是全局唯一的UUID）
-    const originalItem = sourceApi.items[sourceApi.itemIndex];
-    const originalId = originalItem.id;
-    
-    // 如果是天气路况对象格式，originalItem就是整个对象
-    // 优先使用sourceApi的标记，因为这是最准确的
-    let isWeatherObjectFormat = sourceApi.isWeatherObject || false;
-    
-    // 检查是否是特殊类别
-    const isSpecialCategory = (apiName) => {
-      if (!apiName) return null;
-      const lowerName = apiName.toLowerCase();
-      if (lowerName === 'weather' || lowerName.includes('weather')) return 'weather';
-      if (lowerName === 'exchange-rate' || lowerName === 'exchangerate' || lowerName.includes('exchange')) return 'exchange-rate';
-      if (lowerName === 'translation' || lowerName.includes('translation')) return 'translation';
-      return null;
-    };
-    
-    const specialType = isSpecialCategory(apiName);
-    
-    // 如果sourceApi标记为天气路况对象格式，强制设置为true
-    if (sourceApi.isWeatherObject) {
-      isWeatherObjectFormat = true;
-    }
-    
-    let updatedItem;
-    
-    // 如果已经是天气路况对象格式，但缺少_specialData，使用原始对象
-    if (isWeatherObjectFormat && (!specialType || !postData._specialData)) {
-      logger.warn('天气路况对象格式但缺少_specialData，使用原始对象', {
-        postId,
-        apiName,
-        hasSpecialType: !!specialType,
-        hasSpecialData: !!postData._specialData
-      });
-      // 使用原始对象，只更新允许的字段
-      updatedItem = { ...originalItem };
-      if (postData.name) updatedItem.name = postData.name;
-      // 注意：对于天气路况对象格式，不应该直接修改对象结构
-    } else if (specialType && postData._specialData) {
-      if (specialType === 'weather') {
-        // 天气路况：整个对象格式，需要特殊处理
-        isWeatherObjectFormat = true; // 确保标记为天气路况对象格式
-        
-        logger.info('更新天气路况文章', { 
-          postId, 
-          apiName,
-          hasSpecialData: !!postData._specialData,
-          specialDataKeys: postData._specialData ? Object.keys(postData._specialData) : []
-        });
-        
-        // 构建完整的天气路况对象（只包含globalAlert、attractions、traffic）
-        // 只提取需要的字段，不要使用展开运算符，避免包含其他字段
-        updatedItem = {
-          globalAlert: postData._specialData.globalAlert ? { ...postData._specialData.globalAlert } : undefined,
-          attractions: postData._specialData.attractions ? [...postData._specialData.attractions] : [],
-          traffic: postData._specialData.traffic ? [...postData._specialData.traffic] : []
-        };
-        
-        // 确保所有字段都存在
-        if (!updatedItem.globalAlert) {
-          throw new Error('天气路况必须包含globalAlert字段');
-        }
-        if (!Array.isArray(updatedItem.attractions)) {
-          updatedItem.attractions = [];
-        }
-        if (!Array.isArray(updatedItem.traffic)) {
-          updatedItem.traffic = [];
-        }
-        
-        logger.info('构建天气路况对象', { 
-          globalAlert: updatedItem.globalAlert,
-          globalAlertMessage: updatedItem.globalAlert?.message,
-          attractionsCount: updatedItem.attractions ? updatedItem.attractions.length : 0,
-          trafficCount: updatedItem.traffic ? updatedItem.traffic.length : 0,
-          finalKeys: Object.keys(updatedItem)
-        });
-      } else {
-        // 其他特殊类别（exchange-rate、translation）：直接使用特殊数据，保留原始ID
-        // 从特殊数据中排除detailApi字段（已废弃）
-        const { detailApi, ...specialDataWithoutDetailApi } = postData._specialData || {};
-        updatedItem = {
-          id: originalId,
-          ...specialDataWithoutDetailApi,
-          // 如果有name字段，更新它
-          name: postData.name || originalItem.name
-        };
-        // 注意：exchange-rate 和 translation 不使用 htmlContent
+    // 解析现有的 custom_fields
+    let customFields = {};
+    try {
+      if (post.custom_fields) {
+        customFields = JSON.parse(post.custom_fields);
       }
-    } else {
-      // 普通类别或需要htmlContent的特殊类别（second-hand、rentals）：使用标准格式
-      // name和title保持一致
-      const nameValue = postData.name !== undefined ? postData.name : (postData.title !== undefined ? postData.title : originalItem.name);
-      // excerpt和description保持一致
-      let excerptValue;
-      if (postData.excerpt !== undefined) {
-        excerptValue = postData.excerpt;
-      } else if (postData.description !== undefined) {
-        excerptValue = postData.description;
-      } else {
-        excerptValue = originalItem.excerpt || originalItem.description || '';
-      }
-      // 从originalItem和postData中排除detailApi字段（已废弃）
-      const { detailApi: originalDetailApi, ...originalItemWithoutDetailApi } = originalItem;
-      const { detailApi: postDetailApi, ...postDataWithoutDetailApi } = postData;
-      updatedItem = {
-        ...originalItemWithoutDetailApi,
-        ...postDataWithoutDetailApi,
-        id: originalId, // 使用原始ID，确保ID不变（id现在是全局唯一的UUID）
-        name: nameValue,
-        title: nameValue, // name和title保持一致
-        excerpt: excerptValue,
-        description: excerptValue, // description和excerpt保持一致
-        category: postData.category !== undefined ? postData.category : (originalItem.category || apiName), // 分类/标签字段
-        updatedAt: getCurrentLocalTimeISOString()
+    } catch (e) {
+      logger.warn('解析custom_fields失败', { id: postId, error: e.message });
+    }
+    
+    const currentApiName = post.api_name;
+    const newApiName = postData.apiName || currentApiName;
+    
+    // 如果分类改变，需要更新 api_name
+    if (newApiName !== currentApiName) {
+      // 提取中文名称用于匹配（API的name可能是"中文 英文"格式）
+      const extractChineseName = (name) => {
+        if (!name) return '';
+        const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+        const chineseMatches = name.match(chineseRegex);
+        return chineseMatches && chineseMatches.length > 0 
+          ? chineseMatches.join('').trim() 
+          : name;
       };
       
-      // 确保 htmlContent 被正确更新（对于 second-hand 和 rentals，htmlContent 应该被保留）
-      if (postData.htmlContent !== undefined) {
-        updatedItem.htmlContent = postData.htmlContent;
-      }
+      const newApiNameChinese = extractChineseName(newApiName);
       
-      // 添加或更新特殊字段（二手市场和租房酒店）
-      // 如果字段值为null，则删除该字段（不设置或设置为undefined）
-      if (postData.price !== undefined) {
-        updatedItem.price = postData.price === null || postData.price === '' ? undefined : postData.price;
-      }
-      if (postData.rooms !== undefined) {
-        updatedItem.rooms = postData.rooms === null || postData.rooms === '' ? undefined : postData.rooms;
-      }
-      if (postData.area !== undefined) {
-        updatedItem.area = postData.area === null || postData.area === '' ? undefined : postData.area;
-      }
-      if (postData.views !== undefined) {
-        updatedItem.views = postData.views === null || postData.views === '' ? undefined : postData.views;
-      }
-      // 位置和联系方式字段：如果为null，则删除字段
-      if (postData.phone !== undefined) {
-        if (postData.phone === null || postData.phone === '') {
-          delete updatedItem.phone;
-        } else {
-          updatedItem.phone = postData.phone;
-        }
-      }
-      if (postData.address !== undefined) {
-        if (postData.address === null || postData.address === '') {
-          delete updatedItem.address;
-        } else {
-          updatedItem.address = postData.address;
-        }
-      }
-      if (postData.latitude !== undefined) {
-        if (postData.latitude === null || postData.latitude === '') {
-          delete updatedItem.latitude;
-        } else {
-          updatedItem.latitude = typeof postData.latitude === 'number' ? postData.latitude : parseFloat(postData.latitude);
-        }
-      }
-      if (postData.longitude !== undefined) {
-        if (postData.longitude === null || postData.longitude === '') {
-          delete updatedItem.longitude;
-        } else {
-          updatedItem.longitude = typeof postData.longitude === 'number' ? postData.longitude : parseFloat(postData.longitude);
-        }
-      }
-      
-      // 原有的特殊字段处理逻辑（如果存在）
-      if (postData.price !== undefined) {
-        updatedItem.price = postData.price;
-      }
-      if (postData.rooms !== undefined) {
-        updatedItem.rooms = postData.rooms;
-      }
-      if (postData.area !== undefined) {
-        updatedItem.area = postData.area;
-      }
-      if (postData.views !== undefined && typeof postData.views === 'number') {
-        updatedItem.views = postData.views;
-      }
-      
-      // 添加或更新位置和联系方式字段
-      // 如果字段值为null或空字符串，则删除该字段
-      if (postData.phone !== undefined) {
-        if (postData.phone === null || postData.phone === '') {
-          delete updatedItem.phone;
-        } else {
-          updatedItem.phone = postData.phone;
-        }
-      }
-      if (postData.address !== undefined) {
-        if (postData.address === null || postData.address === '') {
-          delete updatedItem.address;
-        } else {
-          updatedItem.address = postData.address;
-        }
-      }
-      if (postData.latitude !== undefined) {
-        if (postData.latitude === null || postData.latitude === '') {
-          delete updatedItem.latitude;
-        } else {
-          updatedItem.latitude = typeof postData.latitude === 'number' ? postData.latitude : parseFloat(postData.latitude);
-        }
-      }
-      if (postData.longitude !== undefined) {
-        if (postData.longitude === null || postData.longitude === '') {
-          delete updatedItem.longitude;
-        } else {
-          updatedItem.longitude = typeof postData.longitude === 'number' ? postData.longitude : parseFloat(postData.longitude);
-        }
-      }
-      
-      // 处理slug的唯一性和稳定性
-      if (postData.slug !== undefined) {
-        // 如果提供了新slug，检查唯一性
-        const posts = await getBlogPosts({ publishedOnly: false });
-        let finalSlug = postData.slug;
-        
-        // 如果slug为空，基于名称和ID生成
-        if (!finalSlug) {
-          const name = postData.name || updatedItem.name || updatedItem.title || '未命名';
-          let baseSlug = name
-            .toLowerCase()
-            .replace(/[^\w\s-]/g, '')
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-')
-            .trim();
-          
-          if (!baseSlug) {
-            baseSlug = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
-          }
-          
-          const idSuffix = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
-          finalSlug = `${baseSlug}-${idSuffix}`;
-        }
-        
-        // 确保slug唯一（排除当前文章）
-        let counter = 1;
-        const originalSlug = originalItem.slug;
-        while (posts.some(p => p.slug === finalSlug && String(p.id) !== String(originalId))) {
-          const baseSlug = finalSlug.split('-').slice(0, -1).join('-') || finalSlug;
-          finalSlug = `${baseSlug}-${counter}`;
-          counter++;
-        }
-        
-        updatedItem.slug = finalSlug;
-      } else if (!updatedItem.slug) {
-        // 如果没有slug，基于名称和ID生成稳定的slug
-        const name = updatedItem.name || updatedItem.title || '未命名';
-        let baseSlug = name
-          .toLowerCase()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/\s+/g, '-')
-          .replace(/-+/g, '-')
-          .trim();
-        
-        if (!baseSlug) {
-          baseSlug = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
-        }
-        
-        const idSuffix = String(originalId).substring(0, 8).replace(/[^a-z0-9]/g, '');
-        const newSlug = `${baseSlug}-${idSuffix}`;
-        
-        // 检查唯一性
-        const posts = await getBlogPosts({ publishedOnly: false });
-        let finalSlug = newSlug;
-        let counter = 1;
-        while (posts.some(p => p.slug === finalSlug && String(p.id) !== String(originalId))) {
-          const baseSlugPart = newSlug.split('-').slice(0, -1).join('-') || newSlug;
-          finalSlug = `${baseSlugPart}-${counter}`;
-          counter++;
-        }
-        
-        updatedItem.slug = finalSlug;
-      }
-    }
-    
-    // 如果分类改变，需要移动到新的API
-    if (postData.apiName && postData.apiName !== apiName) {
-      // 从旧API中删除（如果是天气路况对象格式，不需要删除，因为整个对象会被替换）
-      let oldResponseContent;
-      
-      if (isWeatherObjectFormat) {
-        // 天气路况：清空整个对象（只包含globalAlert、attractions、traffic）
-        oldResponseContent = { globalAlert: { level: 'low', message: '' }, attractions: [], traffic: [] };
-      } else {
-        // 普通格式：从数组中删除
-        sourceApi.items.splice(sourceApi.itemIndex, 1);
-        
-        // 更新旧API，保持原有格式
-        let oldIsArrayFormat = false;
-        
-        try {
-          const parsed = JSON.parse(sourceApi.api.response_content);
-          if (Array.isArray(parsed)) {
-            // 原始是数组格式，保持数组格式
-            oldIsArrayFormat = true;
-            oldResponseContent = sourceApi.items;
-          } else {
-            // 原始是对象格式，保持对象格式
-            oldIsArrayFormat = false;
-            oldResponseContent = { ...parsed, data: sourceApi.items };
-          }
-        } catch (e) {
-          // 解析失败，默认使用数组格式
-          oldIsArrayFormat = true;
-          oldResponseContent = sourceApi.items;
-        }
-      }
-      
-      await runAsync(
-        `UPDATE custom_apis 
-         SET response_content = ?, updated_at = datetime('now', 'localtime')
-         WHERE id = ?`,
-        [JSON.stringify(oldResponseContent), sourceApi.api.id]
-      );
-      
-      // 添加到新API
-      const newApi = await getAsync(`
-        SELECT id, name, path, response_content
-        FROM custom_apis
+      // 验证新API是否存在（支持中文名称和完整名称匹配）
+      let newApi = await getAsync(`
+        SELECT id, name FROM custom_apis
         WHERE name = ? AND method = 'GET' AND status = 'active'
-      `, [postData.apiName]);
+      `, [newApiName]);
+      
+      // 如果精确匹配失败，尝试中文名称匹配
+      if (!newApi) {
+        const allApis = await allAsync(`
+          SELECT id, name FROM custom_apis
+          WHERE method = 'GET' AND status = 'active'
+        `);
+        
+        newApi = allApis.find(api => {
+          const apiNameChineseOnly = extractChineseName(api.name);
+          return apiNameChineseOnly === newApiNameChinese || api.name === newApiName;
+        });
+      }
       
       if (!newApi) {
-        throw new Error(`目标API "${postData.apiName}" 不存在`);
-      }
-      
-      // 添加到新API，保持新API的原有格式
-      let newFinalContent;
-      
-      if (isWeatherObjectFormat) {
-        // 天气路况：直接替换整个对象
-        newFinalContent = updatedItem;
-      } else {
-        // 普通格式：解析新API数据
-        let newResponseContent;
-        let newIsArrayFormat = false;
-        let newItems = [];
-        
-        try {
-          const parsed = JSON.parse(newApi.response_content);
-          if (Array.isArray(parsed)) {
-            // 新API是数组格式，保持数组格式
-            newIsArrayFormat = true;
-            newItems = parsed;
-          } else if (parsed.data && Array.isArray(parsed.data)) {
-            // 新API是对象格式，包含data数组
-            newIsArrayFormat = false;
-            newItems = parsed.data;
-            newResponseContent = { ...parsed }; // 保留其他字段
-          } else {
-            // 其他格式，默认使用对象格式
-            newIsArrayFormat = false;
-            newItems = [];
-            newResponseContent = parsed || {};
-          }
-        } catch (e) {
-          // 解析失败，默认使用数组格式
-          newIsArrayFormat = true;
-          newItems = [];
-        }
-        
-        // 添加文章到新API
-        newItems.push(updatedItem);
-        
-        // 根据新API的原始格式保存
-        if (newIsArrayFormat) {
-          // 保持数组格式
-          newFinalContent = newItems;
-        } else {
-          // 保持对象格式
-          if (!newResponseContent) {
-            newResponseContent = {};
-          }
-          newResponseContent.data = newItems;
-          newFinalContent = newResponseContent;
-        }
-      }
-      
-      await runAsync(
-        `UPDATE custom_apis 
-         SET response_content = ?, updated_at = datetime('now', 'localtime')
-         WHERE id = ?`,
-        [JSON.stringify(newFinalContent), newApi.id]
-      );
-      
-      // 清除缓存（文章已变更）
-      clearPostsCache();
-    } else {
-      // 在同一API中更新，保持原有格式
-      let finalContent;
-      
-      if (isWeatherObjectFormat) {
-        // 天气路况：直接替换整个对象
-        // 确保updatedItem包含所有必要的字段
-        if (!updatedItem || typeof updatedItem !== 'object') {
-          logger.error('天气路况updatedItem无效', { updatedItem });
-          throw new Error('天气路况更新数据无效');
-        }
-        
-        finalContent = updatedItem;
-        
-        logger.info('准备保存天气路况对象到数据库', {
-          apiId: sourceApi.api.id,
-          apiName: sourceApi.api.name,
-          finalContentKeys: Object.keys(finalContent),
-          hasGlobalAlert: !!finalContent.globalAlert,
-          attractionsCount: finalContent.attractions ? finalContent.attractions.length : 0,
-          trafficCount: finalContent.traffic ? finalContent.traffic.length : 0,
-          hasDataField: finalContent.data !== undefined,
-          finalContentPreview: JSON.stringify(finalContent).substring(0, 500)
-        });
-      } else {
-        // 普通格式：更新数组中的项
-        sourceApi.items[sourceApi.itemIndex] = updatedItem;
-        
-        let responseContent;
-        let isArrayFormat = false;
-        
-        try {
-          const parsed = JSON.parse(sourceApi.api.response_content);
-          if (Array.isArray(parsed)) {
-            // 原始是数组格式，保持数组格式
-            isArrayFormat = true;
-            responseContent = sourceApi.items;
-          } else {
-            // 原始是对象格式，保持对象格式
-            isArrayFormat = false;
-            responseContent = { ...parsed, data: sourceApi.items };
-          }
-        } catch (e) {
-          // 解析失败，默认使用数组格式
-          isArrayFormat = true;
-          responseContent = sourceApi.items;
-        }
-        
-        finalContent = responseContent;
-      }
-      
-      // 确保finalContent是有效的JSON对象
-      if (!finalContent || typeof finalContent !== 'object') {
-        logger.error('finalContent无效，无法保存到数据库', { 
-          finalContent, 
-          isWeatherObject: isWeatherObjectFormat,
-          apiId: sourceApi.api.id 
-        });
-        throw new Error('更新内容无效');
-      }
-      
-      const jsonContent = JSON.stringify(finalContent);
-      if (!jsonContent || jsonContent === 'null' || jsonContent === 'undefined') {
-        logger.error('JSON序列化失败', { finalContent, apiId: sourceApi.api.id });
-        throw new Error('无法序列化更新内容');
-      }
-      
-      logger.info('执行数据库更新', {
-        apiId: sourceApi.api.id,
-        apiName: sourceApi.api.name,
-        isWeatherObject: isWeatherObjectFormat,
-        jsonLength: jsonContent.length,
-        jsonPreview: jsonContent.substring(0, 200)
-      });
-      
-      const updateResult = await runAsync(
-        `UPDATE custom_apis 
-         SET response_content = ?, updated_at = datetime('now', 'localtime')
-         WHERE id = ?`,
-        [jsonContent, sourceApi.api.id]
-      );
-      
-      logger.info('数据库更新完成', {
-        apiId: sourceApi.api.id,
-        changes: updateResult.changes,
-        id: updateResult.id,
-        isWeatherObject: isWeatherObjectFormat
-      });
-      
-      // 如果changes为0，说明没有行被更新，可能是WHERE条件不匹配
-      if (updateResult.changes === 0) {
-        logger.warn('数据库更新未影响任何行', {
-          apiId: sourceApi.api.id,
-          apiName: sourceApi.api.name
-        });
-        // 验证API是否存在
-        const checkApi = await getAsync('SELECT id FROM custom_apis WHERE id = ?', [sourceApi.api.id]);
-        if (!checkApi) {
-          throw new Error(`API不存在: ${sourceApi.api.id}`);
-        }
-      }
-      
-      // 验证更新是否成功
-      const verifyApi = await getAsync(
-        'SELECT response_content FROM custom_apis WHERE id = ?',
-        [sourceApi.api.id]
-      );
-      
-      if (verifyApi) {
-        try {
-          const verifyContent = JSON.parse(verifyApi.response_content);
-          
-          // 检查是否有不应该存在的字段
-          const allowedFields = ['globalAlert', 'attractions', 'traffic'];
-          const extraFields = Object.keys(verifyContent).filter(key => !allowedFields.includes(key));
-          
-          if (extraFields.length > 0) {
-            logger.warn('数据库中存在不应该的字段', {
-              apiId: sourceApi.api.id,
-              extraFields: extraFields
-            });
-          }
-          
-          logger.info('验证数据库更新结果', {
-            apiId: sourceApi.api.id,
-            hasGlobalAlert: !!verifyContent.globalAlert,
-            globalAlertMessage: verifyContent.globalAlert?.message,
-            attractionsCount: verifyContent.attractions ? verifyContent.attractions.length : 0,
-            trafficCount: verifyContent.traffic ? verifyContent.traffic.length : 0,
-            hasDataField: verifyContent.data !== undefined,
-            extraFields: extraFields.length > 0 ? extraFields : undefined
-          });
-          
-          // 如果发现不应该的字段，清理它们
-          if (extraFields.length > 0 && isWeatherObjectFormat) {
-            logger.info('清理不应该的字段', { apiId: sourceApi.api.id, extraFields });
-            const cleanedContent = {
-              globalAlert: verifyContent.globalAlert,
-              attractions: verifyContent.attractions,
-              traffic: verifyContent.traffic
-            };
-            
-            const cleanedJson = JSON.stringify(cleanedContent);
-            await runAsync(
-              `UPDATE custom_apis 
-               SET response_content = ?, updated_at = datetime('now', 'localtime')
-               WHERE id = ?`,
-              [cleanedJson, sourceApi.api.id]
-            );
-            
-            logger.info('已清理不应该的字段', { apiId: sourceApi.api.id });
-          }
-        } catch (e) {
-          logger.error('验证数据库更新结果失败', { error: e.message });
-        }
+        throw new Error(`目标API "${newApiName}" 不存在`);
       }
     }
     
-    // 清除缓存（文章已变更）
+    // 准备更新字段
+    const updateFields = [];
+    const updateValues = [];
+    
+    // 基本字段更新
+    if (postData.name !== undefined) {
+      updateFields.push('name = ?');
+      updateValues.push(postData.name);
+      // name和title保持一致
+      updateFields.push('title = ?');
+      updateValues.push(postData.name);
+    } else if (postData.title !== undefined) {
+      updateFields.push('name = ?');
+      updateValues.push(postData.title);
+      updateFields.push('title = ?');
+      updateValues.push(postData.title);
+    }
+    
+    if (postData.slug !== undefined) {
+      // 检查slug唯一性
+      let finalSlug = postData.slug;
+      if (finalSlug) {
+        const existing = await getAsync('SELECT id FROM blog_posts WHERE slug = ? AND id != ?', [finalSlug, postId]);
+        if (existing) {
+          // slug冲突，生成新的
+          const baseSlug = finalSlug.split('-').slice(0, -1).join('-') || finalSlug;
+          let counter = 1;
+          while (existing) {
+            finalSlug = `${baseSlug}-${counter}`;
+            existing = await getAsync('SELECT id FROM blog_posts WHERE slug = ? AND id != ?', [finalSlug, postId]);
+            counter++;
+          }
+        }
+      }
+      updateFields.push('slug = ?');
+      updateValues.push(finalSlug);
+    }
+    
+    if (postData.excerpt !== undefined) {
+      updateFields.push('excerpt = ?');
+      updateValues.push(postData.excerpt);
+      // excerpt和description保持一致
+      updateFields.push('description = ?');
+      updateValues.push(postData.excerpt);
+    } else if (postData.description !== undefined) {
+      updateFields.push('excerpt = ?');
+      updateValues.push(postData.description);
+      updateFields.push('description = ?');
+      updateValues.push(postData.description);
+    }
+    
+    if (postData.htmlContent !== undefined) {
+      updateFields.push('html_content = ?');
+      updateValues.push(postData.htmlContent);
+    }
+    
+    if (postData.image !== undefined) {
+      updateFields.push('image = ?');
+      updateValues.push(postData.image);
+    }
+    
+    if (postData.category !== undefined) {
+      updateFields.push('category = ?');
+      updateValues.push(postData.category);
+    }
+    
+    if (postData.published !== undefined) {
+      updateFields.push('published = ?');
+      updateValues.push(postData.published ? 1 : 0);
+    }
+    
+    if (postData.views !== undefined) {
+      updateFields.push('views = ?');
+      updateValues.push(parseInt(postData.views) || 0);
+    }
+    
+    // 更新 api_name（如果分类改变）
+    if (newApiName !== currentApiName) {
+      updateFields.push('api_name = ?');
+      updateValues.push(newApiName);
+    }
+    
+    // 更新 custom_fields
+    const excludedFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 
+      'htmlContent', 'html_content', 'image', 'category', 'apiName', 'published', 'views',
+      'createdAt', 'updatedAt', '_specialData'];
+    
+    let customFieldsUpdated = false;
+    for (const key in postData) {
+      if (!excludedFields.includes(key) && postData[key] !== undefined) {
+        if (postData[key] === null || postData[key] === '') {
+          delete customFields[key];
+        } else {
+          customFields[key] = postData[key];
+        }
+        customFieldsUpdated = true;
+      }
+    }
+    
+    // 处理特殊类别数据
+    if (postData._specialData) {
+      const isSpecialCategory = (apiName) => {
+        if (!apiName) return null;
+        const lowerName = apiName.toLowerCase();
+        if (lowerName === 'weather' || lowerName.includes('weather')) return 'weather';
+        if (lowerName === 'exchange-rate' || lowerName === 'exchangerate' || lowerName.includes('exchange')) return 'exchange-rate';
+        if (lowerName === 'translation' || lowerName.includes('translation')) return 'translation';
+        return null;
+      };
+      
+      const specialType = isSpecialCategory(newApiName);
+      if (specialType) {
+        customFields._specialType = specialType;
+        customFields._specialData = postData._specialData;
+        customFieldsUpdated = true;
+      }
+    }
+    
+    if (customFieldsUpdated) {
+      updateFields.push('custom_fields = ?');
+      updateValues.push(JSON.stringify(customFields));
+    }
+    
+    // 更新时间
+    updateFields.push('updated_at = datetime(\'now\', \'localtime\')');
+    updateValues.push(postId);
+    
+    // 执行更新
+    if (updateFields.length > 1) { // 至少有updated_at字段
+      await runAsync(`
+        UPDATE blog_posts 
+        SET ${updateFields.join(', ')}
+        WHERE id = ?
+      `, updateValues);
+    }
+    
+    // 清除缓存
     clearPostsCache();
     
-    // 返回更新后的文章（转换为标准格式）
-    const fieldMapping = await getApiFieldMapping(postData.apiName || apiName);
-    return convertApiItemToPost(updatedItem, postData.apiName || apiName, fieldMapping);
+    // 获取更新后的文章
+    const updatedPost = await getAsync(`
+      SELECT id, api_name, name, title, slug, excerpt, description,
+        html_content, image, category, published, views,
+        created_at, updated_at, custom_fields
+      FROM blog_posts
+      WHERE id = ?
+    `, [postId]);
+    
+    if (!updatedPost) {
+      return null;
+    }
+    
+    // 解析 custom_fields
+    let updatedCustomFields = {};
+    try {
+      if (updatedPost.custom_fields) {
+        updatedCustomFields = JSON.parse(updatedPost.custom_fields);
+      }
+    } catch (e) {
+      // 忽略解析错误
+    }
+    
+    // 构建返回对象
+    const result = {
+      id: updatedPost.id,
+      name: updatedPost.name,
+      title: updatedPost.title || updatedPost.name,
+      slug: updatedPost.slug,
+      excerpt: updatedPost.excerpt,
+      description: updatedPost.description || updatedPost.excerpt,
+      htmlContent: updatedPost.html_content,
+      image: updatedPost.image,
+      category: updatedPost.category,
+      _sourceApiName: updatedPost.api_name,
+      published: updatedPost.published === 1,
+      views: updatedPost.views || 0,
+      createdAt: updatedPost.created_at,
+      updatedAt: updatedPost.updated_at,
+      ...updatedCustomFields
+    };
+    
+    // 获取字段映射配置（如果需要）
+    const fieldMapping = await getApiFieldMapping(newApiName);
+    if (fieldMapping) {
+      return convertApiItemToPost(result, newApiName, fieldMapping);
+    }
+    
+    return result;
   } catch (error) {
     logger.error('更新文章失败', { postId, error: error.message });
     throw error;
@@ -1768,62 +1278,15 @@ async function updateBlogPost(postId, postData) {
  */
 async function deleteBlogPost(postId) {
   try {
-    // 先找到文章（id现在是全局唯一的UUID）
-    const posts = await getBlogPosts({ publishedOnly: false });
-    const post = posts.find(p => {
-      const pId = String(p.id || '');
-      const searchId = String(postId || '');
-      return pId === searchId;
-    });
+    // 直接从 blog_posts 表删除
+    const result = await runAsync('DELETE FROM blog_posts WHERE id = ?', [postId]);
     
-    if (!post) {
-      logger.warn('删除文章失败：未找到文章', { postId, availableIds: posts.map(p => p.id) });
+    if (result.changes === 0) {
+      logger.warn('删除文章失败：未找到文章', { postId });
       return false;
     }
     
-    const apiName = post._sourceApiName || post.category;
-    if (!apiName) {
-      throw new Error('无法确定文章的源API');
-    }
-    
-    // 直接使用postId查找（id现在是全局唯一的UUID）
-    const sourceApi = await findPostSourceApi(postId, apiName);
-    if (!sourceApi) {
-      return false;
-    }
-    
-    // 从数组中删除
-    sourceApi.items.splice(sourceApi.itemIndex, 1);
-    
-    // 更新API的response_content，保持原有格式
-    let responseContent;
-    let isArrayFormat = false;
-    
-    try {
-      const parsed = JSON.parse(sourceApi.api.response_content);
-      if (Array.isArray(parsed)) {
-        // 原始是数组格式，保持数组格式
-        isArrayFormat = true;
-        responseContent = sourceApi.items;
-      } else {
-        // 原始是对象格式，保持对象格式
-        isArrayFormat = false;
-        responseContent = { ...parsed, data: sourceApi.items };
-      }
-    } catch (e) {
-      // 解析失败，默认使用数组格式
-      isArrayFormat = true;
-      responseContent = sourceApi.items;
-    }
-    
-    await runAsync(
-      `UPDATE custom_apis 
-       SET response_content = ?, updated_at = datetime('now', 'localtime')
-       WHERE id = ?`,
-      [JSON.stringify(responseContent), sourceApi.api.id]
-    );
-    
-    // 清除缓存（文章已删除）
+    // 清除缓存
     clearPostsCache();
     
     return true;
@@ -2006,51 +1469,6 @@ async function deleteBlogCategory(id) {
 }
 
 /**
- * 创建标签
- * @param {Object} tagData - 标签数据
- * @returns {Promise<Object>} 创建的标签
- */
-async function createBlogTag(tagData) {
-  try {
-    const tags = await getBlogTags();
-    
-    // 生成slug
-    let slug = tagData.slug;
-    if (!slug && tagData.name) {
-      slug = tagData.name
-        .toLowerCase()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim();
-    }
-    
-    const newTag = {
-      id: uuidv4(),
-      name: tagData.name,
-      slug: slug,
-      postCount: 0,
-      createdAt: getCurrentLocalTimeISOString()
-    };
-    
-    tags.push(newTag);
-    
-    await upsertBlogApi(
-      '/blog/tags',
-      '博客标签列表',
-      { data: tags },
-      'GET',
-      '博客标签列表API'
-    );
-    
-    return newTag;
-  } catch (error) {
-    logger.error('创建标签失败', { error: error.message });
-    throw error;
-  }
-}
-
-/**
  * 创建评论
  * @param {string} postId - 文章ID
  * @param {Object} commentData - 评论数据
@@ -2180,7 +1598,6 @@ module.exports = {
   getBlogPosts,
   getBlogPost,
   getBlogCategories,
-  getBlogTags,
   getBlogComments,
   incrementPostViews,
   createBlogPost,
@@ -2189,7 +1606,6 @@ module.exports = {
   createBlogCategory,
   updateBlogCategory,
   deleteBlogCategory,
-  createBlogTag,
   createBlogComment,
   approveBlogComment,
   deleteBlogComment,

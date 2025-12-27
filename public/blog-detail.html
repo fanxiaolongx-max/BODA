@@ -391,12 +391,12 @@
       // 显示联系方式和位置信息
       displayContactLocation(post);
 
-      // 标签（使用category字段）
+      // 分类显示
       const category = post.category || post._sourceApiName || '';
       if (category) {
         const tagsDiv = document.getElementById('articleTags');
         tagsDiv.style.display = 'flex';
-        tagsDiv.innerHTML = `<a href="/blog.html?tag=${encodeURIComponent(category)}" class="blog-detail-tag">#${escapeHtml(category)}</a>`;
+        tagsDiv.innerHTML = `<a href="/blog.html?category=${encodeURIComponent(category)}" class="blog-detail-tag">#${escapeHtml(category)}</a>`;
       }
 
       // 分享按钮

@@ -116,7 +116,7 @@ async function fetchRatesFromFreecurrencyAPI(apiKey, baseCurrencies, targetCurre
  * @param {string} apiKey - API密钥
  * @param {string[]} baseCurrencies - 基础货币列表
  * @param {string} targetCurrency - 目标货币
- * @returns {Promise<Object>} 汇率数据对象 {CNY: {EGP: 6.74}, USD: {EGP: 30.5}, ...}
+ * @returns {Promise<Object>} 汇率数据对象 {rates: {CNY: {EGP: 6.74}, ...}, updateTime: "2025-12-26T18:00:00Z"}
  */
 async function fetchRatesFromExchangeRateAPI(apiKey, baseCurrencies, targetCurrency) {
   if (!apiKey || !baseCurrencies || baseCurrencies.length === 0 || !targetCurrency) {
@@ -124,6 +124,7 @@ async function fetchRatesFromExchangeRateAPI(apiKey, baseCurrencies, targetCurre
   }
 
   const exchangeRates = {};
+  let apiUpdateTime = null; // API返回的汇率更新时间
 
   try {
     // 优化：以目标货币作为base_currency，一次调用获取所有汇率
@@ -179,10 +180,16 @@ async function fetchRatesFromExchangeRateAPI(apiKey, baseCurrencies, targetCurre
       });
     });
 
-    // 处理响应格式：{"result": "success", "base_code": "EGP", "conversion_rates": {"USD": 0.02107, "CNY": 0.1485, ...}}
+    // 处理响应格式：{"result": "success", "base_code": "EGP", "time_last_update_utc": "2025-12-26T18:00:00Z", "conversion_rates": {"USD": 0.02107, "CNY": 0.1485, ...}}
     if (response.result === 'success' && response.conversion_rates) {
       const conversionRates = response.conversion_rates;
       let successCount = 0;
+      
+      // 提取API返回的汇率更新时间
+      if (response.time_last_update_utc) {
+        apiUpdateTime = response.time_last_update_utc;
+        logger.info(`ExchangeRate-API: 汇率更新时间 ${apiUpdateTime}`);
+      }
       
       // 从返回的汇率中提取所需的基础货币汇率
       for (const baseCurrency of baseCurrencies) {
@@ -223,7 +230,11 @@ async function fetchRatesFromExchangeRateAPI(apiKey, baseCurrencies, targetCurre
     throw new Error(`无法获取任何汇率数据`);
   }
 
-  return exchangeRates;
+  // 返回汇率数据和时间信息
+  return {
+    rates: exchangeRates,
+    updateTime: apiUpdateTime // API返回的汇率更新时间
+  };
 }
 
 /**
@@ -233,7 +244,7 @@ async function fetchRatesFromExchangeRateAPI(apiKey, baseCurrencies, targetCurre
  * @param {string} settings.exchangerate_api_key - ExchangeRate-API密钥
  * @param {string} settings.exchange_rate_base_currencies - 基础货币列表（逗号分隔）
  * @param {string} settings.exchange_rate_target_currency - 目标货币
- * @returns {Promise<Object>} 汇率数据对象 {CNY: {EGP: 6.74}, USD: {EGP: 30.5}, ...}
+ * @returns {Promise<Object>} 汇率数据对象 {rates: {CNY: {EGP: 6.74}, ...}, updateTime: "2025-12-26T18:00:00Z"} 或直接返回 {CNY: {EGP: 6.74}, ...}（兼容旧格式）
  */
 async function fetchExchangeRates(settings) {
   const {
@@ -273,6 +284,7 @@ async function fetchExchangeRates(settings) {
       logger.info('FreeCurrencyAPI获取汇率成功', {
         currencies: Object.keys(rates).length
       });
+      // FreeCurrencyAPI返回的是旧格式，直接返回汇率对象（没有时间信息）
       return rates;
     } catch (error) {
       // 如果是403权限错误，说明API密钥无效，直接跳过，不要浪费时间
@@ -295,15 +307,17 @@ async function fetchExchangeRates(settings) {
         baseCurrencies: baseCurrencies.length,
         targetCurrency
       });
-      const rates = await fetchRatesFromExchangeRateAPI(
+      const result = await fetchRatesFromExchangeRateAPI(
         exchangerate_api_key,
         baseCurrencies,
         targetCurrency
       );
       logger.info('ExchangeRate-API获取汇率成功', {
-        currencies: Object.keys(rates).length
+        currencies: Object.keys(result.rates || result).length,
+        updateTime: result.updateTime || '未提供'
       });
-      return rates;
+      // ExchangeRate-API返回新格式 {rates: {...}, updateTime: "..."}
+      return result;
     } catch (error) {
       logger.error('ExchangeRate-API获取汇率失败', {
         error: error.message

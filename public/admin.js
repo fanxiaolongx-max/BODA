@@ -6813,13 +6813,13 @@ function renderLogRow(log) {
   // detailsText已经在构建时进行了转义，这里直接使用
   const escapedDetailsText = detailsText;
   
-  // 操作类型显示
+  // 操作类型显示 - 不同颜色符合网站整体色调
   const actionMap = {
-    'CREATE': { text: 'Create', class: 'bg-gray-100 text-gray-800' },
-    'UPDATE': { text: 'Update', class: 'bg-gray-100 text-gray-800' },
-    'DELETE': { text: 'Delete', class: 'bg-gray-100 text-gray-800' },
-    'LOGIN': { text: 'Login', class: 'bg-gray-100 text-gray-800' },
-    'USER_LOGIN': { text: 'User Login', class: 'bg-gray-100 text-gray-800' }
+    'CREATE': { text: 'Create', class: 'bg-green-100 text-green-800' },      // 绿色 - 成功/新增操作
+    'UPDATE': { text: 'Update', class: 'bg-blue-100 text-blue-800' },        // 蓝色 - 信息/修改操作
+    'DELETE': { text: 'Delete', class: 'bg-red-100 text-red-800' },          // 红色 - 危险/删除操作
+    'LOGIN': { text: 'Login', class: 'bg-purple-100 text-purple-800' },      // 紫色 - 主色调，登录操作
+    'USER_LOGIN': { text: 'User Login', class: 'bg-purple-100 text-purple-800' }  // 紫色 - 主色调，用户登录
   };
   const actionInfo = actionMap[log.action] || { text: log.action, class: 'bg-gray-100 text-gray-800' };
   

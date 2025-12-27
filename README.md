@@ -800,8 +800,24 @@ pm2 logs boda
 8. **settings** - 系统设置表（key, value）
 9. **logs** - 操作日志表（id, admin_id, action, target_type, target_id, details, ip_address, created_at）
 10. **ordering_cycles** - 订单周期表（id, cycle_number, start_time, end_time, status, total_amount, discount_rate）
+11. **blog_posts** - 博客文章表（id, api_name, name, title, slug, excerpt, description, html_content, image, category, published, views, created_at, updated_at, custom_fields）
+12. **custom_apis** - 自定义API表（id, name, path, method, response_content, description, status, requires_token）
+13. **custom_api_logs** - 自定义API日志表（id, api_id, request_method, request_path, request_headers, request_query, request_body, response_status, response_body, response_time_ms, ip_address, user_agent, error_message, created_at）
+
+> 📖 **详细说明**：博客文章系统的完整架构和工作流程请查看 [博客系统架构文档](docs/BLOG_ARCHITECTURE.md)
 
 ## 🔄 更新日志
+
+### v2.3.0 (2025-12-25) - 博客系统数据库重构
+
+- ✅ **博客文章数据库重构** - 从 `custom_apis.response_content` JSON存储迁移到独立的 `blog_posts` 表
+- ✅ **性能优化** - 直接数据库操作，无需解析JSON，提升查询性能
+- ✅ **API路由智能切换** - 自动检测并从 `blog_posts` 表读取数据，保持向后兼容
+- ✅ **数据一致性** - 单一数据源，确保数据一致性
+- ✅ **缓存机制** - 30秒内存缓存，减少数据库查询
+- ✅ **字段映射系统** - 支持不同API使用不同字段名称
+- ✅ **完整迁移** - 成功迁移72篇文章，覆盖15个API分类
+- 📖 **详细文档** - 新增博客系统架构文档（`docs/BLOG_ARCHITECTURE.md`）
 
 ### v2.1.0 (2025-11-14)
 
@@ -1023,6 +1039,8 @@ describe('My Feature', () => {
 - **Docker 部署**: `docs/DOCKER.md` - Docker 容器化部署说明
 - **API 文档**: `docs/API.md` - 完整的 API 接口文档
 - **架构文档**: `docs/ARCHITECTURE.md` - 系统架构设计说明
+- **博客系统架构**: `docs/BLOG_ARCHITECTURE.md` - 博客文章系统详细架构和工作流程
+- **小程序API指南**: `docs/MINIPROGRAM_API.md` - 小程序调用博客API的完整指南
 - **安全文档**: `docs/SECURITY.md` - 安全特性和最佳实践
 - **测试文档**: `docs/README_TESTING.md` - 测试相关文档
 - **项目状态**: `docs/PROJECT_STATUS.md` - 项目当前状态和计划

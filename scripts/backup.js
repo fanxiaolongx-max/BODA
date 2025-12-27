@@ -61,8 +61,8 @@ async function backupDatabase() {
     console.log(`Backup completed: ${backupFileName} (${sizeMB}MB)`);
     console.log(`Backup location: ${backupPath}`);
 
-    // 清理旧备份（保留最近30个）
-    cleanupOldBackups();
+    // 清理超过7天的旧备份
+    cleanupOldBackups(7);
 
     return backupPath;
   } catch (error) {
@@ -71,35 +71,93 @@ async function backupDatabase() {
   }
 }
 
-// 清理旧备份
-function cleanupOldBackups() {
+// 清理旧备份（按时间，超过指定天数）
+function cleanupOldBackups(days = 7) {
   try {
-    const files = fs.readdirSync(BACKUP_DIR)
-      .filter(file => file.startsWith('boda-backup-') && file.endsWith('.db'))
-      .map(file => ({
-        name: file,
-        path: path.join(BACKUP_DIR, file),
-        time: fs.statSync(path.join(BACKUP_DIR, file)).mtime.getTime()
-      }))
-      .sort((a, b) => b.time - a.time); // 按时间降序排列
+    const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+    let deletedCount = 0;
+    let freedSpace = 0;
 
-    // 保留最近30个备份
-    if (files.length > 30) {
-      const filesToDelete = files.slice(30);
-      for (const file of filesToDelete) {
-        fs.unlinkSync(file.path);
-        // 删除对应的 WAL 和 SHM 文件
-        if (fs.existsSync(file.path + '-wal')) {
-          fs.unlinkSync(file.path + '-wal');
+    // 清理数据库备份文件
+    const dbFiles = fs.readdirSync(BACKUP_DIR)
+      .filter(file => file.startsWith('boda-backup-') && (file.endsWith('.db') || file.endsWith('.db-wal') || file.endsWith('.db-shm')))
+      .map(file => {
+        const filePath = path.join(BACKUP_DIR, file);
+        const stats = fs.statSync(filePath);
+        return {
+          name: file,
+          path: filePath,
+          time: stats.mtime.getTime(),
+          size: stats.size
+        };
+      });
+
+    // 按文件名分组（同一个备份的文件）
+    const backupGroups = {};
+    for (const file of dbFiles) {
+      const baseName = file.name.replace(/-wal$|-shm$/, '');
+      if (!backupGroups[baseName]) {
+        backupGroups[baseName] = [];
+      }
+      backupGroups[baseName].push(file);
+    }
+
+    // 删除超过指定天数的备份
+    for (const [baseName, files] of Object.entries(backupGroups)) {
+      // 检查主文件的时间
+      const mainFile = files.find(f => f.name.endsWith('.db'));
+      if (mainFile && mainFile.time < cutoffTime) {
+        // 删除该备份的所有相关文件
+        for (const file of files) {
+          try {
+            freedSpace += file.size;
+            fs.unlinkSync(file.path);
+            deletedCount++;
+            console.log(`Deleted old backup: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+          } catch (error) {
+            console.error(`Failed to delete ${file.name}: ${error.message}`);
+          }
         }
-        if (fs.existsSync(file.path + '-shm')) {
-          fs.unlinkSync(file.path + '-shm');
-        }
-        console.log(`Deleted old backup: ${file.name}`);
       }
     }
+
+    // 清理完整备份（ZIP文件）
+    const zipFiles = fs.readdirSync(BACKUP_DIR)
+      .filter(file => file.startsWith('boda-full-backup-') && file.endsWith('.zip'))
+      .map(file => {
+        const filePath = path.join(BACKUP_DIR, file);
+        const stats = fs.statSync(filePath);
+        return {
+          name: file,
+          path: filePath,
+          time: stats.mtime.getTime(),
+          size: stats.size
+        };
+      });
+
+    for (const file of zipFiles) {
+      if (file.time < cutoffTime) {
+        try {
+          freedSpace += file.size;
+          fs.unlinkSync(file.path);
+          deletedCount++;
+          console.log(`Deleted old full backup: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+        } catch (error) {
+          console.error(`Failed to delete ${file.name}: ${error.message}`);
+        }
+      }
+    }
+
+    if (deletedCount > 0) {
+      console.log(`Cleanup completed: deleted ${deletedCount} backup files, freed ${(freedSpace / 1024 / 1024).toFixed(2)}MB`);
+    } else {
+      console.log('No old backups to clean up');
+    }
+
+    return { deletedCount, freedSpace };
   } catch (error) {
     console.error('Cleanup failed:', error.message);
+    return { deletedCount: 0, freedSpace: 0 };
   }
 }
 
@@ -114,6 +172,15 @@ if (require.main === module) {
       console.error('Backup script failed:', error);
       process.exit(1);
     });
+}
+
+// 如果使用 --cleanup 参数，只执行清理
+if (require.main === module && process.argv.includes('--cleanup')) {
+  const days = process.argv.includes('--days') 
+    ? parseInt(process.argv[process.argv.indexOf('--days') + 1], 10) 
+    : 7;
+  cleanupOldBackups(days);
+  process.exit(0);
 }
 
 module.exports = { backupDatabase, cleanupOldBackups };
