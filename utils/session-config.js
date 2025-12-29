@@ -26,14 +26,15 @@ async function getAdminSessionTimeout() {
 
 /**
  * 获取用户session过期时间（秒）
- * @returns {Promise<number>} 过期时间（秒）
+ * @returns {Promise<number>} 过期时间（秒），0表示永不过期
  */
 async function getUserSessionTimeout() {
   try {
     const setting = await getAsync("SELECT value FROM settings WHERE key = 'user_session_timeout'");
-    if (setting && setting.value) {
+    if (setting && setting.value !== null && setting.value !== '') {
       const timeout = parseInt(setting.value, 10);
-      if (timeout > 0) {
+      // 允许0值（表示永不过期）和正数值
+      if (!isNaN(timeout) && timeout >= 0) {
         return timeout;
       }
     }

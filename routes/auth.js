@@ -20,15 +20,44 @@ async function generateUserToken(userId) {
   const token = crypto.randomBytes(32).toString('hex');
   
   // 获取Token过期时间（默认2小时，与Session一致）
+  // 如果设置为0，表示Token永不过期
   const userTimeoutMs = await getUserSessionTimeoutMs();
   const expiresAtSeconds = Math.floor(userTimeoutMs / 1000);
   
-  // 保存Token到数据库（使用SQLite的datetime函数计算过期时间）
-  await runAsync(
-    `INSERT INTO user_tokens (user_id, token, expires_at) 
-     VALUES (?, ?, datetime('now', '+' || ? || ' seconds'))`,
-    [userId, token, expiresAtSeconds]
-  );
+  logger.debug('生成用户Token', { 
+    userId, 
+    userTimeoutMs, 
+    expiresAtSeconds,
+    willNeverExpire: expiresAtSeconds <= 0
+  });
+  
+  let expiresAt;
+  if (expiresAtSeconds <= 0) {
+    // Token永不过期：设置为一个很远的未来日期（9999-12-31 23:59:59）
+    expiresAt = '9999-12-31 23:59:59';
+    logger.debug('生成永不过期的用户Token', { userId, expiresAt });
+  } else {
+    // 使用SQLite的datetime函数计算过期时间
+    expiresAt = null; // 将在SQL中使用表达式
+    logger.debug('生成有过期时间的用户Token', { userId, expiresAtSeconds, expiresInMinutes: expiresAtSeconds / 60 });
+  }
+  
+  // 保存Token到数据库
+  if (expiresAtSeconds <= 0) {
+    // 永不过期Token：直接设置过期时间
+    await runAsync(
+      `INSERT INTO user_tokens (user_id, token, expires_at) 
+       VALUES (?, ?, ?)`,
+      [userId, token, expiresAt]
+    );
+  } else {
+    // 有过期时间的Token：使用SQLite的datetime函数计算过期时间（使用本地时间，与created_at保持一致）
+    await runAsync(
+      `INSERT INTO user_tokens (user_id, token, expires_at) 
+       VALUES (?, ?, datetime('now', 'localtime', '+' || ? || ' seconds'))`,
+      [userId, token, expiresAtSeconds]
+    );
+  }
   
   return token;
 }
@@ -48,53 +77,34 @@ async function verifyUserToken(token) {
   const trimmedToken = token.trim();
   
   try {
-    // 先检查Token是否存在（不管是否过期）
-    const tokenExists = await getAsync(
+    // 查找有效的Token（包括永不过期的Token）
+    // 永不过期的Token：expires_at >= '9999-12-31'
+    // 有过期时间的Token：expires_at > datetime('now', 'localtime')（使用本地时间，与created_at保持一致）
+    const tokenRecord = await getAsync(
       `SELECT ut.user_id, ut.expires_at, u.id, u.phone, u.name 
        FROM user_tokens ut 
        JOIN users u ON ut.user_id = u.id 
-       WHERE ut.token = ?`,
+       WHERE ut.token = ? 
+       AND (ut.expires_at > datetime('now', 'localtime') OR ut.expires_at >= '9999-12-31')`,
       [trimmedToken]
     );
     
-    if (!tokenExists) {
-      logger.debug('验证用户Token失败：Token不存在', { 
+    if (!tokenRecord) {
+      logger.debug('验证用户Token失败：Token不存在或已过期', { 
         tokenLength: trimmedToken.length,
         tokenPrefix: trimmedToken.substring(0, 8) + '...'
       });
       return null;
     }
     
-    // 检查Token是否过期
-    const nowRecord = await getAsync(`SELECT datetime('now') as now`);
-    const now = nowRecord?.now;
-    
-    if (tokenExists.expires_at <= now) {
-      logger.debug('验证用户Token失败：Token已过期', { 
-        expiresAt: tokenExists.expires_at,
-        now: now,
-        userId: tokenExists.user_id
-      });
-      return null;
-    }
-    
-    // 查找有效的Token（使用UTC时间比较，因为expires_at存储的是UTC）
-    const tokenRecord = await getAsync(
-      `SELECT ut.user_id, ut.expires_at, u.id, u.phone, u.name 
-       FROM user_tokens ut 
-       JOIN users u ON ut.user_id = u.id 
-       WHERE ut.token = ? AND ut.expires_at > datetime('now')`,
-      [trimmedToken]
-    );
-    
-    if (!tokenRecord) {
-      logger.debug('验证用户Token失败：Token验证查询无结果');
-      return null;
-    }
+    // 检查是否为永不过期Token
+    const isNeverExpire = tokenRecord.expires_at >= '9999-12-31';
     
     logger.debug('验证用户Token成功', { 
       userId: tokenRecord.user_id,
-      phone: tokenRecord.phone
+      phone: tokenRecord.phone,
+      isNeverExpire: isNeverExpire,
+      expiresAt: tokenRecord.expires_at
     });
     
     return {
@@ -111,21 +121,52 @@ async function verifyUserToken(token) {
 /**
  * 清除用户的所有过期Token
  * @param {number} userId - 用户ID（可选）
+ * @param {boolean} includeNeverExpire - 是否清理永不过期的Token（默认false）
+ * @param {string} excludeToken - 要排除的Token（不删除此Token，可选）
  */
-async function cleanupExpiredTokens(userId = null) {
+async function cleanupExpiredTokens(userId = null, includeNeverExpire = false, excludeToken = null) {
   try {
     if (userId) {
-      await runAsync(
-        'DELETE FROM user_tokens WHERE user_id = ? AND expires_at <= datetime("now")',
-        [userId]
-      );
+      if (includeNeverExpire) {
+        // 清理该用户的所有Token（包括永不过期的），但排除指定的Token
+        if (excludeToken) {
+          await runAsync(
+            'DELETE FROM user_tokens WHERE user_id = ? AND token != ?',
+            [userId, excludeToken]
+          );
+        } else {
+          await runAsync(
+            'DELETE FROM user_tokens WHERE user_id = ?',
+            [userId]
+          );
+        }
+      } else {
+        // 只清理过期的Token（使用本地时间，与created_at保持一致）
+        await runAsync(
+          'DELETE FROM user_tokens WHERE user_id = ? AND expires_at <= datetime("now", "localtime")',
+          [userId]
+        );
+      }
     } else {
-      await runAsync(
-        'DELETE FROM user_tokens WHERE expires_at <= datetime("now")'
-      );
+      if (includeNeverExpire) {
+        // 清理所有Token（包括永不过期的），但排除指定的Token
+        if (excludeToken) {
+          await runAsync(
+            'DELETE FROM user_tokens WHERE token != ?',
+            [excludeToken]
+          );
+        } else {
+          await runAsync('DELETE FROM user_tokens');
+        }
+      } else {
+        // 只清理过期的Token（使用本地时间，与created_at保持一致）
+        await runAsync(
+          'DELETE FROM user_tokens WHERE expires_at <= datetime("now", "localtime")'
+        );
+      }
     }
   } catch (error) {
-    logger.error('清理过期Token失败', { error: error.message });
+    logger.error('清理Token失败', { error: error.message, userId, includeNeverExpire });
   }
 }
 
@@ -1349,8 +1390,8 @@ router.post('/user/login', [
     // 生成用户Token（用于小程序）
     const userToken = await generateUserToken(user.id);
     
-    // 清理该用户的过期Token
-    await cleanupExpiredTokens(user.id);
+    // 清理该用户的所有旧Token（包括永不过期的），但保留刚生成的新Token
+    await cleanupExpiredTokens(user.id, true, userToken);
 
     // 确保Session保存并设置Cookie（用于浏览器）
     req.session.save((err) => {
@@ -1738,8 +1779,8 @@ router.post('/user/login-with-code', [
     // 生成用户Token（用于小程序）
     const userToken = await generateUserToken(user.id);
     
-    // 清理该用户的过期Token
-    await cleanupExpiredTokens(user.id);
+    // 清理该用户的所有旧Token（包括永不过期的），但保留刚生成的新Token
+    await cleanupExpiredTokens(user.id, true, userToken);
 
     // 确保Session保存并设置Cookie（用于浏览器）
     req.session.save((err) => {
