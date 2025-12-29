@@ -41,6 +41,7 @@ async function getPosts(options = {}) {
   if (options.category) params.append('category', options.category);
   if (options.search) params.append('search', options.search);
   if (options.published !== undefined) params.append('published', options.published);
+  if (options.myPosts !== undefined) params.append('myPosts', options.myPosts);
   
   const url = `${BLOG_API_BASE}/posts${params.toString() ? '?' + params.toString() : ''}`;
   return await apiRequest(url);

@@ -37,16 +37,59 @@ function initCustomApiRouter(app) {
       }
       const requestMethod = req.method.toUpperCase();
 
-      // 从数据库查找匹配的API
+      // 从数据库查找匹配的API（包括已停用的）
       const api = await getAsync(`
         SELECT id, name, path, method, requires_token, response_content, description, status
         FROM custom_apis
-        WHERE path = ? AND method = ? AND status = 'active'
+        WHERE path = ? AND method = ?
       `, [requestPath, requestMethod]);
 
       if (!api) {
         // 如果没有找到匹配的API，继续到下一个中间件（404处理）
         return next();
+      }
+
+      // 检查API是否已停用
+      if (api.status === 'inactive') {
+        // 已停用的API路径映射到替代方案
+        const deprecatedApiMap = {
+          '/second-hand': {
+            replacement: '/api/blog/posts?category=二手市场',
+            description: '二手集市'
+          },
+          '/exchange-rate': {
+            replacement: '/api/blog/posts?category=汇率转换',
+            description: '汇率查询'
+          },
+          '/weather': {
+            replacement: '/api/blog/posts?category=天气路况',
+            description: '天气信息'
+          },
+          '/translation': {
+            replacement: '/api/blog/posts?category=翻译卡片',
+            description: '翻译/问路卡片'
+          },
+          '/feedback': {
+            replacement: '/api/user/feedback',
+            description: '反馈提交'
+          }
+        };
+
+        const replacement = deprecatedApiMap[requestPath];
+        
+        logger.warn('请求已停用的API', {
+          path: requestPath,
+          method: requestMethod,
+          replacement: replacement?.replacement
+        });
+
+        return res.status(410).json({
+          success: false,
+          message: `此API已停用。${replacement?.description || '该功能'}已迁移到博客文章系统。`,
+          deprecated: true,
+          replacement: replacement?.replacement || null,
+          documentation: '/docs/API_MIGRATION.md'
+        });
       }
 
       // 调试日志：记录API信息

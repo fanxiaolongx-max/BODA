@@ -84,18 +84,79 @@ function requireRole(roles = []) {
 }
 
 // 检查用户登录（手机号）
+// 支持两种认证方式：
+// 1. Session认证（浏览器）- 优先使用
+// 2. Token认证（小程序）- 备用方案
 async function requireUserAuth(req, res, next) {
   // 先检查并清理过期session
   await checkSessionExpiry(req);
   
-  // 检查userId或userPhone（兼容两种登录方式）
-  if (!req.session || (!req.session.userId && !req.session.userPhone)) {
-    return res.status(401).json({ 
-      success: false, 
-      message: '请先输入手机号登录' 
-    });
+  // 优先检查Session认证（浏览器）
+  if (req.session && (req.session.userId || req.session.userPhone)) {
+    return next();
   }
-  next();
+  
+  // 没有Session，尝试Token认证（小程序）
+  const token = req.headers['x-user-token'] || 
+                req.headers['X-User-Token'] || 
+                req.headers['authorization']?.replace(/^Bearer\s+/i, '') ||
+                req.query.token;
+  
+  if (token) {
+    try {
+      // verifyUserToken 是 routes/auth.js 中的内部函数，需要通过其他方式访问
+      // 使用 auth.js 中已有的逻辑来验证Token
+      const { getAsync } = require('../db/database');
+      const { logger } = require('../utils/logger');
+      
+      const trimmedToken = token.trim();
+      const tokenRecord = await getAsync(
+        `SELECT ut.user_id, ut.expires_at, u.id, u.phone, u.name 
+         FROM user_tokens ut 
+         JOIN users u ON ut.user_id = u.id 
+         WHERE ut.token = ? 
+         AND (ut.expires_at > datetime('now', 'localtime') OR ut.expires_at >= '9999-12-31')`,
+        [trimmedToken]
+      );
+      
+      if (tokenRecord) {
+        const tokenUser = {
+          id: tokenRecord.user_id,
+          phone: tokenRecord.phone,
+          name: tokenRecord.name
+        };
+        // Token验证成功，设置session信息（用于后续处理）
+        if (!req.session) {
+          req.session = {};
+        }
+        req.session.userId = tokenUser.id;
+        req.session.userPhone = tokenUser.phone;
+        if (tokenUser.name) {
+          req.session.userName = tokenUser.name;
+        }
+        
+        logger.debug('requireUserAuth: Token认证成功', { 
+          userId: tokenUser.id, 
+          userPhone: tokenUser.phone,
+          path: req.path 
+        });
+        
+        return next();
+      }
+    } catch (error) {
+      const { logger } = require('../utils/logger');
+      logger.debug('requireUserAuth: Token认证失败', { 
+        error: error.message,
+        path: req.path 
+      });
+    }
+  }
+  
+  // 两种认证方式都失败
+  return res.status(401).json({ 
+    success: false, 
+    message: '请先输入手机号登录' 
+  });
 }
 
 module.exports = {

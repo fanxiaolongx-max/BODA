@@ -74,6 +74,38 @@
       height: auto;
       object-fit: contain;
     }
+    
+    /* 特殊内容类型的响应式样式 */
+    @media (max-width: 768px) {
+      /* 汇率卡片在移动端单列显示 */
+      .exchange-rate-display {
+        padding: 0.5rem !important;
+      }
+      .exchange-rate-display > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+      }
+      
+      /* 翻译卡片在移动端优化 */
+      .translation-display {
+        padding: 0.5rem !important;
+      }
+      .translation-display > div[style*="padding: 2.5rem"] {
+        padding: 1.5rem !important;
+      }
+      
+      /* 天气卡片在移动端单列显示 */
+      .weather-display {
+        padding: 0.5rem !important;
+      }
+      .weather-display > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+      }
+      
+      /* 景点天气信息在移动端单列显示 */
+      .weather-display div[style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+      }
+    }
   </style>
 </head>
 <body class="blog-detail-page">
@@ -490,20 +522,31 @@
       const contentDiv = document.getElementById('articleContent');
       
       // 检查是否是特殊类别，需要定制显示
+      // 优先使用 _specialType 和 _specialData（新格式）
+      // 兼容 _originalData（旧格式）
+      const specialType = post._specialType;
+      const specialData = post._specialData || post._originalData;
       const apiName = post._sourceApiName || '';
-      const isExchangeRate = apiName.toLowerCase().includes('exchange') || apiName.toLowerCase().includes('汇率');
-      const isTranslation = apiName.toLowerCase().includes('translation') || apiName.toLowerCase().includes('翻译');
-      const isWeather = apiName.toLowerCase().includes('weather') || apiName.toLowerCase().includes('天气');
       
-      if (isWeather && post._originalData) {
+      const isExchangeRate = specialType === 'exchange-rate' || 
+                            apiName.toLowerCase().includes('exchange') || 
+                            apiName.toLowerCase().includes('汇率');
+      const isTranslation = specialType === 'translation' || 
+                           apiName.toLowerCase().includes('translation') || 
+                           apiName.toLowerCase().includes('翻译');
+      const isWeather = specialType === 'weather' || 
+                       apiName.toLowerCase().includes('weather') || 
+                       apiName.toLowerCase().includes('天气');
+      
+      if (isWeather && specialData) {
         // 天气路况：定制显示
-        renderWeather(post._originalData, contentDiv);
-      } else if (isExchangeRate && post._originalData) {
+        renderWeather(specialData, contentDiv);
+      } else if (isExchangeRate && specialData) {
         // 汇率转换：定制显示
-        renderExchangeRate(post._originalData, contentDiv);
-      } else if (isTranslation && post._originalData) {
+        renderExchangeRate(specialData, contentDiv);
+      } else if (isTranslation && specialData) {
         // 翻译卡片：定制显示
-        renderTranslation(post._originalData, contentDiv);
+        renderTranslation(specialData, contentDiv);
       } else if (post.htmlContent) {
         contentDiv.innerHTML = post.htmlContent;
         // 处理HTML内容中的图片
@@ -860,13 +903,35 @@
         'THB': '泰铢'
       };
       
+      // 货币图标映射
+      const currencyIcons = {
+        'CNY': '🇨🇳',
+        'USD': '🇺🇸',
+        'EUR': '🇪🇺',
+        'SAR': '🇸🇦',
+        'GBP': '🇬🇧',
+        'JPY': '🇯🇵',
+        'AED': '🇦🇪',
+        'EGP': '🇪🇬',
+        'RUB': '🇷🇺',
+        'INR': '🇮🇳',
+        'KRW': '🇰🇷',
+        'THB': '🇹🇭'
+      };
+      
       // 排除标准字段
       const excludeFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
       
-      let html = '<div class="exchange-rate-display" style="max-width: 800px; margin: 0 auto;">';
-      html += '<h2 style="font-size: 1.75rem; font-weight: bold; margin-bottom: 1.5rem; color: #374151; text-align: center;">汇率转换</h2>';
+      let html = '<div class="exchange-rate-display" style="max-width: 900px; margin: 0 auto; padding: 1rem;">';
       
-      // 构建汇率表格 - 遍历所有字段，找出货币字段
+      // 标题区域
+      html += '<div style="text-align: center; margin-bottom: 2rem;">';
+      html += '<div style="font-size: 3rem; margin-bottom: 0.5rem;">💱</div>';
+      html += '<h2 style="font-size: 2rem; font-weight: bold; margin-bottom: 0.5rem; color: #1f2937; background: linear-gradient(to right, #10b981, #059669); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">汇率转换</h2>';
+      html += '<p style="color: #6b7280; font-size: 0.9375rem;">实时汇率信息，方便您进行货币换算</p>';
+      html += '</div>';
+      
+      // 构建汇率数据 - 遍历所有字段，找出货币字段
       const exchangeData = [];
       Object.keys(data).forEach(fromCurrency => {
         // 跳过标准字段
@@ -880,8 +945,10 @@
               exchangeData.push({
                 from: fromCurrency,
                 fromName: currencyNames[fromCurrency] || fromCurrency,
+                fromIcon: currencyIcons[fromCurrency] || '💵',
                 to: toCurrency,
                 toName: currencyNames[toCurrency] || toCurrency,
+                toIcon: currencyIcons[toCurrency] || '💵',
                 rate: rate
               });
             }
@@ -890,50 +957,68 @@
       });
       
       if (exchangeData.length > 0) {
-        html += '<div style="background: white; border-radius: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">';
-        html += '<table style="width: 100%; border-collapse: collapse;">';
-        html += '<thead style="background: linear-gradient(to right, #10b981, #059669); color: white;">';
-        html += '<tr>';
-        html += '<th style="padding: 1rem; text-align: left; font-weight: 600;">源货币</th>';
-        html += '<th style="padding: 1rem; text-align: left; font-weight: 600;">目标货币</th>';
-        html += '<th style="padding: 1rem; text-align: right; font-weight: 600;">汇率</th>';
-        html += '</tr>';
-        html += '</thead>';
-        html += '<tbody>';
+        // 使用卡片式布局，更美观
+        html += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 2rem;">';
         
         exchangeData.forEach((item, index) => {
-          const rowStyle = index % 2 === 0 ? 'background: #f9fafb;' : 'background: white;';
-          html += `<tr style="${rowStyle}">`;
-          html += `<td style="padding: 1rem; font-weight: 600; color: #374151;">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="font-size: 1.25rem; font-weight: bold; color: #10b981;">${item.from}</span>
-              <span style="color: #6b7280; font-size: 0.875rem;">${item.fromName}</span>
-            </div>
-          </td>`;
-          html += `<td style="padding: 1rem; font-weight: 600; color: #374151;">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="font-size: 1.25rem; font-weight: bold; color: #059669;">${item.to}</span>
-              <span style="color: #6b7280; font-size: 0.875rem;">${item.toName}</span>
-            </div>
-          </td>`;
-          html += `<td style="padding: 1rem; text-align: right;">
-            <span style="font-size: 1.5rem; font-weight: bold; color: #10b981;">${item.rate.toFixed(4)}</span>
-            <div style="color: #6b7280; font-size: 0.875rem; margin-top: 0.25rem;">1 ${item.from} = ${item.rate.toFixed(4)} ${item.to}</div>
-          </td>`;
-          html += '</tr>';
+          html += `<div style="background: white; border-radius: 1rem; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; transition: all 0.3s ease; position: relative; overflow: hidden;" 
+            onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)';" 
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)';">`;
+          
+          // 顶部装饰条
+          html += '<div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(to right, #10b981, #059669);"></div>';
+          
+          // 货币转换信息
+          html += '<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">';
+          
+          // 源货币
+          html += '<div style="flex: 1; text-align: center;">';
+          html += `<div style="font-size: 2rem; margin-bottom: 0.5rem;">${item.fromIcon}</div>`;
+          html += `<div style="font-size: 1.125rem; font-weight: 700; color: #374151; margin-bottom: 0.25rem;">${item.from}</div>`;
+          html += `<div style="font-size: 0.875rem; color: #6b7280;">${item.fromName}</div>`;
+          html += '</div>';
+          
+          // 箭头
+          html += '<div style="flex-shrink: 0; padding: 0 1rem;">';
+          html += '<div style="font-size: 1.5rem; color: #10b981;">→</div>';
+          html += '</div>';
+          
+          // 目标货币
+          html += '<div style="flex: 1; text-align: center;">';
+          html += `<div style="font-size: 2rem; margin-bottom: 0.5rem;">${item.toIcon}</div>`;
+          html += `<div style="font-size: 1.125rem; font-weight: 700; color: #374151; margin-bottom: 0.25rem;">${item.to}</div>`;
+          html += `<div style="font-size: 0.875rem; color: #6b7280;">${item.toName}</div>`;
+          html += '</div>';
+          
+          html += '</div>';
+          
+          // 汇率显示
+          html += '<div style="background: linear-gradient(to right, #ecfdf5, #d1fae5); border-radius: 0.75rem; padding: 1.25rem; text-align: center; border: 2px solid #10b981;">';
+          html += `<div style="font-size: 2rem; font-weight: bold; color: #059669; margin-bottom: 0.5rem;">${item.rate.toFixed(4)}</div>`;
+          html += `<div style="font-size: 0.875rem; color: #047857; font-weight: 600;">1 ${item.from} = ${item.rate.toFixed(4)} ${item.to}</div>`;
+          html += '</div>';
+          
+          html += '</div>';
         });
         
-        html += '</tbody>';
-        html += '</table>';
         html += '</div>';
         
         // 显示更新时间
         if (data.updateTime) {
           const updateDate = new Date(data.updateTime);
-          html += `<div style="text-align: center; margin-top: 1rem; color: #6b7280; font-size: 0.875rem;">更新时间：${formatDateTime(updateDate)}</div>`;
+          html += `<div style="text-align: center; padding: 1rem; background: #f9fafb; border-radius: 0.75rem; margin-top: 1rem;">`;
+          html += `<div style="display: inline-flex; align-items: center; gap: 0.5rem; color: #6b7280; font-size: 0.875rem;">`;
+          html += '<span>🕐</span>';
+          html += `<span>更新时间：${formatDateTime(updateDate)}</span>`;
+          html += '</div>';
+          html += '</div>';
         }
       } else {
-        html += '<div style="text-align: center; padding: 2rem; color: #6b7280;">暂无汇率数据</div>';
+        html += '<div style="text-align: center; padding: 3rem; background: #f9fafb; border-radius: 0.75rem; color: #6b7280;">';
+        html += '<div style="font-size: 3rem; margin-bottom: 1rem;">📊</div>';
+        html += '<div style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem;">暂无汇率数据</div>';
+        html += '<div style="font-size: 0.875rem;">请稍后再试</div>';
+        html += '</div>';
       }
       
       html += '</div>';
@@ -942,36 +1027,64 @@
     
     // 渲染翻译卡片内容
     function renderTranslation(data, container) {
-      let html = '<div class="translation-display" style="max-width: 800px; margin: 0 auto;">';
-      html += '<h2 style="font-size: 1.75rem; font-weight: bold; margin-bottom: 1.5rem; color: #374151; text-align: center;">翻译卡片</h2>';
+      // 如果data为空或不是对象，显示错误信息
+      if (!data || typeof data !== 'object') {
+        container.innerHTML = '<div style="text-align: center; padding: 3rem; color: #6b7280;"><div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div><div style="font-size: 1.125rem; font-weight: 600;">数据格式错误</div></div>';
+        return;
+      }
       
-      html += '<div style="background: white; border-radius: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 2rem;">';
+      let html = '<div class="translation-display" style="max-width: 900px; margin: 0 auto; padding: 1rem;">';
       
-      if (data.chinese && data.arabic) {
-        html += '<div style="display: grid; gap: 1.5rem;">';
-        
-        // 中文
-        html += '<div style="border-right: 3px solid #9333ea; padding-right: 1.5rem;">';
-        html += '<div style="font-size: 0.875rem; color: #9333ea; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">中文</div>';
-        html += `<div style="font-size: 1.5rem; color: #374151; line-height: 1.8;">${escapeHtml(data.chinese)}</div>`;
+      // 标题区域
+      html += '<div style="text-align: center; margin-bottom: 2rem;">';
+      html += '<div style="font-size: 3rem; margin-bottom: 0.5rem;">🗣️</div>';
+      html += '<h2 style="font-size: 2rem; font-weight: bold; margin-bottom: 0.5rem; color: #1f2937; background: linear-gradient(to right, #9333ea, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">翻译卡片</h2>';
+      html += '<p style="color: #6b7280; font-size: 0.9375rem;">中阿双语对照，帮助您更好地沟通</p>';
+      html += '</div>';
+      
+      html += '<div style="background: white; border-radius: 1rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); padding: 2.5rem; border: 1px solid #e5e7eb; position: relative; overflow: hidden;">';
+      
+      // 顶部装饰条
+      html += '<div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(to right, #9333ea, #7c3aed);"></div>';
+      
+      // 检查数据字段（支持多种字段名）
+      const chinese = data.chinese || data.name || data.title || '';
+      const arabic = data.arabic || '';
+      
+      if (chinese && arabic) {
+        // 中文部分
+        html += '<div style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 2px solid #e5e7eb;">';
+        html += '<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">';
+        html += '<span style="font-size: 1.5rem;">🇨🇳</span>';
+        html += '<div style="font-size: 0.875rem; color: #9333ea; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">中文 (Chinese)</div>';
+        html += '</div>';
+        html += `<div style="font-size: 1.75rem; color: #1f2937; line-height: 1.8; font-weight: 500; padding: 1rem; background: linear-gradient(to right, #faf5ff, #f3e8ff); border-radius: 0.75rem; border-left: 4px solid #9333ea;">${escapeHtml(chinese)}</div>`;
         html += '</div>';
         
-        // 阿拉伯文
-        html += '<div style="border-right: 3px solid #9333ea; padding-right: 1.5rem; direction: rtl; text-align: right;">';
-        html += '<div style="font-size: 0.875rem; color: #9333ea; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">العربية (阿拉伯文)</div>';
-        html += `<div style="font-size: 1.5rem; color: #374151; line-height: 1.8; font-family: "Arial", "Tahoma", sans-serif;">${escapeHtml(data.arabic)}</div>`;
+        // 阿拉伯文部分
+        html += '<div style="margin-bottom: 2rem;">';
+        html += '<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">';
+        html += '<span style="font-size: 1.5rem;">🇪🇬</span>';
+        html += '<div style="font-size: 0.875rem; color: #9333ea; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">العربية (Arabic)</div>';
+        html += '</div>';
+        html += `<div style="font-size: 1.75rem; color: #1f2937; line-height: 1.8; font-weight: 500; padding: 1rem; background: linear-gradient(to right, #faf5ff, #f3e8ff); border-radius: 0.75rem; border-left: 4px solid #9333ea; direction: rtl; text-align: right; font-family: "Arial", "Tahoma", "Segoe UI", sans-serif;">${escapeHtml(arabic)}</div>`;
         html += '</div>';
         
-        // 分类
+        // 分类标签
         if (data.category) {
-          html += '<div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">';
-          html += `<span style="display: inline-block; background: #f3f4f6; color: #6b7280; padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.875rem;">分类：${escapeHtml(data.category)}</span>`;
+          html += '<div style="display: flex; align-items: center; gap: 0.75rem; padding-top: 1.5rem; border-top: 2px solid #e5e7eb;">';
+          html += '<span style="font-size: 1.25rem;">🏷️</span>';
+          html += `<div style="display: inline-flex; align-items: center; gap: 0.5rem;">`;
+          html += `<span style="background: linear-gradient(to right, #9333ea, #7c3aed); color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600;">${escapeHtml(data.category)}</span>`;
+          html += '</div>';
           html += '</div>';
         }
-        
-        html += '</div>';
       } else {
-        html += '<div style="text-align: center; padding: 2rem; color: #6b7280;">暂无翻译数据</div>';
+        html += '<div style="text-align: center; padding: 3rem; color: #6b7280;">';
+        html += '<div style="font-size: 3rem; margin-bottom: 1rem;">📝</div>';
+        html += '<div style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem;">暂无翻译数据</div>';
+        html += '<div style="font-size: 0.875rem;">请稍后再试</div>';
+        html += '</div>';
       }
       
       html += '</div>';
@@ -981,83 +1094,109 @@
     
     // 渲染天气路况内容
     function renderWeather(data, container) {
-      let html = '<div class="weather-display" style="max-width: 900px; margin: 0 auto;">';
-      html += '<h2 style="font-size: 1.75rem; font-weight: bold; margin-bottom: 1.5rem; color: #374151; text-align: center;">天气路况</h2>';
+      let html = '<div class="weather-display" style="max-width: 1000px; margin: 0 auto; padding: 1rem;">';
+      
+      // 标题区域
+      html += '<div style="text-align: center; margin-bottom: 2rem;">';
+      html += '<div style="font-size: 3rem; margin-bottom: 0.5rem;">🌤️</div>';
+      html += '<h2 style="font-size: 2rem; font-weight: bold; margin-bottom: 0.5rem; color: #1f2937; background: linear-gradient(to right, #3b82f6, #2563eb); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">天气路况</h2>';
+      html += '<p style="color: #6b7280; font-size: 0.9375rem;">实时天气信息与路况提醒，助您出行无忧</p>';
+      html += '</div>';
       
       // 全局预警
       if (data.globalAlert) {
         const alertLevel = data.globalAlert.level || 'medium';
         const alertMessage = data.globalAlert.message || '';
         const levelColors = {
-          'low': { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af', icon: 'ℹ️' },
-          'medium': { bg: '#fef3c7', border: '#f59e0b', text: '#92400e', icon: '⚠️' },
-          'high': { bg: '#fee2e2', border: '#ef4444', text: '#991b1b', icon: '🚨' }
+          'low': { bg: 'linear-gradient(to right, #dbeafe, #bfdbfe)', border: '#3b82f6', text: '#1e40af', icon: 'ℹ️', shadow: '0 4px 6px -1px rgba(59, 130, 246, 0.3)' },
+          'medium': { bg: 'linear-gradient(to right, #fef3c7, #fde68a)', border: '#f59e0b', text: '#92400e', icon: '⚠️', shadow: '0 4px 6px -1px rgba(245, 158, 11, 0.3)' },
+          'high': { bg: 'linear-gradient(to right, #fee2e2, #fecaca)', border: '#ef4444', text: '#991b1b', icon: '🚨', shadow: '0 4px 6px -1px rgba(239, 68, 68, 0.3)' }
         };
         const levelNames = {
-          'low': '低',
-          'medium': '中',
-          'high': '高'
+          'low': '低风险',
+          'medium': '中风险',
+          'high': '高风险'
         };
         const colors = levelColors[alertLevel] || levelColors['medium'];
         
-        html += '<div style="background: ' + colors.bg + '; border-left: 4px solid ' + colors.border + '; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
-        html += '<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">';
-        html += '<span style="font-size: 1.5rem;">' + colors.icon + '</span>';
-        html += '<span style="font-weight: 600; color: ' + colors.text + '; font-size: 1.125rem;">全局预警</span>';
-        html += '<span style="background: ' + colors.border + '; color: white; padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 600;">' + levelNames[alertLevel] + '风险</span>';
+        html += `<div style="background: ${colors.bg}; border-left: 5px solid ${colors.border}; border-radius: 1rem; padding: 2rem; margin-bottom: 2rem; box-shadow: ${colors.shadow}; position: relative; overflow: hidden;">`;
+        html += '<div style="position: absolute; top: 0; right: 0; width: 100px; height: 100px; background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%); border-radius: 50%; transform: translate(30px, -30px);"></div>';
+        html += '<div style="display: flex; align-items: flex-start; gap: 1rem; position: relative; z-index: 1;">';
+        html += `<div style="flex-shrink: 0; font-size: 3rem; line-height: 1;">${colors.icon}</div>`;
+        html += '<div style="flex: 1;">';
+        html += '<div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">';
+        html += `<span style="font-weight: 700; color: ${colors.text}; font-size: 1.25rem;">全局预警</span>`;
+        html += `<span style="background: ${colors.border}; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">${levelNames[alertLevel]}</span>`;
         html += '</div>';
-        html += '<div style="color: #374151; font-size: 1rem; line-height: 1.6;">' + escapeHtml(alertMessage) + '</div>';
+        html += `<div style="color: ${colors.text}; font-size: 1.125rem; line-height: 1.7; font-weight: 500;">${escapeHtml(alertMessage)}</div>`;
+        html += '</div>';
+        html += '</div>';
         html += '</div>';
       }
       
       // 景点天气
       if (data.attractions && Array.isArray(data.attractions) && data.attractions.length > 0) {
-        html += '<div style="margin-bottom: 2rem;">';
-        html += '<h3 style="font-size: 1.25rem; font-weight: 600; color: #3b82f6; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">';
-        html += '<span>📍</span><span>景点天气</span>';
-        html += '</h3>';
-        html += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">';
+        html += '<div style="margin-bottom: 2.5rem;">';
+        html += '<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;">';
+        html += '<span style="font-size: 2rem;">📍</span>';
+        html += '<h3 style="font-size: 1.5rem; font-weight: 700; color: #1f2937; margin: 0;">景点天气</h3>';
+        html += '</div>';
+        html += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">';
         
         data.attractions.forEach((attraction, index) => {
-          html += '<div style="background: white; border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform=\'translateY(-2px)\'; this.style.boxShadow=\'0 4px 8px rgba(0,0,0,0.15)\';" onmouseout="this.style.transform=\'translateY(0)\'; this.style.boxShadow=\'0 2px 4px rgba(0,0,0,0.1)\';">';
+          html += `<div style="background: white; border-radius: 1rem; padding: 1.75rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; transition: all 0.3s ease; position: relative; overflow: hidden;" 
+            onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)';" 
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)';">`;
+          
+          // 顶部装饰条
+          html += '<div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(to right, #3b82f6, #2563eb);"></div>';
           
           // 景点名称
-          html += '<div style="font-size: 1.25rem; font-weight: 600; color: #374151; margin-bottom: 1rem; border-bottom: 2px solid #3b82f6; padding-bottom: 0.5rem;">';
-          html += escapeHtml(attraction.name || '未命名景点');
+          html += '<div style="font-size: 1.375rem; font-weight: 700; color: #1f2937; margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 2px solid #e5e7eb; display: flex; align-items: center; gap: 0.75rem;">';
+          html += '<span style="font-size: 1.5rem;">🏛️</span>';
+          html += '<span>' + escapeHtml(attraction.name || '未命名景点') + '</span>';
           html += '</div>';
           
           // 天气信息网格
-          html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">';
+          html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">';
           
           // 温度
           if (attraction.temperature !== undefined) {
-            html += '<div style="background: linear-gradient(to bottom right, #fef3c7, #fde68a); padding: 0.75rem; border-radius: 0.5rem;">';
-            html += '<div style="font-size: 0.875rem; color: #92400e; margin-bottom: 0.25rem; font-weight: 600;">🌡️ 温度</div>';
-            html += '<div style="font-size: 1.5rem; font-weight: bold; color: #92400e;">' + escapeHtml(String(attraction.temperature)) + '°C</div>';
+            html += '<div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 1rem; border-radius: 0.75rem; border: 2px solid #fbbf24; box-shadow: 0 2px 4px rgba(251, 191, 36, 0.2);">';
+            html += '<div style="font-size: 0.875rem; color: #92400e; margin-bottom: 0.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">';
+            html += '<span>🌡️</span><span>温度</span>';
+            html += '</div>';
+            html += '<div style="font-size: 2rem; font-weight: bold; color: #92400e; line-height: 1;">' + escapeHtml(String(attraction.temperature)) + '<span style="font-size: 1.25rem; margin-left: 0.25rem;">°C</span></div>';
             html += '</div>';
           }
           
           // 能见度
           if (attraction.visibility) {
-            html += '<div style="background: linear-gradient(to bottom right, #dbeafe, #bfdbfe); padding: 0.75rem; border-radius: 0.5rem;">';
-            html += '<div style="font-size: 0.875rem; color: #1e40af; margin-bottom: 0.25rem; font-weight: 600;">👁️ 能见度</div>';
-            html += '<div style="font-size: 1.25rem; font-weight: bold; color: #1e40af;">' + escapeHtml(attraction.visibility) + '</div>';
+            html += '<div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 1rem; border-radius: 0.75rem; border: 2px solid #60a5fa; box-shadow: 0 2px 4px rgba(96, 165, 250, 0.2);">';
+            html += '<div style="font-size: 0.875rem; color: #1e40af; margin-bottom: 0.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">';
+            html += '<span>👁️</span><span>能见度</span>';
+            html += '</div>';
+            html += '<div style="font-size: 1.5rem; font-weight: bold; color: #1e40af;">' + escapeHtml(attraction.visibility) + '</div>';
             html += '</div>';
           }
           
           // 紫外线指数
           if (attraction.uvIndex !== undefined) {
-            html += '<div style="background: linear-gradient(to bottom right, #fecaca, #fca5a5); padding: 0.75rem; border-radius: 0.5rem;">';
-            html += '<div style="font-size: 0.875rem; color: #991b1b; margin-bottom: 0.25rem; font-weight: 600;">☀️ 紫外线</div>';
-            html += '<div style="font-size: 1.25rem; font-weight: bold; color: #991b1b;">' + escapeHtml(String(attraction.uvIndex)) + '</div>';
+            html += '<div style="background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%); padding: 1rem; border-radius: 0.75rem; border: 2px solid #f87171; box-shadow: 0 2px 4px rgba(248, 113, 113, 0.2);">';
+            html += '<div style="font-size: 0.875rem; color: #991b1b; margin-bottom: 0.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">';
+            html += '<span>☀️</span><span>紫外线</span>';
+            html += '</div>';
+            html += '<div style="font-size: 1.5rem; font-weight: bold; color: #991b1b;">' + escapeHtml(String(attraction.uvIndex)) + '</div>';
             html += '</div>';
           }
           
           // 风速
           if (attraction.windSpeed) {
-            html += '<div style="background: linear-gradient(to bottom right, #e0e7ff, #c7d2fe); padding: 0.75rem; border-radius: 0.5rem;">';
-            html += '<div style="font-size: 0.875rem; color: #3730a3; margin-bottom: 0.25rem; font-weight: 600;">💨 风速</div>';
-            html += '<div style="font-size: 1.25rem; font-weight: bold; color: #3730a3;">' + escapeHtml(attraction.windSpeed) + '</div>';
+            html += '<div style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); padding: 1rem; border-radius: 0.75rem; border: 2px solid #818cf8; box-shadow: 0 2px 4px rgba(129, 140, 248, 0.2);">';
+            html += '<div style="font-size: 0.875rem; color: #3730a3; margin-bottom: 0.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">';
+            html += '<span>💨</span><span>风速</span>';
+            html += '</div>';
+            html += '<div style="font-size: 1.5rem; font-weight: bold; color: #3730a3;">' + escapeHtml(attraction.windSpeed) + '</div>';
             html += '</div>';
           }
           
@@ -1065,9 +1204,11 @@
           
           // 建议
           if (attraction.suggestion) {
-            html += '<div style="background: #f3f4f6; padding: 0.75rem; border-radius: 0.5rem; border-left: 3px solid #3b82f6;">';
-            html += '<div style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.25rem; font-weight: 600;">💡 建议</div>';
-            html += '<div style="color: #374151; line-height: 1.6;">' + escapeHtml(attraction.suggestion) + '</div>';
+            html += '<div style="background: linear-gradient(to right, #f0f9ff, #e0f2fe); padding: 1rem; border-radius: 0.75rem; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);">';
+            html += '<div style="font-size: 0.875rem; color: #0369a1; margin-bottom: 0.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">';
+            html += '<span>💡</span><span>出行建议</span>';
+            html += '</div>';
+            html += '<div style="color: #1e40af; line-height: 1.7; font-size: 0.9375rem; font-weight: 500;">' + escapeHtml(attraction.suggestion) + '</div>';
             html += '</div>';
           }
           
@@ -1081,42 +1222,52 @@
       // 路况信息
       if (data.traffic && Array.isArray(data.traffic) && data.traffic.length > 0) {
         html += '<div style="margin-bottom: 2rem;">';
-        html += '<h3 style="font-size: 1.25rem; font-weight: 600; color: #3b82f6; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">';
-        html += '<span>🚦</span><span>路况信息</span>';
-        html += '</h3>';
-        html += '<div style="display: grid; gap: 1rem;">';
+        html += '<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;">';
+        html += '<span style="font-size: 2rem;">🚦</span>';
+        html += '<h3 style="font-size: 1.5rem; font-weight: 700; color: #1f2937; margin: 0;">路况信息</h3>';
+        html += '</div>';
+        html += '<div style="display: grid; gap: 1.25rem;">';
         
         data.traffic.forEach((traffic, index) => {
           const typeColors = {
-            '车祸': { bg: '#fee2e2', border: '#ef4444', icon: '🚨' },
-            '施工': { bg: '#fef3c7', border: '#f59e0b', icon: '🚧' },
-            '天气': { bg: '#dbeafe', border: '#3b82f6', icon: '🌧️' },
-            '拥堵': { bg: '#fef3c7', border: '#f59e0b', icon: '🚗' },
-            '其他': { bg: '#f3f4f6', border: '#6b7280', icon: '⚠️' }
+            '车祸': { bg: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)', border: '#ef4444', icon: '🚨', shadow: '0 4px 6px -1px rgba(239, 68, 68, 0.3)' },
+            '施工': { bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b', icon: '🚧', shadow: '0 4px 6px -1px rgba(245, 158, 11, 0.3)' },
+            '天气': { bg: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)', border: '#3b82f6', icon: '🌧️', shadow: '0 4px 6px -1px rgba(59, 130, 246, 0.3)' },
+            '拥堵': { bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '#f59e0b', icon: '🚗', shadow: '0 4px 6px -1px rgba(245, 158, 11, 0.3)' },
+            '其他': { bg: 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)', border: '#6b7280', icon: '⚠️', shadow: '0 4px 6px -1px rgba(107, 114, 128, 0.3)' }
           };
           const colors = typeColors[traffic.type] || typeColors['其他'];
           
-          html += '<div style="background: white; border-left: 4px solid ' + colors.border + '; border-radius: 0.5rem; padding: 1.25rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
-          html += '<div style="display: flex; align-items: flex-start; gap: 1rem;">';
+          html += `<div style="background: white; border-left: 5px solid ${colors.border}; border-radius: 1rem; padding: 1.5rem; box-shadow: ${colors.shadow}; position: relative; overflow: hidden; transition: all 0.3s ease;" 
+            onmouseover="this.style.transform='translateX(4px)'; this.style.boxShadow='0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)';" 
+            onmouseout="this.style.transform='translateX(0)'; this.style.boxShadow='${colors.shadow}';">`;
+          
+          // 背景装饰
+          html += `<div style="position: absolute; top: 0; right: 0; width: 80px; height: 80px; background: ${colors.bg}; border-radius: 50%; transform: translate(20px, -20px); opacity: 0.3;"></div>`;
+          
+          html += '<div style="display: flex; align-items: flex-start; gap: 1.25rem; position: relative; z-index: 1;">';
           
           // 左侧：图标和时间
           html += '<div style="flex-shrink: 0; text-align: center;">';
-          html += '<div style="font-size: 2rem; margin-bottom: 0.5rem;">' + colors.icon + '</div>';
+          html += `<div style="font-size: 2.5rem; margin-bottom: 0.75rem; line-height: 1;">${colors.icon}</div>`;
           if (traffic.time) {
-            html += '<div style="background: ' + colors.bg + '; color: ' + colors.border + '; padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 600;">' + escapeHtml(traffic.time) + '</div>';
+            html += `<div style="background: ${colors.border}; color: white; padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">${escapeHtml(traffic.time)}</div>`;
           }
           html += '</div>';
           
-          // 中间：类型和地点
+          // 右侧：类型、地点和消息
           html += '<div style="flex: 1;">';
-          html += '<div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">';
-          html += '<span style="background: ' + colors.border + '; color: white; padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 600;">' + escapeHtml(traffic.type || '其他') + '</span>';
+          html += '<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap;">';
+          html += `<span style="background: ${colors.border}; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">${escapeHtml(traffic.type || '其他')}</span>`;
           if (traffic.location) {
-            html += '<span style="color: #6b7280; font-size: 0.875rem;">📍 ' + escapeHtml(traffic.location) + '</span>';
+            html += '<div style="display: flex; align-items: center; gap: 0.5rem; color: #6b7280; font-size: 0.9375rem; font-weight: 600;">';
+            html += '<span>📍</span>';
+            html += `<span>${escapeHtml(traffic.location)}</span>`;
+            html += '</div>';
           }
           html += '</div>';
           if (traffic.message) {
-            html += '<div style="color: #374151; line-height: 1.6; font-size: 0.9375rem;">' + escapeHtml(traffic.message) + '</div>';
+            html += `<div style="color: #374151; line-height: 1.7; font-size: 1rem; font-weight: 500; padding: 0.75rem; background: ${colors.bg}; border-radius: 0.5rem;">${escapeHtml(traffic.message)}</div>`;
           }
           html += '</div>';
           

@@ -177,6 +177,16 @@
         <!-- 用户登录状态显示 -->
         <div id="userLoginStatus" style="display: none; align-items: center; gap: 0.5rem;">
           <span id="userNameDisplay" style="font-size: 0.875rem; color: #374151;"></span>
+          <button id="myPostsFilterBtn" onclick="toggleMyPostsFilter()" class="blog-btn blog-btn-secondary blog-btn-sm" style="display: none;" title="只显示我的文章">
+            <svg id="myPostsFilterIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem; vertical-align: middle;">
+              <path d="M9 12l2 2 4-4"></path>
+              <path d="M21 12c-1 0-2-1-2-2s1-2 2-2 2 1 2 2-1 2-2 2z"></path>
+              <path d="M3 12c1 0 2-1 2-2s-1-2-2-2-2 1-2 2 1 2 2 2z"></path>
+              <path d="M12 3c0 1-1 2-2 2s-2-1-2-2 1-2 2-2 2 1 2 2z"></path>
+              <path d="M12 21c0-1 1-2 2-2s2 1 2 2-1 2-2 2-2-1-2-2z"></path>
+            </svg>
+            <span id="myPostsFilterText">我的文章</span>
+          </button>
           <button id="newPostBtn" onclick="newPost()" class="blog-btn blog-btn-primary blog-btn-sm" style="display: none;" title="新建文章">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem; vertical-align: middle;">
               <path d="M12 5v14M5 12h14"></path>
@@ -1147,6 +1157,7 @@
     let currentSearch = null;
     let viewMode = 'posts'; // 固定为文章列表模式
     let isAdminLoggedIn = false; // 管理员登录状态
+    let showMyPostsOnly = false; // 是否只显示我的文章
 
     // 初始化粒子背景
     function initParticles() {
@@ -1255,6 +1266,11 @@
           options.search = currentSearch;
         }
         
+        // 如果用户已登录且启用了"我的文章"筛选
+        if (blogCurrentUser && showMyPostsOnly) {
+          options.myPosts = 'true';
+        }
+        
         const response = await getPosts(options);
         
         // 清除进度动画和消息更新
@@ -1341,6 +1357,7 @@
     function clearFilters() {
       currentCategory = null;
       currentSearch = null;
+      showMyPostsOnly = false; // 同时清除"我的文章"筛选
       currentPage = 1;
       
       
@@ -1349,6 +1366,9 @@
       if (searchInput) {
         searchInput.value = '';
       }
+      
+      // 更新筛选按钮状态
+      updateMyPostsFilterButton();
       
       // 更新分类显示
       loadCategories();
@@ -2599,20 +2619,75 @@
       const userStatus = document.getElementById('userLoginStatus');
       const userNameDisplay = document.getElementById('userNameDisplay');
       const newPostBtn = document.getElementById('newPostBtn');
+      const myPostsFilterBtn = document.getElementById('myPostsFilterBtn');
       
       if (blogCurrentUser) {
-        // 已登录：显示用户信息和登出按钮、新建文章按钮
+        // 已登录：显示用户信息和登出按钮、新建文章按钮、筛选按钮
         if (loginBtn) loginBtn.style.display = 'none';
         if (userStatus) userStatus.style.display = 'flex';
         if (userNameDisplay) {
           userNameDisplay.textContent = blogCurrentUser.name || blogCurrentUser.phone || '用户';
         }
         if (newPostBtn) newPostBtn.style.display = 'inline-flex';
+        if (myPostsFilterBtn) myPostsFilterBtn.style.display = 'inline-flex';
+        // 更新筛选按钮状态
+        updateMyPostsFilterButton();
       } else {
-        // 未登录：显示登录按钮，隐藏新建文章按钮
+        // 未登录：显示登录按钮，隐藏新建文章按钮和筛选按钮
         if (loginBtn) loginBtn.style.display = 'inline-flex';
         if (userStatus) userStatus.style.display = 'none';
         if (newPostBtn) newPostBtn.style.display = 'none';
+        if (myPostsFilterBtn) myPostsFilterBtn.style.display = 'none';
+        // 重置筛选状态
+        showMyPostsOnly = false;
+      }
+    }
+    
+    // 切换"我的文章"筛选
+    function toggleMyPostsFilter() {
+      if (!blogCurrentUser) {
+        showToast('请先登录', 'error');
+        return;
+      }
+      
+      showMyPostsOnly = !showMyPostsOnly;
+      updateMyPostsFilterButton();
+      
+      // 重新加载文章列表（重置到第一页）
+      currentPage = 1;
+      loadPosts(1);
+    }
+    
+    // 更新"我的文章"筛选按钮状态
+    function updateMyPostsFilterButton() {
+      const myPostsFilterBtn = document.getElementById('myPostsFilterBtn');
+      const myPostsFilterIcon = document.getElementById('myPostsFilterIcon');
+      const myPostsFilterText = document.getElementById('myPostsFilterText');
+      
+      if (!myPostsFilterBtn) return;
+      
+      if (showMyPostsOnly) {
+        // 激活状态：使用主色调
+        myPostsFilterBtn.style.background = 'linear-gradient(to right, #d97706, #f59e0b)';
+        myPostsFilterBtn.style.color = 'white';
+        myPostsFilterBtn.style.borderColor = '#d97706';
+        if (myPostsFilterIcon) {
+          myPostsFilterIcon.style.stroke = 'currentColor';
+        }
+        if (myPostsFilterText) {
+          myPostsFilterText.textContent = '我的文章 ✓';
+        }
+      } else {
+        // 未激活状态：使用次要按钮样式
+        myPostsFilterBtn.style.background = '';
+        myPostsFilterBtn.style.color = '';
+        myPostsFilterBtn.style.borderColor = '';
+        if (myPostsFilterIcon) {
+          myPostsFilterIcon.style.stroke = 'currentColor';
+        }
+        if (myPostsFilterText) {
+          myPostsFilterText.textContent = '我的文章';
+        }
       }
     }
 

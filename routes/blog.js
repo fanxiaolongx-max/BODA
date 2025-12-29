@@ -78,7 +78,8 @@ router.get('/posts', async (req, res) => {
       pageSize = 6, 
       category, 
       search,
-      published = 'true' 
+      published = 'true',
+      myPosts = 'false' // 新增：是否只显示当前用户的文章
     } = req.query;
     
     // 获取当前登录用户的手机号
@@ -88,7 +89,36 @@ router.get('/posts', async (req, res) => {
     // 如果用户未登录，只返回已发布的文章
     let posts = [];
     
-    if (userPhone && published === 'true') {
+    // 如果请求只显示我的文章，且用户已登录
+    if (myPosts === 'true' && userPhone) {
+      logger.debug('筛选"我的文章"', { userPhone, category, search });
+      // 只获取该用户的文章（包括已发布和草稿）
+      const userPostsOptions = {
+        publishedOnly: false, // 获取所有文章（包括未发布的）
+        category: category || undefined,
+        search: search || undefined
+      };
+      const allPosts = await getBlogPosts(userPostsOptions);
+      
+      // 筛选出该用户的文章（deviceId匹配）
+      posts = allPosts.filter(post => {
+        const matches = post.deviceId === userPhone;
+        if (!matches && post.deviceId) {
+          logger.debug('文章deviceId不匹配', { 
+            postId: post.id, 
+            postDeviceId: post.deviceId, 
+            userPhone 
+          });
+        }
+        return matches;
+      });
+      
+      logger.debug('筛选结果', { 
+        totalPosts: allPosts.length, 
+        myPosts: posts.length, 
+        userPhone 
+      });
+    } else if (userPhone && published === 'true') {
       // 用户已登录：获取所有已发布的文章 + 该用户的草稿文章
       const publishedOptions = {
         publishedOnly: true,
@@ -143,6 +173,20 @@ router.get('/posts', async (req, res) => {
     const { cleanPostForPublic } = require('../utils/blog-helper');
     const cleanedPosts = paginatedPosts.map(post => {
       const cleaned = cleanPostForPublic(post, false, true); // 第三个参数表示列表场景
+      
+      // 对于特殊类型（汇率、天气、翻译），将_specialData的内容展开到顶层，以兼容前端代码
+      if (cleaned._specialType && cleaned._specialData) {
+        if (cleaned._specialType === 'exchange-rate') {
+          // 汇率：将_specialData的内容合并到顶层，但保留_specialData字段
+          Object.keys(cleaned._specialData).forEach(key => {
+            // 跳过标准字段，只保留汇率数据（CNY, USD等货币代码）
+            if (!['id', 'name', 'title', 'slug', 'excerpt', 'description', 'detailApi'].includes(key)) {
+              cleaned[key] = cleaned._specialData[key];
+            }
+          });
+        }
+        // 天气和翻译保持原样，因为它们的结构更复杂
+      }
       
       // 判断当前登录用户的手机号是否与文章的deviceId一致
       // 如果一致，添加canEdit字段
