@@ -4,21 +4,34 @@ const { logger } = require('../utils/logger');
 
 /**
  * 博客管理API认证中间件
- * 支持两种认证方式：
- * 1. Session认证（浏览器访问）- 优先使用
- * 2. API Token认证（小程序/移动端访问）- 备用方案
+ * 支持三种认证方式：
+ * 1. 管理员Session认证（浏览器访问）- 优先使用
+ * 2. 普通用户Session认证（浏览器访问）- 次优先
+ * 3. API Token认证（小程序/移动端访问）- 备用方案
  * 
  * 认证顺序：
- * 1. 先检查是否有Session（浏览器访问）
- * 2. 如果没有Session，检查是否有API Token（小程序/移动端）
- * 3. 如果都没有，返回401错误
+ * 1. 先检查是否有管理员Session（浏览器访问）
+ * 2. 如果没有管理员Session，检查是否有普通用户Session
+ * 3. 如果没有Session，检查是否有API Token（小程序/移动端）
+ * 4. 如果都没有，返回401错误
  */
 async function requireBlogAuth(req, res, next) {
-  // 先检查Session认证（浏览器访问）
+  // 先检查管理员Session认证（浏览器访问）
   if (req.session && req.session.adminId) {
-    // 有Session，直接通过
-    logger.debug('博客API使用Session认证', {
+    // 有管理员Session，直接通过
+    logger.debug('博客API使用管理员Session认证', {
       adminId: req.session.adminId,
+      path: req.path
+    });
+    return next();
+  }
+  
+  // 检查普通用户Session认证（浏览器访问）
+  if (req.session && (req.session.userId || req.session.userPhone)) {
+    // 有普通用户Session，允许访问（权限检查在具体的路由中进行）
+    logger.debug('博客API使用普通用户Session认证', {
+      userId: req.session.userId,
+      userPhone: req.session.userPhone,
       path: req.path
     });
     return next();
@@ -89,7 +102,8 @@ async function requireBlogAuth(req, res, next) {
     ip: req.ip,
     path: req.path,
     method: req.method,
-    hasSession: !!(req.session && req.session.adminId),
+    hasAdminSession: !!(req.session && req.session.adminId),
+    hasUserSession: !!(req.session && (req.session.userId || req.session.userPhone)),
     hasToken: !!apiToken
   });
   

@@ -39,21 +39,63 @@ async function generateUserToken(userId) {
  * @returns {Promise<Object|null>} 用户信息或null
  */
 async function verifyUserToken(token) {
-  if (!token) return null;
+  if (!token) {
+    logger.debug('验证用户Token失败：Token为空');
+    return null;
+  }
+  
+  // 去除首尾空格
+  const trimmedToken = token.trim();
   
   try {
+    // 先检查Token是否存在（不管是否过期）
+    const tokenExists = await getAsync(
+      `SELECT ut.user_id, ut.expires_at, u.id, u.phone, u.name 
+       FROM user_tokens ut 
+       JOIN users u ON ut.user_id = u.id 
+       WHERE ut.token = ?`,
+      [trimmedToken]
+    );
+    
+    if (!tokenExists) {
+      logger.debug('验证用户Token失败：Token不存在', { 
+        tokenLength: trimmedToken.length,
+        tokenPrefix: trimmedToken.substring(0, 8) + '...'
+      });
+      return null;
+    }
+    
+    // 检查Token是否过期
+    const nowRecord = await getAsync(`SELECT datetime('now') as now`);
+    const now = nowRecord?.now;
+    
+    if (tokenExists.expires_at <= now) {
+      logger.debug('验证用户Token失败：Token已过期', { 
+        expiresAt: tokenExists.expires_at,
+        now: now,
+        userId: tokenExists.user_id
+      });
+      return null;
+    }
+    
     // 查找有效的Token（使用UTC时间比较，因为expires_at存储的是UTC）
     const tokenRecord = await getAsync(
       `SELECT ut.user_id, ut.expires_at, u.id, u.phone, u.name 
        FROM user_tokens ut 
        JOIN users u ON ut.user_id = u.id 
        WHERE ut.token = ? AND ut.expires_at > datetime('now')`,
-      [token]
+      [trimmedToken]
     );
     
     if (!tokenRecord) {
+      logger.debug('验证用户Token失败：Token验证查询无结果');
       return null;
     }
+    
+    logger.debug('验证用户Token成功', { 
+      userId: tokenRecord.user_id,
+      phone: tokenRecord.phone
+    });
     
     return {
       id: tokenRecord.user_id,
@@ -61,7 +103,7 @@ async function verifyUserToken(token) {
       name: tokenRecord.name
     };
   } catch (error) {
-    logger.error('验证用户Token失败', { error: error.message });
+    logger.error('验证用户Token失败', { error: error.message, stack: error.stack });
     return null;
   }
 }
@@ -1773,6 +1815,7 @@ router.get('/user/me', async (req, res) => {
   // 优先检查Session认证（浏览器）
   if (req.session && req.session.userId) {
     userId = req.session.userId;
+    logger.debug('[/api/auth/user/me] 使用Session认证', { userId });
   } else {
     // 没有Session，尝试Token认证（小程序）
     const token = req.headers['x-user-token'] || 
@@ -1780,17 +1823,35 @@ router.get('/user/me', async (req, res) => {
                   req.headers['authorization']?.replace(/^Bearer\s+/i, '') ||
                   req.query.token;
     
+    logger.debug('[/api/auth/user/me] Token认证尝试', {
+      hasToken: !!token,
+      tokenLength: token ? token.length : 0,
+      tokenPrefix: token ? token.substring(0, 8) + '...' : null,
+      headers: {
+        'x-user-token': !!req.headers['x-user-token'],
+        'X-User-Token': !!req.headers['X-User-Token'],
+        'authorization': !!req.headers['authorization'],
+        'query.token': !!req.query.token
+      }
+    });
+    
     if (token) {
       const tokenUser = await verifyUserToken(token);
       if (tokenUser) {
         userId = tokenUser.id;
         user = tokenUser; // 直接使用Token验证返回的用户信息
+        logger.debug('[/api/auth/user/me] Token认证成功', { userId });
+      } else {
+        logger.debug('[/api/auth/user/me] Token认证失败');
       }
+    } else {
+      logger.debug('[/api/auth/user/me] 未找到Token');
     }
   }
   
   // 如果两种方式都失败
   if (!userId) {
+    logger.debug('[/api/auth/user/me] 认证失败，返回401');
     return res.status(401).json({ success: false, message: '未登录' });
   }
 

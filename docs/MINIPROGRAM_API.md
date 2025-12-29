@@ -159,6 +159,14 @@ POST /api/blog-admin/posts
 
 **注意：** 手机号和定位信息支持增删改操作，详细说明请参考 [手机号和定位信息操作指南](./MINIPROGRAM_PHONE_LOCATION_API.md)
 
+**小程序用户和设备信息字段**：
+- `nickname` (可选) - 用户昵称（字符串）
+- `deviceModel` (可选) - 设备型号（字符串，如 "iPhone 13"）
+- `deviceId` (可选) - 设备ID（字符串，可以是 deviceId / openid / uuid）
+- `deviceIp` (可选) - 设备IP（字符串，如果不提供会自动从请求头获取）
+
+**注意：** 小程序字段会自动存储到文章的 `custom_fields` 中，在获取文章详情时会自动返回这些字段。
+
 **请求示例**：
 ```javascript
 wx.request({
@@ -175,7 +183,12 @@ wx.request({
     excerpt: '这是文章摘要',
     image: 'https://example.com/image.jpg',
     published: true,
-    price: 1000
+    price: 1000,
+    // 小程序用户和设备信息（可选）
+    nickname: '用户昵称',
+    deviceModel: 'iPhone 13',
+    deviceId: 'user-openid-or-uuid',
+    deviceIp: '192.168.1.1' // 可选，不提供会自动获取
   },
   success: (res) => {
     console.log('创建成功', res.data);

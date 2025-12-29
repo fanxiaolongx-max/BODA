@@ -27,6 +27,28 @@
       }
     }
     
+    /* PIN输入框动画 */
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+    
+    .blog-pin-input:focus {
+      border-color: #d97706 !important;
+      outline: none;
+    }
+    
+    .blog-pin-input.filled {
+      border-color: #10b981 !important;
+      background-color: #f0fdf4 !important;
+    }
+    
+    .blog-pin-input.error {
+      border-color: #ef4444 !important;
+      background-color: #fef2f2 !important;
+    }
+    
     /* 埃及主题背景 */
     .particles-background {
       position: fixed;
@@ -152,10 +174,102 @@
             style="width: 100%;"
           >
         </div>
+        <!-- 用户登录状态显示 -->
+        <div id="userLoginStatus" style="display: none; align-items: center; gap: 0.5rem;">
+          <span id="userNameDisplay" style="font-size: 0.875rem; color: #374151;"></span>
+          <button id="newPostBtn" onclick="newPost()" class="blog-btn blog-btn-primary blog-btn-sm" style="display: none;" title="新建文章">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem; vertical-align: middle;">
+              <path d="M12 5v14M5 12h14"></path>
+            </svg>
+            新建文章
+          </button>
+          <button onclick="blogLogout()" class="blog-btn blog-btn-secondary blog-btn-sm">登出</button>
+        </div>
+        <!-- 登录按钮 -->
+        <button id="blogLoginBtn" onclick="showBlogLoginModal()" class="blog-btn blog-btn-primary blog-btn-sm">登录</button>
         <a href="/blog-admin.html" class="blog-btn blog-btn-secondary blog-btn-sm">管理</a>
       </div>
     </div>
   </nav>
+
+  <!-- 登录模态框 -->
+  <div id="blogLoginModal" class="blog-modal" style="display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;" onclick="closeBlogLoginModal(event)">
+    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); max-width: 28rem; width: 100%; margin: 1rem; padding: 2rem; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+      <div style="text-align: center; margin-bottom: 1.5rem;">
+        <h2 style="font-size: 1.5rem; font-weight: 700; color: #111827; margin-bottom: 0.5rem;">登录</h2>
+        <p style="color: #6b7280;">请输入您的手机号、姓名和PIN码</p>
+      </div>
+      
+      <form id="blogLoginForm" onsubmit="handleBlogLogin(event)" style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <div>
+          <label style="display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.5rem;">姓名 <span style="color: #ef4444;">*</span></label>
+          <input type="text" id="blogLoginName" required
+                 style="width: 100%; padding: 0.75rem 1rem; border: 2px solid #d1d5db; border-radius: 0.5rem; font-size: 0.875rem; transition: all 0.2s; box-sizing: border-box;"
+                 placeholder="请输入您的姓名"
+                 onfocus="this.style.borderColor='#d97706'; this.style.outline='none';"
+                 onblur="this.style.borderColor='#d1d5db';">
+          <p id="blogLoginNameError" style="display: none; margin-top: 0.25rem; font-size: 0.75rem; color: #ef4444;"></p>
+        </div>
+        <div>
+          <label style="display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.5rem;">手机号 <span style="color: #ef4444;">*</span></label>
+          <input type="tel" id="blogLoginPhone" required maxlength="11" inputmode="numeric" pattern="^0\d{10}$"
+                 style="width: 100%; padding: 0.75rem 1rem; border: 2px solid #d1d5db; border-radius: 0.5rem; font-size: 0.875rem; transition: all 0.2s; box-sizing: border-box;"
+                 placeholder="请输入11位手机号（以0开头）"
+                 onfocus="this.style.borderColor='#d97706'; this.style.outline='none';"
+                 onblur="this.style.borderColor='#d1d5db';">
+          <p style="margin-top: 0.25rem; font-size: 0.75rem; color: #6b7280;">格式：11位数字，以0开头（如：01234567890）</p>
+          <p id="blogLoginPhoneError" style="display: none; margin-top: 0.25rem; font-size: 0.75rem; color: #ef4444;"></p>
+        </div>
+        <!-- PIN输入区域 -->
+        <div id="blogPinSection" style="display: none;">
+          <label id="blogPinLabel" style="display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.5rem;">PIN码 <span style="color: #ef4444;">*</span></label>
+          <div style="display: flex; justify-content: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <input type="password" id="blogPin1" maxlength="1" inputmode="numeric" pattern="[0-9]"
+                   class="blog-pin-input"
+                   style="width: 3.5rem; height: 3.5rem; text-align: center; font-size: 1.5rem; font-weight: 700; border: 2px solid #d1d5db; border-radius: 0.5rem; transition: all 0.2s; box-sizing: border-box;">
+            <input type="password" id="blogPin2" maxlength="1" inputmode="numeric" pattern="[0-9]"
+                   class="blog-pin-input"
+                   style="width: 3.5rem; height: 3.5rem; text-align: center; font-size: 1.5rem; font-weight: 700; border: 2px solid #d1d5db; border-radius: 0.5rem; transition: all 0.2s; box-sizing: border-box;">
+            <input type="password" id="blogPin3" maxlength="1" inputmode="numeric" pattern="[0-9]"
+                   class="blog-pin-input"
+                   style="width: 3.5rem; height: 3.5rem; text-align: center; font-size: 1.5rem; font-weight: 700; border: 2px solid #d1d5db; border-radius: 0.5rem; transition: all 0.2s; box-sizing: border-box;">
+            <input type="password" id="blogPin4" maxlength="1" inputmode="numeric" pattern="[0-9]"
+                   class="blog-pin-input"
+                   style="width: 3.5rem; height: 3.5rem; text-align: center; font-size: 1.5rem; font-weight: 700; border: 2px solid #d1d5db; border-radius: 0.5rem; transition: all 0.2s; box-sizing: border-box;">
+          </div>
+          <div id="blogPinConfirmSection" style="display: none; margin-top: 1rem;">
+            <label style="display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.5rem;">确认PIN码 <span style="color: #ef4444;">*</span></label>
+            <div style="display: flex; justify-content: center; gap: 0.75rem;">
+              <input type="password" id="blogPinConfirm1" maxlength="1" inputmode="numeric" pattern="[0-9]"
+                     class="blog-pin-input"
+                     style="width: 3.5rem; height: 3.5rem; text-align: center; font-size: 1.5rem; font-weight: 700; border: 2px solid #d1d5db; border-radius: 0.5rem; transition: all 0.2s; box-sizing: border-box;">
+              <input type="password" id="blogPinConfirm2" maxlength="1" inputmode="numeric" pattern="[0-9]"
+                     class="blog-pin-input"
+                     style="width: 3.5rem; height: 3.5rem; text-align: center; font-size: 1.5rem; font-weight: 700; border: 2px solid #d1d5db; border-radius: 0.5rem; transition: all 0.2s; box-sizing: border-box;">
+              <input type="password" id="blogPinConfirm3" maxlength="1" inputmode="numeric" pattern="[0-9]"
+                     class="blog-pin-input"
+                     style="width: 3.5rem; height: 3.5rem; text-align: center; font-size: 1.5rem; font-weight: 700; border: 2px solid #d1d5db; border-radius: 0.5rem; transition: all 0.2s; box-sizing: border-box;">
+              <input type="password" id="blogPinConfirm4" maxlength="1" inputmode="numeric" pattern="[0-9]"
+                     class="blog-pin-input"
+                     style="width: 3.5rem; height: 3.5rem; text-align: center; font-size: 1.5rem; font-weight: 700; border: 2px solid #d1d5db; border-radius: 0.5rem; transition: all 0.2s; box-sizing: border-box;">
+            </div>
+            <p id="blogPinMismatchError" style="display: none; margin-top: 0.5rem; font-size: 0.75rem; color: #ef4444; text-align: center;">PIN码不匹配，请重新输入</p>
+          </div>
+          <p style="text-align: center; margin-top: 0.5rem; font-size: 0.75rem; color: #6b7280;">请输入4位数字PIN码</p>
+        </div>
+        <div style="display: flex; gap: 0.75rem;">
+          <button type="submit" id="blogLoginSubmitBtn"
+                  style="flex: 1; background: linear-gradient(to right, #d97706, #f59e0b); color: white; font-weight: 600; padding: 0.75rem; border-radius: 0.5rem; transition: all 0.3s; border: none; cursor: pointer; font-size: 0.875rem;">
+            登录
+          </button>
+          <button type="button" onclick="closeBlogLoginModal(event)"
+                  style="flex: 1; background: #e5e7eb; color: #374151; font-weight: 600; padding: 0.75rem; border-radius: 0.5rem; transition: all 0.2s; border: none; cursor: pointer; font-size: 0.875rem;">
+            取消
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- 主要内容区域 - 紧凑布局，侧边栏靠边，宽屏自适应 -->
   <div class="blog-main-layout">
@@ -210,33 +324,6 @@
         <div class="blog-pagination" id="pagination" style="margin-top: 1.5rem; margin-bottom: 1rem; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 0.5rem; width: 100%;"></div>
       </section>
 
-      <!-- 文章归档 -->
-      <section id="archive" class="blog-posts-section" style="display: none;">
-        <!-- 可爱的加载动画 -->
-        <div id="archiveLoadingProgress" style="display: none; padding: 3rem 2rem; background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); border-radius: 0.5rem; margin-bottom: 2rem; border: 1px solid #e5e7eb;">
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem;">
-            <!-- 可爱的表情符号动画 -->
-            <div id="archiveLoadingEmoji" style="font-size: 4rem; animation: bounce 1s ease-in-out infinite; filter: drop-shadow(0 4px 8px rgba(217, 119, 6, 0.2));">📂✨</div>
-            
-            <!-- 有趣的加载提示文字 -->
-            <div id="archiveLoadingText" style="font-size: 1.125rem; color: #6b7280; font-weight: 500; text-align: center; min-height: 1.75rem;">
-              正在整理归档文章...
-            </div>
-            
-            <!-- 进度条 -->
-            <div style="width: 100%; max-width: 500px;">
-              <div style="height: 8px; background: #e5e7eb; border-radius: 10px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);">
-                <div id="archiveLoadingProgressBar" style="height: 100%; background: linear-gradient(90deg, #d97706, #f59e0b, #fbbf24); width: 0%; transition: width 0.3s ease; border-radius: 10px; box-shadow: 0 0 10px rgba(217, 119, 6, 0.4); position: relative; overflow: hidden;">
-                  <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); animation: shimmer 1.5s infinite;"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="blog-archive-container" id="archiveContainer">
-          <div class="blog-loading">加载中...</div>
-        </div>
-      </section>
     </main>
     
     <!-- 右侧边栏：分类 -->
@@ -276,26 +363,31 @@
       background: #f9fafb;
     }
     
-    /* 电脑端编辑按钮不覆盖内容 */
+    /* 电脑端编辑和删除按钮不覆盖内容 */
     @media (min-width: 769px) {
-      .blog-post-item .blog-post-edit-btn {
-        position: absolute;
-        top: 0.75rem;
-        right: 0.75rem;
-        z-index: 10;
-        width: 2rem;
-        height: 2rem;
+      .blog-post-item .blog-post-actions {
+        position: absolute !important;
+        right: 0.75rem !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        z-index: 10 !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 0.5rem !important;
       }
       
-      /* 确保右侧元信息区域不被编辑按钮遮挡（只在有编辑按钮时） */
-      .blog-post-item:has(.blog-post-edit-btn) > div:last-child {
-        padding-right: 2.5rem !important;
+      .blog-post-item .blog-post-actions .blog-post-edit-btn,
+      .blog-post-item .blog-post-actions .blog-post-delete-btn {
+        position: static !important;
+        width: auto !important;
+        height: auto !important;
+      }
+      
+      /* 确保中间内容区域不被操作按钮遮挡（只在有操作按钮时） */
+      .blog-post-item:has(.blog-post-actions) > div:nth-child(2) {
+        padding-right: 10rem !important;
         box-sizing: border-box !important;
-      }
-      
-      /* 兼容不支持:has()的浏览器 */
-      .blog-post-item .blog-post-edit-btn ~ * {
-        /* 这个规则会被内联样式覆盖，所以不需要 */
       }
     }
     
@@ -877,15 +969,31 @@
         position: relative !important;
       }
       
-      /* 编辑按钮移动端优化 - 调整位置避免遮挡 */
-      .blog-post-item .blog-post-edit-btn {
+      /* 编辑和删除按钮移动端优化 - 调整位置避免遮挡 */
+      .blog-post-item .blog-post-actions {
         position: absolute !important;
-        top: 0.5rem !important;
         right: 0.5rem !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
         z-index: 10 !important;
-        width: 24px !important;
-        height: 24px !important;
-        padding: 0.25rem !important;
+        flex-direction: column !important;
+        gap: 0.25rem !important;
+      }
+      
+      .blog-post-item .blog-post-actions .blog-post-edit-btn,
+      .blog-post-item .blog-post-actions .blog-post-delete-btn {
+        padding: 0.375rem 0.5rem !important;
+        font-size: 0.75rem !important;
+        gap: 0.25rem !important;
+      }
+      
+      .blog-post-item .blog-post-actions span {
+        display: none !important;
+      }
+      
+      /* 移动端确保内容不被按钮遮挡 */
+      .blog-post-item:has(.blog-post-actions) > div:nth-child(2) {
+        padding-right: 5rem !important;
       }
       
       /* 中间内容区域移动端添加右边距，避免被编辑按钮遮挡 */
@@ -910,8 +1018,8 @@
         display: block !important;
       }
       
-      /* 隐藏右侧元信息 */
-      .blog-post-item > div:last-child {
+      /* 移动端隐藏右侧元信息（使用class选择器，更精确） */
+      .blog-post-item .blog-post-meta {
         display: none !important;
       }
       
@@ -1037,7 +1145,7 @@
     let totalPages = 1;
     let currentCategory = null;
     let currentSearch = null;
-    let viewMode = 'posts'; // 'posts' 或 'archive'
+    let viewMode = 'posts'; // 固定为文章列表模式
     let isAdminLoggedIn = false; // 管理员登录状态
 
     // 初始化粒子背景
@@ -1228,308 +1336,6 @@
       }
     }
 
-    // 归档加载提示文字数组
-    const archiveLoadingMessages = [
-      '📂 正在整理归档文章...',
-      '🗂️ 正在分类整理中...',
-      '📅 正在按时间排序...',
-      '✨ 魔法整理中...',
-      '🎯 精准归档中...',
-      '🌟 马上就好啦...',
-      '📚 正在翻阅文章库...',
-      '💫 归档魔法进行中...'
-    ];
-    
-    // 归档表情符号数组
-    const archiveLoadingEmojis = [
-      '📂✨', '🗂️', '📅', '✨', '🎯', '🌟', '📚', '💫'
-    ];
-    
-    // 更新归档加载提示
-    function updateArchiveLoadingMessage() {
-      const loadingText = document.getElementById('archiveLoadingText');
-      const loadingEmoji = document.getElementById('archiveLoadingEmoji');
-      
-      if (loadingText) {
-        const randomMessage = archiveLoadingMessages[Math.floor(Math.random() * archiveLoadingMessages.length)];
-        loadingText.textContent = randomMessage;
-      }
-      
-      if (loadingEmoji) {
-        const randomEmoji = archiveLoadingEmojis[Math.floor(Math.random() * archiveLoadingEmojis.length)];
-        loadingEmoji.textContent = randomEmoji;
-        loadingEmoji.style.animation = 'rotateEmoji 2s ease-in-out infinite';
-      }
-    }
-
-    // 归档文章缓存
-    let archiveCache = null;
-    let archiveCacheKey = null;
-    
-    // 加载归档文章（按时间分组）
-    async function loadArchive() {
-      const archiveContainer = document.getElementById('archiveContainer');
-      const progressContainer = document.getElementById('archiveLoadingProgress');
-      const progressBar = document.getElementById('archiveLoadingProgressBar');
-      
-      try {
-        // 构建缓存键
-        const cacheKey = JSON.stringify({
-          category: currentCategory,
-          search: currentSearch
-        });
-        
-        // 检查缓存（仅在没有任何筛选条件时使用缓存）
-        if (!currentCategory && !currentSearch && archiveCache && archiveCacheKey === cacheKey) {
-          console.log('使用缓存的归档数据');
-          displayArchive(archiveCache);
-          if (isAdminLoggedIn) {
-            updateEditButtons();
-          }
-          return;
-        }
-        
-        // 显示进度条
-        if (progressContainer) {
-          progressContainer.style.display = 'block';
-        }
-        if (progressBar) {
-          progressBar.style.width = '0%';
-        }
-        if (archiveContainer) {
-          archiveContainer.innerHTML = '';
-        }
-        
-        // 构建查询选项
-        const options = {
-          published: 'true',
-          pageSize: 10000
-        };
-        
-        // 应用分类筛选
-        if (currentCategory) {
-          options.category = currentCategory;
-        }
-        
-        // 应用搜索
-        if (currentSearch) {
-          options.search = currentSearch;
-        }
-        
-        // 初始化加载提示
-        updateArchiveLoadingMessage();
-        
-        // 每2秒更新一次加载提示
-        const messageInterval = setInterval(() => {
-          updateArchiveLoadingMessage();
-        }, 2000);
-        
-        // 模拟进度更新
-        let progress = 0;
-        const progressInterval = setInterval(() => {
-          progress += Math.random() * 4 + 2; // 随机增加2-6%
-          if (progress < 85 && progressBar) {
-            progressBar.style.width = Math.min(progress, 85) + '%';
-          }
-        }, 120);
-        
-        // 获取所有文章（使用一个很大的pageSize，足够获取所有文章）
-        const response = await getPosts(options);
-        
-        // 清除进度动画和消息更新
-        clearInterval(progressInterval);
-        clearInterval(messageInterval);
-        
-        if (response.success) {
-          const posts = response.data || [];
-          
-          // 更新加载提示为成功消息
-          const loadingText = document.getElementById('archiveLoadingText');
-          const loadingEmoji = document.getElementById('archiveLoadingEmoji');
-          if (loadingText) {
-            loadingText.textContent = `✅ 成功整理 ${posts.length} 篇文章！`;
-            loadingText.style.color = '#10b981';
-          }
-          if (loadingEmoji) {
-            loadingEmoji.textContent = '🎉';
-            loadingEmoji.style.animation = 'bounce 0.5s ease-in-out 3';
-          }
-          
-          // 更新进度条
-          if (progressBar) {
-            progressBar.style.width = '100%';
-          }
-          
-          // 缓存数据（仅在没有任何筛选条件时缓存）
-          if (!currentCategory && !currentSearch) {
-            archiveCache = posts;
-            archiveCacheKey = cacheKey;
-          }
-          
-          // 延迟显示，让用户看到完成状态
-          setTimeout(() => {
-            displayArchive(posts);
-            
-            // 隐藏进度条
-            if (progressContainer) {
-              progressContainer.style.display = 'none';
-            }
-            if (progressBar) {
-              progressBar.style.width = '0%';
-            }
-            
-            // 重置加载提示
-            if (loadingText) {
-              loadingText.textContent = '正在整理归档文章...';
-              loadingText.style.color = '#6b7280';
-            }
-            if (loadingEmoji) {
-              loadingEmoji.textContent = '📂✨';
-              loadingEmoji.style.animation = 'bounce 1s ease-in-out infinite';
-            }
-            
-            // 更新编辑按钮显示
-            if (isAdminLoggedIn) {
-              updateEditButtons();
-            }
-          }, 500);
-        } else {
-          // 隐藏进度条
-          if (progressContainer) {
-            progressContainer.style.display = 'none';
-          }
-          if (progressBar) {
-            progressBar.style.width = '0%';
-          }
-          showToast('加载归档失败', 'error');
-          if (archiveContainer) {
-            archiveContainer.innerHTML = '<div class="blog-empty">加载失败，请刷新重试</div>';
-          }
-        }
-      } catch (error) {
-        console.error('加载归档失败:', error);
-        // 隐藏进度条
-        if (progressContainer) {
-          progressContainer.style.display = 'none';
-        }
-        if (progressBar) {
-          progressBar.style.width = '0%';
-        }
-        showToast('加载归档失败: ' + error.message, 'error');
-        if (archiveContainer) {
-          archiveContainer.innerHTML = '<div class="blog-empty">加载失败，请刷新重试</div>';
-        }
-      }
-    }
-
-    // 显示归档文章（按时间分组）
-    function displayArchive(posts) {
-      const container = document.getElementById('archiveContainer');
-      
-      if (!posts || posts.length === 0) {
-        let emptyMessage = '<div class="blog-empty">暂无文章</div>';
-        
-        // 如果有筛选条件，显示清除筛选的提示
-        if (currentCategory || currentSearch) {
-          emptyMessage = `
-            <div class="blog-empty">
-              <div style="margin-bottom: 1rem;">暂无符合条件的文章</div>
-              <button onclick="clearFilters()" style="padding: 0.5rem 1rem; background: #9333ea; color: white; border: none; border-radius: 0.5rem; cursor: pointer;">
-                清除筛选条件
-              </button>
-            </div>
-          `;
-        }
-        
-        container.innerHTML = emptyMessage;
-        return;
-      }
-
-      // 显示筛选状态
-      let filterInfo = '';
-      if (currentCategory || currentSearch) {
-        const filters = [];
-        if (currentCategory) filters.push(`分类: ${currentCategory}`);
-        if (currentSearch) filters.push(`搜索: ${currentSearch}`);
-        
-        filterInfo = `
-          <div style="margin-bottom: 2rem; padding: 1rem; background: #f3f4f6; border-radius: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <span style="color: #6b7280; font-size: 0.875rem;">筛选条件: </span>
-              <span style="color: #1f2937; font-weight: 500;">${filters.join(' • ')}</span>
-              <span style="color: #6b7280; font-size: 0.875rem; margin-left: 1rem;">共 ${posts.length} 篇文章</span>
-            </div>
-            <button onclick="clearFilters()" style="padding: 0.5rem 1rem; background: #9333ea; color: white; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem;">
-              清除筛选
-            </button>
-          </div>
-        `;
-      }
-
-      // 按年月分组
-      const groupedByYearMonth = {};
-      posts.forEach(post => {
-        const date = new Date(post.createdAt || post.created_at || Date.now());
-        const year = date.getFullYear();
-        const month = date.getMonth() + 1;
-        const yearMonth = `${year}年${month}月`;
-        
-        if (!groupedByYearMonth[yearMonth]) {
-          groupedByYearMonth[yearMonth] = [];
-        }
-        groupedByYearMonth[yearMonth].push(post);
-      });
-
-      // 按时间倒序排列
-      const sortedGroups = Object.keys(groupedByYearMonth).sort((a, b) => {
-        const dateA = new Date(a.replace('年', '-').replace('月', ''));
-        const dateB = new Date(b.replace('年', '-').replace('月', ''));
-        return dateB - dateA;
-      });
-
-      let html = filterInfo;
-      sortedGroups.forEach(yearMonth => {
-        const postsInMonth = groupedByYearMonth[yearMonth];
-        html += `<div class="blog-archive-group" style="margin-bottom: 3rem;">
-          <h2 class="blog-archive-title" style="font-size: 1.5rem; font-weight: 600; color: #1f2937; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;">${yearMonth}</h2>
-          <div class="blog-archive-posts" style="display: grid; gap: 1rem;">
-        `;
-        
-        postsInMonth.forEach(post => {
-          const date = formatDate(post.createdAt || post.created_at);
-          const category = post.category || post._sourceApiName || '';
-          html += `
-            <div class="blog-archive-item" style="padding: 1rem; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb; transition: all 0.2s; position: relative;">
-              ${isAdminLoggedIn ? `
-                <button class="blog-post-edit-btn" onclick="editPost('${post.id}'); event.stopPropagation();" title="编辑文章" style="display: ${isAdminLoggedIn ? 'inline-flex' : 'none'}; position: absolute; top: 0.75rem; right: 0.75rem;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
-                </button>
-              ` : ''}
-              <div style="display: flex; justify-content: space-between; align-items: start; gap: 1rem;">
-                <div style="flex: 1;">
-                  <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" style="font-size: 1.125rem; font-weight: 600; color: #1f2937; text-decoration: none; display: block; margin-bottom: 0.5rem; transition: color 0.2s;" 
-                     onmouseover="this.style.color='#d97706'" 
-                     onmouseout="this.style.color='#1f2937'">
-                    ${escapeHtml(post.name || post.title || '未命名')}
-                  </a>
-                  <div style="display: flex; align-items: center; gap: 1rem; font-size: 0.875rem; color: #6b7280;">
-                    <span>${date}</span>
-                    ${category ? `<span style="color: #d97706;">#${escapeHtml(category)}</span>` : ''}
-                  </div>
-                </div>
-              </div>
-            </div>
-          `;
-        });
-        
-        html += `</div></div>`;
-      });
-
-      container.innerHTML = html;
-    }
 
     // 清除筛选条件
     function clearFilters() {
@@ -1537,9 +1343,6 @@
       currentSearch = null;
       currentPage = 1;
       
-      // 清除归档缓存
-      archiveCache = null;
-      archiveCacheKey = null;
       
       // 清除搜索框
       const searchInput = document.getElementById('searchInput');
@@ -1550,30 +1353,12 @@
       // 更新分类显示
       loadCategories();
       
-      // 根据当前视图模式重新加载
-      if (viewMode === 'archive') {
-        loadArchive();
-      } else {
-        loadPosts(1);
-      }
+      // 重新加载文章列表
+      loadPosts(1);
       
       showToast('已清除筛选条件', 'info');
     }
 
-    // 切换视图模式
-    function switchViewMode(mode) {
-      viewMode = mode;
-      
-      if (mode === 'posts') {
-        document.getElementById('posts').style.display = 'block';
-        document.getElementById('archive').style.display = 'none';
-        loadPosts(1);
-      } else if (mode === 'archive') {
-        document.getElementById('posts').style.display = 'none';
-        document.getElementById('archive').style.display = 'block';
-        loadArchive();
-      }
-    }
 
     // 显示文章列表（论坛风格）
     function displayPosts(posts) {
@@ -1661,60 +1446,69 @@
         const views = post.views || 0;
         const comments = post.comments || 0;
         
+        // 判断是否显示编辑按钮：管理员登录 或 用户手机号与文章deviceId一致
+        const canEdit = isAdminLoggedIn || post.canEdit;
+        
         // 论坛风格：简洁列表布局
         return `
-          <article class="blog-post-item" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #f3f4f6; background: white; transition: background 0.2s; position: relative;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='white'">
-            ${isAdminLoggedIn ? `
-              <button class="blog-post-edit-btn" onclick="editPost('${post.id}'); event.stopPropagation();" title="编辑文章" style="display: ${isAdminLoggedIn ? 'inline-flex' : 'none'}; position: absolute; top: 0.5rem; right: 0.5rem; z-index: 10; background: rgba(255,255,255,0.95); backdrop-filter: blur(4px); border: 1px solid #e5e7eb; border-radius: 0.25rem; padding: 0.25rem; cursor: pointer; opacity: 0.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                </svg>
-              </button>
-            ` : ''}
+          <article class="blog-post-item" style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #f3f4f6; background: white; transition: background 0.2s; position: relative;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='white'">
             <!-- 左侧缩略图 - 可点击跳转 -->
             <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" style="flex-shrink: 0; width: 60px; height: 60px; border-radius: 0.25rem; overflow: hidden; background: linear-gradient(to bottom right, #f5f5f5, #e5e5e5); display: block; text-decoration: none; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
               ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHtml(post.name || post.title || '')}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; display: block;">` : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:1.25rem;">📄</div>'}
             </a>
             <!-- 中间内容区 -->
-            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.375rem; padding-right: ${isAdminLoggedIn ? '2rem' : '0'};">
-              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" class="blog-post-title" style="font-size: 0.9375rem; font-weight: 600; color: #111827; text-decoration: none; line-height: 1.4; flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;" onmouseover="this.style.color='#d97706'" onmouseout="this.style.color='#111827'">
-                  ${escapeHtml(post.name || post.title || '未命名')}
-                </a>
-                ${category ? `<a href="#" onclick="filterByCategory('${escapeHtml(category)}'); return false;" style="display: inline-flex; align-items: center; padding: 0.1875rem 0.5rem; background: #f3f4f6; color: #6b7280; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500; text-decoration: none; transition: background 0.2s; white-space: nowrap;" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">${escapeHtml(category)}</a>` : ''}
-              </div>
-              ${excerpt ? `<p class="blog-post-excerpt" style="font-size: 0.8125rem; color: #6b7280; line-height: 1.4; margin: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(excerpt)}</p>` : ''}
-              <div style="display: flex; align-items: center; gap: 1rem; font-size: 0.75rem; color: #9ca3af;">
-                <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                    <line x1="16" y1="2" x2="16" y2="6"></line>
-                    <line x1="8" y1="2" x2="8" y2="6"></line>
-                    <line x1="3" y1="10" x2="21" y2="10"></line>
-                  </svg>
-                  ${date}
-                </span>
-                <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.375rem;">
+              <a href="/blog-detail.html?slug=${encodeURIComponent(post.slug)}" class="blog-post-title" style="font-size: 0.9375rem; font-weight: 600; color: #111827; text-decoration: none; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;" onmouseover="this.style.color='#d97706'" onmouseout="this.style.color='#111827'">
+                ${escapeHtml(post.name || post.title || '未命名')}
+              </a>
+              <!-- 分类、日期、浏览次数 - 标题下方 -->
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.75rem; color: #9ca3af;">
+                ${category ? `<a href="#" onclick="filterByCategory('${escapeHtml(category)}'); return false;" style="display: inline-flex; align-items: center; padding: 0.1875rem 0.5rem; background: #f3f4f6; color: #6b7280; border-radius: 0.25rem; font-weight: 500; text-decoration: none; transition: background 0.2s; white-space: nowrap;" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">${escapeHtml(category)}</a>` : ''}
+                ${(!post.published || post.published === false) && post.canEdit ? `<span style="display: inline-flex; align-items: center; padding: 0.1875rem 0.5rem; background: #fef3c7; color: #92400e; border-radius: 0.25rem; font-weight: 500; white-space: nowrap;">📝 草稿</span>` : ''}
+                <span style="white-space: nowrap;">${date}</span>
+                ${views > 0 ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem; white-space: nowrap;">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                     <circle cx="12" cy="12" r="3"></circle>
                   </svg>
                   ${views}
-                </span>
-                ${comments > 0 ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>
-                  ${comments}
                 </span>` : ''}
               </div>
+              ${excerpt ? `<p class="blog-post-excerpt" style="font-size: 0.8125rem; color: #6b7280; line-height: 1.4; margin: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(excerpt)}</p>` : ''}
+              ${(post.nickname || post.phone) ? `<div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">
+                ${post.nickname ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                  ${escapeHtml(post.nickname)}
+                </span>` : ''}
+                ${post.phone ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                  </svg>
+                  ${escapeHtml(post.phone)}
+                </span>` : ''}
+              </div>` : ''}
             </div>
-            <!-- 右侧元信息 -->
-            <div style="flex-shrink: 0; text-align: right; min-width: 80px; display: flex; flex-direction: column; gap: 0.25rem; padding-right: ${isAdminLoggedIn ? '2.5rem' : '0'};">
-              <div style="font-size: 0.75rem; color: #9ca3af; white-space: nowrap;">${date.split(' ')[0]}</div>
-              ${views > 0 ? `<div style="font-size: 0.6875rem; color: #d1d5db;">${views} 次</div>` : ''}
-            </div>
+            ${canEdit ? `
+              <div class="blog-post-actions" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); display: flex !important; flex-direction: row !important; align-items: center !important; gap: 0.5rem !important; z-index: 20;">
+                <button class="blog-post-edit-btn" onclick="editPost('${post.id}'); event.stopPropagation();" title="编辑文章" style="position: static !important; display: inline-flex !important; align-items: center; justify-content: center; gap: 0.375rem; background: rgba(255,255,255,0.9); backdrop-filter: blur(4px); border: 1px solid rgba(229,231,235,0.8); border-radius: 0.375rem; padding: 0.5rem 0.75rem; font-size: 0.8125rem; font-weight: 500; color: #374151; cursor: pointer; opacity: 0.8; transition: all 0.2s; white-space: nowrap; width: auto !important; height: auto !important;" onmouseover="this.style.opacity='1'; this.style.background='rgba(255,255,255,1)'; this.style.borderColor='#d97706'; this.style.color='#d97706'" onmouseout="this.style.opacity='0.8'; this.style.background='rgba(255,255,255,0.9)'; this.style.borderColor='rgba(229,231,235,0.8)'; this.style.color='#374151'">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                  <span>编辑</span>
+                </button>
+                <span style="color: #d1d5db; font-size: 0.875rem; flex-shrink: 0;">|</span>
+                <button class="blog-post-delete-btn" onclick="deletePost('${post.id}'); event.stopPropagation();" title="删除文章" style="position: static !important; display: inline-flex !important; align-items: center; justify-content: center; gap: 0.375rem; background: rgba(239,68,68,0.1); backdrop-filter: blur(4px); border: 1px solid rgba(239,68,68,0.3); border-radius: 0.375rem; padding: 0.5rem 0.75rem; font-size: 0.8125rem; font-weight: 500; color: #ef4444; cursor: pointer; opacity: 0.8; transition: all 0.2s; white-space: nowrap; width: auto !important; height: auto !important;" onmouseover="this.style.opacity='1'; this.style.background='rgba(239,68,68,0.15)'; this.style.borderColor='#ef4444'" onmouseout="this.style.opacity='0.8'; this.style.background='rgba(239,68,68,0.1)'; this.style.borderColor='rgba(239,68,68,0.3)'">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                  <span>删除</span>
+                </button>
+              </div>
+            ` : ''}
           </article>
         `;
       }).join('');
@@ -1851,11 +1645,7 @@
       loadCategories();
       
       // 根据当前视图模式调用相应的加载函数
-      if (viewMode === 'archive') {
-        loadArchive();
-      } else {
-        loadPosts(1);
-      }
+      loadPosts(1);
       
       if (currentCategory) {
         showToast(`筛选分类: ${currentCategory}`, 'info');
@@ -1879,11 +1669,7 @@
           archiveCacheKey = null;
           
           // 根据当前视图模式调用相应的加载函数
-          if (viewMode === 'archive') {
-            loadArchive();
-          } else {
-            loadPosts(1);
-          }
+          loadPosts(1);
           
           showToast(`搜索: ${query}`, 'info');
         } else {
@@ -1896,12 +1682,964 @@
           archiveCacheKey = null;
           
           // 根据当前视图模式调用相应的加载函数
+          loadPosts(1);
+        }
+      }
+    }
+
+    // 当前登录用户
+    let blogCurrentUser = null;
+    const API_BASE = '/api';
+
+    // 登录流程状态
+    let blogLoginState = {
+      step: 'phone',
+      phone: '',
+      name: '',
+      pin: '',
+      pinConfirm: '',
+      requiresPinSetup: false,
+      checkedPhone: ''
+    };
+
+    // 请求ID计数器，用于防止竞态条件
+    let blogCheckPinStatusRequestId = 0;
+
+    // 显示登录模态框
+    function showBlogLoginModal() {
+      const modal = document.getElementById('blogLoginModal');
+      if (modal) {
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        // 聚焦到姓名输入框
+        setTimeout(() => {
+          const nameInput = document.getElementById('blogLoginName');
+          if (nameInput) nameInput.focus();
+        }, 100);
+      }
+    }
+
+    // 关闭登录模态框
+    function closeBlogLoginModal(event) {
+      if (event && event.target !== event.currentTarget) {
+        return; // 如果点击的是模态框内容，不关闭
+      }
+      const modal = document.getElementById('blogLoginModal');
+      if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+        // 清除表单
+        const form = document.getElementById('blogLoginForm');
+        if (form) form.reset();
+        // 清除错误信息
+        const nameError = document.getElementById('blogLoginNameError');
+        const phoneError = document.getElementById('blogLoginPhoneError');
+        if (nameError) nameError.style.display = 'none';
+        if (phoneError) phoneError.style.display = 'none';
+        // 重置登录状态
+        resetBlogLoginState();
+      }
+    }
+
+    // 重置登录状态
+    function resetBlogLoginState() {
+      blogLoginState = {
+        step: 'phone',
+        phone: '',
+        name: '',
+        pin: '',
+        pinConfirm: '',
+        requiresPinSetup: false,
+        checkedPhone: ''
+      };
+      // 隐藏PIN区域
+      const pinSection = document.getElementById('blogPinSection');
+      if (pinSection) pinSection.style.display = 'none';
+      const pinConfirmSection = document.getElementById('blogPinConfirmSection');
+      if (pinConfirmSection) pinConfirmSection.style.display = 'none';
+      // 清除PIN输入
+      clearBlogPinInputs('pin');
+      clearBlogPinInputs('pinConfirm');
+    }
+
+    // 检查PIN状态
+    async function checkBlogPinStatus(phone, requestId) {
+      if (!requestId) {
+        requestId = ++blogCheckPinStatusRequestId;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE}/auth/user/check-pin-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ phone })
+        });
+        
+        // 检查这个请求是否还是最新的
+        if (requestId !== blogCheckPinStatusRequestId) {
+          return false;
+        }
+        
+        // 再次验证手机号是否还是当前输入的值
+        const currentPhone = document.getElementById('blogLoginPhone').value.trim();
+        if (currentPhone !== phone || currentPhone.length !== 11 || !currentPhone.startsWith('0')) {
+          return false;
+        }
+        
+        if (!response.ok) {
+          let errorData = {};
+          try {
+            errorData = await response.json();
+          } catch (e) {
+            errorData = { message: response.statusText || 'Request failed' };
+          }
+          
+          if (response.status === 403 && (errorData.message || '').includes('IP')) {
+            blogLoginState.checkedPhone = '';
+            return false;
+          }
+          blogLoginState.checkedPhone = '';
+          return false;
+        }
+        
+        const data = await response.json();
+        
+        // 再次检查请求是否还是最新的
+        if (requestId !== blogCheckPinStatusRequestId) {
+          return false;
+        }
+        
+        // 再次验证手机号
+        const currentPhone2 = document.getElementById('blogLoginPhone').value.trim();
+        if (currentPhone2 !== phone || currentPhone2.length !== 11 || !currentPhone2.startsWith('0')) {
+          return false;
+        }
+        
+        if (data.success !== undefined) {
+          blogLoginState.checkedPhone = phone;
+          
+          if (data.hasPin) {
+            // 用户已有PIN，显示PIN输入区域
+            showBlogPinSection(false);
+            return true;
+          } else {
+            // 用户没有PIN，显示PIN设置区域
+            showBlogPinSection(true);
+            return true;
+          }
+        }
+        
+        return false;
+      } catch (error) {
+        console.error('检查PIN状态失败:', error);
+        return false;
+      }
+    }
+
+    // 显示PIN区域
+    function showBlogPinSection(requiresSetup = false) {
+      const pinSection = document.getElementById('blogPinSection');
+      const pinConfirmSection = document.getElementById('blogPinConfirmSection');
+      const pinLabel = document.getElementById('blogPinLabel');
+      
+      if (pinSection) {
+        pinSection.style.display = 'block';
+        
+        if (requiresSetup) {
+          // 首次设置PIN，需要确认
+          blogLoginState.requiresPinSetup = true;
+          if (pinConfirmSection) {
+            pinConfirmSection.style.display = 'block';
+          }
+          if (pinLabel) {
+            pinLabel.textContent = '设置PIN码';
+          }
+        } else {
+          // 已有PIN，只需输入
+          blogLoginState.requiresPinSetup = false;
+          if (pinConfirmSection) {
+            pinConfirmSection.style.display = 'none';
+          }
+          if (pinLabel) {
+            pinLabel.textContent = '输入PIN码';
+          }
+        }
+        
+        // 聚焦第一个PIN输入框
+        setTimeout(() => {
+          const pin1 = document.getElementById('blogPin1');
+          if (pin1) {
+            pin1.focus();
+          }
+        }, 100);
+      }
+    }
+
+    // 初始化PIN输入框
+    function initBlogPinInputs() {
+      for (let i = 1; i <= 4; i++) {
+        const pinInput = document.getElementById(`blogPin${i}`);
+        const pinConfirmInput = document.getElementById(`blogPinConfirm${i}`);
+        
+        if (pinInput) {
+          pinInput.addEventListener('input', (e) => {
+            handleBlogPinInput(e, i, 'pin');
+          });
+          pinInput.addEventListener('keydown', (e) => {
+            handleBlogPinKeydown(e, i, 'pin');
+          });
+          pinInput.addEventListener('paste', (e) => {
+            handleBlogPinPaste(e, 'pin');
+          });
+          pinInput.addEventListener('focus', () => {
+            pinInput.style.borderColor = '#d97706';
+          });
+          pinInput.addEventListener('blur', () => {
+            pinInput.style.borderColor = '#d1d5db';
+          });
+        }
+        
+        if (pinConfirmInput) {
+          pinConfirmInput.addEventListener('input', (e) => {
+            handleBlogPinInput(e, i, 'pinConfirm');
+          });
+          pinConfirmInput.addEventListener('keydown', (e) => {
+            handleBlogPinKeydown(e, i, 'pinConfirm');
+          });
+          pinConfirmInput.addEventListener('paste', (e) => {
+            handleBlogPinPaste(e, 'pinConfirm');
+          });
+          pinConfirmInput.addEventListener('focus', () => {
+            pinConfirmInput.style.borderColor = '#d97706';
+          });
+          pinConfirmInput.addEventListener('blur', () => {
+            pinConfirmInput.style.borderColor = '#d1d5db';
+          });
+        }
+      }
+    }
+
+    // 处理PIN输入
+    function handleBlogPinInput(e, index, type) {
+      const input = e.target;
+      const value = input.value.replace(/\D/g, ''); // 只保留数字
+      
+      if (value) {
+        input.value = value.charAt(0);
+        input.style.borderColor = '#10b981';
+        input.style.backgroundColor = '#f0fdf4';
+        
+        // 自动跳转到下一个输入框
+        if (index < 4) {
+          const nextInput = document.getElementById(`${type === 'pin' ? 'blogPin' : 'blogPinConfirm'}${index + 1}`);
+          if (nextInput) {
+            nextInput.focus();
+          }
+        } else {
+          // 最后一个输入框
+          if (type === 'pin' && blogLoginState.requiresPinSetup) {
+            // 如果是设置PIN模式，输入完成后自动跳转到Confirm PIN的第一个输入框
+            const pinConfirm1 = document.getElementById('blogPinConfirm1');
+            if (pinConfirm1) {
+              setTimeout(() => {
+                pinConfirm1.focus();
+              }, 100);
+            }
+          } else {
+            input.blur();
+          }
+        }
+      } else {
+        input.style.borderColor = '#d1d5db';
+        input.style.backgroundColor = '';
+      }
+      
+      updateBlogPinValue(type);
+    }
+
+    // 处理PIN退格键
+    function handleBlogPinKeydown(e, index, type) {
+      if (e.key === 'Backspace' && !e.target.value && index > 1) {
+        const prevInput = document.getElementById(`${type === 'pin' ? 'blogPin' : 'blogPinConfirm'}${index - 1}`);
+        if (prevInput) {
+          prevInput.focus();
+          prevInput.value = '';
+          prevInput.style.borderColor = '#d1d5db';
+          prevInput.style.backgroundColor = '';
+          updateBlogPinValue(type);
+        }
+      }
+    }
+
+    // 处理PIN粘贴
+    function handleBlogPinPaste(e, type) {
+      e.preventDefault();
+      const paste = (e.clipboardData || window.clipboardData).getData('text');
+      const digits = paste.replace(/\D/g, '').substring(0, 4);
+      
+      for (let i = 0; i < digits.length; i++) {
+        const input = document.getElementById(`${type === 'pin' ? 'blogPin' : 'blogPinConfirm'}${i + 1}`);
+        if (input) {
+          input.value = digits[i];
+          input.style.borderColor = '#10b981';
+          input.style.backgroundColor = '#f0fdf4';
+        }
+      }
+      
+      if (digits.length === 4) {
+        const lastInput = document.getElementById(`${type === 'pin' ? 'blogPin' : 'blogPinConfirm'}4`);
+        if (lastInput) {
+          if (type === 'pin' && blogLoginState.requiresPinSetup) {
+            setTimeout(() => {
+              const pinConfirm1 = document.getElementById('blogPinConfirm1');
+              if (pinConfirm1) pinConfirm1.focus();
+            }, 100);
+          } else {
+            lastInput.blur();
+          }
+        }
+      } else if (digits.length > 0) {
+        const nextInput = document.getElementById(`${type === 'pin' ? 'blogPin' : 'blogPinConfirm'}${digits.length}`);
+        if (nextInput) nextInput.focus();
+      }
+      
+      updateBlogPinValue(type);
+    }
+
+    // 更新PIN值
+    function updateBlogPinValue(type) {
+      let pinValue = '';
+      for (let i = 1; i <= 4; i++) {
+        const input = document.getElementById(`${type === 'pin' ? 'blogPin' : 'blogPinConfirm'}${i}`);
+        if (input) {
+          pinValue += input.value;
+        }
+      }
+      
+      if (type === 'pin') {
+        blogLoginState.pin = pinValue;
+        
+        // 如果PIN输入完成（4位）且是验证模式（不是设置模式），自动登录
+        // 但需要验证手机号是否已检查完成且未改变
+        if (pinValue.length === 4 && !blogLoginState.requiresPinSetup) {
+          const currentPhone = document.getElementById('blogLoginPhone').value.trim();
+          // 确保手机号是完整的11位0开头，且已经检查过PIN状态
+          if (currentPhone.length === 11 && currentPhone.startsWith('0') && 
+              currentPhone === blogLoginState.checkedPhone) {
+            // 延迟一小段时间，确保UI更新完成
+            setTimeout(async () => {
+              // 再次验证手机号未改变
+              const verifyPhone = document.getElementById('blogLoginPhone').value.trim();
+              if (verifyPhone === blogLoginState.checkedPhone && verifyPhone.length === 11 && verifyPhone.startsWith('0')) {
+                const form = document.getElementById('blogLoginForm');
+                if (form) {
+                  // 创建并触发submit事件
+                  const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                  form.dispatchEvent(submitEvent);
+                }
+              }
+            }, 300);
+          }
+        }
+      } else {
+        blogLoginState.pinConfirm = pinValue;
+        
+        // 如果是设置PIN模式，且确认PIN输入完成（4位），自动登录
+        // 但需要验证手机号是否已检查完成且未改变
+        if (pinValue.length === 4 && blogLoginState.requiresPinSetup && blogLoginState.pin.length === 4) {
+          const currentPhone = document.getElementById('blogLoginPhone').value.trim();
+          // 确保手机号是完整的11位0开头，且已经检查过PIN状态
+          if (currentPhone.length === 11 && currentPhone.startsWith('0') && 
+              currentPhone === blogLoginState.checkedPhone) {
+            // 验证PIN和确认PIN是否匹配
+            if (blogLoginState.pin === blogLoginState.pinConfirm) {
+              // 延迟一小段时间，确保UI更新完成
+              setTimeout(async () => {
+                // 再次验证手机号未改变
+                const verifyPhone = document.getElementById('blogLoginPhone').value.trim();
+                if (verifyPhone === blogLoginState.checkedPhone && verifyPhone.length === 11 && verifyPhone.startsWith('0')) {
+                  const form = document.getElementById('blogLoginForm');
+                  if (form) {
+                    // 创建并触发submit事件
+                    const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                    form.dispatchEvent(submitEvent);
+                  }
+                }
+              }, 300);
+            }
+          }
+        }
+      }
+    }
+
+    // 清除PIN输入
+    function clearBlogPinInputs(type) {
+      if (type === 'both' || type === 'pin') {
+        for (let i = 1; i <= 4; i++) {
+          const input = document.getElementById(`blogPin${i}`);
+          if (input) {
+            input.value = '';
+            input.style.borderColor = '#d1d5db';
+            input.style.backgroundColor = '';
+          }
+        }
+        blogLoginState.pin = '';
+      }
+      
+      if (type === 'both' || type === 'pinConfirm') {
+        for (let i = 1; i <= 4; i++) {
+          const input = document.getElementById(`blogPinConfirm${i}`);
+          if (input) {
+            input.value = '';
+            input.style.borderColor = '#d1d5db';
+            input.style.backgroundColor = '';
+          }
+        }
+        blogLoginState.pinConfirm = '';
+        const mismatchError = document.getElementById('blogPinMismatchError');
+        if (mismatchError) mismatchError.style.display = 'none';
+      }
+    }
+
+    // 显示PIN错误
+    function showBlogPinError(type) {
+      for (let i = 1; i <= 4; i++) {
+        const input = document.getElementById(`${type === 'pin' ? 'blogPin' : 'blogPinConfirm'}${i}`);
+        if (input) {
+          input.style.borderColor = '#ef4444';
+          input.style.backgroundColor = '#fef2f2';
+          // 添加抖动动画
+          input.style.animation = 'shake 0.3s';
+          setTimeout(() => {
+            input.style.animation = '';
+          }, 300);
+        }
+      }
+    }
+
+    // 初始化PIN输入框和手机号监听
+    function initBlogLoginHandlers() {
+      // 初始化PIN输入框
+      initBlogPinInputs();
+      
+      // 手机号输入监听
+      const phoneInput = document.getElementById('blogLoginPhone');
+      const phoneError = document.getElementById('blogLoginPhoneError');
+      
+      if (phoneInput) {
+        let phoneCheckTimeout = null;
+        
+        // 记录上一次的手机号值，用于检测变化
+        let lastPhoneValue = '';
+        
+        // 限制只能输入数字，且必须以0开头
+        phoneInput.addEventListener('input', (e) => {
+          // 检查 Name 是否已填写
+          const nameInput = document.getElementById('blogLoginName');
+          const nameValue = nameInput ? nameInput.value.trim() : '';
+          if (!nameValue) {
+            // Name 未填写，提示用户先输入 Name
+            const nameError = document.getElementById('blogLoginNameError');
+            if (nameError) {
+              nameError.textContent = '请先输入姓名';
+              nameError.style.display = 'block';
+            }
+            if (nameInput) {
+              nameInput.style.borderColor = '#ef4444';
+            }
+            // 阻止 Phone Number 输入，聚焦回 Name
+            phoneInput.blur();
+            setTimeout(() => {
+              if (nameInput) {
+                nameInput.focus();
+              }
+            }, 0);
+            return;
+          }
+          
+          // Name 已填写，清除 Name 错误提示
+          const nameError = document.getElementById('blogLoginNameError');
+          if (nameError) {
+            nameError.style.display = 'none';
+          }
+          if (nameInput) {
+            nameInput.style.borderColor = '#d1d5db';
+          }
+          
+          let phone = phoneInput.value.replace(/\D/g, ''); // 只保留数字
+          
+          // 如果第一个字符不是0，自动补0
+          if (phone.length > 0 && phone[0] !== '0') {
+            phone = '0' + phone.replace(/^0+/, ''); // 如果输入的不是0开头，强制以0开头
+          }
+          
+          // 限制最多11位
+          if (phone.length > 11) {
+            phone = phone.substring(0, 11);
+          }
+          
+          phoneInput.value = phone;
+          
+          // 检测手机号是否发生变化（长度或数字变化）
+          const phoneChanged = phone !== lastPhoneValue;
+          lastPhoneValue = phone;
+          
+          // 如果手机号发生变化，立即隐藏PIN区域
+          if (phoneChanged) {
+            // 立即隐藏PIN区域
+            const pinSection = document.getElementById('blogPinSection');
+            if (pinSection) {
+              pinSection.style.display = 'none';
+            }
+            const pinConfirmSection = document.getElementById('blogPinConfirmSection');
+            if (pinConfirmSection) {
+              pinConfirmSection.style.display = 'none';
+            }
+            
+            // 清除PIN输入和状态
+            clearBlogPinInputs('both');
+            blogLoginState.checkedPhone = '';
+            blogLoginState.requiresPinSetup = false;
+          }
+          
+          // 清除之前的错误提示
+          if (phoneError) {
+            phoneError.style.display = 'none';
+            phoneError.textContent = '';
+          }
+          phoneInput.style.borderColor = '#d1d5db';
+          
+          // 清除之前的检查定时器
+          clearTimeout(phoneCheckTimeout);
+          
+          // 只有当输入完整的11位0开头数字时，才检查PIN状态
+          if (phone.length === 11 && phone.startsWith('0')) {
+            phoneCheckTimeout = setTimeout(async () => {
+              // 再次验证手机号是否还是11位0开头（防止在延迟期间被修改）
+              const currentPhone = phoneInput.value.trim();
+              if (currentPhone.length === 11 && currentPhone.startsWith('0') && currentPhone === phone) {
+                // 如果手机号改变了，需要重新检查PIN状态
+                if (blogLoginState.checkedPhone !== phone) {
+                  // 生成新的请求ID
+                  const requestId = ++blogCheckPinStatusRequestId;
+                  await checkBlogPinStatus(phone, requestId);
+                }
+              }
+            }, 300);
+          }
+        });
+        
+        // 失去焦点时验证手机号格式
+        phoneInput.addEventListener('blur', async () => {
+          const phone = phoneInput.value.trim();
+          
+          if (phone) {
+            // 验证手机号必须是11位
+            if (phone.length !== 11) {
+              if (phoneError) {
+                phoneError.textContent = '手机号必须为11位';
+                phoneError.style.display = 'block';
+              }
+              phoneInput.style.borderColor = '#ef4444';
+              // 确保PIN区域已隐藏
+              const pinSection = document.getElementById('blogPinSection');
+              if (pinSection) {
+                pinSection.style.display = 'none';
+              }
+              return;
+            }
+            
+            // 验证手机号必须以0开头
+            if (!phone.startsWith('0')) {
+              if (phoneError) {
+                phoneError.textContent = '手机号必须以0开头';
+                phoneError.style.display = 'block';
+              }
+              phoneInput.style.borderColor = '#ef4444';
+              // 确保PIN区域已隐藏
+              const pinSection = document.getElementById('blogPinSection');
+              if (pinSection) {
+                pinSection.style.display = 'none';
+              }
+              return;
+            }
+            
+            // 验证手机号格式（只允许数字）
+            if (!/^\d{11}$/.test(phone)) {
+              if (phoneError) {
+                phoneError.textContent = '手机号格式错误';
+                phoneError.style.display = 'block';
+              }
+              phoneInput.style.borderColor = '#ef4444';
+              // 确保PIN区域已隐藏
+              const pinSection = document.getElementById('blogPinSection');
+              if (pinSection) {
+                pinSection.style.display = 'none';
+              }
+              return;
+            }
+            
+            // 格式正确，清除错误提示
+            if (phoneError) {
+              phoneError.style.display = 'none';
+            }
+            phoneInput.style.borderColor = '#d1d5db';
+            
+            // 如果手机号完整且正确，检查PIN状态
+            if (phone.length === 11 && phone.startsWith('0')) {
+              clearTimeout(phoneCheckTimeout);
+              phoneCheckTimeout = setTimeout(async () => {
+                // 再次验证手机号是否还是11位0开头（防止在延迟期间被修改）
+                const currentPhone = phoneInput.value.trim();
+                if (currentPhone.length === 11 && currentPhone.startsWith('0') && currentPhone === phone) {
+                  // 如果手机号改变了，需要重新检查PIN状态
+                  if (blogLoginState.checkedPhone !== phone) {
+                    // 生成新的请求ID
+                    const requestId = ++blogCheckPinStatusRequestId;
+                    await checkBlogPinStatus(phone, requestId);
+                  }
+                }
+              }, 300);
+            }
+          } else {
+            // 手机号为空，确保PIN区域已隐藏
+            const pinSection = document.getElementById('blogPinSection');
+            if (pinSection) {
+              pinSection.style.display = 'none';
+            }
+          }
+        });
+        
+        // 获得焦点时清除错误提示
+        phoneInput.addEventListener('focus', () => {
+          if (phoneError) {
+            phoneError.style.display = 'none';
+          }
+          phoneInput.style.borderColor = '#d97706';
+        });
+      }
+      
+      // Name 输入框事件监听
+      const nameInput = document.getElementById('blogLoginName');
+      const nameError = document.getElementById('blogLoginNameError');
+      
+      if (nameInput) {
+        // 获得焦点时清除错误提示
+        nameInput.addEventListener('focus', () => {
+          if (nameError) {
+            nameError.style.display = 'none';
+          }
+          nameInput.style.borderColor = '#d97706';
+        });
+        
+        // 输入时清除错误提示
+        nameInput.addEventListener('input', () => {
+          if (nameError) {
+            nameError.style.display = 'none';
+          }
+          nameInput.style.borderColor = '#d1d5db';
+        });
+      }
+    }
+
+    // 处理登录表单提交
+    async function handleBlogLogin(event) {
+      event.preventDefault();
+      
+      const name = document.getElementById('blogLoginName').value.trim();
+      const phone = document.getElementById('blogLoginPhone').value.trim();
+      const pinSection = document.getElementById('blogPinSection');
+      const isPinVisible = pinSection && pinSection.style.display !== 'none';
+      const pin = blogLoginState.pin;
+      const pinConfirm = blogLoginState.pinConfirm;
+      const submitBtn = document.getElementById('blogLoginSubmitBtn');
+      
+      // 清除之前的错误
+      const nameError = document.getElementById('blogLoginNameError');
+      const phoneError = document.getElementById('blogLoginPhoneError');
+      if (nameError) nameError.style.display = 'none';
+      if (phoneError) phoneError.style.display = 'none';
+      
+      // 验证姓名
+      if (!name) {
+        if (nameError) {
+          nameError.textContent = '请输入姓名';
+          nameError.style.display = 'block';
+        }
+        document.getElementById('blogLoginName').focus();
+        return;
+      }
+      
+      // 强制要求PIN：如果PIN区域不可见，需要先检查PIN状态
+      if (!isPinVisible) {
+        // PIN区域不可见，需要先检查PIN状态
+        // 验证手机号必须是11位0开头
+        const phoneValid = phone && phone.length === 11 && phone.startsWith('0') && /^\d{11}$/.test(phone);
+        if (phoneValid) {
+          // 生成新的请求ID
+          const requestId = ++blogCheckPinStatusRequestId;
+          const pinStatus = await checkBlogPinStatus(phone, requestId);
+          if (pinStatus) {
+            // 需要PIN，但用户还没有输入，提示用户
+            showToast('请输入PIN码', 'info');
+            return;
+          }
+        } else {
+          // 手机号格式不正确
+          if (!phone) {
+            if (phoneError) {
+              phoneError.textContent = '请输入手机号';
+              phoneError.style.display = 'block';
+            }
+          } else if (phone.length !== 11) {
+            if (phoneError) {
+              phoneError.textContent = '手机号必须为11位';
+              phoneError.style.display = 'block';
+            }
+          } else if (!phone.startsWith('0')) {
+            if (phoneError) {
+              phoneError.textContent = '手机号必须以0开头';
+              phoneError.style.display = 'block';
+            }
+          } else {
+            if (phoneError) {
+              phoneError.textContent = '手机号格式错误';
+              phoneError.style.display = 'block';
+            }
+          }
+          document.getElementById('blogLoginPhone').focus();
+          return;
+        }
+      }
+      
+      // 验证手机号（必须是11位0开头）
+      if (!phone) {
+        if (phoneError) {
+          phoneError.textContent = '请输入手机号';
+          phoneError.style.display = 'block';
+        }
+        document.getElementById('blogLoginPhone').focus();
+        return;
+      }
+      
+      if (phone.length !== 11) {
+        if (phoneError) {
+          phoneError.textContent = '手机号必须为11位';
+          phoneError.style.display = 'block';
+        }
+        document.getElementById('blogLoginPhone').focus();
+        return;
+      }
+      
+      if (!phone.startsWith('0')) {
+        if (phoneError) {
+          phoneError.textContent = '手机号必须以0开头';
+          phoneError.style.display = 'block';
+        }
+        document.getElementById('blogLoginPhone').focus();
+        return;
+      }
+      
+      if (!/^\d{11}$/.test(phone)) {
+        if (phoneError) {
+          phoneError.textContent = '手机号格式错误';
+          phoneError.style.display = 'block';
+        }
+        document.getElementById('blogLoginPhone').focus();
+        return;
+      }
+      
+      // 如果PIN区域可见，说明需要PIN
+      if (isPinVisible) {
+        if (pin.length !== 4) {
+          showToast('请输入4位PIN码', 'error');
+          showBlogPinError('pin');
+          return;
+        }
+        
+        // 如果是设置PIN模式，需要确认PIN
+        const pinConfirmSection = document.getElementById('blogPinConfirmSection');
+        if (pinConfirmSection && pinConfirmSection.style.display !== 'none') {
+          if (pinConfirm.length !== 4) {
+            showToast('请确认4位PIN码', 'error');
+            showBlogPinError('pinConfirm');
+            return;
+          }
+          
+          if (pin !== pinConfirm) {
+            showToast('PIN码不匹配，请重新输入', 'error');
+            const mismatchError = document.getElementById('blogPinMismatchError');
+            if (mismatchError) mismatchError.style.display = 'block';
+            showBlogPinError('pinConfirm');
+            clearBlogPinInputs('pinConfirm');
+            return;
+          }
+        }
+      } else {
+        // PIN区域不可见，但可能用户没有PIN，需要强制要求PIN
+        if (!pin || pin.length !== 4) {
+          showToast('请输入PIN码', 'error');
+          return;
+        }
+      }
+      
+      // 设置按钮加载状态
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '登录中...';
+        submitBtn.style.opacity = '0.6';
+        submitBtn.style.cursor = 'not-allowed';
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE}/auth/user/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ 
+            phone, 
+            name: name || undefined,
+            pin: pin || undefined
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          blogCurrentUser = data.user;
+          resetBlogLoginState();
+          closeBlogLoginModal();
+          updateBlogLoginStatus();
+          showToast('登录成功', 'success');
+          // 刷新文章列表以显示编辑按钮
           if (viewMode === 'archive') {
             loadArchive();
           } else {
-            loadPosts(1);
+            loadPosts(currentPage || 1);
+          }
+        } else {
+          // 处理错误
+          let errorMessage = data.message || '登录失败，请重试';
+          
+          // 如果是PIN相关错误，显示PIN区域
+          if (data.requiresPin || data.requiresPinSetup) {
+            showBlogPinSection(data.requiresPinSetup);
+            if (data.requiresPinSetup) {
+              showToast('请设置PIN码', 'info');
+            } else {
+              showToast('请输入PIN码', 'info');
+            }
+            return;
+          } else if (data.requiresCode) {
+            errorMessage = '此账号需要短信验证码，请使用小程序登录';
+          }
+          
+          showToast(errorMessage, 'error');
+          
+          // 如果是手机号错误，高亮手机号输入框
+          if (errorMessage.includes('手机') || errorMessage.includes('phone')) {
+            if (phoneError) {
+              phoneError.textContent = errorMessage;
+              phoneError.style.display = 'block';
+            }
+            document.getElementById('blogLoginPhone').focus();
+          }
+          
+          // 如果是PIN错误，高亮PIN输入框
+          if (errorMessage.includes('PIN') || errorMessage.includes('pin')) {
+            clearBlogPinInputs('pin');
+            const pin1 = document.getElementById('blogPin1');
+            if (pin1) pin1.focus();
           }
         }
+      } catch (error) {
+        console.error('登录失败:', error);
+        showToast('登录失败，请检查网络连接', 'error');
+      } finally {
+        // 恢复按钮状态
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '登录';
+          submitBtn.style.opacity = '1';
+          submitBtn.style.cursor = 'pointer';
+        }
+      }
+    }
+
+    // 登出
+    async function blogLogout() {
+      try {
+        const response = await fetch(`${API_BASE}/auth/user/logout`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+        
+        blogCurrentUser = null;
+        updateBlogLoginStatus();
+        showToast('已登出', 'success');
+        // 刷新文章列表以隐藏编辑按钮
+        loadPosts(currentPage || 1);
+      } catch (error) {
+        console.error('登出失败:', error);
+        // 即使API调用失败，也清除本地状态
+        blogCurrentUser = null;
+        updateBlogLoginStatus();
+        showToast('已登出', 'success');
+        // 刷新文章列表以隐藏编辑按钮
+        loadPosts(currentPage || 1);
+      }
+    }
+
+    // 更新登录状态显示
+    function updateBlogLoginStatus() {
+      const loginBtn = document.getElementById('blogLoginBtn');
+      const userStatus = document.getElementById('userLoginStatus');
+      const userNameDisplay = document.getElementById('userNameDisplay');
+      const newPostBtn = document.getElementById('newPostBtn');
+      
+      if (blogCurrentUser) {
+        // 已登录：显示用户信息和登出按钮、新建文章按钮
+        if (loginBtn) loginBtn.style.display = 'none';
+        if (userStatus) userStatus.style.display = 'flex';
+        if (userNameDisplay) {
+          userNameDisplay.textContent = blogCurrentUser.name || blogCurrentUser.phone || '用户';
+        }
+        if (newPostBtn) newPostBtn.style.display = 'inline-flex';
+      } else {
+        // 未登录：显示登录按钮，隐藏新建文章按钮
+        if (loginBtn) loginBtn.style.display = 'inline-flex';
+        if (userStatus) userStatus.style.display = 'none';
+        if (newPostBtn) newPostBtn.style.display = 'none';
+      }
+    }
+
+    // 检查用户登录状态
+    async function checkBlogUserAuth() {
+      try {
+        const response = await fetch(`${API_BASE}/auth/user/me`, {
+          credentials: 'include',
+          method: 'GET'
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.success && data.user) {
+            blogCurrentUser = data.user;
+            updateBlogLoginStatus();
+            return true;
+          }
+        }
+        blogCurrentUser = null;
+        updateBlogLoginStatus();
+        return false;
+      } catch (error) {
+        console.error('检查用户登录状态失败:', error);
+        blogCurrentUser = null;
+        updateBlogLoginStatus();
+        return false;
       }
     }
 
@@ -1933,7 +2671,10 @@
 
     // 编辑文章（在新窗口打开）
     function editPost(postId) {
-      if (!isAdminLoggedIn) {
+      // 检查是否是管理员登录，或者用户是否有编辑权限
+      // 注意：这里只检查管理员登录状态，普通用户的canEdit权限在渲染时已经判断
+      // 如果普通用户点击编辑按钮，说明该文章有canEdit权限，允许编辑
+      if (!isAdminLoggedIn && !blogCurrentUser) {
         // 如果未登录，跳转到管理界面登录
         window.location.href = '/blog-admin.html';
         return;
@@ -1953,13 +2694,74 @@
         if (editWindow.closed) {
           clearInterval(checkClosed);
           // 刷新文章列表（根据当前视图模式）
-          if (viewMode === 'archive') {
-            loadArchive();
-          } else {
-            loadPosts(1);
-          }
+          loadPosts(1);
         }
       }, 500);
+    }
+
+    // 新建文章（在新窗口打开）
+    function newPost() {
+      // 检查用户是否登录
+      if (!blogCurrentUser) {
+        showToast('请先登录', 'error');
+        showBlogLoginModal();
+        return;
+      }
+      
+      // 在新窗口打开新建文章页面
+      const newUrl = `/blog-admin.html?action=new`;
+      const newWindow = window.open(newUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+      
+      if (!newWindow) {
+        showToast('无法打开新窗口，请检查浏览器弹窗设置', 'error');
+        return;
+      }
+      
+      // 监听新窗口关闭事件，刷新文章列表
+      const checkClosed = setInterval(() => {
+        if (newWindow.closed) {
+          clearInterval(checkClosed);
+          // 刷新文章列表（根据当前视图模式）
+          loadPosts(1);
+        }
+      }, 500);
+    }
+
+    // 删除文章（使用小程序API）
+    async function deletePost(postId) {
+      // 检查是否是管理员登录，或者用户是否有编辑权限
+      if (!isAdminLoggedIn && !blogCurrentUser) {
+        showToast('请先登录', 'error');
+        return;
+      }
+      
+      // 确认删除
+      if (!confirm('确定要删除这篇文章吗？此操作不可恢复。')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/api/blog-admin/posts/${postId}`, {
+          method: 'DELETE',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          showToast('文章删除成功', 'success');
+          // 刷新文章列表
+          loadPosts(1);
+        } else {
+          showToast(data.message || '删除失败', 'error');
+        }
+      } catch (error) {
+        console.error('删除文章失败:', error);
+        showToast('删除失败: ' + (error.message || '未知错误'), 'error');
+      }
     }
 
     // 更新编辑按钮显示
@@ -2040,6 +2842,12 @@
     document.addEventListener('DOMContentLoaded', async () => {
       initParticles();
       
+      // 初始化登录相关处理器（PIN输入框和手机号监听）
+      initBlogLoginHandlers();
+      
+      // 检查用户登录状态
+      await checkBlogUserAuth();
+      
       // 检查管理员登录状态
       await checkAdminAuth();
       
@@ -2067,12 +2875,6 @@
         setTimeout(forceGridLayout, 100);
       });
 
-      // 文章归档按钮（如果存在）
-      document.querySelector('a[href="#archive"]')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        switchViewMode('archive');
-        document.getElementById('archive').scrollIntoView({ behavior: 'smooth' });
-      });
     });
   </script>
 </body>

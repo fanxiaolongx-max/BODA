@@ -1,6 +1,8 @@
 const { getAsync, allAsync, runAsync } = require('../db/database');
 const { logger } = require('./logger');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
 
 // 文章列表缓存（内存缓存）
 const postsCache = {
@@ -189,7 +191,10 @@ function convertApiItemToPost(item, apiName, fieldMapping = null) {
   // 应用字段映射
   // 注意：id字段现在已经是全局唯一的UUID，不需要internal_post_id
   // 对于天气路况对象格式，使用基于API名称的稳定ID
-  const postId = isWeatherObject ? `weather-${apiName}` : (item[mapping.id] || item.id || uuidv4());
+  // 优先使用原始ID，确保不会改变已存在的ID
+  const postId = isWeatherObject 
+    ? `weather-${apiName}` 
+    : (item.id || item[mapping.id] || uuidv4()); // 优先使用item.id，避免字段映射改变ID
   // name和title保持一致
   const itemName = isWeatherObject ? '天气路况' : (item[mapping.name] || item.name || item[mapping.title] || item.title || '未命名');
   
@@ -253,6 +258,172 @@ function convertApiItemToPost(item, apiName, fieldMapping = null) {
   if (item.longitude !== undefined) post.longitude = item.longitude;
   
   return post;
+}
+
+/**
+ * 提取HTML内容中的所有图片和视频URL
+ * @param {string} htmlContent - HTML内容
+ * @returns {Array<string>} 图片和视频URL数组
+ */
+function extractMediaUrls(htmlContent) {
+  if (!htmlContent || typeof htmlContent !== 'string') {
+    return [];
+  }
+  
+  const urls = [];
+  
+  // 提取img标签的src属性
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = imgRegex.exec(htmlContent)) !== null) {
+    urls.push(match[1]);
+  }
+  
+  // 提取video标签的src属性
+  const videoSrcRegex = /<video[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  while ((match = videoSrcRegex.exec(htmlContent)) !== null) {
+    urls.push(match[1]);
+  }
+  
+  // 提取source标签的src属性（在video标签内）
+  const sourceRegex = /<source[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  while ((match = sourceRegex.exec(htmlContent)) !== null) {
+    urls.push(match[1]);
+  }
+  
+  // 提取video标签的poster属性（封面图片）
+  const posterRegex = /<video[^>]+poster=["']([^"']+)["'][^>]*>/gi;
+  while ((match = posterRegex.exec(htmlContent)) !== null) {
+    urls.push(match[1]);
+  }
+  
+  return urls;
+}
+
+/**
+ * 将URL转换为本地文件路径
+ * @param {string} url - 文件URL
+ * @returns {string|null} 本地文件路径，如果不是本地文件则返回null
+ */
+function urlToLocalPath(url) {
+  if (!url || typeof url !== 'string') {
+    return null;
+  }
+  
+  // 支持的数据目录路径
+  const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+  
+  // 移除协议和域名，只保留路径部分
+  let filePath = url;
+  
+  // 如果是完整URL，提取路径部分
+  try {
+    const urlObj = new URL(url);
+    filePath = urlObj.pathname;
+  } catch (e) {
+    // 如果不是完整URL，直接使用
+  }
+  
+  // 移除开头的斜杠
+  if (filePath.startsWith('/')) {
+    filePath = filePath.substring(1);
+  }
+  
+  // 检查是否是uploads目录下的文件
+  if (filePath.startsWith('uploads/')) {
+    return path.join(DATA_DIR, filePath);
+  }
+  
+  // 如果路径包含uploads，尝试提取
+  const uploadsMatch = filePath.match(/uploads\/.+$/);
+  if (uploadsMatch) {
+    return path.join(DATA_DIR, uploadsMatch[0]);
+  }
+  
+  return null;
+}
+
+/**
+ * 删除文件（如果存在）
+ * @param {string} filePath - 文件路径
+ * @returns {boolean} 是否成功删除
+ */
+function deleteFileIfExists(filePath) {
+  if (!filePath) {
+    logger.debug('删除文件失败：文件路径为空');
+    return false;
+  }
+  
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      logger.info('删除文件成功', { filePath });
+      return true;
+    } else {
+      logger.debug('文件不存在，跳过删除', { filePath });
+      return false;
+    }
+  } catch (error) {
+    logger.warn('删除文件失败', { filePath, error: error.message, stack: error.stack });
+    return false;
+  }
+}
+
+/**
+ * 清理文章关联的文件（图片和视频）
+ * @param {Object} post - 文章对象
+ * @returns {number} 删除的文件数量
+ */
+function cleanupPostFiles(post) {
+  if (!post) {
+    return 0;
+  }
+  
+  let deletedCount = 0;
+  
+  // 删除文章封面图片（image字段）
+  // 支持多种字段名格式：image（数据库字段名）或 image（转换后的字段名）
+  const coverImage = post.image || post.image_url || post.coverImage || post.cover_image;
+  logger.debug('检查封面图片', { 
+    postId: post.id, 
+    hasImage: !!post.image, 
+    coverImage, 
+    coverImageType: typeof coverImage,
+    coverImageLength: coverImage ? coverImage.length : 0
+  });
+  
+  if (coverImage && typeof coverImage === 'string' && coverImage.trim() !== '') {
+    const imagePath = urlToLocalPath(coverImage);
+    logger.debug('封面图片路径转换', { coverImage, imagePath, postId: post.id });
+    
+    if (imagePath) {
+      if (deleteFileIfExists(imagePath)) {
+        deletedCount++;
+        logger.info('删除文章封面图片成功', { imagePath, postId: post.id, imageUrl: coverImage });
+      } else {
+        logger.warn('删除文章封面图片失败', { imagePath, postId: post.id, imageUrl: coverImage });
+      }
+    } else {
+      logger.info('封面图片不是本地文件，跳过删除', { imageUrl: coverImage, postId: post.id });
+    }
+  } else {
+    logger.debug('文章没有封面图片或封面图片为空', { postId: post.id, coverImage });
+  }
+  
+  // 删除HTML内容中的图片和视频
+  const htmlContent = post.htmlContent || post.html_content || '';
+  if (htmlContent && typeof htmlContent === 'string' && htmlContent.trim() !== '') {
+    const mediaUrls = extractMediaUrls(htmlContent);
+    
+    for (const url of mediaUrls) {
+      const mediaPath = urlToLocalPath(url);
+      if (mediaPath && deleteFileIfExists(mediaPath)) {
+        deletedCount++;
+      }
+    }
+  }
+  
+  return deletedCount;
 }
 
 /**
@@ -336,9 +507,40 @@ async function getBlogPosts(options = {}) {
     }
     
     // 分类筛选（api_name字段）
+    // 支持精确匹配和中文名称匹配（兼容不同格式的api_name）
     if (options.category) {
-      whereConditions.push('(api_name = ? OR category = ?)');
-      queryParams.push(options.category, options.category);
+      // 提取中文名称用于匹配（兼容不同格式的api_name）
+      const extractChineseName = (name) => {
+        if (!name) return '';
+        const chineseRegex = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g;
+        const chineseMatches = name.match(chineseRegex);
+        return chineseMatches && chineseMatches.length > 0 
+          ? chineseMatches.join('').trim() 
+          : name;
+      };
+      
+      const categoryChinese = extractChineseName(options.category);
+      
+      // 支持多种匹配方式：
+      // 1. 精确匹配 api_name 和 category
+      // 2. 中文名称匹配（提取 api_name 和 category 中的中文部分）
+      // 使用 LIKE 匹配支持包含中文名称的情况
+      whereConditions.push(`(
+        api_name = ? OR 
+        category = ? OR 
+        api_name = ? OR 
+        category = ? OR
+        api_name LIKE ? OR
+        category LIKE ?
+      )`);
+      queryParams.push(
+        options.category,           // 精确匹配 api_name
+        options.category,           // 精确匹配 category
+        categoryChinese,           // 中文名称匹配 api_name
+        categoryChinese,           // 中文名称匹配 category
+        `%${categoryChinese}%`,    // LIKE 匹配 api_name（包含中文名称）
+        `%${categoryChinese}%`     // LIKE 匹配 category（包含中文名称）
+      );
     }
     
     // 搜索
@@ -359,6 +561,7 @@ async function getBlogPosts(options = {}) {
       : '';
     
     // 从 blog_posts 表查询
+    // 排序规则：优先按浏览量降序，其次按更新时间和创建时间降序
     const rows = await allAsync(`
       SELECT 
         id, api_name, name, title, slug, excerpt, description,
@@ -366,7 +569,7 @@ async function getBlogPosts(options = {}) {
         created_at, updated_at, custom_fields
       FROM blog_posts
       ${whereClause}
-      ORDER BY api_name ASC, id ASC
+      ORDER BY views DESC, updated_at DESC, created_at DESC
     `, queryParams);
     
     // 批量获取所有API的字段映射配置（性能优化）
@@ -415,9 +618,16 @@ async function getBlogPosts(options = {}) {
       if (customFields.latitude !== undefined) post.latitude = customFields.latitude;
       if (customFields.longitude !== undefined) post.longitude = customFields.longitude;
       
+      // 小程序用户和设备信息字段
+      if (customFields.nickname !== undefined) post.nickname = customFields.nickname;
+      if (customFields.deviceModel !== undefined) post.deviceModel = customFields.deviceModel;
+      if (customFields.deviceId !== undefined) post.deviceId = customFields.deviceId;
+      if (customFields.deviceIp !== undefined) post.deviceIp = customFields.deviceIp;
+      
       // 添加其他自定义字段
       for (const key in customFields) {
-        if (!['price', 'rooms', 'area', 'phone', 'address', 'latitude', 'longitude'].includes(key)) {
+        if (!['price', 'rooms', 'area', 'phone', 'address', 'latitude', 'longitude', 
+              'nickname', 'deviceModel', 'deviceId', 'deviceIp'].includes(key)) {
           post[key] = customFields[key];
         }
       }
@@ -471,21 +681,86 @@ async function getBlogPosts(options = {}) {
  */
 async function getBlogPost(slug) {
   try {
-    // 从所有文章中查找（支持slug和id，id现在是全局唯一的）
-    const posts = await getBlogPosts({ publishedOnly: false });
-    const post = posts.find(p => {
-      // 优先匹配slug
-      if (p.slug === slug) {
-        return true;
-      }
-      // 然后匹配id（id现在是全局唯一的UUID）
-      if (String(p.id) === String(slug)) {
-        return true;
-      }
-      return false;
-    });
+    // 优先直接通过ID或slug查询数据库，确保获取到最新创建的文章
+    // 这样可以避免缓存问题，特别是对于刚创建的文章
+    logger.debug('查询文章', { slug, timestamp: new Date().toISOString() });
+    const row = await getAsync(`
+      SELECT 
+        id, api_name, name, title, slug, excerpt, description,
+        html_content, image, category, published, views,
+        created_at, updated_at, custom_fields
+      FROM blog_posts
+      WHERE id = ? OR slug = ?
+      LIMIT 1
+    `, [slug, slug]);
     
-    return post || null;
+    if (!row) {
+      logger.warn('数据库查询未找到文章', { slug, timestamp: new Date().toISOString() });
+      return null;
+    }
+    
+    logger.debug('数据库查询找到文章', { id: row.id, name: row.name, apiName: row.api_name });
+    
+    // 解析 custom_fields JSON
+    let customFields = {};
+    try {
+      if (row.custom_fields) {
+        customFields = JSON.parse(row.custom_fields);
+      }
+    } catch (e) {
+      logger.warn('解析custom_fields失败', { id: row.id, error: e.message });
+    }
+    
+    // 获取字段映射配置
+    const fieldMapping = await getApiFieldMapping(row.api_name);
+    
+    // 构建文章对象
+    const post = {
+      id: row.id,
+      name: row.name,
+      title: row.title || row.name,
+      slug: row.slug,
+      excerpt: row.excerpt,
+      description: row.description || row.excerpt,
+      htmlContent: row.html_content,
+      image: row.image,
+      category: row.category || row.api_name,
+      _sourceApiName: row.api_name, // 保留源API名称
+      published: row.published === 1,
+      views: row.views || 0,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+    
+    // 添加特殊字段（从custom_fields中提取）
+    if (customFields.price !== undefined) post.price = customFields.price;
+    if (customFields.rooms !== undefined) post.rooms = customFields.rooms;
+    if (customFields.area !== undefined) post.area = customFields.area;
+    if (customFields.phone !== undefined) post.phone = customFields.phone;
+    if (customFields.address !== undefined) post.address = customFields.address;
+    if (customFields.latitude !== undefined) post.latitude = customFields.latitude;
+    if (customFields.longitude !== undefined) post.longitude = customFields.longitude;
+    
+    // 小程序用户和设备信息字段
+    if (customFields.nickname !== undefined) post.nickname = customFields.nickname;
+    if (customFields.deviceModel !== undefined) post.deviceModel = customFields.deviceModel;
+    if (customFields.deviceId !== undefined) post.deviceId = customFields.deviceId;
+    if (customFields.deviceIp !== undefined) post.deviceIp = customFields.deviceIp;
+    
+    // 添加其他自定义字段
+    for (const key in customFields) {
+      if (!['price', 'rooms', 'area', 'phone', 'address', 'latitude', 'longitude', 
+            'nickname', 'deviceModel', 'deviceId', 'deviceIp'].includes(key)) {
+        post[key] = customFields[key];
+      }
+    }
+    
+    // 应用字段映射（如果需要）
+    if (fieldMapping) {
+      return convertApiItemToPost(post, row.api_name, fieldMapping);
+    }
+    
+    return post;
   } catch (error) {
     logger.error('获取文章失败', { slug, error: error.message });
     return null;
@@ -894,7 +1169,18 @@ async function createBlogPost(postData) {
     const titleValue = postData.title || nameValue;
     const excerptValue = postData.excerpt || postData.description || '';
     const descriptionValue = postData.description || excerptValue;
-    const htmlContent = postData.htmlContent || '';
+    // 确保htmlContent被正确获取（即使是空字符串也要保留）
+    const htmlContent = postData.htmlContent !== undefined && postData.htmlContent !== null 
+                      ? String(postData.htmlContent) 
+                      : '';
+    
+    logger.debug('createBlogPost处理htmlContent', {
+      provided: postData.htmlContent !== undefined,
+      length: htmlContent.length,
+      isEmpty: htmlContent === '',
+      preview: htmlContent.substring(0, 100)
+    });
+    
     const image = postData.image || null;
     const category = postData.category || postData.apiName;
     const published = postData.published !== undefined ? (postData.published ? 1 : 0) : 0;
@@ -909,6 +1195,12 @@ async function createBlogPost(postData) {
     if (postData.address !== undefined) customFields.address = postData.address;
     if (postData.latitude !== undefined) customFields.latitude = postData.latitude;
     if (postData.longitude !== undefined) customFields.longitude = postData.longitude;
+    
+    // 小程序用户和设备信息字段
+    if (postData.nickname !== undefined) customFields.nickname = postData.nickname;
+    if (postData.deviceModel !== undefined) customFields.deviceModel = postData.deviceModel;
+    if (postData.deviceId !== undefined) customFields.deviceId = postData.deviceId;
+    if (postData.deviceIp !== undefined) customFields.deviceIp = postData.deviceIp;
     
     // 处理特殊类别数据（天气、汇率、翻译等）
     const isSpecialCategory = (apiName) => {
@@ -931,6 +1223,7 @@ async function createBlogPost(postData) {
     const excludedFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 
       'htmlContent', 'image', 'category', 'apiName', 'published', 'views',
       'price', 'rooms', 'area', 'phone', 'address', 'latitude', 'longitude',
+      'nickname', 'deviceModel', 'deviceId', 'deviceIp', // 小程序字段也存储到custom_fields
       '_specialData', 'createdAt', 'updatedAt'];
     
     for (const key in postData) {
@@ -994,7 +1287,17 @@ async function createBlogPost(postData) {
     
     // 应用字段映射（如果需要）
     if (fieldMapping) {
-      return convertApiItemToPost(newPost, postData.apiName, fieldMapping);
+      const mappedPost = convertApiItemToPost(newPost, postData.apiName, fieldMapping);
+      // 确保返回的文章ID与数据库中的ID一致（字段映射不应该改变ID）
+      if (mappedPost.id !== postId) {
+        logger.warn('字段映射改变了文章ID，恢复原始ID', { 
+          originalId: postId, 
+          mappedId: mappedPost.id,
+          apiName: postData.apiName 
+        });
+        mappedPost.id = postId; // 恢复原始ID
+      }
+      return mappedPost;
     }
     
     return newPost;
@@ -1128,12 +1431,44 @@ async function updateBlogPost(postId, postData) {
       updateValues.push(postData.description);
     }
     
+    // 记录需要清理的旧文件
+    const filesToCleanup = [];
+    
     if (postData.htmlContent !== undefined) {
+      // 如果HTML内容改变，需要清理旧内容中的文件
+      const oldHtmlContent = post.html_content || '';
+      const newHtmlContent = postData.htmlContent || '';
+      
+      if (oldHtmlContent !== newHtmlContent) {
+        // 提取旧HTML内容中的所有媒体URL
+        const oldMediaUrls = extractMediaUrls(oldHtmlContent);
+        // 提取新HTML内容中的所有媒体URL
+        const newMediaUrls = extractMediaUrls(newHtmlContent);
+        
+        // 找出不再使用的文件
+        for (const oldUrl of oldMediaUrls) {
+          if (!newMediaUrls.includes(oldUrl)) {
+            const oldPath = urlToLocalPath(oldUrl);
+            if (oldPath) {
+              filesToCleanup.push(oldPath);
+            }
+          }
+        }
+      }
+      
       updateFields.push('html_content = ?');
       updateValues.push(postData.htmlContent);
     }
     
     if (postData.image !== undefined) {
+      // 如果图片改变，需要清理旧图片
+      if (post.image && post.image !== postData.image) {
+        const oldImagePath = urlToLocalPath(post.image);
+        if (oldImagePath) {
+          filesToCleanup.push(oldImagePath);
+        }
+      }
+      
       updateFields.push('image = ?');
       updateValues.push(postData.image);
     }
@@ -1162,11 +1497,31 @@ async function updateBlogPost(postId, postData) {
     // 更新 custom_fields
     const excludedFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 
       'htmlContent', 'html_content', 'image', 'category', 'apiName', 'published', 'views',
-      'createdAt', 'updatedAt', '_specialData'];
+      'createdAt', 'updatedAt', '_specialData', '_specialType'];
+    
+    // 标准custom_fields字段列表（这些字段需要特殊处理）
+    const standardCustomFields = ['price', 'rooms', 'area', 'phone', 'address', 'latitude', 'longitude',
+                                   'nickname', 'deviceModel', 'deviceId', 'deviceIp'];
     
     let customFieldsUpdated = false;
+    
+    // 先处理标准custom_fields字段（包括小程序字段）
+    for (const key of standardCustomFields) {
+      if (postData[key] !== undefined) {
+        if (postData[key] === null || postData[key] === '') {
+          delete customFields[key];
+          logger.debug('删除custom_fields字段', { postId, key });
+        } else {
+          customFields[key] = postData[key];
+          logger.debug('更新custom_fields字段', { postId, key, value: postData[key] });
+        }
+        customFieldsUpdated = true;
+      }
+    }
+    
+    // 然后处理其他自定义字段
     for (const key in postData) {
-      if (!excludedFields.includes(key) && postData[key] !== undefined) {
+      if (!excludedFields.includes(key) && !standardCustomFields.includes(key) && postData[key] !== undefined) {
         if (postData[key] === null || postData[key] === '') {
           delete customFields[key];
         } else {
@@ -1211,6 +1566,19 @@ async function updateBlogPost(postId, postData) {
         SET ${updateFields.join(', ')}
         WHERE id = ?
       `, updateValues);
+    }
+    
+    // 清理不再使用的文件
+    if (filesToCleanup.length > 0) {
+      let cleanedCount = 0;
+      for (const filePath of filesToCleanup) {
+        if (deleteFileIfExists(filePath)) {
+          cleanedCount++;
+        }
+      }
+      if (cleanedCount > 0) {
+        logger.info('清理文章更新后的旧文件', { postId, cleanedCount, totalFiles: filesToCleanup.length });
+      }
     }
     
     // 清除缓存
@@ -1278,7 +1646,31 @@ async function updateBlogPost(postId, postData) {
  */
 async function deleteBlogPost(postId) {
   try {
-    // 直接从 blog_posts 表删除
+    // 先获取文章信息，以便删除关联的文件
+    const post = await getAsync(`
+      SELECT id, image, html_content
+      FROM blog_posts
+      WHERE id = ?
+    `, [postId]);
+    
+    if (!post) {
+      logger.warn('删除文章失败：未找到文章', { postId });
+      return false;
+    }
+    
+    // 记录文章信息，用于调试
+    logger.info('准备删除文章及其关联文件', { 
+      postId, 
+      hasImage: !!post.image, 
+      imageUrl: post.image,
+      hasHtmlContent: !!post.html_content 
+    });
+    
+    // 删除关联的文件（图片和视频）
+    const deletedFilesCount = cleanupPostFiles(post);
+    logger.info('删除文章关联文件完成', { postId, deletedFilesCount, imageUrl: post.image });
+    
+    // 从 blog_posts 表删除
     const result = await runAsync('DELETE FROM blog_posts WHERE id = ?', [postId]);
     
     if (result.changes === 0) {

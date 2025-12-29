@@ -250,14 +250,18 @@ router.get('/posts', requireBlogAuth, async (req, res) => {
 router.get('/posts/:id', requireBlogAuth, async (req, res) => {
   try {
     const { id } = req.params;
+    logger.info('获取文章详情请求', { id, timestamp: new Date().toISOString() });
     const post = await getBlogPost(id);
     
     if (!post) {
+      logger.warn('文章不存在', { id, timestamp: new Date().toISOString() });
       return res.status(404).json({ 
         success: false, 
         message: '文章不存在' 
       });
     }
+    
+    logger.info('成功获取文章详情', { id, name: post.name, apiName: post._sourceApiName || post.category });
     
     // 增加阅读量（异步，不阻塞响应）
     // 注意：管理API访问也会增加阅读量，因为小程序可能使用此API获取文章详情
@@ -272,6 +276,13 @@ router.get('/posts/:id', requireBlogAuth, async (req, res) => {
     // 详情场景返回完整的 HTML 内容（不裁剪）
     const { cleanPostForPublic } = require('../utils/blog-helper');
     const cleanedPost = cleanPostForPublic(post, true); // 第二个参数为true，表示包含完整htmlContent
+    
+    logger.info('返回文章详情', {
+      id: cleanedPost.id,
+      name: cleanedPost.name,
+      hasHtmlContent: !!cleanedPost.htmlContent,
+      htmlContentLength: cleanedPost.htmlContent ? cleanedPost.htmlContent.length : 0
+    });
     
     res.json({
       success: true,
@@ -368,9 +379,9 @@ router.put('/apis/:apiName/field-mapping', requireBlogAuth, [
       );
     }
     
-    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
+    // 记录操作日志（Token认证时adminId为null）
     await logAction(
-      req.session?.adminId || 'api-token',
+      req.session?.adminId || null,
       'UPDATE',
       'blog_api_field_mapping',
       apiName,
@@ -451,22 +462,69 @@ router.post('/posts', requireBlogAuth, [
     if (req.body.latitude !== undefined) postData.latitude = parseFloat(req.body.latitude);
     if (req.body.longitude !== undefined) postData.longitude = parseFloat(req.body.longitude);
     
+    // 小程序用户和设备信息字段
+    if (req.body.nickname !== undefined) postData.nickname = req.body.nickname;
+    if (req.body.deviceModel !== undefined) postData.deviceModel = req.body.deviceModel;
+    if (req.body.deviceId !== undefined) postData.deviceId = req.body.deviceId;
+    // 设备IP：优先使用请求中的值，否则从请求头获取
+    if (req.body.deviceIp !== undefined) {
+      postData.deviceIp = req.body.deviceIp;
+    } else {
+      // 从请求头获取真实IP（考虑代理情况）
+      const forwarded = req.headers['x-forwarded-for'];
+      const realIp = req.headers['x-real-ip'];
+      const clientIp = forwarded 
+        ? forwarded.split(',')[0].trim() 
+        : (realIp || req.ip || req.connection.remoteAddress);
+      if (clientIp) {
+        postData.deviceIp = clientIp;
+      }
+    }
+    
     // 处理特殊类别的数据
     if (req.body._specialData !== undefined) {
       postData._specialData = req.body._specialData;
-      // 特殊类别不使用htmlContent
+      // 特殊类别：second-hand 和 rentals 仍然需要 htmlContent
+      // 只有 weather、exchange-rate、translation 不使用 htmlContent
+      const needsSpecialDataOnly = req.body._specialType === 'weather' || 
+                                    req.body._specialType === 'exchange-rate' || 
+                                    req.body._specialType === 'translation';
+      if (!needsSpecialDataOnly && req.body.htmlContent !== undefined) {
+        postData.htmlContent = req.body.htmlContent || '';
+      }
     } else {
       // 普通类别才使用htmlContent
-      postData.htmlContent = req.body.htmlContent || '';
+      postData.htmlContent = req.body.htmlContent !== undefined ? (req.body.htmlContent || '') : '';
     }
+    
+    logger.info('创建文章htmlContent处理', {
+      hasSpecialData: !!req.body._specialData,
+      specialType: req.body._specialType,
+      htmlContentLength: postData.htmlContent ? postData.htmlContent.length : 0,
+      htmlContentProvided: req.body.htmlContent !== undefined
+    });
     
     if (req.body._specialType !== undefined) postData._specialType = req.body._specialType;
     
+    logger.info('创建文章请求', { 
+      name: nameValue, 
+      apiName: apiNameChinese, 
+      hasId: !!req.body.id,
+      providedId: req.body.id 
+    });
+    
     const post = await createBlogPost(postData);
     
-    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
+    logger.info('文章创建成功', { 
+      id: post.id, 
+      name: post.name, 
+      apiName: post._sourceApiName || post.category,
+      slug: post.slug 
+    });
+    
+    // 记录操作日志（Token认证时adminId为null）
     await logAction(
-      req.session?.adminId || 'api-token',
+      req.session?.adminId || null,
       'CREATE',
       'blog_post',
       post.id,
@@ -515,6 +573,107 @@ router.put('/posts/:id', requireBlogAuth, [
     };
     
     const { id } = req.params;
+    
+    // 权限检查：如果不是管理员，需要检查用户是否有编辑权限
+    // 管理员通过Session认证，普通用户通过Token认证
+    const isAdmin = req.session && req.session.adminId;
+    
+    if (!isAdmin) {
+      // 普通用户：检查用户手机号是否与文章的deviceId一致
+      // 获取当前登录用户的手机号
+      let userPhone = null;
+      try {
+        // 优先检查Session认证（浏览器）
+        if (req.session && req.session.userPhone) {
+          userPhone = req.session.userPhone;
+        } else if (req.session && req.session.userId) {
+          // 如果Session中有userId但没有userPhone，从数据库查询
+          const { getAsync } = require('../db/database');
+          const user = await getAsync(
+            'SELECT phone FROM users WHERE id = ?',
+            [req.session.userId]
+          );
+          if (user && user.phone) {
+            userPhone = user.phone;
+          }
+        } else {
+          // 如果没有Session，可能是小程序使用 X-API-Token 认证
+          // DELETE 请求通常没有请求体，优先从查询参数或请求头获取 deviceId
+          if (req.query.deviceId) {
+            // 从查询参数获取 deviceId（推荐方式：DELETE /api/blog-admin/posts/:id?deviceId=xxx）
+            userPhone = req.query.deviceId;
+          } else if (req.headers['x-device-id'] || req.headers['X-Device-Id']) {
+            // 从请求头获取 deviceId（备选方式：X-Device-Id: xxx）
+            userPhone = req.headers['x-device-id'] || req.headers['X-Device-Id'];
+          } else if (req.body && req.body.deviceId) {
+            // 从请求体获取 deviceId（如果请求体存在）
+            userPhone = req.body.deviceId;
+          } else if (req.body && req.body.phone) {
+            // 如果没有 deviceId，使用 phone 作为备选
+            userPhone = req.body.phone;
+          } else {
+            // 如果都没有，尝试从 X-User-Token 获取（用户级别的Token）
+            const token = req.headers['x-user-token'] || 
+                          req.headers['X-User-Token'] || 
+                          req.headers['authorization']?.replace(/^Bearer\s+/i, '') ||
+                          req.query.token;
+            
+            if (token) {
+              // 验证Token并获取用户信息
+              const { getAsync } = require('../db/database');
+              try {
+                const tokenRecord = await getAsync(
+                  `SELECT ut.user_id, ut.expires_at, u.id, u.phone, u.name 
+                   FROM user_tokens ut 
+                   JOIN users u ON ut.user_id = u.id 
+                   WHERE ut.token = ? AND ut.expires_at > datetime('now')`,
+                  [token]
+                );
+                
+                if (tokenRecord && tokenRecord.phone) {
+                  userPhone = tokenRecord.phone;
+                }
+              } catch (error) {
+                logger.error('验证Token失败', { error: error.message });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        logger.error('获取当前用户手机号失败', { error: error.message });
+      }
+      
+      if (!userPhone) {
+        return res.status(401).json({
+          success: false,
+          message: '需要登录才能编辑文章。请提供 deviceId（查询参数、请求头 X-Device-Id 或请求体）或有效的用户Token',
+          code: 'UNAUTHORIZED'
+        });
+      }
+      
+      // 获取文章信息，检查权限
+      const existingPost = await getBlogPost(id);
+      if (!existingPost) {
+        return res.status(404).json({
+          success: false,
+          message: '文章不存在'
+        });
+      }
+      
+      // 直接对比 deviceId
+      if (!existingPost.deviceId || existingPost.deviceId !== userPhone) {
+        logger.warn('权限检查失败', {
+          userDeviceId: userPhone,
+          postDeviceId: existingPost.deviceId,
+          postId: id
+        });
+        return res.status(403).json({
+          success: false,
+          message: '您没有权限编辑此文章',
+          code: 'FORBIDDEN'
+        });
+      }
+    }
     const updateData = {};
     
     // name和title保持一致
@@ -564,6 +723,21 @@ router.put('/posts/:id', requireBlogAuth, [
       updateData.longitude = (req.body.longitude === null || req.body.longitude === '') ? null : parseFloat(req.body.longitude);
     }
     
+    // 小程序用户和设备信息字段
+    if (req.body.nickname !== undefined) {
+      updateData.nickname = req.body.nickname === null || req.body.nickname === '' ? null : req.body.nickname;
+    }
+    if (req.body.deviceModel !== undefined) {
+      updateData.deviceModel = req.body.deviceModel === null || req.body.deviceModel === '' ? null : req.body.deviceModel;
+    }
+    if (req.body.deviceId !== undefined) {
+      updateData.deviceId = req.body.deviceId === null || req.body.deviceId === '' ? null : req.body.deviceId;
+    }
+    // 设备IP：优先使用请求中的值，否则从请求头获取（仅在更新时如果未提供则自动获取）
+    if (req.body.deviceIp !== undefined) {
+      updateData.deviceIp = req.body.deviceIp === null || req.body.deviceIp === '' ? null : req.body.deviceIp;
+    }
+    
     // 处理特殊类别的数据
     // 注意：second-hand 和 rentals 虽然需要特殊字段，但仍然需要 htmlContent
     const needsSpecialDataOnly = req.body._specialType && 
@@ -594,7 +768,15 @@ router.put('/posts/:id', requireBlogAuth, [
       hasSpecialData: !!updateData._specialData,
       specialType: updateData._specialType,
       apiName: updateData.apiName,
-      specialDataKeys: updateData._specialData ? Object.keys(updateData._specialData) : []
+      specialDataKeys: updateData._specialData ? Object.keys(updateData._specialData) : [],
+      // 记录小程序字段
+      nickname: updateData.nickname,
+      deviceModel: updateData.deviceModel,
+      deviceId: updateData.deviceId,
+      deviceIp: updateData.deviceIp,
+      // 记录请求体中的所有字段
+      requestBodyKeys: Object.keys(req.body),
+      updateDataKeys: Object.keys(updateData)
     });
     
     const post = await updateBlogPost(id, updateData);
@@ -606,9 +788,9 @@ router.put('/posts/:id', requireBlogAuth, [
       });
     }
     
-    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
+    // 记录操作日志（Token认证时adminId为null）
     await logAction(
-      req.session?.adminId || 'api-token',
+      req.session?.adminId || null,
       'UPDATE',
       'blog_post',
       id,
@@ -637,6 +819,108 @@ router.put('/posts/:id', requireBlogAuth, [
 router.delete('/posts/:id', requireBlogAuth, async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // 权限检查：如果不是管理员，需要检查用户是否有删除权限
+    // 管理员通过Session认证，普通用户通过Token认证
+    const isAdmin = req.session && req.session.adminId;
+    
+    if (!isAdmin) {
+      // 普通用户：检查用户手机号是否与文章的deviceId一致
+      // 获取当前登录用户的手机号
+      let userPhone = null;
+      try {
+        // 优先检查Session认证（浏览器）
+        if (req.session && req.session.userPhone) {
+          userPhone = req.session.userPhone;
+        } else if (req.session && req.session.userId) {
+          // 如果Session中有userId但没有userPhone，从数据库查询
+          const { getAsync } = require('../db/database');
+          const user = await getAsync(
+            'SELECT phone FROM users WHERE id = ?',
+            [req.session.userId]
+          );
+          if (user && user.phone) {
+            userPhone = user.phone;
+          }
+        } else {
+          // 如果没有Session，可能是小程序使用 X-API-Token 认证
+          // DELETE 请求通常没有请求体，优先从查询参数或请求头获取 deviceId
+          if (req.query.deviceId) {
+            // 从查询参数获取 deviceId（推荐方式：DELETE /api/blog-admin/posts/:id?deviceId=xxx）
+            userPhone = req.query.deviceId;
+          } else if (req.headers['x-device-id'] || req.headers['X-Device-Id']) {
+            // 从请求头获取 deviceId（备选方式：X-Device-Id: xxx）
+            userPhone = req.headers['x-device-id'] || req.headers['X-Device-Id'];
+          } else if (req.body && req.body.deviceId) {
+            // 从请求体获取 deviceId（如果请求体存在）
+            userPhone = req.body.deviceId;
+          } else if (req.body && req.body.phone) {
+            // 如果没有 deviceId，使用 phone 作为备选
+            userPhone = req.body.phone;
+          } else {
+            // 如果都没有，尝试从 X-User-Token 获取（用户级别的Token）
+            const token = req.headers['x-user-token'] || 
+                          req.headers['X-User-Token'] || 
+                          req.headers['authorization']?.replace(/^Bearer\s+/i, '') ||
+                          req.query.token;
+            
+            if (token) {
+              // 验证Token并获取用户信息
+              const { getAsync } = require('../db/database');
+              try {
+                const tokenRecord = await getAsync(
+                  `SELECT ut.user_id, ut.expires_at, u.id, u.phone, u.name 
+                   FROM user_tokens ut 
+                   JOIN users u ON ut.user_id = u.id 
+                   WHERE ut.token = ? AND ut.expires_at > datetime('now')`,
+                  [token]
+                );
+                
+                if (tokenRecord && tokenRecord.phone) {
+                  userPhone = tokenRecord.phone;
+                }
+              } catch (error) {
+                logger.error('验证Token失败', { error: error.message });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        logger.error('获取当前用户手机号失败', { error: error.message });
+      }
+      
+      if (!userPhone) {
+        return res.status(401).json({
+          success: false,
+          message: '需要登录才能删除文章。请提供 deviceId（查询参数、请求头 X-Device-Id 或请求体）或有效的用户Token',
+          code: 'UNAUTHORIZED'
+        });
+      }
+      
+      // 获取文章信息，检查权限
+      const existingPost = await getBlogPost(id);
+      if (!existingPost) {
+        return res.status(404).json({
+          success: false,
+          message: '文章不存在'
+        });
+      }
+      
+      // 直接对比 deviceId
+      if (!existingPost.deviceId || existingPost.deviceId !== userPhone) {
+        logger.warn('权限检查失败', {
+          userDeviceId: userPhone,
+          postDeviceId: existingPost.deviceId,
+          postId: id
+        });
+        return res.status(403).json({
+          success: false,
+          message: '您没有权限删除此文章',
+          code: 'FORBIDDEN'
+        });
+      }
+    }
+    
     const success = await deleteBlogPost(id);
     
     if (!success) {
@@ -646,9 +930,9 @@ router.delete('/posts/:id', requireBlogAuth, async (req, res) => {
       });
     }
     
-    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
+    // 记录操作日志（Token认证时adminId为null）
     await logAction(
-      req.session?.adminId || 'api-token',
+      req.session?.adminId || null,
       'DELETE',
       'blog_post',
       id,
@@ -810,9 +1094,9 @@ router.post('/categories', requireBlogAuth, [
     
     const category = await createBlogCategory(categoryData);
     
-    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
+    // 记录操作日志（Token认证时adminId为null）
     await logAction(
-      req.session?.adminId || 'api-token',
+      req.session?.adminId || null,
       'CREATE',
       'blog_category',
       category.id.toString(),
@@ -866,9 +1150,9 @@ router.put('/categories/:id', requireBlogAuth, [
       });
     }
     
-    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
+    // 记录操作日志（Token认证时adminId为null）
     await logAction(
-      req.session?.adminId || 'api-token',
+      req.session?.adminId || null,
       'UPDATE',
       'blog_category',
       id,
@@ -906,9 +1190,9 @@ router.delete('/categories/:id', requireBlogAuth, async (req, res) => {
       });
     }
     
-    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
+    // 记录操作日志（Token认证时adminId为null）
     await logAction(
-      req.session?.adminId || 'api-token',
+      req.session?.adminId || null,
       'DELETE',
       'blog_category',
       id,
@@ -1015,9 +1299,9 @@ router.put('/comments/:id/approve', requireBlogAuth, [
       });
     }
     
-    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
+    // 记录操作日志（Token认证时adminId为null）
     await logAction(
-      req.session?.adminId || 'api-token',
+      req.session?.adminId || null,
       approved ? 'APPROVE' : 'REJECT',
       'blog_comment',
       id,
@@ -1054,9 +1338,9 @@ router.delete('/comments/:id', requireBlogAuth, async (req, res) => {
       });
     }
     
-    // 记录操作日志（Token认证时adminId为null，使用'api-token'标识）
+    // 记录操作日志（Token认证时adminId为null）
     await logAction(
-      req.session?.adminId || 'api-token',
+      req.session?.adminId || null,
       'DELETE',
       'blog_comment',
       id,

@@ -4883,6 +4883,9 @@
 
     // 当前登录的管理员信息
     let currentAdmin = null;
+    
+    // 当前登录的普通用户信息
+    let currentUser = null;
 
     // 显示登录页面
     function showLoginPage() {
@@ -4905,19 +4908,49 @@
     // 检查认证状态
     async function checkAuth() {
       try {
-        const response = await fetch('/api/auth/admin/me', {
+        // 先检查管理员登录状态
+        const adminResponse = await fetch('/api/auth/admin/me', {
           method: 'GET',
           credentials: 'include'
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.success && data.admin) {
-            currentAdmin = data.admin;
+        if (adminResponse.ok) {
+          const adminData = await adminResponse.json();
+          if (adminData && adminData.success && adminData.admin) {
+            currentAdmin = adminData.admin;
             showMainPage();
             return true;
           }
         }
+        
+        // 如果不是管理员，检查是否有edit或action=new参数（普通用户编辑或新建）
+        const urlParams = new URLSearchParams(window.location.search);
+        const editId = urlParams.get('edit');
+        const action = urlParams.get('action');
+        if (editId || action === 'new') {
+          // 检查普通用户登录状态
+          try {
+            const userResponse = await fetch('/api/auth/user/me', {
+              method: 'GET',
+              credentials: 'include'
+            });
+            
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              if (userData && userData.success && userData.user) {
+                // 普通用户已登录，允许编辑或新建（权限检查在后端API中进行）
+                currentAdmin = null; // 不是管理员
+                currentUser = userData.user; // 保存用户信息
+                showMainPage(); // 显示主页面，允许编辑或新建
+                return true;
+              }
+            }
+          } catch (userError) {
+            console.error('检查普通用户登录状态失败:', userError);
+          }
+        }
+        
+        // 既不是管理员，也不是有edit参数的普通用户，显示登录页面
         showLoginPage();
         return false;
       } catch (error) {
@@ -5011,11 +5044,24 @@
         });
 
         if (response.status === 401) {
-          // 未授权，显示登录页面
-          currentAdmin = null;
-          showLoginPage();
-          showToast('请先登录', 'error');
-          return null;
+          // 检查是否是普通用户编辑模式（不是管理员，但有edit或action=new参数）
+          const urlParams = new URLSearchParams(window.location.search);
+          const editId = urlParams.get('edit');
+          const action = urlParams.get('action');
+          const isUserEditMode = !currentAdmin && (editId || action === 'new');
+          
+          if (isUserEditMode) {
+            // 普通用户编辑模式：不显示登录页面，只返回null
+            // 权限检查在后端API中进行
+            console.warn('API请求返回401（普通用户编辑模式）:', url);
+            return null;
+          } else {
+            // 管理员模式：显示登录页面
+            currentAdmin = null;
+            showLoginPage();
+            showToast('请先登录', 'error');
+            return null;
+          }
         }
 
         const data = await response.json();
@@ -5025,7 +5071,16 @@
         return data;
       } catch (error) {
         console.error('API请求失败:', error);
-        showToast('请求失败: ' + error.message, 'error');
+        // 检查是否是普通用户编辑模式
+        const urlParams = new URLSearchParams(window.location.search);
+        const editId = urlParams.get('edit');
+        const action = urlParams.get('action');
+        const isUserEditMode = !currentAdmin && (editId || action === 'new');
+        
+        if (!isUserEditMode) {
+          // 只有管理员模式才显示错误提示
+          showToast('请求失败: ' + error.message, 'error');
+        }
         throw error;
       }
     }
@@ -5477,7 +5532,24 @@
               <div class="admin-post-card" data-post-id="${post.id}" data-category="${escapeHtml(apiName)}">
                 <div class="admin-post-card-header" style="display: flex; align-items: center; gap: 0.5rem;">
                   <input type="checkbox" class="post-checkbox" value="${post.id}" data-published="${post.published ? 'true' : 'false'}" onchange="updateSelection()" style="width: 18px; height: 18px; cursor: pointer; flex-shrink: 0;">
-                  <div class="admin-post-card-title" style="flex: 1;">${escapeHtml(post.name || post.title || '未命名')}</div>
+                  <div class="admin-post-card-title" style="flex: 1;">
+                    <div>${escapeHtml(post.name || post.title || '未命名')}</div>
+                    ${(post.nickname || post.phone) ? `<div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">
+                      ${post.nickname ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        ${escapeHtml(post.nickname)}
+                      </span>` : ''}
+                      ${post.phone ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                        </svg>
+                        ${escapeHtml(post.phone)}
+                      </span>` : ''}
+                    </div>` : ''}
+                  </div>
                   ${statusBadge}
                 </div>
                 <div class="admin-post-card-actions">
@@ -5596,7 +5668,24 @@
             <input type="checkbox" class="post-checkbox" value="${post.id}" data-published="${post.published ? 'true' : 'false'}" onchange="updateSelection()" style="width: 18px; height: 18px; cursor: pointer;">
           </td>
           <td style="font-weight: 600; font-size: 0.9375rem; color: #111827; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            ${escapeHtml(post.name || post.title || '未命名')}
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <div>${escapeHtml(post.name || post.title || '未命名')}</div>
+              ${(post.nickname || post.phone) ? `<div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">
+                ${post.nickname ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                  ${escapeHtml(post.nickname)}
+                </span>` : ''}
+                ${post.phone ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                  </svg>
+                  ${escapeHtml(post.phone)}
+                </span>` : ''}
+              </div>` : ''}
+            </div>
           </td>
           <td style="white-space: nowrap;">${categoryDisplay}</td>
           <td style="white-space: nowrap;">${statusBadge}</td>
@@ -5866,7 +5955,24 @@
               cardDiv.setAttribute('data-category', apiName);
               cardDiv.innerHTML = `
                 <div class="admin-post-card-header">
-                  <div class="admin-post-card-title">${escapeHtml(post.name || post.title || '未命名')}</div>
+                  <div class="admin-post-card-title">
+                    <div>${escapeHtml(post.name || post.title || '未命名')}</div>
+                    ${(post.nickname || post.phone) ? `<div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">
+                      ${post.nickname ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        ${escapeHtml(post.nickname)}
+                      </span>` : ''}
+                      ${post.phone ? `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                        </svg>
+                        ${escapeHtml(post.phone)}
+                      </span>` : ''}
+                    </div>` : ''}
+                  </div>
                   ${statusBadge}
                 </div>
                 <div class="admin-post-card-actions">
@@ -6166,16 +6272,37 @@
         // 设置htmlContent（统一使用htmlContent）
         const htmlContent = post.htmlContent || (post._originalData ? (post._originalData.htmlContent || '') : '');
         
+        console.log('showPostForm设置htmlContent', {
+          postHtmlContent: post.htmlContent ? post.htmlContent.length : 0,
+          originalDataHtmlContent: post._originalData?.htmlContent ? post._originalData.htmlContent.length : 0,
+          finalHtmlContent: htmlContent ? htmlContent.length : 0,
+          hasHtmlContent: !!htmlContent,
+          htmlContentPreview: htmlContent ? htmlContent.substring(0, 100) : '无内容'
+        });
+        
         // 初始化HTML编辑器并设置内容
         if (!wangEditor) {
           await initQuillEditor();
         }
         if (wangEditor) {
           if (htmlContent) {
+            console.log('设置编辑器内容，长度:', htmlContent.length);
             wangEditor.setHtml(htmlContent);
+            // 验证内容是否设置成功
+            setTimeout(() => {
+              const editorContent = wangEditor.getHtml();
+              console.log('编辑器内容验证', {
+                setLength: htmlContent.length,
+                getLength: editorContent ? editorContent.length : 0,
+                match: editorContent === htmlContent
+              });
+            }, 500);
           } else {
+            console.log('htmlContent为空，清空编辑器');
             wangEditor.setHtml('');
           }
+        } else {
+          console.error('wangEditor未初始化');
         }
       } else {
         formTitle.textContent = '新建文章';
@@ -7792,10 +7919,18 @@
                 // 获取htmlContent（second-hand 和 rentals 需要）
                 if (wangEditor) {
                   htmlContent = wangEditor.getHtml();
+                  console.log('从编辑器获取htmlContent（特殊类别）', {
+                    specialType,
+                    htmlContentLength: htmlContent ? htmlContent.length : 0,
+                    hasContent: !!htmlContent
+                  });
                   // 确保所有URL都是完整的网络地址（兼容小程序等环境）
                   htmlContent = ensureFullUrlsInHtml(htmlContent);
                   // 清理所有base64图片和视频
                   htmlContent = removeBase64Content(htmlContent);
+                  console.log('处理后的htmlContent长度', htmlContent ? htmlContent.length : 0);
+                } else {
+                  console.warn('wangEditor未初始化，无法获取htmlContent');
                 }
               } else {
                 // weather、exchange-rate、translation 不需要 htmlContent
@@ -7807,13 +7942,21 @@
             }
           } else {
             // 普通类别：获取htmlContent
-                if (wangEditor) {
-                  htmlContent = wangEditor.getHtml();
-                  // 确保所有URL都是完整的网络地址（兼容小程序等环境）
-                  htmlContent = ensureFullUrlsInHtml(htmlContent);
-                  // 清理所有base64图片和视频
-                  htmlContent = removeBase64Content(htmlContent);
-                }
+            if (wangEditor) {
+              htmlContent = wangEditor.getHtml();
+              console.log('从编辑器获取htmlContent（普通类别）', {
+                htmlContentLength: htmlContent ? htmlContent.length : 0,
+                hasContent: !!htmlContent,
+                htmlContentPreview: htmlContent ? htmlContent.substring(0, 100) : '无内容'
+              });
+              // 确保所有URL都是完整的网络地址（兼容小程序等环境）
+              htmlContent = ensureFullUrlsInHtml(htmlContent);
+              // 清理所有base64图片和视频
+              htmlContent = removeBase64Content(htmlContent);
+              console.log('处理后的htmlContent长度', htmlContent ? htmlContent.length : 0);
+            } else {
+              console.warn('wangEditor未初始化，无法获取htmlContent');
+            }
           }
       
       const published = document.getElementById('postPublished').checked;
@@ -7941,6 +8084,43 @@
           published
         };
         
+        // 如果是普通用户且是新建文章，自动填充用户信息（参考小程序API逻辑）
+        if (!hasId && !currentAdmin && currentUser) {
+          // deviceId 使用用户的 phone，因为权限检查是通过 phone === deviceId 来判断的
+          if (currentUser.phone) {
+            requestBody.deviceId = currentUser.phone;
+          }
+          // nickname 使用用户的 name
+          if (currentUser.name) {
+            requestBody.nickname = currentUser.name;
+          }
+          // deviceModel 可以从 navigator.userAgent 获取（可选）
+          if (navigator.userAgent) {
+            // 简单提取设备信息
+            const ua = navigator.userAgent;
+            if (ua.includes('iPhone')) {
+              requestBody.deviceModel = 'iPhone';
+            } else if (ua.includes('iPad')) {
+              requestBody.deviceModel = 'iPad';
+            } else if (ua.includes('Android')) {
+              requestBody.deviceModel = 'Android';
+            } else {
+              requestBody.deviceModel = 'Web Browser';
+            }
+          }
+          // phone 使用用户的 phone（如果表单中没有填写）
+          if (currentUser.phone && !requestBody.phone) {
+            requestBody.phone = currentUser.phone;
+          }
+          
+          console.log('普通用户新建文章，自动填充用户信息', {
+            deviceId: requestBody.deviceId,
+            nickname: requestBody.nickname,
+            deviceModel: requestBody.deviceModel,
+            phone: requestBody.phone
+          });
+        }
+        
         // 添加特殊字段（二手市场和租房酒店）
         // specialType 和 needsLocation 已经在上面声明过了，这里直接使用
         
@@ -8016,7 +8196,14 @@
           // 只有 weather、exchange-rate、translation 不使用 htmlContent
           // second-hand 和 rentals 仍然需要 htmlContent
           if (!needsSpecialDataOnly) {
-            requestBody.htmlContent = htmlContent || undefined;
+            // 确保htmlContent被正确设置（即使是空字符串也要保留，避免丢失）
+            requestBody.htmlContent = htmlContent !== undefined && htmlContent !== null ? htmlContent : undefined;
+            console.log('设置htmlContent到请求体（特殊类别）', {
+              htmlContentLength: requestBody.htmlContent ? requestBody.htmlContent.length : 0,
+              isUndefined: requestBody.htmlContent === undefined,
+              isNull: requestBody.htmlContent === null,
+              isEmpty: requestBody.htmlContent === ''
+            });
           }
           
           // 添加调试信息
@@ -8025,11 +8212,19 @@
             needsSpecialDataOnly,
             specialDataKeys: Object.keys(specialData),
             specialDataPreview: JSON.stringify(specialData).substring(0, 500),
-            hasHtmlContent: !needsSpecialDataOnly && htmlContent
+            hasHtmlContent: !needsSpecialDataOnly && htmlContent,
+            htmlContentLength: htmlContent ? htmlContent.length : 0
           });
         } else {
           // 普通类别才添加htmlContent
-          requestBody.htmlContent = htmlContent || undefined;
+          // 确保htmlContent被正确设置（即使是空字符串也要保留，避免丢失）
+          requestBody.htmlContent = htmlContent !== undefined && htmlContent !== null ? htmlContent : undefined;
+          console.log('设置htmlContent到请求体（普通类别）', {
+            htmlContentLength: requestBody.htmlContent ? requestBody.htmlContent.length : 0,
+            isUndefined: requestBody.htmlContent === undefined,
+            isNull: requestBody.htmlContent === null,
+            isEmpty: requestBody.htmlContent === ''
+          });
         }
         
         console.log('发送请求', {
@@ -8063,15 +8258,57 @@
             ? `\n调试信息：\n- 类型: ${specialType}\n- 数据键: ${Object.keys(specialData).join(', ')}\n- 数据预览: ${JSON.stringify(specialData).substring(0, 200)}`
             : '';
           
+          const newPostId = response.data?.id;
+          
           console.log('保存成功', {
-            id: response.data?.id,
+            id: newPostId,
             name: response.data?.name,
             apiName: response.data?.category,
-            debugInfo
+            debugInfo,
+            fullResponseData: response.data
           });
           
+          // 如果是新建文章（之前没有ID），更新表单中的ID为新创建的文章ID
+          // 这样如果用户继续编辑，可以使用正确的ID
+          if (!id && newPostId) {
+            const postIdInput = document.getElementById('postId');
+            if (postIdInput) {
+              const oldId = postIdInput.value;
+              postIdInput.value = newPostId;
+              console.log('更新表单ID', {
+                oldId: oldId,
+                newId: newPostId,
+                success: postIdInput.value === newPostId
+              });
+            } else {
+              console.error('未找到postId输入框');
+            }
+            // 更新当前编辑的文章对象
+            if (response.data) {
+              window.currentEditingPost = response.data;
+              console.log('更新currentEditingPost', {
+                id: window.currentEditingPost?.id,
+                name: window.currentEditingPost?.name
+              });
+            }
+          } else {
+            // 更新文章时，也更新当前编辑的文章对象
+            window.currentEditingPost = response.data || null;
+            console.log('更新currentEditingPost（更新模式）', {
+              id: window.currentEditingPost?.id,
+              name: window.currentEditingPost?.name
+            });
+          }
+          
+          // 清除URL中的copy和edit参数，避免刷新时重复执行
+          const url = new URL(window.location);
+          if (url.searchParams.has('copy') || url.searchParams.has('edit')) {
+            url.searchParams.delete('copy');
+            url.searchParams.delete('edit');
+            window.history.replaceState({}, '', url);
+          }
+          
           showToast(id ? '文章更新成功' : '文章创建成功', 'success');
-          window.currentEditingPost = null; // 清除当前编辑的文章
           
           // 如果是在新窗口中打开的，刷新父窗口并关闭当前窗口
           if (window.opener) {
@@ -8157,7 +8394,12 @@
           switchTab('posts');
         }
         
-        console.log('编辑文章，ID:', id);
+        console.log('编辑文章，ID:', id, {
+          idType: typeof id,
+          idLength: id?.length,
+          isEmpty: !id || id.trim() === '',
+          currentPostId: document.getElementById('postId')?.value
+        });
         
         // 直接通过文章ID获取完整内容（不使用列表API，避免htmlContent被裁剪）
         console.log('通过文章ID获取完整内容，ID:', id);
@@ -8170,13 +8412,22 @@
         let post = null;
         try {
           // 使用单篇文章详情API获取完整内容
-          const response = await adminApiRequest(`${BLOG_ADMIN_API}/posts/${id}`);
+          const requestUrl = `${BLOG_ADMIN_API}/posts/${id}`;
+          console.log('请求URL:', requestUrl);
+          const response = await adminApiRequest(requestUrl);
           
           if (progressBar) {
             progressBar.style.width = '90%';
           }
           
-          console.log('获取文章详情响应:', response);
+          console.log('获取文章详情响应:', {
+            success: response?.success,
+            hasData: !!response?.data,
+            dataId: response?.data?.id,
+            dataName: response?.data?.name,
+            message: response?.message,
+            fullResponse: response
+          });
           
           if (response && response.success && response.data) {
             post = response.data;
@@ -8341,9 +8592,12 @@
           
           console.log('找到的文章:', post);
           console.log('文章HTML内容长度:', post.htmlContent ? post.htmlContent.length : 0);
+          console.log('文章HTML内容预览:', post.htmlContent ? post.htmlContent.substring(0, 100) : '无内容');
+          console.log('文章数据字段:', Object.keys(post));
           
           if (post) {
             // 创建文章副本，清除ID和slug，修改标题
+            // 确保htmlContent被正确保留
             const copiedPost = {
               ...post,
               id: '', // 清除ID，保存时会创建新文章
@@ -8353,8 +8607,17 @@
               published: false, // 默认设为草稿
               views: 0, // 重置浏览量
               createdAt: null, // 清除创建时间
-              updatedAt: null // 清除更新时间
+              updatedAt: null, // 清除更新时间
+              // 确保htmlContent被保留
+              htmlContent: post.htmlContent || ''
             };
+            
+            console.log('复制后的文章:', {
+              name: copiedPost.name,
+              htmlContentLength: copiedPost.htmlContent ? copiedPost.htmlContent.length : 0,
+              hasHtmlContent: !!copiedPost.htmlContent,
+              htmlContentPreview: copiedPost.htmlContent ? copiedPost.htmlContent.substring(0, 100) : '无内容'
+            });
             
             // 保存当前文章对象（用于后续保存时使用）
             window.currentEditingPost = copiedPost;

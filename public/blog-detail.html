@@ -102,13 +102,27 @@
       </div>
       <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;">
         <h1 class="blog-detail-title" id="articleTitle" style="flex: 1;">加载中...</h1>
-        <button id="articleEditBtn" class="blog-detail-edit-btn" onclick="editPost()" title="编辑文章" style="display: none;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-          </svg>
-          <span>编辑</span>
-        </button>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <button id="articleNewPostBtn" class="blog-detail-edit-btn" onclick="newPost()" title="新建文章" style="display: none;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14"></path>
+            </svg>
+            <span>新建</span>
+          </button>
+          <button id="articleEditBtn" class="blog-detail-edit-btn" onclick="editPost()" title="编辑文章" style="display: none;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+            <span>编辑</span>
+          </button>
+          <button id="articleDeleteBtn" class="blog-detail-edit-btn" onclick="deletePost()" title="删除文章" style="display: none; background-color: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: #ef4444;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>删除</span>
+          </button>
+        </div>
       </div>
       <div id="shareButtons"></div>
     </header>
@@ -206,6 +220,33 @@
     const commentsPageSize = 10;
     let isAdminLoggedIn = false; // 管理员登录状态
 
+    // 当前用户信息
+    let currentUser = null;
+
+    // 检查用户登录状态
+    async function checkUserAuth() {
+      try {
+        const response = await fetch('/api/auth/user/me', {
+          credentials: 'include',
+          method: 'GET'
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.success && data.user) {
+            currentUser = data.user;
+            return true;
+          }
+        }
+        currentUser = null;
+        return false;
+      } catch (error) {
+        console.error('检查用户登录状态失败:', error);
+        currentUser = null;
+        return false;
+      }
+    }
+
     // 检查管理员登录状态
     async function checkAdminAuth() {
       try {
@@ -218,11 +259,6 @@
           const data = await response.json();
           if (data && data.success && data.admin) {
             isAdminLoggedIn = true;
-            // 显示编辑按钮
-            const editBtn = document.getElementById('articleEditBtn');
-            if (editBtn) {
-              editBtn.style.display = 'inline-flex';
-            }
             return true;
           }
         }
@@ -242,7 +278,10 @@
         return;
       }
       
-      if (!isAdminLoggedIn) {
+      // 检查是否是管理员登录，或者用户是否有编辑权限
+      // 注意：这里只检查管理员登录状态，普通用户的canEdit权限在显示按钮时已经判断
+      // 如果普通用户点击编辑按钮，说明该文章有canEdit权限，允许编辑
+      if (!isAdminLoggedIn && !currentUser) {
         // 如果未登录，跳转到管理界面登录
         window.location.href = '/blog-admin.html';
         return;
@@ -267,13 +306,84 @@
       }, 500);
     }
 
+    // 新建文章（在新窗口打开）
+    function newPost() {
+      // 检查用户是否登录
+      if (!currentUser) {
+        showToast('请先登录', 'error');
+        // 可以在这里添加登录逻辑
+        return;
+      }
+      
+      // 在新窗口打开新建文章页面
+      const newUrl = `/blog-admin.html?action=new`;
+      const newWindow = window.open(newUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+      
+      if (!newWindow) {
+        showToast('无法打开新窗口，请检查浏览器弹窗设置', 'error');
+        return;
+      }
+      
+      // 监听新窗口关闭事件，重新加载文章详情（如果创建了新文章，可能需要刷新）
+      const checkClosed = setInterval(() => {
+        if (newWindow.closed) {
+          clearInterval(checkClosed);
+          // 可以选择刷新页面或保持当前状态
+        }
+      }, 500);
+    }
+
+    // 删除文章（使用小程序API）
+    async function deletePost() {
+      if (!currentPostId) {
+        showToast('无法获取文章ID', 'error');
+        return;
+      }
+      
+      // 检查是否是管理员登录，或者用户是否有编辑权限
+      if (!isAdminLoggedIn && !currentUser) {
+        showToast('请先登录', 'error');
+        return;
+      }
+      
+      // 确认删除
+      if (!confirm('确定要删除这篇文章吗？此操作不可恢复。')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/api/blog-admin/posts/${currentPostId}`, {
+          method: 'DELETE',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          showToast('文章删除成功', 'success');
+          // 跳转回博客首页
+          setTimeout(() => {
+            window.location.href = '/blog.html';
+          }, 1000);
+        } else {
+          showToast(data.message || '删除失败', 'error');
+        }
+      } catch (error) {
+        console.error('删除文章失败:', error);
+        showToast('删除失败: ' + (error.message || '未知错误'), 'error');
+      }
+    }
+
     // 获取URL参数
     function getUrlParam(name) {
       const params = new URLSearchParams(window.location.search);
       return params.get(name);
     }
 
-    // 加载文章详情
+    // 加载文章详情（使用小程序API）
     async function loadPost() {
       const slug = getUrlParam('slug');
       if (!slug) {
@@ -281,18 +391,40 @@
         return;
       }
       
-      // 检查管理员登录状态
-      await checkAdminAuth();
+      // 检查管理员和用户登录状态
+      await Promise.all([checkAdminAuth(), checkUserAuth()]);
 
       try {
-        const response = await getPost(slug);
-        if (response.success && response.data) {
-          currentPost = response.data;
-          currentPostId = response.data.id;
-          displayPost(response.data);
+        // 先通过slug获取文章ID（使用公开API）
+        const publicResponse = await getPost(slug);
+        if (!publicResponse.success || !publicResponse.data) {
+          document.getElementById('articleContent').innerHTML = '<div class="blog-empty">文章不存在</div>';
+          return;
+        }
+        
+        const postId = publicResponse.data.id;
+        currentPostId = postId;
+        
+        // 使用小程序API获取完整文章详情（支持编辑权限检查）
+        const response = await fetch(`/api/blog-admin/posts/${postId}`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success && data.data) {
+          currentPost = data.data;
+          displayPost(data.data);
           loadComments(1);
         } else {
-          document.getElementById('articleContent').innerHTML = '<div class="blog-empty">文章不存在</div>';
+          // 如果小程序API失败，使用公开API的数据
+          currentPost = publicResponse.data;
+          displayPost(publicResponse.data);
+          loadComments(1);
         }
       } catch (error) {
         console.error('加载文章失败:', error);
@@ -312,9 +444,34 @@
       const contentLength = (post.htmlContent || '').length;
       const readingTime = Math.ceil(contentLength / 500);
       
-      document.getElementById('articleDate').textContent = date;
-      document.getElementById('articleViews').textContent = views + ' 阅读';
-      document.getElementById('readingTime').textContent = `约 ${readingTime} 分钟阅读`;
+      // 构建Meta信息HTML，包含昵称和手机号
+      let metaHtml = `<span id="articleDate">${date}</span>`;
+      if (post.nickname || post.phone) {
+        metaHtml += '<span>•</span>';
+        if (post.nickname) {
+          metaHtml += `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            ${escapeHtml(post.nickname)}
+          </span>`;
+        }
+        if (post.phone) {
+          metaHtml += `<span style="display: inline-flex; align-items: center; gap: 0.25rem;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+            </svg>
+            ${escapeHtml(post.phone)}
+          </span>`;
+        }
+      }
+      metaHtml += '<span>•</span>';
+      metaHtml += `<span id="articleViews">${views} 阅读</span>`;
+      metaHtml += '<span>•</span>';
+      metaHtml += `<span id="readingTime">约 ${readingTime} 分钟阅读</span>`;
+      
+      document.getElementById('articleMeta').innerHTML = metaHtml;
 
       // 图片
       if (post.image) {
@@ -410,6 +567,26 @@
           <button class="blog-btn blog-btn-secondary" onclick="copyLink('${shareUrl}')" style="font-size: 0.875rem; padding: 0.5rem 1rem;">复制链接</button>
         </div>
       `;
+
+      // 显示编辑按钮：管理员登录 或 用户手机号与文章deviceId一致
+      const editBtn = document.getElementById('articleEditBtn');
+      if (editBtn) {
+        const canEdit = isAdminLoggedIn || post.canEdit;
+        editBtn.style.display = canEdit ? 'inline-flex' : 'none';
+      }
+      
+      // 显示新建文章按钮：用户已登录
+      const newPostBtn = document.getElementById('articleNewPostBtn');
+      if (newPostBtn) {
+        newPostBtn.style.display = currentUser ? 'inline-flex' : 'none';
+      }
+      
+      // 显示删除按钮：管理员登录 或 用户手机号与文章deviceId一致
+      const deleteBtn = document.getElementById('articleDeleteBtn');
+      if (deleteBtn) {
+        const canDelete = isAdminLoggedIn || post.canEdit;
+        deleteBtn.style.display = canDelete ? 'inline-flex' : 'none';
+      }
 
       // 更新阅读进度
       updateReadingProgress();

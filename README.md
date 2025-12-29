@@ -48,6 +48,8 @@ npm start
 
 - **用户端**: http://localhost:3000
 - **管理后台**: http://localhost:3000/admin.html
+- **博客首页**: http://localhost:3000/blog.html
+- **博客管理**: http://localhost:3000/blog-admin.html
 
 ### 默认账号
 
@@ -532,7 +534,9 @@ tar -czf $BACKUP_DIR/uploads_$DATE.tar.gz /path/to/boda/uploads
 ### 基础信息
 
 - **Base URL**: `http://localhost:3000/api`
-- **认证方式**: Session Cookie
+- **认证方式**: 
+  - Session Cookie（浏览器访问）
+  - API Token（小程序/移动端访问）
 - **内容类型**: `application/json` 或 `multipart/form-data`
 
 ### 主要接口
@@ -602,6 +606,70 @@ tar -czf $BACKUP_DIR/uploads_$DATE.tar.gz /path/to/boda/uploads
 - `GET /api/public/products` - 获取菜品列表
 - `GET /api/public/discount-rules` - 获取折扣规则
 - `GET /api/public/show-images` - 获取首页展示图片
+
+#### 博客Web接口 (`/api/blog`)
+
+**文章管理**:
+- `GET /api/blog/posts` - 获取文章列表
+  - 查询参数: `page`（页码，默认1）、`pageSize`（每页数量，默认6）、`category`（分类筛选）、`search`（搜索关键词）、`published`（是否只返回已发布，默认true）
+  - 排序规则: 优先按浏览量降序，其次按更新时间和创建时间降序
+- `GET /api/blog/posts/:slug` - 获取文章详情（通过slug或id）
+- `GET /api/blog/search` - 搜索文章
+  - 查询参数: `q`（搜索关键词）、`page`、`pageSize`
+
+**分类管理**:
+- `GET /api/blog/categories` - 获取分类列表
+
+**评论管理**:
+- `GET /api/blog/posts/:postId/comments` - 获取文章评论
+  - 查询参数: `page`（默认1）、`pageSize`（默认10）
+- `POST /api/blog/posts/:postId/comments` - 创建评论
+  - 请求体: `content`（评论内容）、`authorName`（作者名称）、`authorEmail`（作者邮箱）、`parentId`（父评论ID，可选）
+
+**其他**:
+- `POST /api/blog/posts/:slug/views` - 增加阅读量
+
+#### 小程序博客管理接口 (`/api/blog-admin`)
+
+**认证方式**: 
+- Session Cookie（浏览器访问）
+- API Token（小程序访问，通过请求头 `X-API-Token` 或 `Authorization: Bearer` 传递）
+
+**文章管理**:
+- `GET /api/blog-admin/posts` - 获取文章列表
+  - 查询参数: `page`（页码，默认1）、`pageSize`（每页数量，可选）、`published`（是否只返回已发布，默认false返回所有）、`category`（分类筛选）、`search`（搜索关键词）
+  - 排序规则: 优先按浏览量降序，其次按更新时间和创建时间降序
+- `GET /api/blog-admin/posts/:id` - 获取文章详情
+- `POST /api/blog-admin/posts` - 创建文章
+  - 请求体: `name`（文章名称，必填）、`apiName`（API名称/分类，必填）、`htmlContent`（HTML内容，可选）、`slug`（URL标识符，可选）、`excerpt`（摘要，可选）、`description`（描述，可选）、`image`（图片URL，可选）、`published`（是否发布，默认false）、`price`（价格，可选）、`rooms`（房间数，可选）、`area`（面积，可选）、`phone`（电话，可选）、`address`（地址，可选）、`latitude`（纬度，可选）、`longitude`（经度，可选）、`nickname`（昵称，可选）、`deviceModel`（设备型号，可选）、`deviceId`（设备ID，可选）、`deviceIp`（设备IP，可选）
+- `PUT /api/blog-admin/posts/:id` - 更新文章
+- `DELETE /api/blog-admin/posts/:id` - 删除文章
+
+**分类管理**:
+- `GET /api/blog-admin/categories` - 获取分类列表
+- `POST /api/blog-admin/categories` - 创建分类
+  - 请求体: `name`（分类名称，必填）、`path`（分类路径，可选）、`description`（描述，可选）
+- `PUT /api/blog-admin/categories/:id` - 更新分类
+- `DELETE /api/blog-admin/categories/:id` - 删除分类
+
+**API管理**:
+- `GET /api/blog-admin/apis` - 获取API列表（用于文章分类选择）
+- `GET /api/blog-admin/apis/:apiName/field-mapping` - 获取字段映射配置
+- `PUT /api/blog-admin/apis/:apiName/field-mapping` - 更新字段映射配置
+  - 请求体: `mapping`（字段映射对象，必填）
+
+**小程序API Token配置**:
+1. 登录管理后台
+2. 进入 **Settings（系统设置）**
+3. 设置 `custom_api_token` 的值
+4. 保存配置
+
+**小程序Token使用方式**:
+- 请求头: `X-API-Token: your-api-token`（推荐）
+- 请求头: `Authorization: Bearer your-api-token`
+- 查询参数: `?token=your-api-token`（不推荐）
+
+> 📖 **详细文档**: 小程序API完整使用指南请查看 [小程序博客API文档](docs/MINIPROGRAM_API.md)
 
 ### 错误响应格式
 
@@ -807,6 +875,14 @@ pm2 logs boda
 > 📖 **详细说明**：博客文章系统的完整架构和工作流程请查看 [博客系统架构文档](docs/BLOG_ARCHITECTURE.md)
 
 ## 🔄 更新日志
+
+### v2.4.0 (2025-12-28) - 博客系统优化
+
+- ✅ **文章排序优化** - 文章列表按浏览量降序，其次按更新时间和创建时间降序
+- ✅ **分类匹配优化** - 支持中文名称提取和模糊匹配，兼容不同格式的分类名称
+- ✅ **昵称和手机号展示** - 在博客主页、管理页面、详情页面展示昵称和手机号字段
+- ✅ **外键约束修复** - 修复日志记录时的外键约束错误，API Token认证时正确使用null值
+- ✅ **API文档更新** - 更新README，添加博客Web API和小程序API完整文档
 
 ### v2.3.0 (2025-12-25) - 博客系统数据库重构
 
@@ -1041,6 +1117,11 @@ describe('My Feature', () => {
 - **架构文档**: `docs/ARCHITECTURE.md` - 系统架构设计说明
 - **博客系统架构**: `docs/BLOG_ARCHITECTURE.md` - 博客文章系统详细架构和工作流程
 - **小程序API指南**: `docs/MINIPROGRAM_API.md` - 小程序调用博客API的完整指南
+  - **小程序认证**: `docs/MINIPROGRAM_AUTH_API.md` - 小程序认证API使用指南
+  - **二手市场/租房酒店**: `docs/MINIPROGRAM_SECONDHAND_RENTALS_API.md` - 二手市场和租房酒店字段操作指南
+  - **手机号和定位**: `docs/MINIPROGRAM_PHONE_LOCATION_API.md` - 手机号和定位信息操作指南
+- **外部API管理**: `docs/EXTERNAL_API_GUIDE.md` - 外部API管理接口完整指南
+- **博客文件清理**: `docs/BLOG_FILE_CLEANUP.md` - 博客文件自动清理功能说明
 - **安全文档**: `docs/SECURITY.md` - 安全特性和最佳实践
 - **测试文档**: `docs/README_TESTING.md` - 测试相关文档
 - **项目状态**: `docs/PROJECT_STATUS.md` - 项目当前状态和计划

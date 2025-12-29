@@ -8,8 +8,64 @@ const {
   createBlogComment
 } = require('../utils/blog-helper');
 const { logger } = require('../utils/logger');
+const { getAsync } = require('../db/database');
 
 const router = express.Router();
+
+/**
+ * 获取当前登录用户的手机号
+ * 支持Session认证和Token认证
+ */
+async function getCurrentUserPhone(req) {
+  try {
+    // 优先检查Session认证（浏览器）
+    if (req.session && req.session.userPhone) {
+      return req.session.userPhone;
+    }
+    
+    // 如果没有Session，尝试Token认证（小程序）
+    const token = req.headers['x-user-token'] || 
+                  req.headers['X-User-Token'] || 
+                  req.headers['authorization']?.replace(/^Bearer\s+/i, '') ||
+                  req.query.token;
+    
+    if (token) {
+      // 验证Token并获取用户信息
+      const { getAsync } = require('../db/database');
+      try {
+        const tokenRecord = await getAsync(
+          `SELECT ut.user_id, ut.expires_at, u.id, u.phone, u.name 
+           FROM user_tokens ut 
+           JOIN users u ON ut.user_id = u.id 
+           WHERE ut.token = ? AND ut.expires_at > datetime('now')`,
+          [token]
+        );
+        
+        if (tokenRecord && tokenRecord.phone) {
+          return tokenRecord.phone;
+        }
+      } catch (error) {
+        logger.error('验证Token失败', { error: error.message });
+      }
+    }
+    
+    // 如果Session中有userId但没有userPhone，从数据库查询
+    if (req.session && req.session.userId) {
+      const user = await getAsync(
+        'SELECT phone FROM users WHERE id = ?',
+        [req.session.userId]
+      );
+      if (user && user.phone) {
+        return user.phone;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    logger.error('获取当前用户手机号失败', { error: error.message });
+    return null;
+  }
+}
 
 /**
  * GET /api/blog/posts
@@ -25,13 +81,54 @@ router.get('/posts', async (req, res) => {
       published = 'true' 
     } = req.query;
     
-    const options = {
-      publishedOnly: published === 'true',
-      category: category || undefined,
-      search: search || undefined
-    };
+    // 获取当前登录用户的手机号
+    const userPhone = await getCurrentUserPhone(req);
     
-    let posts = await getBlogPosts(options);
+    // 如果用户已登录，需要返回：所有已发布的文章 + 该用户的草稿文章
+    // 如果用户未登录，只返回已发布的文章
+    let posts = [];
+    
+    if (userPhone && published === 'true') {
+      // 用户已登录：获取所有已发布的文章 + 该用户的草稿文章
+      const publishedOptions = {
+        publishedOnly: true,
+        category: category || undefined,
+        search: search || undefined
+      };
+      const publishedPosts = await getBlogPosts(publishedOptions);
+      
+      // 获取该用户的草稿文章（未发布的）
+      const draftOptions = {
+        publishedOnly: false, // 获取所有文章（包括未发布的）
+        category: category || undefined,
+        search: search || undefined
+      };
+      const allPosts = await getBlogPosts(draftOptions);
+      
+      // 筛选出该用户的草稿文章（deviceId匹配且未发布）
+      const userDrafts = allPosts.filter(post => 
+        post.deviceId === userPhone && (!post.published || post.published === false)
+      );
+      
+      // 合并已发布的文章和用户的草稿文章
+      const publishedPostIds = new Set(publishedPosts.map(p => p.id));
+      posts = [...publishedPosts];
+      
+      // 添加用户的草稿文章（避免重复）
+      userDrafts.forEach(draft => {
+        if (!publishedPostIds.has(draft.id)) {
+          posts.push(draft);
+        }
+      });
+    } else {
+      // 用户未登录或明确要求只显示已发布的：只返回已发布的文章
+      const options = {
+        publishedOnly: published === 'true',
+        category: category || undefined,
+        search: search || undefined
+      };
+      posts = await getBlogPosts(options);
+    }
     
     // 分页
     const total = posts.length;
@@ -44,7 +141,17 @@ router.get('/posts', async (req, res) => {
     // 清理内部字段（不对外暴露）
     // 列表场景只保留 HTML 内容的前10个字节，减少响应体积
     const { cleanPostForPublic } = require('../utils/blog-helper');
-    const cleanedPosts = paginatedPosts.map(post => cleanPostForPublic(post, false, true)); // 第三个参数表示列表场景
+    const cleanedPosts = paginatedPosts.map(post => {
+      const cleaned = cleanPostForPublic(post, false, true); // 第三个参数表示列表场景
+      
+      // 判断当前登录用户的手机号是否与文章的deviceId一致
+      // 如果一致，添加canEdit字段
+      if (userPhone && post.deviceId && userPhone === post.deviceId) {
+        cleaned.canEdit = true;
+      }
+      
+      return cleaned;
+    });
     
     res.json({
       success: true,
@@ -86,10 +193,19 @@ router.get('/posts/:slug', async (req, res) => {
       logger.error('增加阅读量失败', { slug, error: err.message });
     });
     
+    // 获取当前登录用户的手机号
+    const userPhone = await getCurrentUserPhone(req);
+    
     // 清理内部字段（不对外暴露）
     // 详情场景返回完整的 HTML 内容
     const { cleanPostForPublic } = require('../utils/blog-helper');
     const cleanedPost = cleanPostForPublic(post, true);
+    
+    // 判断当前登录用户的手机号是否与文章的deviceId一致
+    // 如果一致，添加canEdit字段
+    if (userPhone && post.deviceId && userPhone === post.deviceId) {
+      cleanedPost.canEdit = true;
+    }
     
     res.json({
       success: true,
@@ -257,6 +373,9 @@ router.get('/search', async (req, res) => {
       search: q.trim()
     });
     
+    // 获取当前登录用户的手机号
+    const userPhone = await getCurrentUserPhone(req);
+    
     // 分页
     const total = posts.length;
     const totalPages = Math.ceil(total / pageSize);
@@ -268,7 +387,17 @@ router.get('/search', async (req, res) => {
     // 清理内部字段（不对外暴露）
     // 搜索场景也是列表场景，只保留 HTML 内容的前10个字节
     const { cleanPostForPublic } = require('../utils/blog-helper');
-    const cleanedPosts = paginatedPosts.map(post => cleanPostForPublic(post, false, true)); // 第三个参数表示列表场景
+    const cleanedPosts = paginatedPosts.map(post => {
+      const cleaned = cleanPostForPublic(post, false, true); // 第三个参数表示列表场景
+      
+      // 判断当前登录用户的手机号是否与文章的deviceId一致
+      // 如果一致，添加canEdit字段
+      if (userPhone && post.deviceId && userPhone === post.deviceId) {
+        cleaned.canEdit = true;
+      }
+      
+      return cleaned;
+    });
     
     res.json({
       success: true,
