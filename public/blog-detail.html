@@ -68,7 +68,99 @@
       display: block;
     }
     
-    /* 文章主图片也需要自适应 */
+    /* 小红书式轮播图容器 */
+    .blog-carousel-container {
+      width: 100%;
+      max-width: 100%;
+      margin: 0 auto 1.5rem;
+      position: relative;
+      background: #000;
+    }
+    .blog-carousel-wrapper {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      aspect-ratio: 1 / 1;
+      max-height: 80vh;
+    }
+    .blog-carousel-track {
+      display: flex;
+      transition: transform 0.3s ease;
+      height: 100%;
+    }
+    .blog-carousel-item {
+      min-width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      background: #000;
+    }
+    .blog-carousel-item img,
+    .blog-carousel-item video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #000;
+    }
+    /* 轮播图切换按钮 */
+    .blog-carousel-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255, 255, 255, 0.9);
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    .blog-carousel-btn:hover {
+      background: rgba(255, 255, 255, 1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .blog-carousel-btn-prev { left: 12px; }
+    .blog-carousel-btn-next { right: 12px; }
+    .blog-carousel-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    /* 轮播图指示器 */
+    .blog-carousel-indicators {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+    .blog-carousel-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.5);
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      padding: 0;
+    }
+    .blog-carousel-indicator.active {
+      background: rgba(255, 255, 255, 1);
+      width: 24px;
+      border-radius: 4px;
+    }
+    /* 纯文字内容区域：隐藏图片/视频 */
+    .blog-detail-content img,
+    .blog-detail-content video {
+      display: none !important;
+    }
+    /* 文章主图片兼容样式（已用于轮播内） */
     .blog-detail-image img {
       max-width: 100%;
       height: auto;
@@ -159,16 +251,33 @@
       <div id="shareButtons"></div>
     </header>
 
-    <div class="blog-detail-image" id="articleImage" style="display: none;">
-      <img id="articleImageImg" src="" alt="">
+    <!-- 小红书式轮播图/视频区域 -->
+    <div class="blog-carousel-container" id="articleCarousel" style="display: none;">
+      <div class="blog-carousel-wrapper">
+        <div class="blog-carousel-track" id="carouselTrack"></div>
+        <!-- 左右切换按钮 -->
+        <button class="blog-carousel-btn blog-carousel-btn-prev" id="carouselPrevBtn" onclick="carouselPrev()" aria-label="上一张" style="display: none;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <button class="blog-carousel-btn blog-carousel-btn-next" id="carouselNextBtn" onclick="carouselNext()" aria-label="下一张" style="display: none;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </button>
+        <!-- 指示器 -->
+        <div class="blog-carousel-indicators" id="carouselIndicators"></div>
+      </div>
+    </div>
+
+    <!-- 纯文字内容区域 -->
+    <div class="blog-detail-content" id="articleContent">
+      <div class="blog-loading">加载中...</div>
     </div>
 
     <!-- 联系方式和位置信息 -->
     <div id="articleContactLocation" style="display: none;"></div>
-
-    <div class="blog-detail-content" id="articleContent">
-      <div class="blog-loading">加载中...</div>
-    </div>
 
     <div class="blog-detail-tags" id="articleTags" style="display: none;"></div>
   </article>
@@ -464,6 +573,101 @@
       }
     }
 
+    // 轮播图数据
+    let carouselItems = [];
+    let carouselIndex = 0;
+    const carouselTrackEl = document.getElementById('carouselTrack');
+    const carouselPrevBtn = document.getElementById('carouselPrevBtn');
+    const carouselNextBtn = document.getElementById('carouselNextBtn');
+    const carouselIndicatorsEl = document.getElementById('carouselIndicators');
+
+    function extractCarouselItems(post) {
+      const items = [];
+      // 主图
+      if (post.image) {
+        items.push({ type: 'image', src: validateImageUrl(post.image) });
+      }
+      // 从 htmlContent 中提取图片和视频
+      if (post.htmlContent) {
+        const temp = document.createElement('div');
+        temp.innerHTML = post.htmlContent;
+        temp.querySelectorAll('img').forEach(img => {
+          const src = img.getAttribute('src');
+          if (src) items.push({ type: 'image', src: validateImageUrl(src) });
+        });
+        temp.querySelectorAll('video').forEach(video => {
+          let src = video.getAttribute('src');
+          if (!src) {
+            const source = video.querySelector('source');
+            if (source) src = source.getAttribute('src');
+          }
+          if (src) items.push({ type: 'video', src: validateImageUrl(src) });
+        });
+      }
+      // 去重
+      const seen = new Set();
+      return items.filter(item => {
+        if (!item.src) return false;
+        if (seen.has(item.src)) return false;
+        seen.add(item.src);
+        return true;
+      });
+    }
+
+    function renderCarousel() {
+      const container = document.getElementById('articleCarousel');
+      if (!container) return;
+      if (!carouselItems.length) {
+        container.style.display = 'none';
+        return;
+      }
+      container.style.display = 'block';
+      // 轨道
+      carouselTrackEl.innerHTML = '';
+      carouselItems.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'blog-carousel-item';
+        if (item.type === 'video') {
+          div.innerHTML = `<video src="${escapeHtml(item.src)}" controls preload="metadata"></video>`;
+        } else {
+          div.innerHTML = `<img src="${escapeHtml(item.src)}" alt="">`;
+        }
+        carouselTrackEl.appendChild(div);
+      });
+      // 指示器
+      carouselIndicatorsEl.innerHTML = '';
+      carouselItems.forEach((_, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'blog-carousel-indicator' + (idx === carouselIndex ? ' active' : '');
+        btn.onclick = () => { carouselIndex = idx; updateCarouselPosition(); };
+        carouselIndicatorsEl.appendChild(btn);
+      });
+      // 按钮可见性
+      if (carouselItems.length > 1) {
+        carouselPrevBtn.style.display = 'flex';
+        carouselNextBtn.style.display = 'flex';
+      } else {
+        carouselPrevBtn.style.display = 'none';
+        carouselNextBtn.style.display = 'none';
+      }
+      updateCarouselPosition();
+    }
+
+    function updateCarouselPosition() {
+      if (!carouselItems.length) return;
+      if (carouselIndex < 0) carouselIndex = carouselItems.length - 1;
+      if (carouselIndex >= carouselItems.length) carouselIndex = 0;
+      const offset = -carouselIndex * 100;
+      carouselTrackEl.style.transform = `translateX(${offset}%)`;
+      // 更新指示器
+      const indicators = carouselIndicatorsEl.querySelectorAll('.blog-carousel-indicator');
+      indicators.forEach((ind, idx) => {
+        if (idx === carouselIndex) ind.classList.add('active'); else ind.classList.remove('active');
+      });
+    }
+    function carouselPrev() { carouselIndex--; updateCarouselPosition(); }
+    function carouselNext() { carouselIndex++; updateCarouselPosition(); }
+
     // 显示文章
     async function displayPost(post) {
       // 标题
@@ -505,19 +709,6 @@
       
       document.getElementById('articleMeta').innerHTML = metaHtml;
 
-      // 图片
-      if (post.image) {
-        document.getElementById('articleImage').style.display = 'block';
-        const imageUrl = validateImageUrl(post.image);
-        document.getElementById('articleImageImg').src = imageUrl;
-        document.getElementById('articleImageImg').alt = post.name || post.title || '';
-        // 添加错误处理
-        document.getElementById('articleImageImg').onerror = function() {
-          this.style.display = 'none';
-          document.getElementById('articleImage').style.display = 'none';
-        };
-      }
-
       // 内容（统一使用htmlContent）
       const contentDiv = document.getElementById('articleContent');
       
@@ -549,41 +740,16 @@
         renderTranslation(specialData, contentDiv);
       } else if (post.htmlContent) {
         contentDiv.innerHTML = post.htmlContent;
-        // 处理HTML内容中的图片
-        const images = contentDiv.querySelectorAll('img');
-        images.forEach(img => {
-          const originalSrc = img.getAttribute('src');
-          if (originalSrc) {
-            img.src = validateImageUrl(originalSrc);
-            // 确保图片自适应
-            img.style.maxWidth = '100%';
-            img.style.height = 'auto';
-            img.style.display = 'block';
-            img.onerror = function() {
-              this.style.display = 'none';
-            };
-          }
-        });
-        // 处理HTML内容中的视频
-        const videos = contentDiv.querySelectorAll('video');
-        videos.forEach(video => {
-          video.style.maxWidth = '100%';
-          video.style.height = 'auto';
-          video.style.width = '100%';
-        });
-        // 处理HTML内容中的iframe（如YouTube, Bilibili等）
-        const iframes = contentDiv.querySelectorAll('iframe');
-        iframes.forEach(iframe => {
-          iframe.style.maxWidth = '100%';
-          iframe.style.width = '100%';
-          // 保持16:9的宽高比
-          const width = iframe.offsetWidth || 560;
-          iframe.style.height = (width * 9 / 16) + 'px';
-        });
+        // 删除图片/视频/iframe，保留纯文字
+        contentDiv.querySelectorAll('img, video, iframe, picture, source').forEach(el => el.remove());
       } else {
         // 如果没有htmlContent，显示所有字段内容
         renderPostFields(post, contentDiv);
       }
+
+      // 构建轮播图
+      carouselItems = extractCarouselItems(post);
+      renderCarousel();
 
       // 显示联系方式和位置信息
       displayContactLocation(post);

@@ -160,6 +160,24 @@
         padding: 1rem 0.75rem !important;
       }
       
+      /* 移动端天气和汇率表单保持纵向布局 */
+      .weather-form-layout,
+      .exchange-rate-form-layout {
+        display: flex !important;
+        flex-direction: column !important;
+        grid-template-columns: none !important;
+      }
+      
+      .weather-section,
+      .exchange-rate-section {
+        grid-column: auto !important;
+      }
+      
+      .weather-form-actions,
+      .exchange-rate-form-actions {
+        grid-column: auto !important;
+      }
+      
       /* 强制覆盖表单的grid布局 - 这是关键！ */
       form > div[style*="grid-template-columns"],
       form > div[style*="display: grid"],
@@ -958,6 +976,180 @@
       width: 100%;
       max-width: 100%;
       box-sizing: border-box;
+    }
+    
+    /* 天气和汇率表单宽屏横向布局 */
+    .weather-form-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    
+    .weather-section {
+      padding: 1.5rem;
+      background: white;
+      border-radius: 0.5rem;
+      border: 1px solid #e5e7eb;
+      min-height: 200px;
+      overflow: visible;
+    }
+    
+    .weather-section-alert {
+      background: #f9fafb;
+    }
+    
+    /* 确保列表容器可见 - 重构版本 */
+    #weatherAttractionsList,
+    #weatherTrafficList,
+    #exchangeRatesList {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      min-height: 50px;
+      width: 100%;
+      box-sizing: border-box;
+      position: relative;
+    }
+    
+    .weather-item,
+    .exchange-rate-item {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+      margin-bottom: 0.75rem !important;
+      position: relative;
+    }
+    
+    /* 确保表单区域可见 */
+    .weather-section-attractions,
+    .weather-section-traffic,
+    .exchange-rate-section-list {
+      overflow: visible !important;
+      min-height: 200px;
+      position: relative;
+    }
+    
+    /* 确保表单容器可见 */
+    #weatherEditForm,
+    #exchangeRateEditForm {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      position: relative;
+    }
+    
+    #weatherEditForm[style*="display: none"],
+    #exchangeRateEditForm[style*="display: none"] {
+      display: none !important;
+    }
+    
+    #weatherEditForm:not([style*="display: none"]),
+    #exchangeRateEditForm:not([style*="display: none"]) {
+      display: block !important;
+    }
+    
+    .weather-form-actions {
+      display: flex;
+      gap: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e5e7eb;
+    }
+    
+    .exchange-rate-form-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    
+    .exchange-rate-section {
+      padding: 1.5rem;
+      background: white;
+      border-radius: 0.5rem;
+      border: 1px solid #e5e7eb;
+    }
+    
+    .exchange-rate-section-meta {
+      background: #f9fafb;
+    }
+    
+    .exchange-rate-form-actions {
+      display: flex;
+      gap: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e5e7eb;
+    }
+    
+    /* 宽屏横向布局 */
+    @media (min-width: 1024px) {
+      .weather-form-layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto auto;
+        gap: 1.5rem;
+      }
+      
+      .weather-section-alert {
+        grid-column: 1 / -1;
+      }
+      
+      .weather-section-attractions {
+        grid-column: 1;
+      }
+      
+      .weather-section-traffic {
+        grid-column: 2;
+      }
+      
+      .weather-form-actions {
+        grid-column: 1 / -1;
+        margin-top: 0;
+      }
+      
+      .exchange-rate-form-layout {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 1.5rem;
+      }
+      
+      .exchange-rate-section-list {
+        grid-column: 1;
+      }
+      
+      .exchange-rate-section-meta {
+        grid-column: 2;
+        align-self: start;
+      }
+      
+      .exchange-rate-form-actions {
+        grid-column: 1 / -1;
+        margin-top: 0;
+      }
+    }
+    
+    /* 超大屏优化 */
+    @media (min-width: 1400px) {
+      .weather-form-layout {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+      
+      .weather-section-alert {
+        grid-column: 1 / -1;
+      }
+      
+      .weather-section-attractions {
+        grid-column: 1;
+      }
+      
+      .weather-section-traffic {
+        grid-column: 2;
+      }
+      
+      .weather-form-actions {
+        grid-column: 1 / -1;
+      }
     }
     .admin-form-textarea {
       min-height: 200px;
@@ -4294,58 +4486,6 @@
       <div class="admin-card-header" style="justify-content: flex-start; gap: 1rem; flex-wrap: wrap;">
         <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0;">天气路况管理</h2>
         <span id="weatherLastUpdate" style="color: #6b7280; font-size: 0.875rem; margin-left: auto; align-self: center;"></span>
-        <button class="blog-btn blog-btn-secondary" onclick="showWeatherEditForm()" id="weatherEditBtn" style="background-color: #9333ea; border-color: #9333ea;">编辑</button>
-        <button class="blog-btn blog-btn-secondary" onclick="hideWeatherEditForm()" id="weatherCancelBtn" style="display: none;">取消</button>
-      </div>
-      
-      <!-- 编辑表单 -->
-      <div id="weatherEditForm" class="admin-form" style="display: none;">
-        <form id="weatherFormElement" onsubmit="saveWeatherContent(event)">
-          <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-            <!-- 全局预警 -->
-            <div style="padding: 1.5rem; background: #f9fafb; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
-              <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin-bottom: 1rem;">全局预警</h3>
-              <div style="display: grid; gap: 1rem;">
-                <div class="admin-form-group">
-                  <label class="admin-form-label" for="weatherGlobalAlertLevel">预警级别 *</label>
-                  <select id="weatherGlobalAlertLevel" class="admin-form-select" required>
-                    <option value="low">低</option>
-                    <option value="medium" selected>中</option>
-                    <option value="high">高</option>
-                  </select>
-                </div>
-                <div class="admin-form-group">
-                  <label class="admin-form-label" for="weatherGlobalAlertMessage">预警消息 *</label>
-                  <textarea id="weatherGlobalAlertMessage" class="admin-form-input" rows="3" required placeholder="输入预警消息..."></textarea>
-                </div>
-              </div>
-            </div>
-            
-            <!-- 景点信息 -->
-            <div style="padding: 1.5rem; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">景点信息</h3>
-                <button type="button" class="blog-btn blog-btn-primary" onclick="addWeatherAttraction()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">+ 添加景点</button>
-              </div>
-              <div id="weatherAttractionsList"></div>
-            </div>
-            
-            <!-- 交通信息 -->
-            <div style="padding: 1.5rem; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">交通信息</h3>
-                <button type="button" class="blog-btn blog-btn-primary" onclick="addWeatherTraffic()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">+ 添加路况</button>
-              </div>
-              <div id="weatherTrafficList"></div>
-            </div>
-            
-            <!-- 操作按钮 -->
-            <div style="display: flex; gap: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
-              <button type="submit" class="blog-btn blog-btn-primary" style="padding: 0.75rem 1.5rem;">保存</button>
-              <button type="button" class="blog-btn blog-btn-secondary" onclick="hideWeatherEditForm()">取消</button>
-            </div>
-          </div>
-        </form>
       </div>
       
       <!-- 显示内容 -->
@@ -4361,38 +4501,6 @@
           <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0 0 0.25rem 0;">汇率转换管理</h2>
           <span id="exchangeRateLastUpdate" style="color: #6b7280; font-size: 0.875rem;"></span>
         </div>
-        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
-          <button class="blog-btn blog-btn-secondary" onclick="showExchangeRateEditForm()" id="exchangeRateEditBtn" style="background-color: #10b981; border-color: #10b981;">编辑</button>
-          <button class="blog-btn blog-btn-secondary" onclick="hideExchangeRateEditForm()" id="exchangeRateCancelBtn" style="display: none;">取消</button>
-        </div>
-      </div>
-      
-      <!-- 编辑表单 -->
-      <div id="exchangeRateEditForm" class="admin-form" style="display: none;">
-        <form id="exchangeRateFormElement" onsubmit="saveExchangeRateContent(event)">
-          <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-            <!-- 汇率列表 -->
-            <div style="padding: 1.5rem; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">汇率列表</h3>
-                <button type="button" class="blog-btn blog-btn-primary" onclick="addExchangeRate()" style="padding: 0.5rem 1rem; font-size: 0.875rem; background-color: #10b981; border-color: #10b981;">+ 添加汇率</button>
-              </div>
-              <div id="exchangeRatesList"></div>
-            </div>
-            
-            <!-- 更新时间 -->
-            <div class="admin-form-group">
-              <label class="admin-form-label" for="exchangeUpdateTime">更新时间</label>
-              <input type="datetime-local" id="exchangeUpdateTime" class="admin-form-input">
-            </div>
-            
-            <!-- 操作按钮 -->
-            <div style="display: flex; gap: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
-              <button type="submit" class="blog-btn blog-btn-primary" style="padding: 0.75rem 1.5rem; background-color: #10b981; border-color: #10b981;">保存</button>
-              <button type="button" class="blog-btn blog-btn-secondary" onclick="hideExchangeRateEditForm()">取消</button>
-            </div>
-          </div>
-        </form>
       </div>
       
       <!-- 显示内容 -->
@@ -4408,32 +4516,6 @@
           <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0 0 0.25rem 0;">翻译卡片管理</h2>
           <span id="translationLastUpdate" style="color: #6b7280; font-size: 0.875rem;"></span>
         </div>
-        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
-          <button class="blog-btn blog-btn-secondary" onclick="showTranslationEditForm()" id="translationEditBtn" style="background-color: #9333ea; border-color: #9333ea;">编辑</button>
-          <button class="blog-btn blog-btn-secondary" onclick="hideTranslationEditForm()" id="translationCancelBtn" style="display: none;">取消</button>
-        </div>
-      </div>
-      
-      <!-- 编辑表单 -->
-      <div id="translationEditForm" class="admin-form" style="display: none;">
-        <form id="translationFormElement" onsubmit="saveTranslationContent(event)">
-          <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-            <!-- 翻译列表 -->
-            <div style="padding: 1.5rem; background: white; border-radius: 0.5rem; border: 1px solid #e5e7eb;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">翻译列表</h3>
-                <button type="button" class="blog-btn blog-btn-primary" onclick="addTranslationItem()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">+ 添加翻译</button>
-              </div>
-              <div id="translationList"></div>
-            </div>
-            
-            <!-- 操作按钮 -->
-            <div style="display: flex; gap: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
-              <button type="submit" class="blog-btn blog-btn-primary" style="padding: 0.75rem 1.5rem;">保存</button>
-              <button type="button" class="blog-btn blog-btn-secondary" onclick="hideTranslationEditForm()">取消</button>
-            </div>
-          </div>
-        </form>
       </div>
       
       <!-- 显示内容 -->
@@ -7471,12 +7553,18 @@
     // 添加景点天气
     function addWeatherAttraction(attraction = null) {
       const container = document.getElementById('weatherAttractionsList');
-      const index = attraction ? attraction._index : weatherAttractionsCounter++;
-      const itemId = attraction ? attraction.id : '';
+      if (!container) {
+        console.error('找不到景点列表容器 weatherAttractionsList');
+        return;
+      }
+      const index = attraction ? (attraction._index !== undefined ? attraction._index : weatherAttractionsCounter++) : weatherAttractionsCounter++;
+      const itemId = attraction ? (attraction.id || '') : '';
+      
+      console.log('添加景点项:', { index, itemId, attraction });
       
       const itemDiv = document.createElement('div');
       itemDiv.className = 'weather-item';
-      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db;';
+      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db; display: block; visibility: visible; opacity: 1; position: relative;';
       itemDiv.dataset.index = index;
       
       itemDiv.innerHTML = `
@@ -7533,12 +7621,18 @@
     // 添加路况信息
     function addWeatherTraffic(traffic = null) {
       const container = document.getElementById('weatherTrafficList');
-      const index = traffic ? traffic._index : weatherTrafficCounter++;
-      const itemId = traffic ? traffic.id : '';
+      if (!container) {
+        console.error('找不到交通列表容器 weatherTrafficList');
+        return;
+      }
+      const index = traffic ? (traffic._index !== undefined ? traffic._index : weatherTrafficCounter++) : weatherTrafficCounter++;
+      const itemId = traffic ? (traffic.id || '') : '';
+      
+      console.log('添加路况项:', { index, itemId, traffic });
       
       const itemDiv = document.createElement('div');
       itemDiv.className = 'weather-item';
-      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db;';
+      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db; display: block; visibility: visible; opacity: 1; position: relative;';
       itemDiv.dataset.index = index;
       
       itemDiv.innerHTML = `
@@ -7597,8 +7691,8 @@
       
       const itemDiv = document.createElement('div');
       itemDiv.className = 'exchange-rate-item';
-      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db;';
-      itemDiv.dataset.index = index;
+      itemDiv.setAttribute('data-index', index);
+      itemDiv.style.cssText = 'background: white; padding: 1rem; border-radius: 0.375rem; margin-bottom: 0.75rem; border: 1px solid #d1d5db; display: block; visibility: visible; opacity: 1; position: relative; width: 100%; box-sizing: border-box;';
       
       itemDiv.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
@@ -9037,6 +9131,11 @@
             html = renderWeatherContent(content);
             lastUpdateEl = document.getElementById('weatherLastUpdate');
           } else if (type === 'exchange-rate') {
+            // 确保 updateTime 传递到 content 中（如果存在）
+            if (content && typeof content === 'object' && !Array.isArray(content) && !content.updateTime && updatedAt) {
+              // 如果 content 中没有 updateTime，但 API 返回了 updatedAt，使用 updatedAt
+              content.updateTime = updatedAt;
+            }
             html = renderExchangeRateContent(content);
             lastUpdateEl = document.getElementById('exchangeRateLastUpdate');
           } else if (type === 'translation') {
@@ -9238,85 +9337,196 @@
     }
 
     function renderExchangeRateContent(content) {
+      // 参考汇率文章详情页的渲染方式
+      // 先规范化数据结构
+      if (typeof content === 'string') {
+        try { content = JSON.parse(content); } catch (e) { /* ignore */ }
+      }
+      if (content && typeof content === 'object') {
+        if (content.data) content = content.data;
+        else if (content._originalData) content = content._originalData;
+      }
+
+      // 货币名称映射
+      const currencyNames = {
+        'CNY': '人民币',
+        'USD': '美元',
+        'EUR': '欧元',
+        'SAR': '沙特里亚尔',
+        'GBP': '英镑',
+        'JPY': '日元',
+        'AED': '阿联酋迪拉姆',
+        'EGP': '埃及镑',
+        'RUB': '俄罗斯卢布',
+        'INR': '印度卢比',
+        'KRW': '韩元',
+        'THB': '泰铢'
+      };
+      
+      // 货币图标映射
+      const currencyIcons = {
+        'CNY': '🇨🇳',
+        'USD': '🇺🇸',
+        'EUR': '🇪🇺',
+        'SAR': '🇸🇦',
+        'GBP': '🇬🇧',
+        'JPY': '🇯🇵',
+        'AED': '🇦🇪',
+        'EGP': '🇪🇬',
+        'RUB': '🇷🇺',
+        'INR': '🇮🇳',
+        'KRW': '🇰🇷',
+        'THB': '🇹🇭'
+      };
+      
       // 检查内容是否为空
       if (!content) {
         return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
       }
       
-      // 检查是否是空对象
-      if (typeof content === 'object' && !Array.isArray(content)) {
-        const keys = Object.keys(content);
-        // 排除标准字段
-        const standardFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
-        const rateKeys = keys.filter(key => !standardFields.includes(key));
-        if (rateKeys.length === 0) {
-          return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
-        }
-      }
-
-      let html = '<div style="overflow-x: auto;">';
+      // 排除标准字段
+      const excludeFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
       
-      // 如果是数组格式
+      let html = '<div class="exchange-rate-display" style="max-width: 900px; margin: 0 auto; padding: 1rem;">';
+      
+      // 标题区域
+      html += '<div style="text-align: center; margin-bottom: 2rem;">';
+      html += '<div style="font-size: 3rem; margin-bottom: 0.5rem;">💱</div>';
+      html += '<h2 style="font-size: 2rem; font-weight: bold; margin-bottom: 0.5rem; color: #1f2937; background: linear-gradient(to right, #10b981, #059669); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">汇率转换</h2>';
+      html += '<p style="color: #6b7280; font-size: 0.9375rem;">实时汇率信息，方便您进行货币换算</p>';
+      html += '</div>';
+      
+      // 构建汇率数据
+      const exchangeData = [];
+      
+      // 处理数组格式
       if (Array.isArray(content)) {
-        if (content.length === 0) {
-          return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
-        }
-        html += '<table class="admin-table" style="width: 100%;">';
-        html += '<thead><tr><th>来源货币</th><th>目标货币</th><th>汇率</th><th>更新时间</th></tr></thead>';
-        html += '<tbody>';
-        content.forEach(item => {
-          html += `
-            <tr>
-              <td>${escapeHtml(item.fromCurrency || '')}</td>
-              <td>${escapeHtml(item.toCurrency || '')}</td>
-              <td>${escapeHtml(String(item.rate || ''))}</td>
-              <td>${escapeHtml(item.updateTime || '')}</td>
-            </tr>
-          `;
+        console.log('处理数组格式，长度:', content.length);
+        content.forEach((item, idx) => {
+          console.log('数组项', idx, ':', item);
+          if (item && typeof item === 'object' && item.fromCurrency && item.toCurrency && item.rate) {
+            exchangeData.push({
+              from: item.fromCurrency,
+              fromName: currencyNames[item.fromCurrency] || item.fromCurrency,
+              fromIcon: currencyIcons[item.fromCurrency] || '💵',
+              to: item.toCurrency,
+              toName: currencyNames[item.toCurrency] || item.toCurrency,
+              toIcon: currencyIcons[item.toCurrency] || '💵',
+              rate: typeof item.rate === 'number' ? item.rate : parseFloat(item.rate) || 0
+            });
+          }
         });
-        html += '</tbody></table>';
-      } else {
-        // 对象格式：{CNY: {EGP: 6.74}, USD: {EGP: 30.5}}
-        const standardFields = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
-        const rateKeys = Object.keys(content).filter(key => !standardFields.includes(key));
-        
-        if (rateKeys.length === 0) {
-          return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
-        }
-        
-        // 先收集所有有效的汇率数据
-        let hasValidRates = false;
-        let tableRows = '';
-        
-        rateKeys.forEach(fromCurrency => {
+      } else if (typeof content === 'object' && content !== null) {
+        // 对象格式：{CNY: {EGP: 6.74}, USD: {EGP: 30.5}} 或 {updateTime: '...', CNY: {EGP: 6.74}}
+        console.log('处理对象格式，keys:', Object.keys(content));
+        Object.keys(content).forEach(fromCurrency => {
+          console.log('检查货币:', fromCurrency, '值:', content[fromCurrency]);
+          // 跳过标准字段
+          if (excludeFields.includes(fromCurrency)) {
+            console.log('跳过标准字段:', fromCurrency);
+            return;
+          }
+          
+          // 如果该字段是一个对象（包含目标货币和汇率）
           const rates = content[fromCurrency];
-          if (typeof rates === 'object' && rates !== null && !Array.isArray(rates)) {
+          if (rates && typeof rates === 'object' && !Array.isArray(rates)) {
+            console.log('处理汇率对象:', fromCurrency, rates);
             Object.keys(rates).forEach(toCurrency => {
               const rateValue = rates[toCurrency];
+              console.log('汇率:', fromCurrency, '->', toCurrency, '=', rateValue);
               if (rateValue !== null && rateValue !== undefined && rateValue !== '') {
-                hasValidRates = true;
-                tableRows += `
-                  <tr>
-                    <td>${escapeHtml(fromCurrency)}</td>
-                    <td>${escapeHtml(toCurrency)}</td>
-                    <td>${escapeHtml(String(rateValue))}</td>
-                  </tr>
-                `;
+                const rate = typeof rateValue === 'number' ? rateValue : parseFloat(rateValue);
+                if (!isNaN(rate) && rate > 0) {
+                  console.log('添加汇率数据:', { from: fromCurrency, to: toCurrency, rate });
+                  exchangeData.push({
+                    from: fromCurrency,
+                    fromName: currencyNames[fromCurrency] || fromCurrency,
+                    fromIcon: currencyIcons[fromCurrency] || '💵',
+                    to: toCurrency,
+                    toName: currencyNames[toCurrency] || toCurrency,
+                    toIcon: currencyIcons[toCurrency] || '💵',
+                    rate: rate
+                  });
+                }
               }
             });
           }
         });
+      }
+      
+      console.log('最终汇率数据数组:', exchangeData);
+      console.log('汇率数据数量:', exchangeData.length);
+      
+      if (exchangeData.length > 0) {
+        // 使用卡片式布局，与文章详情页一致
+        html += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 2rem;">';
         
-        // 如果没有有效的汇率数据，返回空状态
-        if (!hasValidRates) {
-          return '<div class="blog-empty" style="padding: 2rem; text-align: center;">暂无汇率数据</div>';
+        exchangeData.forEach((item, index) => {
+          html += `<div style="background: white; border-radius: 1rem; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; transition: all 0.3s ease; position: relative; overflow: hidden;" 
+            onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)';" 
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)';">`;
+          
+          // 顶部装饰条
+          html += '<div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(to right, #10b981, #059669);"></div>';
+          
+          // 货币转换信息
+          html += '<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">';
+          
+          // 源货币
+          html += '<div style="flex: 1; text-align: center;">';
+          html += `<div style="font-size: 2rem; margin-bottom: 0.5rem;">${item.fromIcon}</div>`;
+          html += `<div style="font-size: 1.125rem; font-weight: 700; color: #374151; margin-bottom: 0.25rem;">${item.from}</div>`;
+          html += `<div style="font-size: 0.875rem; color: #6b7280;">${item.fromName}</div>`;
+          html += '</div>';
+          
+          // 箭头
+          html += '<div style="flex-shrink: 0; padding: 0 1rem;">';
+          html += '<div style="font-size: 1.5rem; color: #10b981;">→</div>';
+          html += '</div>';
+          
+          // 目标货币
+          html += '<div style="flex: 1; text-align: center;">';
+          html += `<div style="font-size: 2rem; margin-bottom: 0.5rem;">${item.toIcon}</div>`;
+          html += `<div style="font-size: 1.125rem; font-weight: 700; color: #374151; margin-bottom: 0.25rem;">${item.to}</div>`;
+          html += `<div style="font-size: 0.875rem; color: #6b7280;">${item.toName}</div>`;
+          html += '</div>';
+          
+          html += '</div>';
+          
+          // 汇率显示
+          html += '<div style="background: linear-gradient(to right, #ecfdf5, #d1fae5); border-radius: 0.75rem; padding: 1.25rem; text-align: center; border: 2px solid #10b981;">';
+          html += `<div style="font-size: 2rem; font-weight: bold; color: #059669; margin-bottom: 0.5rem;">${item.rate.toFixed(4)}</div>`;
+          html += `<div style="font-size: 0.875rem; color: #047857; font-weight: 600;">1 ${item.from} = ${item.rate.toFixed(4)} ${item.to}</div>`;
+          html += '</div>';
+          
+          html += '</div>';
+        });
+        
+        html += '</div>';
+        
+        // 显示更新时间
+        let updateTime = content.updateTime || content.updatedAt;
+        if (updateTime) {
+          try {
+            const updateDate = new Date(updateTime);
+            if (!isNaN(updateDate.getTime())) {
+              html += `<div style="text-align: center; padding: 1rem; background: #f9fafb; border-radius: 0.75rem; margin-top: 1rem;">`;
+              html += `<div style="display: inline-flex; align-items: center; gap: 0.5rem; color: #6b7280; font-size: 0.875rem;">`;
+              html += '<span>🕐</span>';
+              html += `<span>更新时间：${formatDateTime(updateDate)}</span>`;
+              html += '</div>';
+              html += '</div>';
+            }
+          } catch (e) {
+            // 忽略解析错误
+          }
         }
-        
-        html += '<table class="admin-table" style="width: 100%;">';
-        html += '<thead><tr><th>来源货币</th><th>目标货币</th><th>汇率</th></tr></thead>';
-        html += '<tbody>';
-        html += tableRows;
-        html += '</tbody></table>';
+      } else {
+        html += '<div style="text-align: center; padding: 3rem; background: #f9fafb; border-radius: 0.75rem; color: #6b7280;">';
+        html += '<div style="font-size: 3rem; margin-bottom: 1rem;">📊</div>';
+        html += '<div style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem;">暂无汇率数据</div>';
+        html += '<div style="font-size: 0.875rem;">请稍后再试</div>';
+        html += '</div>';
       }
       
       html += '</div>';
@@ -9353,26 +9563,63 @@
       return html;
     }
 
-    // 天气编辑表单管理
+    // 天气编辑表单管理 - 重构版本
     async function showWeatherEditForm() {
       try {
-        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/weather`);
-        if (!response || !response.success || !response.data) {
-          showToast('未找到天气API，请先创建', 'error');
+        // 获取DOM元素
+        const editForm = document.getElementById('weatherEditForm');
+        const editBtn = document.getElementById('weatherEditBtn');
+        const cancelBtn = document.getElementById('weatherCancelBtn');
+        const contentDiv = document.getElementById('weatherContent');
+        
+        if (!editForm || !editBtn || !cancelBtn || !contentDiv) {
+          showToast('页面元素缺失，请刷新页面重试', 'error');
           return;
         }
         
-        const content = response.data.content || {};
+        // 先显示表单UI
+        editForm.style.display = 'block';
+        editForm.style.visibility = 'visible';
+        editForm.style.opacity = '1';
+        editBtn.style.display = 'none';
+        cancelBtn.style.display = 'inline-block';
+        contentDiv.style.display = 'none';
+        
+        // 加载数据
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/weather`);
+        
+        if (!response || !response.success || !response.data) {
+          showToast(response?.message || '未找到天气API，请先创建', 'error');
+          return;
+        }
+        
+        // 规范化数据结构
+        const content = normalizeWeatherContent(response.data.content);
+        
+        // 加载数据到表单
         loadWeatherDataToForm(content);
         
-        document.getElementById('weatherEditForm').style.display = 'block';
-        document.getElementById('weatherEditBtn').style.display = 'none';
-        document.getElementById('weatherCancelBtn').style.display = 'inline-block';
-        document.getElementById('weatherContent').style.display = 'none';
       } catch (error) {
         console.error('加载天气数据失败:', error);
         showToast('加载失败: ' + (error.message || '未知错误'), 'error');
       }
+    }
+    
+    // 规范化天气内容数据结构
+    function normalizeWeatherContent(content) {
+      if (!content || typeof content !== 'object' || Array.isArray(content)) {
+        return {
+          globalAlert: { level: 'medium', message: '' },
+          attractions: [],
+          traffic: []
+        };
+      }
+      
+      return {
+        globalAlert: content.globalAlert || { level: 'medium', message: '' },
+        attractions: Array.isArray(content.attractions) ? content.attractions : [],
+        traffic: Array.isArray(content.traffic) ? content.traffic : []
+      };
     }
     
     function hideWeatherEditForm() {
@@ -9384,41 +9631,49 @@
       loadSpecialContent('weather');
     }
     
+    // 加载天气数据到表单 - 重构版本
     function loadWeatherDataToForm(content) {
-      // 加载全局预警
-      if (content.globalAlert) {
-        document.getElementById('weatherGlobalAlertLevel').value = content.globalAlert.level || 'medium';
-        document.getElementById('weatherGlobalAlertMessage').value = content.globalAlert.message || '';
+      // 规范化数据结构
+      const normalized = normalizeWeatherContent(content);
+      
+      // 1. 加载全局预警
+      const alertLevelEl = document.getElementById('weatherGlobalAlertLevel');
+      const alertMessageEl = document.getElementById('weatherGlobalAlertMessage');
+      if (alertLevelEl && alertMessageEl) {
+        alertLevelEl.value = normalized.globalAlert.level || 'medium';
+        alertMessageEl.value = normalized.globalAlert.message || '';
       }
       
-      // 加载景点
+      // 2. 加载景点列表
       const attractionsContainer = document.getElementById('weatherAttractionsList');
-      attractionsContainer.innerHTML = '';
-      weatherAttractionsCounter = 0;
-      if (content.attractions && Array.isArray(content.attractions)) {
-        content.attractions.forEach((attraction, index) => {
-          attraction._index = index;
-          addWeatherAttraction(attraction);
-          weatherAttractionsCounter++;
-        });
-      }
-      if (weatherAttractionsCounter === 0) {
-        addWeatherAttraction();
+      if (attractionsContainer) {
+        attractionsContainer.innerHTML = '';
+        weatherAttractionsCounter = 0;
+        
+        if (normalized.attractions.length > 0) {
+          normalized.attractions.forEach((attraction, index) => {
+            addWeatherAttraction({ ...attraction, _index: index });
+            weatherAttractionsCounter++;
+          });
+        } else {
+          addWeatherAttraction();
+        }
       }
       
-      // 加载交通
+      // 3. 加载交通列表
       const trafficContainer = document.getElementById('weatherTrafficList');
-      trafficContainer.innerHTML = '';
-      weatherTrafficCounter = 0;
-      if (content.traffic && Array.isArray(content.traffic)) {
-        content.traffic.forEach((traffic, index) => {
-          traffic._index = index;
-          addWeatherTraffic(traffic);
-          weatherTrafficCounter++;
-        });
-      }
-      if (weatherTrafficCounter === 0) {
-        addWeatherTraffic();
+      if (trafficContainer) {
+        trafficContainer.innerHTML = '';
+        weatherTrafficCounter = 0;
+        
+        if (normalized.traffic.length > 0) {
+          normalized.traffic.forEach((traffic, index) => {
+            addWeatherTraffic({ ...traffic, _index: index });
+            weatherTrafficCounter++;
+          });
+        } else {
+          addWeatherTraffic();
+        }
       }
     }
     
@@ -9521,22 +9776,39 @@
       return data;
     }
     
-    // 汇率编辑表单管理
+    // 汇率编辑表单管理 - 重构版本
     async function showExchangeRateEditForm() {
       try {
-        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/exchange-rate`);
-        if (!response || !response.success || !response.data) {
-          showToast('未找到汇率API，请先创建', 'error');
+        // 获取DOM元素
+        const editForm = document.getElementById('exchangeRateEditForm');
+        const editBtn = document.getElementById('exchangeRateEditBtn');
+        const cancelBtn = document.getElementById('exchangeRateCancelBtn');
+        const contentDiv = document.getElementById('exchangeRateContent');
+        
+        if (!editForm || !editBtn || !cancelBtn || !contentDiv) {
+          showToast('页面元素缺失，请刷新页面重试', 'error');
           return;
         }
         
-        const content = response.data.content || {};
-        loadExchangeRateDataToForm(content);
+        // 先显示表单UI
+        editForm.style.display = 'block';
+        editForm.style.visibility = 'visible';
+        editForm.style.opacity = '1';
+        editBtn.style.display = 'none';
+        cancelBtn.style.display = 'inline-block';
+        contentDiv.style.display = 'none';
         
-        document.getElementById('exchangeRateEditForm').style.display = 'block';
-        document.getElementById('exchangeRateEditBtn').style.display = 'none';
-        document.getElementById('exchangeRateCancelBtn').style.display = 'inline-block';
-        document.getElementById('exchangeRateContent').style.display = 'none';
+        // 加载数据
+        const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/exchange-rate`);
+        
+        if (!response || !response.success || !response.data) {
+          showToast(response?.message || '未找到汇率API，请先创建', 'error');
+          return;
+        }
+        
+        // 加载数据到表单
+        loadExchangeRateDataToForm(response.data.content);
+        
       } catch (error) {
         console.error('加载汇率数据失败:', error);
         showToast('加载失败: ' + (error.message || '未知错误'), 'error');
@@ -9552,52 +9824,76 @@
       loadSpecialContent('exchange-rate');
     }
     
+    // 加载汇率数据到表单 - 重构版本
     function loadExchangeRateDataToForm(content) {
       const ratesContainer = document.getElementById('exchangeRatesList');
+      if (!ratesContainer) {
+        return;
+      }
+      
       ratesContainer.innerHTML = '';
       exchangeRatesCounter = 0;
+      
+      // 规范化数据结构
+      if (!content || typeof content !== 'object') {
+        content = {};
+      }
       
       // 处理数组格式
       if (Array.isArray(content)) {
         content.forEach((item, index) => {
-          addExchangeRate({
-            fromCurrency: item.fromCurrency,
-            toCurrency: item.toCurrency,
-            rate: item.rate,
-            _index: index
-          });
-          exchangeRatesCounter++;
+          if (item && typeof item === 'object') {
+            addExchangeRate({
+              fromCurrency: item.fromCurrency || '',
+              toCurrency: item.toCurrency || '',
+              rate: item.rate || '',
+              _index: index
+            });
+            exchangeRatesCounter++;
+          }
         });
-      } else if (typeof content === 'object') {
-        // 处理对象格式 {CNY: {EGP: 6.74}}
+      } else if (typeof content === 'object' && content !== null) {
+        // 处理对象格式 {CNY: {EGP: 6.74}} 或 {updateTime: '...', CNY: {EGP: 6.74}}
+        const excludedKeys = ['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'];
+        
         Object.keys(content).forEach(fromCurrency => {
-          if (['id', 'name', 'title', 'slug', 'excerpt', 'description', 'htmlContent', 'image', 'category', 'tags', 'published', 'views', 'createdAt', 'updatedAt', 'detailApi', 'updateTime'].includes(fromCurrency)) {
+          if (excludedKeys.includes(fromCurrency)) {
             return;
           }
           const rates = content[fromCurrency];
-          if (typeof rates === 'object' && !Array.isArray(rates)) {
+          if (typeof rates === 'object' && !Array.isArray(rates) && rates !== null) {
             Object.keys(rates).forEach(toCurrency => {
-              addExchangeRate({
-                fromCurrency: fromCurrency,
-                toCurrency: toCurrency,
-                rate: rates[toCurrency],
-                _index: exchangeRatesCounter
-              });
-              exchangeRatesCounter++;
+              const rateValue = rates[toCurrency];
+              if (rateValue !== null && rateValue !== undefined) {
+                addExchangeRate({
+                  fromCurrency: fromCurrency,
+                  toCurrency: toCurrency,
+                  rate: rateValue,
+                  _index: exchangeRatesCounter
+                });
+                exchangeRatesCounter++;
+              }
             });
           }
         });
       }
       
+      // 如果没有数据，添加空项
       if (exchangeRatesCounter === 0) {
         addExchangeRate();
       }
       
       // 加载更新时间
-      if (content.updateTime) {
-        const date = new Date(content.updateTime);
-        const localDateTime = date.toISOString().slice(0, 16);
-        document.getElementById('exchangeUpdateTime').value = localDateTime;
+      const updateTimeEl = document.getElementById('exchangeUpdateTime');
+      if (updateTimeEl && content.updateTime) {
+        try {
+          const date = new Date(content.updateTime);
+          if (!isNaN(date.getTime())) {
+            updateTimeEl.value = date.toISOString().slice(0, 16);
+          }
+        } catch (e) {
+          // 忽略解析错误
+        }
       }
     }
     
@@ -9668,21 +9964,70 @@
     
     async function showTranslationEditForm() {
       try {
+        console.log('开始加载翻译数据...');
         const response = await adminApiRequest(`${BLOG_ADMIN_API}/special-content/translation`);
-        if (!response || !response.success || !response.data) {
-          showToast('未找到翻译API，请先创建', 'error');
+        console.log('翻译API响应:', response);
+        
+        if (!response || !response.success) {
+          console.error('翻译API响应无效:', response);
+          showToast(response?.message || '未找到翻译API，请先创建', 'error');
           return;
         }
         
-        const content = response.data.content || [];
+        if (!response.data) {
+          console.error('翻译API响应中没有data字段:', response);
+          showToast('API响应格式错误', 'error');
+          return;
+        }
+        
+        let content = response.data.content || [];
+        console.log('翻译内容数据:', content);
+        console.log('content类型:', typeof content);
+        console.log('content是否为数组:', Array.isArray(content));
+        
+        // 确保content是数组格式
+        if (!Array.isArray(content)) {
+          console.warn('content不是数组格式，转换为数组');
+          if (typeof content === 'object' && content !== null) {
+            // 如果是对象，尝试转换为数组
+            content = Object.values(content).filter(item => 
+              item && typeof item === 'object' && (item.chinese || item.arabic)
+            );
+          } else {
+            content = [];
+          }
+        }
+        
+        // 先显示表单，再加载数据
+        const editForm = document.getElementById('translationEditForm');
+        const editBtn = document.getElementById('translationEditBtn');
+        const cancelBtn = document.getElementById('translationCancelBtn');
+        const contentDiv = document.getElementById('translationContent');
+        
+        if (!editForm || !editBtn || !cancelBtn || !contentDiv) {
+          console.error('找不到表单元素:', {
+            editForm: !!editForm,
+            editBtn: !!editBtn,
+            cancelBtn: !!cancelBtn,
+            contentDiv: !!contentDiv
+          });
+          showToast('页面元素缺失，请刷新页面重试', 'error');
+          return;
+        }
+        
+        // 显示表单
+        editForm.style.display = 'block';
+        editBtn.style.display = 'none';
+        cancelBtn.style.display = 'inline-block';
+        contentDiv.style.display = 'none';
+        
+        // 加载数据到表单
         loadTranslationDataToForm(content);
         
-        document.getElementById('translationEditForm').style.display = 'block';
-        document.getElementById('translationEditBtn').style.display = 'none';
-        document.getElementById('translationCancelBtn').style.display = 'inline-block';
-        document.getElementById('translationContent').style.display = 'none';
+        console.log('翻译编辑表单已显示');
       } catch (error) {
         console.error('加载翻译数据失败:', error);
+        console.error('错误堆栈:', error.stack);
         showToast('加载失败: ' + (error.message || '未知错误'), 'error');
       }
     }
@@ -9697,18 +10042,46 @@
     }
     
     function loadTranslationDataToForm(content) {
+      console.log('加载翻译数据到表单:', content);
+      
       const translationContainer = document.getElementById('translationList');
+      if (!translationContainer) {
+        console.error('找不到翻译列表容器');
+        return;
+      }
+      
       translationContainer.innerHTML = '';
       translationCounter = 0;
       
-      if (Array.isArray(content) && content.length > 0) {
+      // 确保content是数组格式
+      if (!Array.isArray(content)) {
+        console.warn('content不是数组格式，转换为数组');
+        if (typeof content === 'object' && content !== null) {
+          // 如果是对象，尝试转换为数组
+          content = Object.values(content).filter(item => 
+            item && typeof item === 'object' && (item.chinese || item.arabic)
+          );
+        } else {
+          content = [];
+        }
+      }
+      
+      console.log('处理后的翻译数据:', content.length, '项');
+      
+      if (content.length > 0) {
         content.forEach((item, index) => {
-          addTranslationItem(item, index);
-          translationCounter++;
+          if (item && typeof item === 'object') {
+            addTranslationItem(item, index);
+            translationCounter++;
+          }
         });
+        console.log('翻译数据已加载:', translationCounter, '项');
       } else {
+        console.log('没有翻译数据，添加空翻译项');
         addTranslationItem();
       }
+      
+      console.log('翻译数据加载完成');
     }
     
     function addTranslationItem(item = null, index = null) {

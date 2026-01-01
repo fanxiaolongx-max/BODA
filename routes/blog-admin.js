@@ -246,10 +246,13 @@ router.get('/posts', requireBlogAuth, async (req, res) => {
 /**
  * GET /api/blog-admin/posts/:id
  * 获取单篇文章详情
+ * 注意：此API不需要鉴权，因为小程序需要使用它来获取文章详情
  */
-router.get('/posts/:id', requireBlogAuth, async (req, res) => {
+router.get('/posts/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { commentsPage = 1, commentsPageSize = 10, includeComments = 'true' } = req.query;
+    
     logger.info('获取文章详情请求', { id, timestamp: new Date().toISOString() });
     const post = await getBlogPost(id);
     
@@ -274,7 +277,7 @@ router.get('/posts/:id', requireBlogAuth, async (req, res) => {
     });
     
     // 详情场景返回完整的 HTML 内容（不裁剪）
-    const { cleanPostForPublic } = require('../utils/blog-helper');
+    const { cleanPostForPublic, getBlogComments } = require('../utils/blog-helper');
     const cleanedPost = cleanPostForPublic(post, true); // 第二个参数为true，表示包含完整htmlContent
     
     logger.info('返回文章详情', {
@@ -284,10 +287,77 @@ router.get('/posts/:id', requireBlogAuth, async (req, res) => {
       htmlContentLength: cleanedPost.htmlContent ? cleanedPost.htmlContent.length : 0
     });
     
-    res.json({
+    // 获取评论列表（如果请求包含评论）
+    let commentsData = null;
+    logger.info('检查是否包含评论', { 
+      includeComments, 
+      includeCommentsType: typeof includeComments,
+      shouldInclude: includeComments === 'true' || includeComments === true 
+    });
+    
+    if (includeComments === 'true' || includeComments === true || includeComments === '1') {
+      try {
+        logger.info('开始获取评论列表', { postId: id, commentsPage, commentsPageSize });
+        commentsData = await getBlogComments(id, {
+          // 不设置 flat，返回树形结构，但分页按平铺计算
+          page: parseInt(commentsPage, 10),
+          pageSize: parseInt(commentsPageSize, 10)
+        });
+        logger.info('获取评论列表成功', { 
+          postId: id, 
+          commentsCount: commentsData.total,
+          commentsLength: commentsData.comments ? commentsData.comments.length : 0,
+          currentPage: commentsData.currentPage
+        });
+      } catch (error) {
+        logger.error('获取评论列表失败', { postId: id, error: error.message, stack: error.stack });
+        // 评论获取失败不影响文章详情返回
+        commentsData = {
+          comments: [],
+          total: 0,
+          totalPages: 0,
+          currentPage: parseInt(commentsPage, 10)
+        };
+      }
+    } else {
+      logger.info('跳过获取评论列表', { includeComments });
+    }
+    
+    const response = {
       success: true,
       data: cleanedPost
+    };
+    
+    // 如果包含评论，添加到响应中（即使为空数组也要添加）
+    if (includeComments === 'true' || includeComments === true || includeComments === '1') {
+      // 确保 commentsData 有正确的结构
+      if (!commentsData) {
+        commentsData = {
+          comments: [],
+          total: 0,
+          totalPages: 0,
+          currentPage: parseInt(commentsPage, 10)
+        };
+      }
+      response.comments = commentsData;
+      logger.info('添加评论到响应', { 
+        hasComments: !!response.comments,
+        commentsCount: response.comments.total,
+        commentsArrayLength: response.comments.comments ? response.comments.comments.length : 0,
+        commentsDataKeys: Object.keys(response.comments),
+        responseKeys: Object.keys(response)
+      });
+    } else {
+      logger.info('不包含评论', { includeComments });
+    }
+    
+    logger.info('最终响应结构', { 
+      hasData: !!response.data,
+      hasComments: !!response.comments,
+      responseKeys: Object.keys(response)
     });
+    
+    res.json(response);
   } catch (error) {
     logger.error('获取文章详情失败', { error: error.message });
     res.status(500).json({ 
@@ -301,22 +371,32 @@ router.get('/posts/:id', requireBlogAuth, async (req, res) => {
  * GET /api/blog-admin/apis
  * 获取所有可用的API列表（用于文章分类选择）
  * 排除博客系统专用的API路径
+ * 直接从数据库读取，不受 status 状态控制（包括 inactive 的 API）
  */
 router.get('/apis', requireBlogAuth, async (req, res) => {
   try {
     const { allAsync } = require('../db/database');
+    // 移除 status = 'active' 条件，返回所有 GET 方法的 API
     const apis = await allAsync(`
-      SELECT id, name, path, description
+      SELECT id, name, path, description, status
       FROM custom_apis
       WHERE method = 'GET' 
-        AND status = 'active'
         AND path NOT LIKE '/blog/%'
       ORDER BY name ASC
     `);
     
+    // 构造返回数据，包含状态信息
+    const formattedApis = apis.map(api => ({
+      id: api.id,
+      name: api.name,
+      path: api.path,
+      description: api.description,
+      status: api.status || 'active' // 兼容旧数据
+    }));
+    
     res.json({
       success: true,
-      data: apis
+      data: formattedApis
     });
   } catch (error) {
     logger.error('获取API列表失败', { error: error.message });
@@ -408,7 +488,7 @@ router.put('/apis/:apiName/field-mapping', requireBlogAuth, [
  */
 router.post('/posts', requireBlogAuth, [
   body('name').notEmpty().withMessage('文章名称不能为空'),
-  body('apiName').notEmpty().withMessage('API名称（分类）不能为空'),
+  body('apiName').optional().isString().withMessage('API名称（分类）必须是字符串'),
   body('htmlContent').optional().isString().withMessage('htmlContent必须是字符串'),
   body('slug').optional().isString(),
   body('excerpt').optional().isString(),
@@ -1479,34 +1559,123 @@ router.get('/special-content/:type', requireBlogAuth, async (req, res) => {
       });
     }
     
-    // 根据类型确定API路径
-    const apiPath = `/${type}`;
+    // 根据类型确定API路径（支持多种路径格式）
+    let apiPath = `/${type}`;
     
-    // 从数据库获取API数据
-    const api = await getAsync(
-      `SELECT id, name, path, method, response_content, description, status, updated_at
-       FROM custom_apis
-       WHERE path = ? AND method = 'GET' AND status = 'active'`,
-      [apiPath]
-    );
+    // 类型到路径的映射（支持中文名称）
+    const typeToPathMap = {
+      'weather': ['/weather', '/天气', '/天气路况'],
+      'exchange-rate': ['/exchange-rate', '/汇率', '/汇率转换'],
+      'translation': ['/translation', '/翻译', '/翻译卡片']
+    };
+    
+    const possiblePaths = typeToPathMap[type] || [apiPath];
+    
+    // 从数据库获取API数据（尝试多个可能的路径）
+    let api = null;
+    for (const path of possiblePaths) {
+      api = await getAsync(
+        `SELECT id, name, path, method, response_content, description, status, updated_at
+         FROM custom_apis
+         WHERE path = ? AND method = 'GET' AND status = 'active'`,
+        [path]
+      );
+      if (api) {
+        apiPath = path;
+        break;
+      }
+    }
+    
+    // 如果还是没找到，尝试通过名称匹配（包含关键词）
+    if (!api) {
+      const nameKeywords = {
+        'weather': ['天气', 'weather'],
+        'exchange-rate': ['汇率', 'exchange'],
+        'translation': ['翻译', 'translation']
+      };
+      const keywords = nameKeywords[type] || [];
+      
+      for (const keyword of keywords) {
+        api = await getAsync(
+          `SELECT id, name, path, method, response_content, description, status, updated_at
+           FROM custom_apis
+           WHERE (name LIKE ? OR path LIKE ?) AND method = 'GET' AND status = 'active'
+           LIMIT 1`,
+          [`%${keyword}%`, `%${keyword}%`]
+        );
+        if (api) {
+          apiPath = api.path;
+          break;
+        }
+      }
+    }
     
     if (!api) {
+      logger.warn('未找到特殊内容API', { type, triedPaths: possiblePaths });
       return res.status(404).json({
         success: false,
         message: `未找到${type}内容，请先创建对应的API`
       });
     }
     
+    logger.debug('找到特殊内容API', { type, apiPath: api.path, apiName: api.name });
+    
     // 解析响应内容
     let content = {};
     try {
-      content = JSON.parse(api.response_content);
+      const parsed = JSON.parse(api.response_content);
+      
+      // 对于天气类型，如果解析出来的是对象格式（包含globalAlert、attractions、traffic），直接使用
+      // 如果是数组格式，需要转换为对象格式
+      if (type === 'weather') {
+        if (parsed.globalAlert && parsed.attractions && parsed.traffic) {
+          // 已经是正确的对象格式
+          content = parsed;
+        } else if (Array.isArray(parsed) && parsed.length > 0) {
+          // 数组格式，转换为对象格式（这种情况不应该发生，但兼容处理）
+          content = {
+            globalAlert: parsed[0]?.globalAlert || { level: 'medium', message: '' },
+            attractions: parsed[0]?.attractions || [],
+            traffic: parsed[0]?.traffic || []
+          };
+        } else {
+          // 空数据或格式不正确，返回默认结构
+          content = {
+            globalAlert: { level: 'medium', message: '' },
+            attractions: [],
+            traffic: []
+          };
+        }
+      } else {
+        // 其他类型直接使用解析结果
+        content = parsed;
+      }
+      
+      logger.info('解析特殊内容数据', { 
+        type, 
+        hasContent: !!content,
+        contentKeys: Object.keys(content),
+        contentType: Array.isArray(content) ? 'array' : typeof content,
+        hasGlobalAlert: !!content.globalAlert,
+        attractionsCount: content.attractions ? content.attractions.length : 0,
+        trafficCount: content.traffic ? content.traffic.length : 0,
+        rawResponseContent: api.response_content ? api.response_content.substring(0, 200) : 'null'
+      });
     } catch (e) {
-      logger.warn('解析特殊内容数据失败', { type, error: e.message });
-      content = {};
+      logger.warn('解析特殊内容数据失败', { type, error: e.message, responseContent: api.response_content });
+      // 如果解析失败，返回默认结构
+      if (type === 'weather') {
+        content = {
+          globalAlert: { level: 'medium', message: '' },
+          attractions: [],
+          traffic: []
+        };
+      } else {
+        content = {};
+      }
     }
     
-    res.json({
+    const responseData = {
       success: true,
       data: {
         id: api.id,
@@ -1516,7 +1685,19 @@ router.get('/special-content/:type', requireBlogAuth, async (req, res) => {
         updatedAt: api.updated_at,
         content: content
       }
+    };
+    
+    logger.info('返回特殊内容数据', {
+      type,
+      hasContent: !!content,
+      contentStructure: {
+        hasGlobalAlert: !!content.globalAlert,
+        attractionsCount: content.attractions ? content.attractions.length : 0,
+        trafficCount: content.traffic ? content.traffic.length : 0
+      }
     });
+    
+    res.json(responseData);
   } catch (error) {
     logger.error('获取特殊内容失败', { type: req.params.type, error: error.message });
     res.status(500).json({
@@ -1547,23 +1728,66 @@ router.put('/special-content/:type', requireBlogAuth, [
       });
     }
     
-    // 根据类型确定API路径
-    const apiPath = `/${type}`;
+    // 根据类型确定API路径（支持多种路径格式）
+    let apiPath = `/${type}`;
     
-    // 查找API记录
-    const api = await getAsync(
-      `SELECT id, name, path, method, response_content, status
-       FROM custom_apis
-       WHERE path = ? AND method = 'GET' AND status = 'active'`,
-      [apiPath]
-    );
+    // 类型到路径的映射（支持中文名称）
+    const typeToPathMap = {
+      'weather': ['/weather', '/天气', '/天气路况'],
+      'exchange-rate': ['/exchange-rate', '/汇率', '/汇率转换'],
+      'translation': ['/translation', '/翻译', '/翻译卡片']
+    };
+    
+    const possiblePaths = typeToPathMap[type] || [apiPath];
+    
+    // 从数据库获取API数据（尝试多个可能的路径）
+    let api = null;
+    for (const path of possiblePaths) {
+      api = await getAsync(
+        `SELECT id, name, path, method, response_content, status
+         FROM custom_apis
+         WHERE path = ? AND method = 'GET' AND status = 'active'`,
+        [path]
+      );
+      if (api) {
+        apiPath = path;
+        break;
+      }
+    }
+    
+    // 如果还是没找到，尝试通过名称匹配（包含关键词）
+    if (!api) {
+      const nameKeywords = {
+        'weather': ['天气', 'weather'],
+        'exchange-rate': ['汇率', 'exchange'],
+        'translation': ['翻译', 'translation']
+      };
+      const keywords = nameKeywords[type] || [];
+      
+      for (const keyword of keywords) {
+        api = await getAsync(
+          `SELECT id, name, path, method, response_content, status
+           FROM custom_apis
+           WHERE (name LIKE ? OR path LIKE ?) AND method = 'GET' AND status = 'active'
+           LIMIT 1`,
+          [`%${keyword}%`, `%${keyword}%`]
+        );
+        if (api) {
+          apiPath = api.path;
+          break;
+        }
+      }
+    }
     
     if (!api) {
+      logger.warn('未找到特殊内容API（更新）', { type, triedPaths: possiblePaths });
       return res.status(404).json({
         success: false,
         message: `未找到${type}内容，请先创建对应的API`
       });
     }
+    
+    logger.debug('找到特殊内容API（更新）', { type, apiPath: api.path, apiName: api.name });
     
     // 验证内容格式
     let contentObj;

@@ -455,6 +455,10 @@ async function initDatabase() {
     const { migrateBlogPosts } = require('./migrate-blog-posts');
     await migrateBlogPosts();
     
+    // 迁移博客互动功能（点赞、收藏、评论）
+    const { migrateBlogInteractions } = require('./migrate-blog-interactions');
+    await migrateBlogInteractions();
+    
     // 迁移 user_tokens 表
     const { migrateUserTokens } = require('./migrate-user-tokens');
     await migrateUserTokens();

@@ -1408,7 +1408,8 @@ router.post('/user/login', [
           phone: user.phone,
           name: user.name
         },
-        token: userToken // 返回Token供小程序使用
+        token: userToken, // 返回Token供小程序使用
+        isNewUser: isNewUser // 标识是否为新用户注册
       });
     });
   } catch (error) {
@@ -1797,7 +1798,8 @@ router.post('/user/login-with-code', [
           phone: user.phone,
           name: user.name
         },
-        token: userToken // 返回Token供小程序使用
+        token: userToken, // 返回Token供小程序使用
+        isNewUser: isNewUser // 标识是否为新用户注册
       });
     });
   } catch (error) {
@@ -1928,6 +1930,181 @@ router.get('/user/me', async (req, res) => {
   } catch (error) {
     logger.error('获取用户信息失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取信息失败' });
+  }
+});
+
+/**
+ * 获取当前登录用户ID（支持Session和Token认证）
+ * @param {Object} req - Express请求对象
+ * @returns {Promise<number|null>} 用户ID或null
+ */
+async function getCurrentUserId(req) {
+  // 优先检查Session认证（浏览器）
+  if (req.session && req.session.userId) {
+    return req.session.userId;
+  }
+  
+  // 如果没有Session，尝试Token认证（小程序）
+  const token = req.headers['x-user-token'] || 
+                req.headers['X-User-Token'] || 
+                req.headers['authorization']?.replace(/^Bearer\s+/i, '') ||
+                req.query.token;
+  
+  if (token) {
+    const tokenUser = await verifyUserToken(token);
+    if (tokenUser) {
+      return tokenUser.id;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * PUT /api/auth/user/profile
+ * 修改用户昵称
+ * @body {string} name - 新昵称
+ * @returns {Object} Success message and updated user info
+ */
+router.put('/user/profile', [
+  body('name').trim().isLength({ min: 0, max: 50 }).withMessage('昵称长度不能超过50个字符'),
+  validate
+], async (req, res) => {
+  try {
+    const { name } = req.body;
+    const userId = await getCurrentUserId(req);
+    
+    if (!userId) {
+      return res.status(401).json({ 
+        success: false, 
+        message: '需要登录才能修改昵称' 
+      });
+    }
+
+    // 检查用户是否存在
+    const user = await getAsync('SELECT id, phone, name FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: '用户不存在' 
+      });
+    }
+
+    // 更新昵称
+    await runAsync(
+      "UPDATE users SET name = ? WHERE id = ?",
+      [name || '', userId]
+    );
+
+    // 更新Session中的用户名（如果存在）
+    if (req.session) {
+      req.session.userName = name || '';
+    }
+
+    // 获取更新后的用户信息
+    const updatedUser = await getAsync(
+      'SELECT id, phone, name, created_at FROM users WHERE id = ?',
+      [userId]
+    );
+
+    logger.info('用户修改昵称成功', { userId, phone: user.phone, oldName: user.name, newName: name });
+
+    res.json({
+      success: true,
+      message: '昵称修改成功',
+      user: updatedUser
+    });
+  } catch (error) {
+    logger.error('修改昵称失败', { error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: '修改昵称失败' 
+    });
+  }
+});
+
+/**
+ * PUT /api/auth/user/pin
+ * 修改用户PIN码
+ * @body {string} pin - 新PIN码（4位数字）
+ * @body {string} [oldPin] - 旧PIN码（如果已设置PIN，需要提供）
+ * @returns {Object} Success message
+ */
+router.put('/user/pin', [
+  body('pin').trim().isLength({ min: 4, max: 4 }).matches(/^\d{4}$/).withMessage('PIN码必须是4位数字'),
+  body('oldPin').optional().trim().isLength({ min: 4, max: 4 }).matches(/^\d{4}$/).withMessage('旧PIN码必须是4位数字'),
+  validate
+], async (req, res) => {
+  try {
+    const { pin, oldPin } = req.body;
+    const userId = await getCurrentUserId(req);
+    
+    if (!userId) {
+      return res.status(401).json({ 
+        success: false, 
+        message: '需要登录才能修改PIN码' 
+      });
+    }
+
+    // 检查用户是否存在
+    const user = await getAsync('SELECT id, phone, pin FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: '用户不存在' 
+      });
+    }
+
+    // 如果用户已设置PIN，需要验证旧PIN
+    if (user.pin) {
+      if (!oldPin) {
+        return res.status(400).json({ 
+          success: false, 
+          message: '需要提供旧PIN码' 
+        });
+      }
+
+      // 验证旧PIN
+      const isValidOldPin = await bcrypt.compare(oldPin, user.pin);
+      if (!isValidOldPin) {
+        logger.warn('修改PIN失败：旧PIN错误', { userId, phone: user.phone });
+        return res.status(400).json({ 
+          success: false, 
+          message: '旧PIN码错误' 
+        });
+      }
+    }
+
+    // 检查新PIN是否与旧PIN相同
+    if (user.pin) {
+      const isSamePin = await bcrypt.compare(pin, user.pin);
+      if (isSamePin) {
+        return res.status(400).json({ 
+          success: false, 
+          message: '新PIN码不能与旧PIN码相同' 
+        });
+      }
+    }
+
+    // 更新PIN码
+    const hashedPin = await bcrypt.hash(pin, 10);
+    await runAsync(
+      "UPDATE users SET pin = ? WHERE id = ?",
+      [hashedPin, userId]
+    );
+
+    logger.info('用户修改PIN成功', { userId, phone: user.phone, hasOldPin: !!user.pin });
+
+    res.json({
+      success: true,
+      message: 'PIN码修改成功'
+    });
+  } catch (error) {
+    logger.error('修改PIN码失败', { error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: '修改PIN码失败' 
+    });
   }
 });
 

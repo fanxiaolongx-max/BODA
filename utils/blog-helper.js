@@ -439,6 +439,12 @@ function cleanPostForPublic(post, includeHtmlContent = false, isList = false) {
   const cleaned = { ...post };
   // 保留_sourceApiName和_originalData，因为前端可能需要用于更新操作
   
+  // 确保 image 字段被保留（博客主页需要显示图片）
+  // image 字段不会被删除，即使为空也会保留
+  if (cleaned.image === undefined) {
+    logger.debug('文章缺少image字段', { postId: cleaned.id, postName: cleaned.name });
+  }
+  
   // 处理 HTML 内容
   if (!includeHtmlContent) {
     // 检查 htmlContent 是否存在且不为空
@@ -504,9 +510,11 @@ async function getBlogPosts(options = {}) {
     // 如果为 false 或 undefined，则返回所有文章（包括未发布的）
     if (options.publishedOnly === true) {
       whereConditions.push('published = 1');
+      logger.debug('添加已发布筛选条件', { publishedOnly: options.publishedOnly });
     }
     
     // 分类筛选（api_name字段）
+    // 支持单个类别或多个类别（数组或逗号分隔的字符串）
     // 支持精确匹配和中文名称匹配（兼容不同格式的api_name）
     if (options.category) {
       // 提取中文名称用于匹配（兼容不同格式的api_name）
@@ -519,28 +527,95 @@ async function getBlogPosts(options = {}) {
           : name;
       };
       
-      const categoryChinese = extractChineseName(options.category);
+      // 处理多个类别：支持数组或逗号分隔的字符串
+      let categories = [];
+      if (Array.isArray(options.category)) {
+        categories = options.category;
+      } else if (typeof options.category === 'string') {
+        // 支持逗号分隔的多个类别：category=类别1,类别2,类别3
+        categories = options.category.split(',').map(c => c.trim()).filter(c => c);
+      } else {
+        categories = [options.category];
+      }
       
-      // 支持多种匹配方式：
-      // 1. 精确匹配 api_name 和 category
-      // 2. 中文名称匹配（提取 api_name 和 category 中的中文部分）
-      // 使用 LIKE 匹配支持包含中文名称的情况
-      whereConditions.push(`(
-        api_name = ? OR 
-        category = ? OR 
-        api_name = ? OR 
-        category = ? OR
-        api_name LIKE ? OR
-        category LIKE ?
-      )`);
-      queryParams.push(
-        options.category,           // 精确匹配 api_name
-        options.category,           // 精确匹配 category
-        categoryChinese,           // 中文名称匹配 api_name
-        categoryChinese,           // 中文名称匹配 category
-        `%${categoryChinese}%`,    // LIKE 匹配 api_name（包含中文名称）
-        `%${categoryChinese}%`     // LIKE 匹配 category（包含中文名称）
-      );
+      logger.debug('分类筛选', { 
+        originalCategory: options.category, 
+        categoriesCount: categories.length,
+        categories: categories 
+      });
+      
+      // 如果只有一个类别，使用原来的逻辑（兼容性）
+      if (categories.length === 1) {
+        const category = categories[0];
+        const categoryChinese = extractChineseName(category);
+        
+        whereConditions.push(`(
+          api_name = ? OR 
+          category = ? OR 
+          api_name = ? OR 
+          category = ? OR
+          api_name LIKE ? OR
+          category LIKE ?
+        )`);
+        queryParams.push(
+          category,           // 精确匹配 api_name
+          category,           // 精确匹配 category
+          categoryChinese,   // 中文名称匹配 api_name
+          categoryChinese,   // 中文名称匹配 category
+          `%${categoryChinese}%`,    // LIKE 匹配 api_name（包含中文名称）
+          `%${categoryChinese}%`     // LIKE 匹配 category（包含中文名称）
+        );
+      } else if (categories.length > 1) {
+        // 多个类别：优化查询逻辑
+        // 收集所有需要匹配的值（去重）
+        const exactMatches = new Set();
+        const likePatterns = new Set();
+        
+        categories.forEach(category => {
+          const categoryChinese = extractChineseName(category);
+          // 精确匹配值
+          exactMatches.add(category);
+          if (categoryChinese !== category) {
+            exactMatches.add(categoryChinese);
+          }
+          // LIKE匹配模式
+          likePatterns.add(`%${categoryChinese}%`);
+        });
+        
+        const exactMatchArray = Array.from(exactMatches);
+        const likePatternArray = Array.from(likePatterns);
+        
+        // 构建查询条件
+        const categoryConditions = [];
+        
+        // 精确匹配条件（使用IN子句，更高效）
+        if (exactMatchArray.length > 0) {
+          const placeholders = exactMatchArray.map(() => '?').join(',');
+          categoryConditions.push(`api_name IN (${placeholders})`);
+          categoryConditions.push(`category IN (${placeholders})`);
+          queryParams.push(...exactMatchArray, ...exactMatchArray);
+        }
+        
+        // LIKE匹配条件
+        likePatternArray.forEach(pattern => {
+          categoryConditions.push('api_name LIKE ?');
+          categoryConditions.push('category LIKE ?');
+          queryParams.push(pattern, pattern);
+        });
+        
+        // 组合所有条件
+        if (categoryConditions.length > 0) {
+          whereConditions.push(`(${categoryConditions.join(' OR ')})`);
+        }
+        
+        logger.debug('多类别筛选条件', { 
+          categoriesCount: categories.length,
+          exactMatchesCount: exactMatchArray.length,
+          likePatternsCount: likePatternArray.length,
+          totalConditions: categoryConditions.length,
+          categories: categories.slice(0, 5) // 只记录前5个类别
+        });
+      }
     }
     
     // 搜索
@@ -560,17 +635,39 @@ async function getBlogPosts(options = {}) {
       ? 'WHERE ' + whereConditions.join(' AND ')
       : '';
     
+    // 记录查询信息用于调试
+    logger.info('文章列表查询', {
+      whereClause,
+      queryParamsCount: queryParams.length,
+      queryParams: queryParams.slice(0, 20), // 记录前20个参数
+      hasCategory: !!options.category,
+      category: options.category,
+      publishedOnly: options.publishedOnly,
+      hasSearch: !!options.search
+    });
+    
     // 从 blog_posts 表查询
-    // 排序规则：优先按浏览量降序，其次按更新时间和创建时间降序
+    // 排序规则：按修改时间降序，其次按创建时间降序
     const rows = await allAsync(`
       SELECT 
         id, api_name, name, title, slug, excerpt, description,
         html_content, image, category, published, views,
+        COALESCE(likes_count, 0) as likes_count,
+        COALESCE(favorites_count, 0) as favorites_count,
+        COALESCE(comments_count, 0) as comments_count,
         created_at, updated_at, custom_fields
       FROM blog_posts
       ${whereClause}
-      ORDER BY views DESC, updated_at DESC, created_at DESC
+      ORDER BY updated_at DESC, created_at DESC
     `, queryParams);
+    
+    logger.info('文章列表查询结果', {
+      rowsCount: rows ? rows.length : 0,
+      hasCategory: !!options.category,
+      category: options.category,
+      publishedOnly: options.publishedOnly,
+      sampleApiNames: rows && rows.length > 0 ? rows.slice(0, 5).map(r => ({ id: r.id, api_name: r.api_name, category: r.category, published: r.published })) : []
+    });
     
     // 批量获取所有API的字段映射配置（性能优化）
     const apiNames = [...new Set(rows.map(row => row.api_name))];
@@ -605,6 +702,9 @@ async function getBlogPosts(options = {}) {
         _sourceApiName: row.api_name, // 保留源API名称
         published: row.published === 1,
         views: row.views || 0,
+        likesCount: row.likes_count || 0,
+        favoritesCount: row.favorites_count || 0,
+        commentsCount: row.comments_count || 0,
         createdAt: row.created_at,
         updatedAt: row.updated_at
       };
@@ -640,26 +740,48 @@ async function getBlogPosts(options = {}) {
       return post;
     });
     
-    // 主页场景（没有分类筛选）：过滤掉空内容的文章
+    // 主页场景（没有分类筛选）：过滤掉空内容的文章和特殊分类的文章
     // 分类页场景（有分类筛选）：保留所有文章，包括空内容的
     // 管理后台：始终包含所有文章，包括空内容的
     let filteredPosts = allPosts;
     
-    // 如果明确指定 includeEmptyContent 为 true，或者有分类筛选，则不过滤空内容
+    // 如果明确指定 includeEmptyContent 为 true，或者有分类筛选，则不过滤空内容和特殊分类
     const shouldIncludeEmpty = options.includeEmptyContent === true || options.category;
     
     if (!shouldIncludeEmpty) {
-      // 主页场景：过滤掉空内容的文章
-      // 空内容的判断：html_content、excerpt、description 都为空或null
+      // 主页场景：过滤掉空内容的文章和特殊分类的文章
+      // 特殊分类：翻译卡片、汇率转换、天气路况（这些分类在主页不显示，但点击分类时可以显示）
+      const excludedCategories = ['汇率转换', '翻译卡片', '翻译', '天气', '天气路况', 'exchange-rate', 'translation', 'weather'];
+      
       filteredPosts = allPosts.filter(post => {
+        // 过滤空内容的文章
         const hasHtmlContent = post.htmlContent && post.htmlContent.trim() !== '';
         const hasExcerpt = post.excerpt && post.excerpt.trim() !== '';
         const hasDescription = post.description && post.description.trim() !== '';
-        // 至少有一个内容字段不为空，就显示
-        return hasHtmlContent || hasExcerpt || hasDescription;
+        const hasContent = hasHtmlContent || hasExcerpt || hasDescription;
+        
+        if (!hasContent) {
+          return false;
+        }
+        
+        // 过滤特殊分类的文章（只在主页场景过滤，分类列表需要显示这些分类）
+        const apiName = post._sourceApiName || post.category || '';
+        const apiNameLower = apiName.toLowerCase();
+        
+        const isExcluded = excludedCategories.some(excluded => {
+          if (apiName === excluded) return true;
+          if (apiNameLower.includes(excluded.toLowerCase())) return true;
+          // 特殊匹配规则
+          if (excluded === '汇率转换' && (apiName.includes('汇率') || apiName.includes('exchange'))) return true;
+          if ((excluded === '翻译' || excluded === '翻译卡片') && (apiName.includes('翻译') || apiName.includes('translation'))) return true;
+          if ((excluded === '天气' || excluded === '天气路况') && (apiName.includes('天气') || apiName.includes('weather'))) return true;
+          return false;
+        });
+        
+        return !isExcluded;
       });
     }
-    // 如果有分类筛选，或者明确指定 includeEmptyContent，不过滤空内容，显示所有文章
+    // 如果有分类筛选，或者明确指定 includeEmptyContent，不过滤空内容和特殊分类，显示所有文章
     
     // 缓存结果（仅在没有任何筛选条件时缓存）
     if (!hasFilters) {
@@ -688,6 +810,9 @@ async function getBlogPost(slug) {
       SELECT 
         id, api_name, name, title, slug, excerpt, description,
         html_content, image, category, published, views,
+        COALESCE(likes_count, 0) as likes_count,
+        COALESCE(favorites_count, 0) as favorites_count,
+        COALESCE(comments_count, 0) as comments_count,
         created_at, updated_at, custom_fields
       FROM blog_posts
       WHERE id = ? OR slug = ?
@@ -728,6 +853,9 @@ async function getBlogPost(slug) {
       _sourceApiName: row.api_name, // 保留源API名称
       published: row.published === 1,
       views: row.views || 0,
+      likesCount: row.likes_count || 0,
+      favoritesCount: row.favorites_count || 0,
+      commentsCount: row.comments_count || 0,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -856,8 +984,7 @@ async function findPostSourceApi(postId, apiName) {
 async function getBlogCategories(options = {}) {
   try {
     const { includeUnpublished = false } = options;
-    // 根据选项获取文章：管理后台需要包含未发布的，博客前端只显示已发布的
-    const posts = await getBlogPosts({ publishedOnly: !includeUnpublished });
+    const { allAsync } = require('../db/database');
     
     /**
      * 提取中文名称（用于匹配）
@@ -873,32 +1000,39 @@ async function getBlogCategories(options = {}) {
         : name;
     };
     
-    // 统计每个分类的文章数（从文章数据中提取分类）
-    const categoryMap = new Map(); // 使用Map存储分类信息，key为分类名称
-    const seenPostIds = new Set(); // 用于去重，避免重复统计
+    // 直接从数据库查询所有分类（包括特殊分类），而不是从过滤后的文章列表提取
+    // 这样可以确保分类栏显示所有分类，即使主页不显示这些分类的文章
+    const whereClause = includeUnpublished ? '' : 'WHERE published = 1';
+    const rows = await allAsync(`
+      SELECT DISTINCT 
+        api_name, 
+        category,
+        COUNT(*) as post_count,
+        MAX(created_at) as latest_post_date
+      FROM blog_posts
+      ${whereClause}
+      GROUP BY api_name, category
+      ORDER BY api_name
+    `);
     
-    posts.forEach(post => {
-      const postId = String(post.id || '');
-      // 如果已存在相同id，跳过（防止重复统计）
-      if (postId && seenPostIds.has(postId)) {
-        return;
-      }
-      seenPostIds.add(postId);
-      
-      // 使用_sourceApiName或category作为分类名称
-      const apiName = post._sourceApiName || post.category || '';
+    // 统计每个分类的文章数
+    const categoryMap = new Map(); // 使用Map存储分类信息，key为分类名称
+    
+    rows.forEach(row => {
+      // 使用 api_name 或 category 作为分类名称
+      const apiName = row.api_name || row.category || '';
       if (apiName) {
         // 提取中文名称（统一使用中文名称作为分类标识）
         const chineseApiName = extractChineseName(apiName);
         const categoryName = chineseApiName || apiName;
         
-        // 如果该分类已存在，增加文章数；否则创建新分类
+        // 如果该分类已存在，累加文章数；否则创建新分类
         if (categoryMap.has(categoryName)) {
           const category = categoryMap.get(categoryName);
-          category.postCount++;
+          category.postCount += row.post_count || 0;
           // 更新最新文章的创建时间（用于排序）
-          if (post.createdAt && (!category.latestPostDate || post.createdAt > category.latestPostDate)) {
-            category.latestPostDate = post.createdAt;
+          if (row.latest_post_date && (!category.latestPostDate || row.latest_post_date > category.latestPostDate)) {
+            category.latestPostDate = row.latest_post_date;
           }
         } else {
           // 创建新分类
@@ -906,8 +1040,8 @@ async function getBlogCategories(options = {}) {
             name: categoryName,
             slug: categoryName.toLowerCase().replace(/\s+/g, '-').replace(/[^\u4e00-\u9fa5a-z0-9-]/g, ''),
             description: categoryName,
-            postCount: 1,
-            latestPostDate: post.createdAt || null
+            postCount: row.post_count || 0,
+            latestPostDate: row.latest_post_date || null
           });
         }
       }
@@ -919,16 +1053,14 @@ async function getBlogCategories(options = {}) {
       return a.name.localeCompare(b.name, 'zh-CN');
     });
     
-    // 为每个分类添加id（使用索引+1作为临时ID，或者使用slug的hash）
+    // 为每个分类添加id（使用索引+1作为临时ID）
     categories.forEach((cat, index) => {
       cat.id = index + 1;
     });
     
-    logger.info('分类文章数统计（从文章数据提取）', {
+    logger.info('分类文章数统计（从数据库直接查询）', {
       包含未发布: includeUnpublished,
       总分类数: categories.length,
-      总文章数: posts.length,
-      去重后文章数: seenPostIds.size,
       分类列表: categories.map(cat => ({ name: cat.name, count: cat.postCount }))
     });
     
@@ -947,43 +1079,205 @@ async function getBlogCategories(options = {}) {
  */
 async function getBlogComments(postId, options = {}) {
   try {
-    const api = await getBlogApi(`/blog/posts/${postId}/comments`);
+    const { allAsync } = require('../db/database');
     
-    if (!api || !api.response_content || !api.response_content.data) {
-      return { comments: [], total: 0, totalPages: 0 };
+    logger.debug('getBlogComments 开始', { postId, options });
+    
+    // 构建查询条件（包含点赞数）
+    let query = `
+      SELECT 
+        c.*,
+        COALESCE(c.likes_count, 0) as likes_count
+      FROM blog_comments c
+      WHERE c.post_id = ?
+    `;
+    const params = [postId];
+    
+    // 默认返回所有评论（无需审核）
+    // 如果明确指定 approvedOnly 为 true，则只返回已审核的评论
+    if (options.approvedOnly === true) {
+      query += ' AND c.approved = 1';
     }
     
-    let comments = api.response_content.data;
+    // 按更新时间倒序排序（有新回复或点赞的评论会排到前面）
+    query += ' ORDER BY c.updated_at DESC, c.created_at DESC';
     
-    // 仅返回已审核的评论（前端）
-    if (options.approvedOnly !== false) {
-      comments = comments.filter(comment => comment.approved === true);
-    }
+    logger.debug('getBlogComments 查询SQL', { query, params });
     
-    // 按创建时间倒序排序
-    comments.sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.created_at || 0);
-      const dateB = new Date(b.createdAt || b.created_at || 0);
-      return dateB - dateA;
+    // 获取所有评论
+    const allComments = await allAsync(query, params);
+    
+    logger.debug('getBlogComments 查询结果', { 
+      postId, 
+      commentsCount: allComments ? allComments.length : 0,
+      comments: allComments ? allComments.map(c => ({ id: c.id, content: c.content?.substring(0, 20) })) : []
     });
     
-    // 分页
+    // 转换格式以保持兼容性
+    const comments = (allComments || []).map(comment => ({
+      id: comment.id,
+      content: comment.content,
+      authorName: comment.author_name,
+      authorEmail: comment.author_email,
+      authorPhone: comment.author_phone,
+      userId: comment.user_id,
+      postId: comment.post_id,
+      parentId: comment.parent_id,
+      approved: comment.approved === 1,
+      likesCount: comment.likes_count || 0,
+      createdAt: comment.created_at,
+      updatedAt: comment.updated_at
+    }));
+    
+    // 计算总数（按平铺结构，包括所有评论和回复）
+    const total = comments.length;
+    
+    // 分页计算（按平铺结构）
     const page = options.page || 1;
     const pageSize = options.pageSize || 10;
-    const total = comments.length;
     const totalPages = Math.ceil(total / pageSize);
     const startIndex = (page - 1) * pageSize;
     const endIndex = startIndex + pageSize;
+    
+    // 如果 options.flat 为 true，返回平铺结构
+    if (options.flat === true) {
+      const paginatedComments = comments.slice(startIndex, endIndex);
+      
+      const result = {
+        comments: paginatedComments,
+        total,
+        totalPages,
+        currentPage: page
+      };
+      
+      logger.debug('getBlogComments 返回结果（平铺）', { 
+        postId, 
+        total, 
+        currentPage: page,
+        pageSize,
+        paginatedCount: paginatedComments.length
+      });
+      
+      return result;
+    }
+    
+    // 否则返回树形结构
+    // 先对当前页的评论进行分页（按平铺结构）
     const paginatedComments = comments.slice(startIndex, endIndex);
     
-    return {
-      comments: paginatedComments,
-      total,
-      totalPages,
+    // 然后组织成树形结构
+    // 为了正确组织层级关系，需要包含所有相关的评论（当前页的评论及其所有父评论链）
+    const commentMap = new Map();
+    const rootComments = [];
+    const includedCommentIds = new Set();
+    
+    // 第一遍：收集当前页的评论ID
+    paginatedComments.forEach(comment => {
+      includedCommentIds.add(comment.id);
+    });
+    
+    // 第二遍：递归查找所有父评论（包括不在当前页的），直到找到根评论
+    const allRelatedComments = [...paginatedComments];
+    const findAndIncludeParents = (commentId) => {
+      const comment = comments.find(c => c.id === commentId);
+      if (!comment) return;
+      
+      if (comment.parentId) {
+        const parentComment = comments.find(c => c.id === comment.parentId);
+        if (parentComment && !includedCommentIds.has(parentComment.id)) {
+          // 父评论不在当前页，但需要包含它来组织层级关系
+          allRelatedComments.push(parentComment);
+          includedCommentIds.add(parentComment.id);
+          // 递归查找父评论的父评论
+          findAndIncludeParents(parentComment.id);
+        }
+      }
+    };
+    
+    paginatedComments.forEach(comment => {
+      if (comment.parentId) {
+        findAndIncludeParents(comment.id);
+      }
+    });
+    
+    // 第三遍：创建评论映射（包含所有相关评论）
+    allRelatedComments.forEach(comment => {
+      commentMap.set(comment.id, { ...comment, replies: [] });
+    });
+    
+    // 第四遍：组织层级关系
+    allRelatedComments.forEach(comment => {
+      const commentNode = commentMap.get(comment.id);
+      if (comment.parentId && commentMap.has(comment.parentId)) {
+        // 有父评论且父评论在映射中，添加到父评论的replies中
+        const parentNode = commentMap.get(comment.parentId);
+        parentNode.replies.push(commentNode);
+      } else if (!comment.parentId) {
+        // 没有父评论，是根评论
+        rootComments.push(commentNode);
+      }
+      // 如果父评论不在映射中（理论上不应该发生），忽略该评论
+    });
+    
+    // 第五遍：只返回包含当前页评论的根评论（如果根评论的所有子评论都不在当前页，则不返回该根评论）
+    const currentPageRootComments = rootComments.filter(rootComment => {
+      // 检查根评论本身是否在当前页
+      if (paginatedComments.some(c => c.id === rootComment.id)) {
+        return true;
+      }
+      // 检查根评论的子树中是否有当前页的评论
+      const hasCurrentPageComment = (node) => {
+        if (paginatedComments.some(c => c.id === node.id)) {
+          return true;
+        }
+        if (node.replies && node.replies.length > 0) {
+          return node.replies.some(reply => hasCurrentPageComment(reply));
+        }
+        return false;
+      };
+      return hasCurrentPageComment(rootComment);
+    });
+    
+    // 对根评论和回复按更新时间排序（有新回复或点赞的会排到前面）
+    currentPageRootComments.sort((a, b) => {
+      const dateA = new Date(a.updatedAt || a.createdAt);
+      const dateB = new Date(b.updatedAt || b.createdAt);
+      return dateB - dateA; // 按更新时间倒序
+    });
+    currentPageRootComments.forEach(comment => {
+      if (comment.replies && comment.replies.length > 0) {
+        comment.replies.sort((a, b) => {
+          const dateA = new Date(a.updatedAt || a.createdAt);
+          const dateB = new Date(b.updatedAt || b.createdAt);
+          return dateB - dateA; // 按更新时间倒序
+        });
+      }
+    });
+    
+    // 计算根评论数（所有评论中的根评论数，不只是当前页）
+    const allRootComments = comments.filter(c => !c.parentId);
+    
+    const result = {
+      comments: currentPageRootComments,
+      total: total, // 总评论数（包括回复，按平铺计算）
+      rootCount: allRootComments.length, // 所有根评论数
+      totalPages: totalPages, // 总页数（按平铺计算）
       currentPage: page
     };
+    
+    logger.debug('getBlogComments 返回结果（树形+分页）', { 
+      postId, 
+      total: total,
+      rootCount: allRootComments.length,
+      currentPage: page,
+      totalPages: totalPages,
+      currentPageRootCount: rootComments.length,
+      hasReplies: rootComments.some(c => c.replies && c.replies.length > 0)
+    });
+    
+    return result;
   } catch (error) {
-    logger.error('获取评论失败', { postId, error: error.message });
+    logger.error('获取评论失败', { postId, error: error.message, stack: error.stack });
     return { comments: [], total: 0, totalPages: 0 };
   }
 }
@@ -1001,10 +1295,10 @@ async function incrementPostViews(slug) {
       return false;
     }
     
-    // 直接从 blog_posts 表更新阅读量
+    // 直接从 blog_posts 表更新阅读量（不更新 updated_at，因为查看不应该改变修改时间）
     await runAsync(
       `UPDATE blog_posts 
-       SET views = views + 1, updated_at = datetime('now', 'localtime')
+       SET views = views + 1
        WHERE id = ?`,
       [post.id]
     );
@@ -1868,39 +2162,115 @@ async function deleteBlogCategory(id) {
  */
 async function createBlogComment(postId, commentData) {
   try {
-    const commentsData = await getBlogComments(postId, { approvedOnly: false });
-    const allComments = commentsData.comments || [];
+    const { runAsync, getAsync } = require('../db/database');
     
-    // 获取所有评论（包括未审核的）
-    const api = await getBlogApi(`/blog/posts/${postId}/comments`);
-    let allCommentsList = [];
-    if (api && api.response_content && api.response_content.data) {
-      allCommentsList = api.response_content.data;
+    // 检查文章是否存在
+    const post = await getAsync('SELECT id FROM blog_posts WHERE id = ?', [postId]);
+    if (!post) {
+      throw new Error('文章不存在');
     }
     
-    const newComment = {
-      id: uuidv4(),
-      content: commentData.content,
-      authorName: commentData.authorName,
-      authorEmail: commentData.authorEmail,
-      postId: postId,
-      parentId: commentData.parentId || null,
-      approved: false, // 默认需要审核
-      createdAt: getCurrentLocalTimeISOString(),
-      updatedAt: getCurrentLocalTimeISOString()
-    };
+    // 检查评论层级限制（最多2级）
+    if (commentData.parentId) {
+      // 获取父评论
+      const parentComment = await getAsync(
+        'SELECT id, parent_id FROM blog_comments WHERE id = ?',
+        [commentData.parentId]
+      );
+      
+      if (!parentComment) {
+        throw new Error('父评论不存在');
+      }
+      
+      // 检查父评论的层级
+      let level = 1; // 父评论是第1级
+      if (parentComment.parent_id) {
+        // 父评论也有父评论，说明父评论是第2级，不能再回复
+        level = 2;
+      }
+      
+      if (level >= 2) {
+        throw new Error('评论最多支持2级，无法继续回复');
+      }
+    }
     
-    allCommentsList.push(newComment);
+    // 获取用户手机号（如果已登录）
+    let userPhone = null;
+    let userId = null;
     
-    await upsertBlogApi(
-      `/blog/posts/${postId}/comments`,
-      `文章评论：${postId}`,
-      { data: allCommentsList },
-      'GET',
-      `文章ID ${postId} 的评论列表`
+    // 尝试从session或token获取用户信息
+    if (commentData.userPhone) {
+      userPhone = commentData.userPhone;
+    }
+    if (commentData.userId) {
+      userId = commentData.userId;
+    }
+    
+    // 创建评论
+    const commentId = uuidv4();
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    
+    await runAsync(
+      `INSERT INTO blog_comments 
+       (id, post_id, content, author_name, author_email, author_phone, user_id, parent_id, approved, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        commentId,
+        postId,
+        commentData.content,
+        commentData.authorName,
+        commentData.authorEmail || null,
+        userPhone,
+        userId,
+        commentData.parentId || null,
+        1, // 默认已审核通过（无需审核）
+        now,
+        now
+      ]
     );
     
-    return newComment;
+    // 如果有父评论，更新父评论的 updated_at 时间（使其排序到前面）
+    if (commentData.parentId) {
+      await runAsync(
+        'UPDATE blog_comments SET updated_at = ? WHERE id = ?',
+        [now, commentData.parentId]
+      );
+      
+      // 如果父评论还有父评论（第1级），也要更新第1级的 updated_at
+      const parentComment = await getAsync(
+        'SELECT parent_id FROM blog_comments WHERE id = ?',
+        [commentData.parentId]
+      );
+      if (parentComment && parentComment.parent_id) {
+        await runAsync(
+          'UPDATE blog_comments SET updated_at = ? WHERE id = ?',
+          [now, parentComment.parent_id]
+        );
+      }
+    }
+    
+    // 获取创建的评论
+    const newComment = await getAsync(
+      'SELECT * FROM blog_comments WHERE id = ?',
+      [commentId]
+    );
+    
+    // 转换格式以保持兼容性
+    const comment = {
+      id: newComment.id,
+      content: newComment.content,
+      authorName: newComment.author_name,
+      authorEmail: newComment.author_email,
+      authorPhone: newComment.author_phone,
+      userId: newComment.user_id,
+      postId: newComment.post_id,
+      parentId: newComment.parent_id,
+      approved: newComment.approved === 1,
+      createdAt: newComment.created_at,
+      updatedAt: newComment.updated_at
+    };
+    
+    return comment;
   } catch (error) {
     logger.error('创建评论失败', { postId, error: error.message });
     throw error;
@@ -1915,34 +2285,40 @@ async function createBlogComment(postId, commentData) {
  */
 async function approveBlogComment(commentId, approved = true) {
   try {
-    // 需要找到评论所属的文章
-    const posts = await getBlogPosts({ publishedOnly: false });
+    const { runAsync, getAsync } = require('../db/database');
     
-    for (const post of posts) {
-      const commentsData = await getBlogComments(post.id, { approvedOnly: false });
-      const api = await getBlogApi(`/blog/posts/${post.id}/comments`);
-      
-      if (api && api.response_content && api.response_content.data) {
-        const commentIndex = api.response_content.data.findIndex(c => c.id === commentId);
-        
-        if (commentIndex !== -1) {
-          api.response_content.data[commentIndex].approved = approved;
-          api.response_content.data[commentIndex].updatedAt = getCurrentLocalTimeISOString();
-          
-          await upsertBlogApi(
-            `/blog/posts/${post.id}/comments`,
-            `文章评论：${post.id}`,
-            api.response_content,
-            'GET',
-            `文章ID ${post.id} 的评论列表`
-          );
-          
-          return true;
-        }
-      }
+    // 获取评论信息
+    const comment = await getAsync(
+      'SELECT post_id FROM blog_comments WHERE id = ?',
+      [commentId]
+    );
+    
+    if (!comment) {
+      return false;
     }
     
-    return false;
+    const postId = comment.post_id;
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    
+    // 更新评论审核状态
+    await runAsync(
+      'UPDATE blog_comments SET approved = ?, updated_at = ? WHERE id = ?',
+      [approved ? 1 : 0, now, commentId]
+    );
+    
+    // 更新文章评论数（统计所有评论）
+    await runAsync(
+      `UPDATE blog_posts 
+       SET comments_count = (
+         SELECT COUNT(*) 
+         FROM blog_comments 
+         WHERE blog_comments.post_id = blog_posts.id
+       )
+       WHERE id = ?`,
+      [postId]
+    );
+    
+    return true;
   } catch (error) {
     logger.error('审核评论失败', { commentId, error: error.message });
     return false;
@@ -1956,29 +2332,39 @@ async function approveBlogComment(commentId, approved = true) {
  */
 async function deleteBlogComment(commentId) {
   try {
-    const posts = await getBlogPosts({ publishedOnly: false });
+    const { runAsync, getAsync } = require('../db/database');
     
-    for (const post of posts) {
-      const api = await getBlogApi(`/blog/posts/${post.id}/comments`);
-      
-      if (api && api.response_content && api.response_content.data) {
-        const updatedComments = api.response_content.data.filter(c => c.id !== commentId);
-        
-        if (updatedComments.length !== api.response_content.data.length) {
-          await upsertBlogApi(
-            `/blog/posts/${post.id}/comments`,
-            `文章评论：${post.id}`,
-            { data: updatedComments },
-            'GET',
-            `文章ID ${post.id} 的评论列表`
-          );
-          
-          return true;
-        }
-      }
+    // 获取评论信息
+    const comment = await getAsync(
+      'SELECT post_id FROM blog_comments WHERE id = ?',
+      [commentId]
+    );
+    
+    if (!comment) {
+      return false;
     }
     
-    return false;
+    const postId = comment.post_id;
+    
+    // 删除评论（级联删除子评论）
+    await runAsync(
+      'DELETE FROM blog_comments WHERE id = ?',
+      [commentId]
+    );
+    
+    // 更新文章评论数（统计所有评论）
+    await runAsync(
+      `UPDATE blog_posts 
+       SET comments_count = (
+         SELECT COUNT(*) 
+         FROM blog_comments 
+         WHERE blog_comments.post_id = blog_posts.id
+       )
+       WHERE id = ?`,
+      [postId]
+    );
+    
+    return true;
   } catch (error) {
     logger.error('删除评论失败', { commentId, error: error.message });
     return false;

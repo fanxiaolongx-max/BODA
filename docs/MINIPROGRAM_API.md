@@ -139,7 +139,7 @@ POST /api/blog-admin/posts
 
 **请求参数**：
 - `name` (必填) - 文章名称
-- `apiName` (必填) - API名称（分类）
+- `apiName` (可选) - API名称（分类）
 - `htmlContent` (可选) - HTML内容
 - `slug` (可选) - URL友好的标识符
 - `excerpt` (可选) - 摘要

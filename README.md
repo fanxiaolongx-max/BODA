@@ -543,10 +543,31 @@ tar -czf $BACKUP_DIR/uploads_$DATE.tar.gz /path/to/boda/uploads
 
 #### 认证接口 (`/api/auth`)
 
+**管理员认证**:
 - `POST /api/auth/admin/login` - 管理员登录
 - `POST /api/auth/admin/logout` - 管理员登出
 - `GET /api/auth/admin/me` - 获取当前管理员信息
+
+**用户认证**（小程序和博客主页使用）:
 - `POST /api/auth/user/login` - 用户登录（手机号）
+  - 请求体: `phone`（手机号，必填）
+  - 返回: 
+    ```json
+    {
+      "success": true,
+      "message": "登录成功",
+      "user": {
+        "id": "用户ID",
+        "phone": "手机号",
+        "name": "用户名"
+      },
+      "token": "用户Token（小程序使用）",
+      "isNewUser": true  // 或 false，表示是否为新用户注册
+    }
+    ```
+- `POST /api/auth/user/login-with-code` - 小程序登录（手机号+验证码）
+  - 请求体: `phone`（手机号，必填）、`code`（验证码，必填）
+  - 返回: 同上，包含 `isNewUser` 字段
 - `POST /api/auth/user/logout` - 用户登出
 
 #### 管理员接口 (`/api/admin`)
@@ -609,13 +630,27 @@ tar -czf $BACKUP_DIR/uploads_$DATE.tar.gz /path/to/boda/uploads
 
 #### 博客Web接口 (`/api/blog`)
 
+**说明**: 所有接口均为公开接口，无需鉴权即可访问。部分接口（如点赞、收藏、评论）需要用户登录（通过Session或Token）。
+
 **文章管理**:
 - `GET /api/blog/posts` - 获取文章列表
-  - 查询参数: `page`（页码，默认1）、`pageSize`（每页数量，默认6）、`category`（分类筛选）、`search`（搜索关键词）、`published`（是否只返回已发布，默认true）
+  - 查询参数: 
+    - `page`（页码，默认1）
+    - `pageSize`（每页数量，默认6）
+    - `category`（分类筛选）
+    - `search`（搜索关键词）
+    - `published`（是否只返回已发布，默认true）
+    - `myPosts`（是否只显示当前用户的文章，默认false）
   - 排序规则: 优先按浏览量降序，其次按更新时间和创建时间降序
+  - 返回字段: 包含 `likesCount`、`favoritesCount`、`commentsCount` 等互动数据
 - `GET /api/blog/posts/:slug` - 获取文章详情（通过slug或id）
+  - 查询参数:
+    - `commentsPage`（评论页码，默认1）
+    - `commentsPageSize`（每页评论数，默认10）
+    - `includeComments`（是否包含评论，默认true）
+  - 返回: 文章详情 + 评论列表（树形结构，最多2级）
 - `GET /api/blog/search` - 搜索文章
-  - 查询参数: `q`（搜索关键词）、`page`、`pageSize`
+  - 查询参数: `q`（搜索关键词，必填）、`page`、`pageSize`
 
 **分类管理**:
 - `GET /api/blog/categories` - 获取分类列表
@@ -623,40 +658,107 @@ tar -czf $BACKUP_DIR/uploads_$DATE.tar.gz /path/to/boda/uploads
 **评论管理**:
 - `GET /api/blog/posts/:postId/comments` - 获取文章评论
   - 查询参数: `page`（默认1）、`pageSize`（默认10）
+  - 返回: 评论列表（树形结构，最多2级），包含 `likesCount` 字段
 - `POST /api/blog/posts/:postId/comments` - 创建评论
-  - 请求体: `content`（评论内容）、`authorName`（作者名称）、`authorEmail`（作者邮箱）、`parentId`（父评论ID，可选）
+  - 请求体: 
+    - `content`（评论内容，必填）
+    - `authorName`（作者名称，可选，未提供时自动使用登录用户名或"匿名用户"）
+    - `authorEmail`（作者邮箱，可选，小程序可不提供）
+    - `parentId`（父评论ID，可选，用于回复评论，最多支持2级）
+  - 说明: 评论默认自动审核通过，无需审核
+- `DELETE /api/blog/posts/:postId/comments/:commentId` - 删除评论
+  - 权限: 仅评论作者或管理员可删除
+
+**文章互动**:
+- `POST /api/blog/posts/:postId/like` - 点赞文章（需要登录）
+- `DELETE /api/blog/posts/:postId/like` - 取消点赞（需要登录）
+- `POST /api/blog/posts/:postId/favorite` - 收藏文章（需要登录）
+- `DELETE /api/blog/posts/:postId/favorite` - 取消收藏（需要登录）
+- `GET /api/blog/posts/:postId/interactions` - 获取用户对文章的互动状态（是否已点赞、已收藏）
+  - 未登录时返回 `isLiked: false, isFavorited: false`
+
+**评论互动**:
+- `POST /api/blog/comments/:commentId/like` - 点赞评论（需要登录）
+- `DELETE /api/blog/comments/:commentId/like` - 取消点赞评论（需要登录）
+- `GET /api/blog/comments/:commentId/interactions` - 获取用户对评论的互动状态（是否已点赞）
+  - 未登录时返回 `isLiked: false`
 
 **其他**:
 - `POST /api/blog/posts/:slug/views` - 增加阅读量
 
 #### 小程序博客管理接口 (`/api/blog-admin`)
 
-**认证方式**: 
-- Session Cookie（浏览器访问）
-- API Token（小程序访问，通过请求头 `X-API-Token` 或 `Authorization: Bearer` 传递）
+**认证说明**: 
+- **无需鉴权的接口**: `GET /api/blog-admin/posts/:id`（文章详情，小程序可直接访问）
+- **需要鉴权的接口**: 其他所有接口都需要认证
+  - Session Cookie（浏览器访问）
+  - API Token（小程序访问，通过请求头 `X-API-Token` 或 `Authorization: Bearer` 传递）
 
 **文章管理**:
-- `GET /api/blog-admin/posts` - 获取文章列表
-  - 查询参数: `page`（页码，默认1）、`pageSize`（每页数量，可选）、`published`（是否只返回已发布，默认false返回所有）、`category`（分类筛选）、`search`（搜索关键词）
+- `GET /api/blog-admin/posts` - 获取文章列表（需要鉴权）
+  - 查询参数: 
+    - `page`（页码，默认1）
+    - `pageSize`（每页数量，可选）
+    - `published`（是否只返回已发布，默认false返回所有）
+    - `category`（分类筛选）
+    - `search`（搜索关键词）
   - 排序规则: 优先按浏览量降序，其次按更新时间和创建时间降序
-- `GET /api/blog-admin/posts/:id` - 获取文章详情
-- `POST /api/blog-admin/posts` - 创建文章
-  - 请求体: `name`（文章名称，必填）、`apiName`（API名称/分类，必填）、`htmlContent`（HTML内容，可选）、`slug`（URL标识符，可选）、`excerpt`（摘要，可选）、`description`（描述，可选）、`image`（图片URL，可选）、`published`（是否发布，默认false）、`price`（价格，可选）、`rooms`（房间数，可选）、`area`（面积，可选）、`phone`（电话，可选）、`address`（地址，可选）、`latitude`（纬度，可选）、`longitude`（经度，可选）、`nickname`（昵称，可选）、`deviceModel`（设备型号，可选）、`deviceId`（设备ID，可选）、`deviceIp`（设备IP，可选）
-- `PUT /api/blog-admin/posts/:id` - 更新文章
-- `DELETE /api/blog-admin/posts/:id` - 删除文章
+- `GET /api/blog-admin/posts/:id` - 获取文章详情（**无需鉴权**，小程序可直接访问）
+  - 查询参数:
+    - `commentsPage`（评论页码，默认1）
+    - `commentsPageSize`（每页评论数，默认10）
+    - `includeComments`（是否包含评论，默认true）
+  - 返回: 文章详情 + 评论列表（树形结构，最多2级）
+- `POST /api/blog-admin/posts` - 创建文章（需要鉴权）
+  - 请求体: 
+    - `name`（文章名称，必填）
+    - `apiName`（API名称/分类，可选）
+    - `htmlContent`（HTML内容，可选）
+    - `slug`（URL标识符，可选）
+    - `excerpt`（摘要，可选）
+    - `description`（描述，可选）
+    - `image`（图片URL，可选）
+    - `published`（是否发布，默认false）
+    - `price`（价格，可选）
+    - `rooms`（房间数，可选）
+    - `area`（面积，可选）
+    - `phone`（电话，可选）
+    - `address`（地址，可选）
+    - `latitude`（纬度，可选）
+    - `longitude`（经度，可选）
+    - `nickname`（昵称，可选）
+    - `deviceModel`（设备型号，可选）
+    - `deviceId`（设备ID，可选）
+    - `deviceIp`（设备IP，可选）
+- `PUT /api/blog-admin/posts/:id` - 更新文章（需要鉴权）
+- `DELETE /api/blog-admin/posts/:id` - 删除文章（需要鉴权）
+- `POST /api/blog-admin/posts/batch-publish` - 批量发布文章（需要鉴权）
 
-**分类管理**:
+**分类管理**（需要鉴权）:
 - `GET /api/blog-admin/categories` - 获取分类列表
 - `POST /api/blog-admin/categories` - 创建分类
   - 请求体: `name`（分类名称，必填）、`path`（分类路径，可选）、`description`（描述，可选）
 - `PUT /api/blog-admin/categories/:id` - 更新分类
 - `DELETE /api/blog-admin/categories/:id` - 删除分类
 
-**API管理**:
+**评论管理**（需要鉴权）:
+- `GET /api/blog-admin/comments` - 获取评论列表
+- `PUT /api/blog-admin/comments/:id/approve` - 审核评论（批准/拒绝）
+- `DELETE /api/blog-admin/comments/:id` - 删除评论
+
+**API管理**（需要鉴权）:
 - `GET /api/blog-admin/apis` - 获取API列表（用于文章分类选择）
 - `GET /api/blog-admin/apis/:apiName/field-mapping` - 获取字段映射配置
 - `PUT /api/blog-admin/apis/:apiName/field-mapping` - 更新字段映射配置
   - 请求体: `mapping`（字段映射对象，必填）
+
+**文件上传**（需要鉴权）:
+- `POST /api/blog-admin/upload` - 上传文件（图片或视频）
+  - 请求体: `file`（文件，multipart/form-data）、`type`（文件类型：image或video，可选）
+
+**特殊内容管理**（需要鉴权）:
+- `GET /api/blog-admin/special-content/:type` - 获取特殊内容（weather/exchange-rate/translation）
+- `PUT /api/blog-admin/special-content/:type` - 更新特殊内容
 
 **小程序API Token配置**:
 1. 登录管理后台
