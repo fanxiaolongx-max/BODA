@@ -629,6 +629,11 @@ async function migrateDatabaseSchema() {
       console.log('自动迁移: 添加 users.pin 字段...');
       await runAsync('ALTER TABLE users ADD COLUMN pin TEXT');
     }
+    
+    if (!usersColumns.includes('last_interactions_viewed_at')) {
+      console.log('自动迁移: 添加 users.last_interactions_viewed_at 字段...');
+      await runAsync('ALTER TABLE users ADD COLUMN last_interactions_viewed_at DATETIME DEFAULT NULL');
+    }
 
     // 检查 balance_transactions 表是否存在
     const tablesInfo = await allAsync("SELECT name FROM sqlite_master WHERE type='table' AND name='balance_transactions'");

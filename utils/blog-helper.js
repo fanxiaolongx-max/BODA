@@ -4,6 +4,19 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
 
+// 获取当前本地时间字符串（格式：YYYY-MM-DD HH:mm:ss）
+// 使用 Node.js 的时区设置（通过 TZ 环境变量，如 Africa/Cairo）
+function getCurrentLocalTimeString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 // 文章列表缓存（内存缓存）
 const postsCache = {
   data: null,
@@ -2208,7 +2221,9 @@ async function createBlogComment(postId, commentData) {
     
     // 创建评论
     const commentId = uuidv4();
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    // 使用 Node.js 的时间（已通过 TZ 环境变量设置为 Africa/Cairo）
+    // 格式化为 'YYYY-MM-DD HH:MM:SS' 格式，与数据库格式一致
+    const now = getCurrentLocalTimeString();
     
     await runAsync(
       `INSERT INTO blog_comments 
@@ -2298,9 +2313,11 @@ async function approveBlogComment(commentId, approved = true) {
     }
     
     const postId = comment.post_id;
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
     
     // 更新评论审核状态
+    // 使用 Node.js 的时间（已通过 TZ 环境变量设置为 Africa/Cairo）
+    const now = getCurrentLocalTimeString();
+    
     await runAsync(
       'UPDATE blog_comments SET approved = ?, updated_at = ? WHERE id = ?',
       [approved ? 1 : 0, now, commentId]
