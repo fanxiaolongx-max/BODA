@@ -134,46 +134,22 @@ router.get('/posts', async (req, res) => {
         myPosts: posts.length, 
         userPhone 
       });
-    } else if (userPhone && published === 'true') {
-      // 用户已登录：获取所有已发布的文章 + 该用户的草稿文章
-      const publishedOptions = {
-        publishedOnly: true,
-        category: category || undefined,
-        search: search || undefined
-      };
-      const publishedPosts = await getBlogPosts(publishedOptions);
-      
-      // 获取该用户的草稿文章（未发布的）
-      const draftOptions = {
-        publishedOnly: false, // 获取所有文章（包括未发布的）
-        category: category || undefined,
-        search: search || undefined
-      };
-      const allPosts = await getBlogPosts(draftOptions);
-      
-      // 筛选出该用户的草稿文章（deviceId匹配且未发布）
-      const userDrafts = allPosts.filter(post => 
-        post.deviceId === userPhone && (!post.published || post.published === false)
-      );
-      
-      // 合并已发布的文章和用户的草稿文章
-      const publishedPostIds = new Set(publishedPosts.map(p => p.id));
-      posts = [...publishedPosts];
-      
-      // 添加用户的草稿文章（避免重复）
-      userDrafts.forEach(draft => {
-        if (!publishedPostIds.has(draft.id)) {
-          posts.push(draft);
-        }
-      });
     } else {
-      // 用户未登录或明确要求只显示已发布的：只返回已发布的文章
+      // 根据 published 参数决定返回哪些文章
+      // 如果 published === 'true'，严格只返回已发布的文章（不包含任何草稿）
+      // 如果 published !== 'true'，返回所有文章（包括未发布的）
       const options = {
         publishedOnly: published === 'true',
         category: category || undefined,
         search: search || undefined
       };
       posts = await getBlogPosts(options);
+      
+      // 如果 published === 'true'，确保过滤掉所有未发布的文章
+      // 即使用户已登录，也不应该返回草稿（草稿应该通过 myPosts=true 参数获取）
+      if (published === 'true') {
+        posts = posts.filter(post => post.published === true || post.published === 1);
+      }
     }
     
     // 分页
