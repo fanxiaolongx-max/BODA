@@ -4156,6 +4156,27 @@ async function loadSettingsPage() {
               </div>
               
               <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">用户管理设置</h3>
+                
+                <div class="mb-4">
+                  <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="userRegistrationDisabled" 
+                           class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                           ${settings.user_registration_disabled === 'true' ? 'checked' : ''}>
+                    <span class="text-sm font-medium text-gray-700">临时禁止用户注册</span>
+                  </label>
+                  <p class="text-xs text-gray-500 mt-1 ml-6">
+                    启用后，新用户将无法注册账号。已注册用户不受影响，可以正常登录。
+                  </p>
+                  <div class="mt-2 ml-6 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p class="text-xs text-red-800">
+                      <strong>⚠️ 警告：</strong> 启用此选项将阻止所有新用户注册，请谨慎使用。
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">博客管理设置</h3>
                 
                 <div class="mb-4">
@@ -5175,6 +5196,7 @@ async function saveSettings(e) {
     email_to: document.getElementById('emailTo')?.value.trim() || '',
     debug_logging_enabled: debugLoggingEnabled ? 'true' : 'false',
     instant_payment_enabled: instantPaymentEnabled ? 'true' : 'false',
+    user_registration_disabled: document.getElementById('userRegistrationDisabled')?.checked ? 'true' : 'false',
     blog_posting_disabled: document.getElementById('blogPostingDisabled')?.checked ? 'true' : 'false',
     blog_commenting_disabled: document.getElementById('blogCommentingDisabled')?.checked ? 'true' : 'false',
     stripe_publishable_key: document.getElementById('stripePublishableKey')?.value.trim() || '',

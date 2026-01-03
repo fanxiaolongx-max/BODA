@@ -1223,6 +1223,17 @@ router.post('/user/login', [
     const isNewUser = !user;
 
     if (!user) {
+      // 检查是否禁止用户注册
+      const registrationDisabledSetting = await getAsync("SELECT value FROM settings WHERE key = 'user_registration_disabled'");
+      const isRegistrationDisabled = registrationDisabledSetting && registrationDisabledSetting.value === 'true';
+      
+      if (isRegistrationDisabled) {
+        return res.status(403).json({ 
+          success: false, 
+          message: '当前系统已禁止用户注册，请联系管理员' 
+        });
+      }
+      
       // 新用户需要设置PIN，不能直接登录
       if (!pin) {
         return res.status(400).json({
@@ -1604,6 +1615,17 @@ router.post('/user/login-with-code', [
     const isNewUser = !user;
 
     if (!user) {
+      // 检查是否禁止用户注册
+      const registrationDisabledSetting = await getAsync("SELECT value FROM settings WHERE key = 'user_registration_disabled'");
+      const isRegistrationDisabled = registrationDisabledSetting && registrationDisabledSetting.value === 'true';
+      
+      if (isRegistrationDisabled) {
+        return res.status(403).json({ 
+          success: false, 
+          message: '当前系统已禁止用户注册，请联系管理员' 
+        });
+      }
+      
       // 新用户需要设置PIN，不能直接登录
       if (!pin) {
         return res.status(400).json({
