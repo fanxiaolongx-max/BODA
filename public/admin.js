@@ -4109,7 +4109,17 @@ async function loadSettingsPage() {
       
       container.innerHTML = `
         <div class="fade-in">
-          <h2 class="text-2xl font-bold text-gray-900 mb-6">System Settings</h2>
+          <div class="flex justify-between items-center mb-6 relative">
+            <h2 class="text-2xl font-bold text-gray-900">System Settings</h2>
+            <div class="flex space-x-3 fixed top-20 right-4 z-50 bg-white p-2 rounded-lg shadow-lg border border-gray-200">
+              <button type="button" onclick="saveSettings(event)" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm transition-colors">
+                Save Settings
+              </button>
+              <button type="button" onclick="loadSettingsPage()" class="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold rounded-lg transition-colors">
+                Reset
+              </button>
+            </div>
+          </div>
           
           <div class="bg-white rounded-xl shadow-sm p-6">
             <form id="settingsForm" class="space-y-6">
@@ -4140,6 +4150,44 @@ async function loadSettingsPage() {
                     <p class="text-xs text-yellow-800">
                       <strong>⚠️ Note:</strong> When instant payment is enabled, discount calculations are disabled. 
                       All orders will have Discount Amount = 0, regardless of cycle discount settings.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">博客管理设置</h3>
+                
+                <div class="mb-4">
+                  <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="blogPostingDisabled" 
+                           class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                           ${settings.blog_posting_disabled === 'true' ? 'checked' : ''}>
+                    <span class="text-sm font-medium text-gray-700">临时禁止发布文章</span>
+                  </label>
+                  <p class="text-xs text-gray-500 mt-1 ml-6">
+                    启用后，所有用户（包括管理员）将无法发布新文章。已发布的文章不受影响。
+                  </p>
+                  <div class="mt-2 ml-6 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p class="text-xs text-red-800">
+                      <strong>⚠️ 警告：</strong> 启用此选项将阻止所有用户发布文章，请谨慎使用。
+                    </p>
+                  </div>
+                </div>
+                
+                <div class="mb-4">
+                  <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="blogCommentingDisabled" 
+                           class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                           ${settings.blog_commenting_disabled === 'true' ? 'checked' : ''}>
+                    <span class="text-sm font-medium text-gray-700">临时禁止评论</span>
+                  </label>
+                  <p class="text-xs text-gray-500 mt-1 ml-6">
+                    启用后，所有用户将无法发表评论。已存在的评论不受影响。
+                  </p>
+                  <div class="mt-2 ml-6 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p class="text-xs text-red-800">
+                      <strong>⚠️ 警告：</strong> 启用此选项将阻止所有用户发表评论，请谨慎使用。
                     </p>
                   </div>
                 </div>
@@ -4862,15 +4910,6 @@ async function loadSettingsPage() {
                   </div>
                 </div>
               </div>
-              
-              <div class="flex space-x-3 pt-4">
-                <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg">
-                  Save Settings
-                </button>
-                <button type="button" onclick="loadSettingsPage()" class="px-6 py-3 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold rounded-lg">
-                  Reset
-                </button>
-              </div>
             </form>
           </div>
           
@@ -5136,6 +5175,8 @@ async function saveSettings(e) {
     email_to: document.getElementById('emailTo')?.value.trim() || '',
     debug_logging_enabled: debugLoggingEnabled ? 'true' : 'false',
     instant_payment_enabled: instantPaymentEnabled ? 'true' : 'false',
+    blog_posting_disabled: document.getElementById('blogPostingDisabled')?.checked ? 'true' : 'false',
+    blog_commenting_disabled: document.getElementById('blogCommentingDisabled')?.checked ? 'true' : 'false',
     stripe_publishable_key: document.getElementById('stripePublishableKey')?.value.trim() || '',
     stripe_secret_key: document.getElementById('stripeSecretKey')?.value.trim() || '',
     stripe_webhook_secret: document.getElementById('stripeWebhookSecret')?.value.trim() || '',

@@ -531,7 +531,17 @@ router.get('/posts/my-favorites', async (req, res) => {
 router.get('/posts/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
-    const { commentsPage = 1, commentsPageSize = 10, includeComments = 'true' } = req.query;
+    let { commentsPage = 1, commentsPageSize = 10, includeComments = 'true' } = req.query;
+    
+    // 安全验证：防止SQL注入攻击
+    // 确保分页参数是有效的数字
+    const safeCommentsPage = Math.max(1, parseInt(commentsPage, 10) || 1);
+    const safeCommentsPageSize = Math.min(100, Math.max(1, parseInt(commentsPageSize, 10) || 10));
+    
+    // 验证includeComments参数，防止SQL注入
+    if (typeof includeComments !== 'string' || (includeComments !== 'true' && includeComments !== 'false')) {
+      includeComments = 'true';
+    }
     
     const post = await getBlogPost(slug);
     
@@ -567,8 +577,8 @@ router.get('/posts/:slug', async (req, res) => {
       try {
         commentsData = await getBlogComments(post.id, {
           // 不设置 flat，返回树形结构，但分页按平铺计算
-          page: parseInt(commentsPage, 10),
-          pageSize: parseInt(commentsPageSize, 10)
+          page: safeCommentsPage,
+          pageSize: safeCommentsPageSize
         });
       } catch (error) {
         logger.warn('获取评论列表失败', { postId: post.id, error: error.message });
@@ -577,7 +587,7 @@ router.get('/posts/:slug', async (req, res) => {
           comments: [],
           total: 0,
           totalPages: 0,
-          currentPage: parseInt(commentsPage, 10)
+          currentPage: safeCommentsPage
         };
       }
     }
@@ -689,7 +699,7 @@ router.post('/posts/:postId/comments', async (req, res) => {
       });
     }
     
-    // 获取用户信息（如果已登录）
+    // 获取用户信息（必须登录才能评论）
     const userPhone = await getCurrentUserPhone(req);
     let userId = null;
     let userName = null;
@@ -721,10 +731,29 @@ router.post('/posts/:postId/comments', async (req, res) => {
       }
     }
 
-    // 确定作者名称：优先使用提供的authorName，其次使用登录用户的name，最后使用"匿名用户"
+    // 禁止匿名评论：必须登录才能评论
+    if (!userPhone && !userId) {
+      return res.status(401).json({ 
+        success: false, 
+        message: '请先登录后再评论' 
+      });
+    }
+
+    // 检查是否禁止评论
+    const commentingDisabledSetting = await getAsync("SELECT value FROM settings WHERE key = 'blog_commenting_disabled'");
+    const isCommentingDisabled = commentingDisabledSetting && commentingDisabledSetting.value === 'true';
+    
+    if (isCommentingDisabled) {
+      return res.status(403).json({ 
+        success: false, 
+        message: '当前系统已禁止评论，请联系管理员' 
+      });
+    }
+
+    // 确定作者名称：优先使用提供的authorName，其次使用登录用户的name
     const finalAuthorName = authorName && authorName.trim() !== '' 
       ? authorName.trim() 
-      : (userName && userName.trim() !== '' ? userName.trim() : '匿名用户');
+      : (userName && userName.trim() !== '' ? userName.trim() : '用户');
 
     let comment;
     try {
@@ -1967,10 +1996,10 @@ router.get('/my-posts-interactions', async (req, res) => {
         
         // 排除自己评论的逻辑：
         // 1. 如果 authorPhone 和 userPhone 都存在且相等，则是自己的评论
-        // 2. 如果 userId 和 comment.user_id 都存在且相等，则是自己的评论
+        // 2. 如果 userId 和 comment.userId 都存在且相等，则是自己的评论
         // 3. 如果 authorPhone 为 null 且 userId 不匹配，则不是自己的评论（匿名评论或别人的评论）
         const isOwnByPhone = comment.authorPhone && userPhone && comment.authorPhone === userPhone;
-        const isOwnByUserId = userId && comment.user_id && userId.toString() === comment.user_id.toString();
+        const isOwnByUserId = userId && comment.userId && userId.toString() === comment.userId.toString();
         const isNotOwnComment = !isOwnByPhone && !isOwnByUserId;
         const isUnread = isAfterLastView && isNotOwnComment;
         
@@ -1989,7 +2018,7 @@ router.get('/my-posts-interactions', async (req, res) => {
             isUnread: isUnread,
             timeComparison: `${comment.createdAt} > ${lastViewedAt} = ${isAfterLastView}`,
             authorPhoneMatch: comment.authorPhone === userPhone,
-            userIdMatch: userId && comment.user_id ? userId.toString() === comment.user_id.toString() : false
+            userIdMatch: userId && comment.userId ? userId.toString() === comment.userId.toString() : false
           });
         }
         
@@ -2006,42 +2035,76 @@ router.get('/my-posts-interactions', async (req, res) => {
         userPhone: userPhone,
         commentsWithAuthorPhone: comments.filter(c => c.authorPhone).length,
         commentsWithoutAuthorPhone: comments.filter(c => !c.authorPhone).length,
-        sampleComments: comments.slice(0, 3).map(c => ({
-          id: c.id,
-          createdAt: c.createdAt,
-          authorPhone: c.authorPhone,
-          isAfterLastView: c.createdAt > lastViewedAt,
-          isNotOwnComment: !c.authorPhone || c.authorPhone !== userPhone
-        }))
+        sampleComments: comments.slice(0, 3).map(c => {
+          const isOwnByPhone = c.authorPhone && userPhone && c.authorPhone === userPhone;
+          const isOwnByUserId = userId && c.userId && userId.toString() === c.userId.toString();
+          return {
+            id: c.id,
+            createdAt: c.createdAt,
+            authorPhone: c.authorPhone,
+            isAfterLastView: c.createdAt > lastViewedAt,
+            isNotOwnComment: !isOwnByPhone && !isOwnByUserId
+          };
+        })
       });
 
-      // 统计未读点赞数量
+      // 统计未读点赞数量（排除自己的点赞）
       unreadLikesCount = likes.filter(like => {
         if (!like.likedAt) {
           logger.warn('点赞缺少likedAt字段', { postId: like.postId });
           return false;
         }
-        const isUnread = like.likedAt > lastViewedAt;
+        const isAfterLastView = like.likedAt > lastViewedAt;
+        
+        // 排除自己的点赞
+        const isOwnByPhone = like.userPhone && userPhone && like.userPhone === userPhone;
+        const isOwnByUserId = userId && like.userId && userId.toString() === like.userId.toString();
+        const isNotOwnLike = !isOwnByPhone && !isOwnByUserId;
+        
+        const isUnread = isAfterLastView && isNotOwnLike;
         logger.debug('点赞未读检查', { 
           postId: like.postId, 
           likedAt: like.likedAt, 
           lastViewedAt,
+          userPhone: like.userPhone,
+          currentUserPhone: userPhone,
+          userId: like.userId,
+          currentUserId: userId,
+          isAfterLastView,
+          isOwnByPhone,
+          isOwnByUserId,
+          isNotOwnLike,
           isUnread
         });
         return isUnread;
       }).length;
 
-      // 统计未读收藏数量
+      // 统计未读收藏数量（排除自己的收藏）
       unreadFavoritesCount = favorites.filter(favorite => {
         if (!favorite.favoritedAt) {
           logger.warn('收藏缺少favoritedAt字段', { postId: favorite.postId });
           return false;
         }
-        const isUnread = favorite.favoritedAt > lastViewedAt;
+        const isAfterLastView = favorite.favoritedAt > lastViewedAt;
+        
+        // 排除自己的收藏
+        const isOwnByPhone = favorite.userPhone && userPhone && favorite.userPhone === userPhone;
+        const isOwnByUserId = userId && favorite.userId && userId.toString() === favorite.userId.toString();
+        const isNotOwnFavorite = !isOwnByPhone && !isOwnByUserId;
+        
+        const isUnread = isAfterLastView && isNotOwnFavorite;
         logger.debug('收藏未读检查', { 
           postId: favorite.postId, 
           favoritedAt: favorite.favoritedAt, 
           lastViewedAt,
+          userPhone: favorite.userPhone,
+          currentUserPhone: userPhone,
+          userId: favorite.userId,
+          currentUserId: userId,
+          isAfterLastView,
+          isOwnByPhone,
+          isOwnByUserId,
+          isNotOwnFavorite,
           isUnread
         });
         return isUnread;
@@ -2061,10 +2124,24 @@ router.get('/my-posts-interactions', async (req, res) => {
       });
     } else {
       // 如果从未查看过，所有消息都是未读
-      // 排除自己评论的
-      unreadCommentsCount = comments.filter(comment => comment.authorPhone !== userPhone).length;
-      unreadLikesCount = likes.length;
-      unreadFavoritesCount = favorites.length;
+      // 排除自己评论、点赞、收藏的（需要同时检查phone和userId）
+      unreadCommentsCount = comments.filter(comment => {
+        const isOwnByPhone = comment.authorPhone && userPhone && comment.authorPhone === userPhone;
+        const isOwnByUserId = userId && comment.userId && userId.toString() === comment.userId.toString();
+        return !isOwnByPhone && !isOwnByUserId;
+      }).length;
+      
+      unreadLikesCount = likes.filter(like => {
+        const isOwnByPhone = like.userPhone && userPhone && like.userPhone === userPhone;
+        const isOwnByUserId = userId && like.userId && userId.toString() === like.userId.toString();
+        return !isOwnByPhone && !isOwnByUserId;
+      }).length;
+      
+      unreadFavoritesCount = favorites.filter(favorite => {
+        const isOwnByPhone = favorite.userPhone && userPhone && favorite.userPhone === userPhone;
+        const isOwnByUserId = userId && favorite.userId && userId.toString() === favorite.userId.toString();
+        return !isOwnByPhone && !isOwnByUserId;
+      }).length;
       logger.debug('用户从未查看过，所有消息都是未读', {
         unreadCommentsCount,
         unreadLikesCount,
@@ -2080,19 +2157,13 @@ router.get('/my-posts-interactions', async (req, res) => {
     let allItems = [];
 
     if (type === 'comments') {
-      resultData.comments = comments;
       allItems = comments;
     } else if (type === 'likes') {
-      resultData.likes = likes;
       allItems = likes;
     } else if (type === 'favorites') {
-      resultData.favorites = favorites;
       allItems = favorites;
     } else {
       // type === 'all' 或未指定
-      resultData.comments = comments;
-      resultData.likes = likes;
-      resultData.favorites = favorites;
       // 合并所有数据用于分页（按时间排序）
       allItems = [
         ...comments.map(c => ({ ...c, type: 'comment', sortTime: c.createdAt })),

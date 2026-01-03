@@ -4801,11 +4801,19 @@ router.get('/logs', async (req, res) => {
       params.push(`${end_date} 23:59:59`);
     } else if (days) {
       // 使用days参数（向后兼容）
-      const daysInt = parseInt(days);
-      if (daysInt > 0) {
-        const dateStr = `datetime('now', '-${daysInt} days', 'localtime')`;
-        sql += ` AND l.created_at >= ${dateStr}`;
+      // 安全验证：确保days是有效的正整数，防止SQL注入
+      const daysInt = parseInt(days, 10);
+      if (isNaN(daysInt) || daysInt <= 0 || daysInt > 3650) {
+        // 限制范围：最多10年，防止异常值
+        return res.status(400).json({ 
+          success: false, 
+          message: 'days参数必须是1-3650之间的整数' 
+        });
       }
+      // 使用参数化查询更安全，但SQLite的datetime函数不支持参数化
+      // 由于daysInt已经验证为整数，这里使用字符串拼接是安全的
+      const dateStr = `datetime('now', '-${daysInt} days', 'localtime')`;
+      sql += ` AND l.created_at >= ${dateStr}`;
     }
 
     // 操作类型过滤
@@ -4874,11 +4882,19 @@ router.get('/logs', async (req, res) => {
       countSql += ' AND l.created_at <= ?';
       countParams.push(`${end_date} 23:59:59`);
     } else if (days) {
-      const daysInt = parseInt(days);
-      if (daysInt > 0) {
-        const dateStr = `datetime('now', '-${daysInt} days', 'localtime')`;
-        countSql += ` AND l.created_at >= ${dateStr}`;
+      // 安全验证：确保days是有效的正整数，防止SQL注入
+      const daysInt = parseInt(days, 10);
+      if (isNaN(daysInt) || daysInt <= 0 || daysInt > 3650) {
+        // 限制范围：最多10年，防止异常值
+        return res.status(400).json({ 
+          success: false, 
+          message: 'days参数必须是1-3650之间的整数' 
+        });
       }
+      // 使用参数化查询更安全，但SQLite的datetime函数不支持参数化
+      // 由于daysInt已经验证为整数，这里使用字符串拼接是安全的
+      const dateStr = `datetime('now', '-${daysInt} days', 'localtime')`;
+      countSql += ` AND l.created_at >= ${dateStr}`;
     }
     if (action) {
       countSql += ' AND l.action = ?';

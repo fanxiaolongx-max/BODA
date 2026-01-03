@@ -251,7 +251,17 @@ router.get('/posts', requireBlogAuth, async (req, res) => {
 router.get('/posts/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { commentsPage = 1, commentsPageSize = 10, includeComments = 'true' } = req.query;
+    let { commentsPage = 1, commentsPageSize = 10, includeComments = 'true' } = req.query;
+    
+    // 安全验证：防止SQL注入攻击
+    // 确保分页参数是有效的数字
+    const safeCommentsPage = Math.max(1, parseInt(commentsPage, 10) || 1);
+    const safeCommentsPageSize = Math.min(100, Math.max(1, parseInt(commentsPageSize, 10) || 10));
+    
+    // 验证includeComments参数，防止SQL注入
+    if (typeof includeComments !== 'string' || (includeComments !== 'true' && includeComments !== 'false' && includeComments !== '1')) {
+      includeComments = 'true';
+    }
     
     logger.info('获取文章详情请求', { id, timestamp: new Date().toISOString() });
     const post = await getBlogPost(id);
@@ -297,11 +307,11 @@ router.get('/posts/:id', async (req, res) => {
     
     if (includeComments === 'true' || includeComments === true || includeComments === '1') {
       try {
-        logger.info('开始获取评论列表', { postId: id, commentsPage, commentsPageSize });
+        logger.info('开始获取评论列表', { postId: id, commentsPage: safeCommentsPage, commentsPageSize: safeCommentsPageSize });
         commentsData = await getBlogComments(id, {
           // 不设置 flat，返回树形结构，但分页按平铺计算
-          page: parseInt(commentsPage, 10),
-          pageSize: parseInt(commentsPageSize, 10)
+          page: safeCommentsPage,
+          pageSize: safeCommentsPageSize
         });
         logger.info('获取评论列表成功', { 
           postId: id, 
@@ -316,7 +326,7 @@ router.get('/posts/:id', async (req, res) => {
           comments: [],
           total: 0,
           totalPages: 0,
-          currentPage: parseInt(commentsPage, 10)
+          currentPage: safeCommentsPage
         };
       }
     } else {
@@ -336,7 +346,7 @@ router.get('/posts/:id', async (req, res) => {
           comments: [],
           total: 0,
           totalPages: 0,
-          currentPage: parseInt(commentsPage, 10)
+          currentPage: safeCommentsPage
         };
       }
       response.comments = commentsData;
@@ -498,6 +508,18 @@ router.post('/posts', requireBlogAuth, [
   validate
 ], async (req, res) => {
   try {
+    // 检查是否禁止发布文章
+    const { getAsync } = require('../db/database');
+    const postingDisabledSetting = await getAsync("SELECT value FROM settings WHERE key = 'blog_posting_disabled'");
+    const isPostingDisabled = postingDisabledSetting && postingDisabledSetting.value === 'true';
+    
+    if (isPostingDisabled) {
+      return res.status(403).json({ 
+        success: false, 
+        message: '当前系统已禁止发布文章，请联系管理员' 
+      });
+    }
+    
     // 提取中文名称用于统一存储（避免"二手市场"和"二手市场 second-hand"不一致）
     const extractChineseName = (name) => {
       if (!name) return '';
