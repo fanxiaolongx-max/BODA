@@ -1417,7 +1417,8 @@ router.post('/user/login', [
         user: {
           id: user.id,
           phone: user.phone,
-          name: user.name
+          name: user.name,
+          permission: user.permission || 'readwrite' // 返回权限字段：readonly 或 readwrite
         },
         token: userToken, // 返回Token供小程序使用
         isNewUser: isNewUser // 标识是否为新用户注册
@@ -1818,7 +1819,8 @@ router.post('/user/login-with-code', [
         user: {
           id: user.id,
           phone: user.phone,
-          name: user.name
+          name: user.name,
+          permission: user.permission || 'readwrite' // 返回权限字段：readonly 或 readwrite
         },
         token: userToken, // 返回Token供小程序使用
         isNewUser: isNewUser // 标识是否为新用户注册
@@ -1924,7 +1926,7 @@ router.get('/user/me', async (req, res) => {
     // 如果还没有用户信息（Session认证），从数据库查询
     if (!user) {
       user = await getAsync(
-        'SELECT id, phone, name, created_at FROM users WHERE id = ?',
+        'SELECT id, phone, name, permission, created_at FROM users WHERE id = ?',
         [userId]
       );
 
@@ -1938,17 +1940,26 @@ router.get('/user/me', async (req, res) => {
         return res.status(401).json({ success: false, message: '用户不存在' });
       }
     } else {
-      // Token认证已经返回了用户信息，但需要添加 created_at
+      // Token认证已经返回了用户信息，但需要添加 created_at 和 permission
       const fullUser = await getAsync(
-        'SELECT id, phone, name, created_at FROM users WHERE id = ?',
+        'SELECT id, phone, name, permission, created_at FROM users WHERE id = ?',
         [userId]
       );
       if (fullUser) {
         user.created_at = fullUser.created_at;
+        user.permission = fullUser.permission || 'readwrite';
       }
     }
 
-    res.json({ success: true, user });
+    res.json({ 
+      success: true, 
+      user: {
+        id: user.id,
+        phone: user.phone,
+        name: user.name,
+        permission: user.permission || 'readwrite' // 返回权限字段：readonly 或 readwrite
+      }
+    });
   } catch (error) {
     logger.error('获取用户信息失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取信息失败' });

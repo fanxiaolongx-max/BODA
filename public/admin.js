@@ -5481,6 +5481,7 @@ async function loadUsers() {
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Orders</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Spent</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Permission</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lock Status</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registered</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Login</th>
@@ -5489,7 +5490,7 @@ async function loadUsers() {
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                   ${users.length === 0 ? 
-                    '<tr><td colspan="10" class="px-6 py-4 text-center text-gray-500">No users</td></tr>' :
+                    '<tr><td colspan="11" class="px-6 py-4 text-center text-gray-500">No users</td></tr>' :
                     users.map(user => `
                       <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.id}</td>
@@ -5500,6 +5501,13 @@ async function loadUsers() {
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.order_count || 0}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatPriceDecimal(user.total_spent || 0)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                          <select onchange="updateUserPermission(${user.id}, this.value)" 
+                                  class="text-xs border border-gray-300 rounded px-2 py-1 ${(user.permission || 'readwrite') === 'readonly' ? 'bg-yellow-50 text-yellow-800' : 'bg-blue-50 text-blue-800'}">
+                            <option value="readonly" ${(user.permission || 'readwrite') === 'readonly' ? 'selected' : ''}>只读</option>
+                            <option value="readwrite" ${(user.permission || 'readwrite') === 'readwrite' ? 'selected' : ''}>读写</option>
+                          </select>
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                           ${user.isLocked ? `
                             <div class="flex flex-col space-y-1">
@@ -5560,6 +5568,32 @@ async function loadUsers() {
   } catch (error) {
     console.error('加载用户列表失败:', error);
     container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
+  }
+}
+
+// 更新用户权限
+async function updateUserPermission(userId, permission) {
+  try {
+    const data = await adminApiRequest(`${API_BASE}/admin/users/${userId}/permission`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permission })
+    });
+    
+    if (data.success) {
+      showToast(`用户权限已更新为：${permission === 'readonly' ? '只读' : '读写'}`, 'success');
+      // 重新加载用户列表以更新显示
+      await loadUsers();
+    } else {
+      showToast(data.message || '更新权限失败', 'error');
+      // 重新加载用户列表以恢复原值
+      await loadUsers();
+    }
+  } catch (error) {
+    console.error('更新用户权限失败:', error);
+    showToast('更新权限失败', 'error');
+    // 重新加载用户列表以恢复原值
+    await loadUsers();
   }
 }
 

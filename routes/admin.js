@@ -4296,6 +4296,56 @@ router.get('/users', async (req, res) => {
   }
 });
 
+// 更新用户权限
+router.put('/users/:id/permission', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { permission } = req.body;
+    
+    // 验证权限值
+    if (permission !== 'readonly' && permission !== 'readwrite') {
+      return res.status(400).json({ 
+        success: false, 
+        message: '权限值必须是 readonly 或 readwrite' 
+      });
+    }
+    
+    // 检查用户是否存在
+    const user = await getAsync('SELECT id FROM users WHERE id = ?', [id]);
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: '用户不存在' 
+      });
+    }
+    
+    // 更新权限
+    await runAsync(
+      'UPDATE users SET permission = ? WHERE id = ?',
+      [permission, id]
+    );
+    
+    // 记录操作日志
+    await logAction(
+      req.session?.adminId || null,
+      'UPDATE',
+      'user',
+      id,
+      JSON.stringify({ permission }),
+      req
+    );
+    
+    res.json({ 
+      success: true, 
+      message: '用户权限更新成功',
+      permission 
+    });
+  } catch (error) {
+    logger.error('更新用户权限失败', { error: error.message });
+    res.status(500).json({ success: false, message: '更新用户权限失败' });
+  }
+});
+
 // ==================== IP锁定管理 ====================
 
 /**
