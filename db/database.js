@@ -260,6 +260,31 @@ async function initDatabase() {
       )
     `);
 
+    // 安全高危告警表（持久化，不影响业务流程）
+    await runAsync(`
+      CREATE TABLE IF NOT EXISTS security_alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        alert_hash TEXT UNIQUE NOT NULL,
+        alert_time DATETIME NOT NULL,
+        method TEXT,
+        path TEXT,
+        query TEXT,
+        status_code INTEGER,
+        ip TEXT,
+        user_agent TEXT,
+        category TEXT,
+        rule_key TEXT,
+        severity TEXT DEFAULT 'high',
+        source_file TEXT,
+        raw_log TEXT,
+        is_read INTEGER DEFAULT 0,
+        telegram_sent INTEGER DEFAULT 0,
+        telegram_sent_at DATETIME,
+        created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+        updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+      )
+    `);
+
     // 管理员登录失败记录表（用于渐进式锁定）
     await runAsync(`
       CREATE TABLE IF NOT EXISTS admin_login_attempts (
@@ -430,6 +455,10 @@ async function initDatabase() {
     await runAsync('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id)');
     await runAsync('CREATE INDEX IF NOT EXISTS idx_logs_admin ON logs(admin_id)');
     await runAsync('CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at)');
+    await runAsync('CREATE INDEX IF NOT EXISTS idx_security_alerts_time ON security_alerts(alert_time DESC)');
+    await runAsync('CREATE INDEX IF NOT EXISTS idx_security_alerts_read ON security_alerts(is_read, alert_time DESC)');
+    await runAsync('CREATE INDEX IF NOT EXISTS idx_security_alerts_ip ON security_alerts(ip)');
+    await runAsync('CREATE INDEX IF NOT EXISTS idx_security_alerts_rule ON security_alerts(rule_key)');
     await runAsync('CREATE INDEX IF NOT EXISTS idx_verification_phone_code ON verification_codes(phone, code, used)');
     await runAsync('CREATE INDEX IF NOT EXISTS idx_verification_expires ON verification_codes(expires_at)');
     await runAsync('CREATE INDEX IF NOT EXISTS idx_dine_in_qr_table ON dine_in_qr_codes(table_number)');
@@ -1042,4 +1071,3 @@ module.exports = {
   DB_PATH, // 导出数据库路径
   DB_DIR // 导出数据库目录
 };
-

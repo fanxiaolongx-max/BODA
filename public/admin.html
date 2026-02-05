@@ -380,6 +380,10 @@
             <h1 class="text-2xl font-bold text-gray-900">🧋 <span data-i18n="app_name" data-store-name>BOBA TEA</span> Admin Panel</h1>
           </div>
           <div class="flex items-center space-x-4">
+            <button id="securityAlertsButton" onclick="openSecurityAlertsTab()" class="px-3 py-2 text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition relative">
+              <span id="securityAlertsDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500"></span>
+              当前告警 (<span id="securityAlertsCount">0</span>)
+            </button>
             <span class="text-sm text-gray-600">Welcome, <span id="adminName" class="font-semibold"></span></span>
             <button onclick="logout()" class="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition">
               Logout
@@ -842,6 +846,7 @@
         </div>
         <div id="adminsTab" class="tab-content hidden"></div>
         <div id="logsTab" class="tab-content hidden"></div>
+        <div id="security-alertsTab" class="tab-content hidden"></div>
         <div id="api-managementTab" class="tab-content hidden">
           <div class="p-6">
             <div class="flex justify-between items-center mb-6">
@@ -1470,4 +1475,3 @@
   <input type="file" id="fileUploadInput" style="display: none;" onchange="handleFileUpload(event)">
 </body>
 </html>
-

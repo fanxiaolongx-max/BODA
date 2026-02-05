@@ -438,6 +438,13 @@ let currentAdmin = null;
 let currentSettings = {};
 let storeName = 'BOBA TEA'; // 商店名称，从设置中加载
 let currencySymbol = 'LE'; // 货币符号，从设置中加载
+let securityAlertPollInterval = null;
+
+const securityAlertsFilterState = {
+  hours: 24,
+  limit: 200,
+  unreadOnly: false
+};
 
 // 格式化价格显示（使用当前货币符号）
 function formatPrice(price) {
@@ -822,6 +829,7 @@ async function logout() {
     // 停止session检查和刷新
     stopSessionCheck();
     stopSessionRefresh();
+    stopSecurityAlertsPolling();
     
     await adminApiRequest(`${API_BASE}/auth/admin/logout`, {
       method: 'POST'
@@ -838,6 +846,7 @@ async function logout() {
 
 // 显示登录页面
 function showLoginPage() {
+  stopSecurityAlertsPolling();
   document.getElementById('loginPage').classList.remove('hidden');
   document.getElementById('mainPage').classList.add('hidden');
 }
@@ -854,6 +863,8 @@ function showMainPage() {
   // 加载默认数据
   loadDashboard();
   loadSettings();
+  refreshSecurityAlertsCount();
+  startSecurityAlertsPolling();
   
   // 启动订单通知（非侵入式，失败不影响其他功能）
   // 延迟启动，确保页面已完全加载
@@ -870,7 +881,24 @@ function showMainPage() {
 // 切换标签
 let currentTab = 'dashboard'; // 当前激活的标签
 
-function switchTab(tabName) {
+function setActiveSidebarItem(tabName, triggerElement) {
+  // 优先使用触发元素（侧边栏点击）
+  if (triggerElement && triggerElement.classList && triggerElement.classList.contains('sidebar-item')) {
+    triggerElement.classList.add('active');
+    return;
+  }
+
+  // 回退：根据 onclick 文本定位对应侧边栏项
+  const sidebarItems = document.querySelectorAll('.sidebar-item');
+  sidebarItems.forEach((item) => {
+    const onclickCode = item.getAttribute('onclick') || '';
+    if (onclickCode.includes(`switchTab('${tabName}')`)) {
+      item.classList.add('active');
+    }
+  });
+}
+
+function switchTab(tabName, triggerElement = null) {
   // 更新当前标签
   currentTab = tabName;
   
@@ -891,7 +919,8 @@ function switchTab(tabName) {
   }
   
   // 激活对应的侧边栏项
-  event.target.classList.add('active');
+  const eventTarget = typeof event !== 'undefined' && event ? event.target : null;
+  setActiveSidebarItem(tabName, triggerElement || eventTarget);
   
   // 加载对应数据
   switch(tabName) {
@@ -937,6 +966,9 @@ function switchTab(tabName) {
     case 'logs':
       loadLogs();
       break;
+    case 'security-alerts':
+      loadSecurityAlerts();
+      break;
     case 'api-management':
       loadApiManagement();
       break;
@@ -951,6 +983,72 @@ function switchTab(tabName) {
       }
       loadDeveloperPage();
       break;
+  }
+}
+
+function openSecurityAlertsTab() {
+  switchTab('security-alerts');
+}
+
+async function refreshSecurityAlertsCount() {
+  const countEl = document.getElementById('securityAlertsCount');
+  const buttonEl = document.getElementById('securityAlertsButton');
+  const dotEl = document.getElementById('securityAlertsDot');
+  if (!countEl || !currentAdmin) return;
+
+  try {
+    const params = new URLSearchParams({
+      hours: String(securityAlertsFilterState.hours),
+      limit: '1',
+      sync: 'true'
+    });
+    const data = await adminApiRequest(`${API_BASE}/admin/security/alerts/high-risk?${params.toString()}`);
+    if (data && data.success && data.summary) {
+      const unread = Number(data.summary.unread || 0);
+      countEl.textContent = String(unread);
+      updateSecurityAlertButtonStyle(unread, buttonEl, dotEl);
+    }
+  } catch (error) {
+    console.error('刷新高危告警数量失败:', error);
+  }
+}
+
+function updateSecurityAlertButtonStyle(unread, buttonEl, dotEl) {
+  if (!buttonEl) return;
+
+  buttonEl.classList.remove('bg-gray-100', 'text-gray-700', 'hover:bg-gray-200');
+  buttonEl.classList.remove('bg-yellow-50', 'text-yellow-700', 'hover:bg-yellow-100');
+  buttonEl.classList.remove('bg-red-50', 'text-red-700', 'hover:bg-red-100');
+
+  if (unread >= 20) {
+    buttonEl.classList.add('bg-red-50', 'text-red-700', 'hover:bg-red-100');
+  } else if (unread >= 5) {
+    buttonEl.classList.add('bg-yellow-50', 'text-yellow-700', 'hover:bg-yellow-100');
+  } else {
+    buttonEl.classList.add('bg-gray-100', 'text-gray-700', 'hover:bg-gray-200');
+  }
+
+  if (dotEl) {
+    if (unread > 0) {
+      dotEl.classList.remove('hidden');
+    } else {
+      dotEl.classList.add('hidden');
+    }
+  }
+}
+
+function startSecurityAlertsPolling() {
+  stopSecurityAlertsPolling();
+  refreshSecurityAlertsCount();
+  securityAlertPollInterval = setInterval(() => {
+    refreshSecurityAlertsCount();
+  }, 60000);
+}
+
+function stopSecurityAlertsPolling() {
+  if (securityAlertPollInterval) {
+    clearInterval(securityAlertPollInterval);
+    securityAlertPollInterval = null;
   }
 }
 
@@ -6556,6 +6654,241 @@ let ordersFilterState = {
   status: '',     // 订单状态
   cycleId: ''     // 周期ID
 };
+
+async function loadSecurityAlerts() {
+  const container = document.getElementById('security-alertsTab');
+  if (!container) return;
+
+  container.innerHTML = '<div class="text-center py-12 text-gray-500">Loading alerts...</div>';
+
+  try {
+    const params = new URLSearchParams({
+      hours: String(securityAlertsFilterState.hours),
+      limit: String(securityAlertsFilterState.limit),
+      unread_only: securityAlertsFilterState.unreadOnly ? 'true' : 'false',
+      sync: 'true'
+    });
+    const data = await adminApiRequest(`${API_BASE}/admin/security/alerts/high-risk?${params.toString()}`);
+    const telegramConfigResp = await adminApiRequest(`${API_BASE}/admin/security/alerts/telegram-config`);
+
+    if (!data || !data.success) {
+      container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
+      return;
+    }
+
+    const summary = data.summary || { total: 0, unread: 0, uniqueIps: 0, returned: 0 };
+    const alerts = data.alerts || [];
+    const topIps = data.topIps || [];
+    const tg = telegramConfigResp?.config || {};
+
+    container.innerHTML = `
+      <div class="fade-in">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <h2 class="text-2xl font-bold text-gray-900">高危告警</h2>
+          <div class="flex items-center gap-2">
+            <select
+              id="securityAlertHours"
+              class="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              onchange="changeSecurityAlertWindow(this.value)"
+            >
+              <option value="1" ${securityAlertsFilterState.hours === 1 ? 'selected' : ''}>最近1小时</option>
+              <option value="6" ${securityAlertsFilterState.hours === 6 ? 'selected' : ''}>最近6小时</option>
+              <option value="24" ${securityAlertsFilterState.hours === 24 ? 'selected' : ''}>最近24小时</option>
+              <option value="72" ${securityAlertsFilterState.hours === 72 ? 'selected' : ''}>最近72小时</option>
+            </select>
+            <button onclick="toggleSecurityAlertsUnreadOnly()" class="px-3 py-2 ${securityAlertsFilterState.unreadOnly ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-600 hover:bg-gray-700'} text-white rounded-lg text-sm transition">
+              ${securityAlertsFilterState.unreadOnly ? '仅看未读' : '全部'}
+            </button>
+            <button onclick="markAllSecurityAlertsRead()" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition">
+              全部标记已读
+            </button>
+            <button onclick="loadSecurityAlerts()" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition">
+              刷新
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div class="bg-white rounded-xl shadow-sm p-4">
+            <p class="text-sm text-gray-600">告警总数（窗口内）</p>
+            <p class="text-2xl font-bold text-red-600 mt-2">${escapeHtml(String(summary.total || 0))}</p>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm p-4">
+            <p class="text-sm text-gray-600">未读告警</p>
+            <p class="text-2xl font-bold text-orange-600 mt-2">${escapeHtml(String(summary.unread || 0))}</p>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm p-4">
+            <p class="text-sm text-gray-600">唯一来源IP</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">${escapeHtml(String(summary.uniqueIps || 0))}</p>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm p-4 md:col-span-3">
+            <p class="text-sm text-gray-600">当前窗口</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">${escapeHtml(String(summary.hours || securityAlertsFilterState.hours))}h</p>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-3">Telegram 推送</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" id="telegramAlertEnabled" ${tg.enabled ? 'checked' : ''}>
+              启用 Telegram 推送
+            </label>
+            <input type="text" id="telegramBotToken" placeholder="Bot Token" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
+            <input type="text" id="telegramChatId" placeholder="Chat ID" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
+          </div>
+          <div class="text-xs text-gray-500 mb-3">
+            已保存：Token ${tg.botTokenMasked || '未设置'}，Chat ID ${tg.chatIdMasked || '未设置'}
+            （留空则保持当前已保存值）
+          </div>
+          <div class="flex gap-2">
+            <button onclick="saveTelegramAlertConfig(false)" class="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition">保存配置</button>
+            <button onclick="saveTelegramAlertConfig(true)" class="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm hover:bg-indigo-200 transition">保存并发送测试</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-3">Top Source IPs</h3>
+          <div class="flex flex-wrap gap-2">
+            ${topIps.length === 0 ? '<span class="text-sm text-gray-500">No data</span>' : topIps.map(item => `
+              <span class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded border border-red-100">
+                ${escapeHtml(item.ip)} (${escapeHtml(String(item.count))})
+              </span>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Read</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Path</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200">
+                ${alerts.length === 0 ? `
+                  <tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">当前窗口暂无高危告警</td></tr>
+                ` : alerts.map(alert => `
+                  <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">${escapeHtml(formatServerTime(alert.timestamp))}</td>
+                    <td class="px-4 py-3 text-sm">
+                      ${alert.isRead ? '<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">已读</span>' : '<span class="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">未读</span>'}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${escapeHtml(alert.category || '-')}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${escapeHtml(alert.method || '-')}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900 max-w-xl truncate" title="${escapeHtml(alert.path || '-')}">${escapeHtml(alert.path || '-')}</td>
+                    <td class="px-4 py-3 text-sm">${renderAlertStatus(alert.statusCode)}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">${escapeHtml(alert.ip || '-')}</td>
+                    <td class="px-4 py-3 text-sm">
+                      ${alert.isRead ? '-' : `<button onclick="markSecurityAlertRead(${alert.id})" class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200">标记已读</button>`}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const unread = Number(summary.unread || 0);
+    const countEl = document.getElementById('securityAlertsCount');
+    const buttonEl = document.getElementById('securityAlertsButton');
+    const dotEl = document.getElementById('securityAlertsDot');
+    if (countEl) countEl.textContent = String(unread);
+    updateSecurityAlertButtonStyle(unread, buttonEl, dotEl);
+  } catch (error) {
+    console.error('加载高危告警失败:', error);
+    container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
+  }
+}
+
+function renderAlertStatus(statusCode) {
+  if (typeof statusCode !== 'number') return '<span class="text-gray-500">-</span>';
+  if (statusCode >= 200 && statusCode < 300) {
+    return `<span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">${escapeHtml(String(statusCode))}</span>`;
+  }
+  if (statusCode >= 400) {
+    return `<span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">${escapeHtml(String(statusCode))}</span>`;
+  }
+  return `<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">${escapeHtml(String(statusCode))}</span>`;
+}
+
+function changeSecurityAlertWindow(hours) {
+  const parsed = parseInt(hours, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) return;
+  securityAlertsFilterState.hours = parsed;
+  loadSecurityAlerts();
+  refreshSecurityAlertsCount();
+}
+
+function toggleSecurityAlertsUnreadOnly() {
+  securityAlertsFilterState.unreadOnly = !securityAlertsFilterState.unreadOnly;
+  loadSecurityAlerts();
+}
+
+async function markSecurityAlertRead(id) {
+  try {
+    await adminApiRequest(`${API_BASE}/admin/security/alerts/mark-read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [id] })
+    });
+    loadSecurityAlerts();
+    refreshSecurityAlertsCount();
+  } catch (error) {
+    console.error('标记告警已读失败:', error);
+    showToast('标记已读失败', 'error');
+  }
+}
+
+async function markAllSecurityAlertsRead() {
+  try {
+    await adminApiRequest(`${API_BASE}/admin/security/alerts/mark-read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true, hours: securityAlertsFilterState.hours })
+    });
+    showToast('已全部标记为已读', 'success');
+    loadSecurityAlerts();
+    refreshSecurityAlertsCount();
+  } catch (error) {
+    console.error('全部标记已读失败:', error);
+    showToast('操作失败', 'error');
+  }
+}
+
+async function saveTelegramAlertConfig(testSend) {
+  const enabled = document.getElementById('telegramAlertEnabled')?.checked || false;
+  const botToken = document.getElementById('telegramBotToken')?.value?.trim() || '';
+  const chatId = document.getElementById('telegramChatId')?.value?.trim() || '';
+
+  try {
+    await adminApiRequest(`${API_BASE}/admin/security/alerts/telegram-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled,
+        botToken,
+        chatId,
+        test: Boolean(testSend)
+      })
+    });
+    showToast(testSend ? '配置已保存并发送测试消息' : 'Telegram 配置已保存', 'success');
+    loadSecurityAlerts();
+  } catch (error) {
+    console.error('保存 Telegram 配置失败:', error);
+    showToast(error.data?.message || '保存配置失败', 'error');
+  }
+}
 
 // 日志过滤状态
 let logsFilterState = {

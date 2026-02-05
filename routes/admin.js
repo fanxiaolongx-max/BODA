@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
 const ffmpeg = require('fluent-ffmpeg');
@@ -44,6 +46,709 @@ function clearRelatedCache() {
   cache.delete('public:categories');
   cache.delete('public:discount-rules');
   // 注意：products缓存需要根据category_id动态清除，这里只清除通用缓存
+}
+
+// 高危告警规则（仅检测常见攻击扫描，不影响现有业务）
+const HIGH_RISK_ALERT_RULES = [
+  { key: 'path_traversal', pattern: /(?:\.\.\/|%2e%2e%2f|%2f%2e%2e|\\\.\.\\|\/\.\.\/)/i, category: 'Path Traversal' },
+  { key: 'env_or_secret_probe', pattern: /\/(?:\.env(?:\.[a-z0-9_-]+)?|\.git\/config|\.aws\/credentials|id_rsa|config\.json|wp-config(?:\.bak)?)/i, category: 'Sensitive File Probe' },
+  { key: 'wordpress_probe', pattern: /\/(?:wp-admin|wp-login\.php|xmlrpc\.php|wp-content|wp-includes)/i, category: 'WordPress Probe' },
+  { key: 'phpmyadmin_probe', pattern: /\/(?:phpmyadmin|pma)\/?/i, category: 'PhpMyAdmin Probe' },
+  { key: 'magento_probe', pattern: /\/(?:magento_version|RELEASE_NOTES\.txt)/i, category: 'Magento Probe' },
+  { key: 'php_shell_probe', pattern: /\/(?:.*\.php|admin\.php|shell|r57|c99)\b/i, category: 'Webshell Probe' }
+];
+
+const HIGH_RISK_SEVERITY = 'high';
+
+function parseLogTimestamp(timestamp) {
+  if (!timestamp || typeof timestamp !== 'string') return null;
+  const normalized = timestamp.replace(' ', 'T');
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function detectHighRiskAlert(log) {
+  const pathValue = typeof log.path === 'string' ? log.path : '';
+  const queryValue = log.query ? JSON.stringify(log.query) : '';
+  const text = `${pathValue} ${queryValue}`;
+
+  for (const rule of HIGH_RISK_ALERT_RULES) {
+    if (rule.pattern.test(text)) {
+      return {
+        isHighRisk: true,
+        ruleKey: rule.key,
+        category: rule.category
+      };
+    }
+  }
+
+  return {
+    isHighRisk: false,
+    ruleKey: null,
+    category: null
+  };
+}
+
+async function getHighRiskAlerts({ hours = 24, limit = 200 }) {
+  const safeHours = Math.min(Math.max(parseInt(hours, 10) || 24, 1), 168);
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 2000);
+  const cutoff = new Date(Date.now() - safeHours * 60 * 60 * 1000);
+
+  const logsDir = path.join(DATA_DIR, 'logs');
+  const files = await fs.promises.readdir(logsDir).catch(() => []);
+  const accessFiles = files
+    .filter((name) => /^access-\d{4}-\d{2}-\d{2}\.log$/.test(name))
+    .sort()
+    .slice(-8); // 最多读取最近8天日志，避免无边界扫描
+
+  const alerts = [];
+
+  for (const fileName of accessFiles) {
+    const filePath = path.join(logsDir, fileName);
+    let content = '';
+
+    try {
+      content = await fs.promises.readFile(filePath, 'utf8');
+    } catch (error) {
+      logger.warn('读取访问日志失败', { filePath, error: error.message });
+      continue;
+    }
+
+    const lines = content.split('\n');
+    for (const line of lines) {
+      if (!line || !line.includes('"message":"HTTP Request"')) continue;
+
+      let log;
+      try {
+        log = JSON.parse(line);
+      } catch (error) {
+        continue;
+      }
+
+      const logTime = parseLogTimestamp(log.timestamp);
+      if (!logTime || logTime < cutoff) continue;
+
+      const risk = detectHighRiskAlert(log);
+      if (!risk.isHighRisk) continue;
+
+      alerts.push({
+        timestamp: log.timestamp || '',
+        method: log.method || '-',
+        path: log.path || '-',
+        query: log.query || null,
+        statusCode: typeof log.statusCode === 'number' ? log.statusCode : null,
+        ip: log.ip || '-',
+        userAgent: log.userAgent || '-',
+        category: risk.category,
+        ruleKey: risk.ruleKey,
+        sourceFile: fileName,
+        rawLog: line
+      });
+    }
+  }
+
+  alerts.sort((a, b) => {
+    const ta = parseLogTimestamp(a.timestamp)?.getTime() || 0;
+    const tb = parseLogTimestamp(b.timestamp)?.getTime() || 0;
+    return tb - ta;
+  });
+
+  const limitedAlerts = alerts.slice(0, safeLimit);
+  const ipCounter = {};
+  const categoryCounter = {};
+
+  for (const alert of limitedAlerts) {
+    ipCounter[alert.ip] = (ipCounter[alert.ip] || 0) + 1;
+    categoryCounter[alert.category] = (categoryCounter[alert.category] || 0) + 1;
+  }
+
+  const topIps = Object.entries(ipCounter)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([ip, count]) => ({ ip, count }));
+
+  const topCategories = Object.entries(categoryCounter)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([category, count]) => ({ category, count }));
+
+  return {
+    hours: safeHours,
+    limit: safeLimit,
+    total: alerts.length,
+    alerts: limitedAlerts,
+    topIps,
+    topCategories
+  };
+}
+
+function createAlertHash(alert) {
+  const payload = [
+    alert.timestamp || '',
+    alert.method || '',
+    alert.path || '',
+    JSON.stringify(alert.query || {}),
+    String(alert.statusCode ?? ''),
+    alert.ip || '',
+    alert.ruleKey || ''
+  ].join('|');
+  return crypto.createHash('sha1').update(payload).digest('hex');
+}
+
+async function getTelegramConfig() {
+  const rows = await allAsync(
+    `SELECT key, value FROM settings WHERE key IN (
+      'telegram_alert_enabled',
+      'telegram_bot_token',
+      'telegram_chat_id'
+    )`
+  );
+  const config = {
+    enabled: false,
+    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+    chatId: process.env.TELEGRAM_CHAT_ID || ''
+  };
+
+  rows.forEach((row) => {
+    if (row.key === 'telegram_alert_enabled') {
+      config.enabled = String(row.value) === 'true';
+    }
+    if (row.key === 'telegram_bot_token' && row.value) {
+      config.botToken = String(row.value);
+    }
+    if (row.key === 'telegram_chat_id' && row.value) {
+      config.chatId = String(row.value);
+    }
+  });
+
+  return config;
+}
+
+function sendTelegramMessage(botToken, chatId, text) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true
+    });
+
+    const req = https.request(
+      {
+        hostname: 'api.telegram.org',
+        path: `/bot${botToken}/sendMessage`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        },
+        timeout: 8000
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve();
+            return;
+          }
+          reject(new Error(`Telegram API ${res.statusCode}: ${body}`));
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error('Telegram request timeout'));
+    });
+    req.write(payload);
+    req.end();
+  });
+}
+
+async function pushAlertToTelegramIfEnabled(alertId, alert) {
+  try {
+    const telegramConfig = await getTelegramConfig();
+    if (!telegramConfig.enabled || !telegramConfig.botToken || !telegramConfig.chatId) {
+      return false;
+    }
+
+    const message = [
+      '<b>High Risk Alert</b>',
+      `Time: ${alert.timestamp || '-'}`,
+      `Category: ${alert.category || '-'}`,
+      `Method: ${alert.method || '-'}`,
+      `Path: ${alert.path || '-'}`,
+      `Status: ${alert.statusCode ?? '-'}`,
+      `IP: ${alert.ip || '-'}`,
+      `Rule: ${alert.ruleKey || '-'}`
+    ].join('\n');
+
+    await sendTelegramMessage(telegramConfig.botToken, telegramConfig.chatId, message);
+    await runAsync(
+      `UPDATE security_alerts
+       SET telegram_sent = 1,
+           telegram_sent_at = datetime('now', 'localtime'),
+           updated_at = datetime('now', 'localtime')
+       WHERE id = ?`,
+      [alertId]
+    );
+    return true;
+  } catch (error) {
+    logger.warn('发送 Telegram 告警失败', { error: error.message });
+    return false;
+  }
+}
+
+async function persistHighRiskAlerts({ hours = 24, limit = 200, sendTelegram = true }) {
+  const scanResult = await getHighRiskAlerts({ hours, limit });
+  let inserted = 0;
+  let duplicate = 0;
+  let telegramSent = 0;
+
+  for (const alert of scanResult.alerts) {
+    const alertHash = createAlertHash(alert);
+    try {
+      const insertResult = await runAsync(
+        `INSERT INTO security_alerts (
+          alert_hash, alert_time, method, path, query, status_code, ip, user_agent,
+          category, rule_key, severity, source_file, raw_log, is_read, telegram_sent, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, datetime('now', 'localtime'))`,
+        [
+          alertHash,
+          alert.timestamp || '',
+          alert.method || '',
+          alert.path || '',
+          JSON.stringify(alert.query || {}),
+          alert.statusCode,
+          alert.ip || '',
+          alert.userAgent || '',
+          alert.category || '',
+          alert.ruleKey || '',
+          HIGH_RISK_SEVERITY,
+          alert.sourceFile || '',
+          alert.rawLog || ''
+        ]
+      );
+      inserted += 1;
+
+      if (sendTelegram && insertResult && insertResult.id) {
+        const sent = await pushAlertToTelegramIfEnabled(insertResult.id, alert);
+        if (sent) telegramSent += 1;
+      }
+    } catch (error) {
+      if (error && error.message && error.message.includes('UNIQUE constraint failed')) {
+        duplicate += 1;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return {
+    inserted,
+    duplicate,
+    scanned: scanResult.total,
+    telegramSent
+  };
+}
+
+async function insertSecurityAlertRecord(record, sendTelegram = true) {
+  try {
+    const insertResult = await runAsync(
+      `INSERT INTO security_alerts (
+        alert_hash, alert_time, method, path, query, status_code, ip, user_agent,
+        category, rule_key, severity, source_file, raw_log, is_read, telegram_sent, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, datetime('now', 'localtime'))`,
+      [
+        record.alertHash,
+        record.alertTime || '',
+        record.method || '',
+        record.path || '',
+        JSON.stringify(record.query || {}),
+        record.statusCode ?? null,
+        record.ip || '',
+        record.userAgent || '',
+        record.category || '',
+        record.ruleKey || '',
+        HIGH_RISK_SEVERITY,
+        record.sourceFile || '',
+        record.rawLog || ''
+      ]
+    );
+
+    let telegramSent = 0;
+    if (sendTelegram && insertResult && insertResult.id) {
+      const sent = await pushAlertToTelegramIfEnabled(insertResult.id, {
+        timestamp: record.alertTime || '',
+        method: record.method || '',
+        path: record.path || '',
+        statusCode: record.statusCode ?? null,
+        ip: record.ip || '',
+        category: record.category || '',
+        ruleKey: record.ruleKey || ''
+      });
+      telegramSent = sent ? 1 : 0;
+    }
+
+    return { inserted: 1, duplicate: 0, telegramSent };
+  } catch (error) {
+    if (error && error.message && error.message.includes('UNIQUE constraint failed')) {
+      return { inserted: 0, duplicate: 1, telegramSent: 0 };
+    }
+    throw error;
+  }
+}
+
+async function persistAuthSecurityAlerts({ hours = 24, sendTelegram = true }) {
+  const safeHours = Math.min(Math.max(parseInt(hours, 10) || 24, 1), 168);
+  const timeArg = `-${safeHours} hours`;
+  let inserted = 0;
+  let duplicate = 0;
+  let telegramSent = 0;
+
+  // 1) 登录审计中的明确高危失败（锁定/拉黑）
+  const lockedOrBlockedAttempts = await allAsync(
+    `SELECT account_type, account_identifier, ip_address, user_agent, failure_reason, created_at
+     FROM login_attempts_audit
+     WHERE success = 0
+       AND created_at >= datetime('now', ?, 'localtime')
+       AND (
+         LOWER(COALESCE(failure_reason, '')) LIKE '%blocked%'
+         OR LOWER(COALESCE(failure_reason, '')) LIKE '%locked%'
+       )
+     ORDER BY created_at DESC
+     LIMIT 1000`,
+    [timeArg]
+  );
+
+  for (const row of lockedOrBlockedAttempts) {
+    const reasonText = String(row.failure_reason || '').toLowerCase();
+    const isIpBlocked = reasonText.includes('blocked');
+    const category = isIpBlocked ? 'Login Blocked Attempt' : 'Login Locked Attempt';
+    const ruleKey = isIpBlocked ? 'login_blocked_attempt' : 'login_locked_attempt';
+    const path = `/api/auth/${row.account_type || 'unknown'}/login`;
+    const method = 'POST';
+    const hash = crypto
+      .createHash('sha1')
+      .update(['audit', row.created_at, row.account_type, row.account_identifier, row.ip_address, row.failure_reason].join('|'))
+      .digest('hex');
+
+    const result = await insertSecurityAlertRecord(
+      {
+        alertHash: hash,
+        alertTime: row.created_at,
+        method,
+        path,
+        query: {
+          accountType: row.account_type,
+          accountIdentifier: row.account_identifier,
+          failureReason: row.failure_reason
+        },
+        statusCode: 403,
+        ip: row.ip_address || '',
+        userAgent: row.user_agent || '',
+        category,
+        ruleKey,
+        sourceFile: 'login_attempts_audit',
+        rawLog: JSON.stringify(row)
+      },
+      sendTelegram
+    );
+    inserted += result.inserted;
+    duplicate += result.duplicate;
+    telegramSent += result.telegramSent;
+  }
+
+  // 2) 高频失败登录（疑似爆破）
+  const bruteForceAttempts = await allAsync(
+    `SELECT
+       account_type,
+       account_identifier,
+       ip_address,
+       COUNT(*) AS failed_count,
+       MAX(created_at) AS last_time
+     FROM login_attempts_audit
+     WHERE success = 0
+       AND created_at >= datetime('now', ?, 'localtime')
+     GROUP BY account_type, account_identifier, ip_address
+     HAVING COUNT(*) >= 8
+     ORDER BY failed_count DESC
+     LIMIT 300`,
+    [timeArg]
+  );
+
+  for (const row of bruteForceAttempts) {
+    const path = `/api/auth/${row.account_type || 'unknown'}/login`;
+    const hash = crypto
+      .createHash('sha1')
+      .update(['bruteforce', row.last_time, row.account_type, row.account_identifier, row.ip_address, row.failed_count].join('|'))
+      .digest('hex');
+
+    const result = await insertSecurityAlertRecord(
+      {
+        alertHash: hash,
+        alertTime: row.last_time,
+        method: 'POST',
+        path,
+        query: {
+          accountType: row.account_type,
+          accountIdentifier: row.account_identifier,
+          failedCount: row.failed_count
+        },
+        statusCode: 401,
+        ip: row.ip_address || '',
+        userAgent: '',
+        category: 'Bruteforce Suspected',
+        ruleKey: 'login_bruteforce_suspected',
+        sourceFile: 'login_attempts_audit',
+        rawLog: JSON.stringify(row)
+      },
+      sendTelegram
+    );
+    inserted += result.inserted;
+    duplicate += result.duplicate;
+    telegramSent += result.telegramSent;
+  }
+
+  // 3) 当前锁定的管理员账户
+  const lockedAdmins = await allAsync(
+    `SELECT username, failed_count, locked_until, last_attempt_at
+     FROM admin_login_attempts
+     WHERE locked_until IS NOT NULL
+       AND locked_until > datetime('now', 'localtime')
+     ORDER BY locked_until DESC
+     LIMIT 300`
+  );
+
+  for (const row of lockedAdmins) {
+    const hash = crypto
+      .createHash('sha1')
+      .update(['admin_locked', row.username, row.locked_until].join('|'))
+      .digest('hex');
+
+    const result = await insertSecurityAlertRecord(
+      {
+        alertHash: hash,
+        alertTime: row.last_attempt_at || row.locked_until,
+        method: 'AUTH',
+        path: '/api/auth/admin/login',
+        query: {
+          username: row.username,
+          failedCount: row.failed_count,
+          lockedUntil: row.locked_until
+        },
+        statusCode: 403,
+        ip: '',
+        userAgent: '',
+        category: 'Admin Account Locked',
+        ruleKey: 'admin_account_locked',
+        sourceFile: 'admin_login_attempts',
+        rawLog: JSON.stringify(row)
+      },
+      sendTelegram
+    );
+    inserted += result.inserted;
+    duplicate += result.duplicate;
+    telegramSent += result.telegramSent;
+  }
+
+  // 4) 当前锁定的普通用户账户
+  const lockedUsers = await allAsync(
+    `SELECT phone, failed_count, locked_until, last_attempt_at
+     FROM user_login_attempts
+     WHERE locked_until IS NOT NULL
+       AND locked_until > datetime('now', 'localtime')
+     ORDER BY locked_until DESC
+     LIMIT 1000`
+  );
+
+  for (const row of lockedUsers) {
+    const hash = crypto
+      .createHash('sha1')
+      .update(['user_locked', row.phone, row.locked_until].join('|'))
+      .digest('hex');
+
+    const result = await insertSecurityAlertRecord(
+      {
+        alertHash: hash,
+        alertTime: row.last_attempt_at || row.locked_until,
+        method: 'AUTH',
+        path: '/api/auth/user/login',
+        query: {
+          phone: row.phone,
+          failedCount: row.failed_count,
+          lockedUntil: row.locked_until
+        },
+        statusCode: 403,
+        ip: '',
+        userAgent: '',
+        category: 'User Account Locked',
+        ruleKey: 'user_account_locked',
+        sourceFile: 'user_login_attempts',
+        rawLog: JSON.stringify(row)
+      },
+      sendTelegram
+    );
+    inserted += result.inserted;
+    duplicate += result.duplicate;
+    telegramSent += result.telegramSent;
+  }
+
+  // 5) 当前被拉黑IP
+  const blockedIps = await allAsync(
+    `SELECT ip_address, failed_count, blocked_until, last_attempt_at
+     FROM ip_login_attempts
+     WHERE blocked_until IS NOT NULL
+       AND blocked_until > datetime('now', 'localtime')
+     ORDER BY blocked_until DESC
+     LIMIT 1000`
+  );
+
+  for (const row of blockedIps) {
+    const hash = crypto
+      .createHash('sha1')
+      .update(['ip_blocked', row.ip_address, row.blocked_until].join('|'))
+      .digest('hex');
+
+    const result = await insertSecurityAlertRecord(
+      {
+        alertHash: hash,
+        alertTime: row.last_attempt_at || row.blocked_until,
+        method: 'AUTH',
+        path: '/api/auth/*/login',
+        query: {
+          blockedUntil: row.blocked_until,
+          failedCount: row.failed_count
+        },
+        statusCode: 403,
+        ip: row.ip_address || '',
+        userAgent: '',
+        category: 'IP Blocked',
+        ruleKey: 'ip_blocked',
+        sourceFile: 'ip_login_attempts',
+        rawLog: JSON.stringify(row)
+      },
+      sendTelegram
+    );
+    inserted += result.inserted;
+    duplicate += result.duplicate;
+    telegramSent += result.telegramSent;
+  }
+
+  return {
+    inserted,
+    duplicate,
+    scanned: lockedOrBlockedAttempts.length + bruteForceAttempts.length + lockedAdmins.length + lockedUsers.length + blockedIps.length,
+    telegramSent
+  };
+}
+
+async function syncSecurityAlerts({ hours = 24, limit = 200, sendTelegram = true }) {
+  const scanResult = await persistHighRiskAlerts({ hours, limit, sendTelegram });
+  const authResult = await persistAuthSecurityAlerts({ hours, sendTelegram });
+  return {
+    inserted: scanResult.inserted + authResult.inserted,
+    duplicate: scanResult.duplicate + authResult.duplicate,
+    scanned: scanResult.scanned + authResult.scanned,
+    telegramSent: scanResult.telegramSent + authResult.telegramSent,
+    breakdown: {
+      webRisk: scanResult,
+      authRisk: authResult
+    }
+  };
+}
+
+async function listPersistedHighRiskAlerts({ hours = 24, limit = 200, unreadOnly = false }) {
+  const safeHours = Math.min(Math.max(parseInt(hours, 10) || 24, 1), 168);
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 2000);
+
+  let whereClause = `severity = ? AND alert_time >= datetime('now', ?, 'localtime')`;
+  const whereParams = [HIGH_RISK_SEVERITY, `-${safeHours} hours`];
+
+  if (unreadOnly) {
+    whereClause += ' AND is_read = 0';
+  }
+
+  const alerts = await allAsync(
+    `SELECT id, alert_time, method, path, query, status_code, ip, user_agent, category, rule_key, is_read, telegram_sent, created_at
+     FROM security_alerts
+     WHERE ${whereClause}
+     ORDER BY alert_time DESC
+     LIMIT ?`,
+    [...whereParams, safeLimit]
+  );
+
+  const summaryRow = await getAsync(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread,
+       COUNT(DISTINCT ip) AS unique_ips
+     FROM security_alerts
+     WHERE ${whereClause}`,
+    whereParams
+  );
+
+  const topIps = await allAsync(
+    `SELECT ip, COUNT(*) AS count
+     FROM security_alerts
+     WHERE ${whereClause}
+     GROUP BY ip
+     ORDER BY count DESC
+     LIMIT 10`,
+    whereParams
+  );
+
+  const topCategories = await allAsync(
+    `SELECT category, COUNT(*) AS count
+     FROM security_alerts
+     WHERE ${whereClause}
+     GROUP BY category
+     ORDER BY count DESC
+     LIMIT 10`,
+    whereParams
+  );
+
+  const normalizedAlerts = alerts.map((a) => {
+    let parsedQuery = null;
+    if (a.query) {
+      try {
+        parsedQuery = JSON.parse(a.query);
+      } catch (error) {
+        parsedQuery = a.query;
+      }
+    }
+    return {
+      id: a.id,
+      timestamp: a.alert_time,
+      method: a.method,
+      path: a.path,
+      query: parsedQuery,
+      statusCode: a.status_code,
+      ip: a.ip,
+      userAgent: a.user_agent,
+      category: a.category,
+      ruleKey: a.rule_key,
+      isRead: a.is_read === 1,
+      telegramSent: a.telegram_sent === 1,
+      createdAt: a.created_at
+    };
+  });
+
+  return {
+    summary: {
+      hours: safeHours,
+      total: summaryRow?.total || 0,
+      unread: summaryRow?.unread || 0,
+      returned: normalizedAlerts.length,
+      uniqueIps: summaryRow?.unique_ips || 0
+    },
+    topIps,
+    topCategories,
+    alerts: normalizedAlerts
+  };
 }
 
 // ==================== 远程备份接收 API（需要在 requireAuth 之前注册）====================
@@ -4347,6 +5052,195 @@ router.put('/users/:id/permission', async (req, res) => {
 });
 
 // ==================== IP锁定管理 ====================
+
+/**
+ * GET /api/admin/security/alerts/high-risk
+ * 获取高危访问告警（持久化 + 已读/未读）
+ */
+router.get('/security/alerts/high-risk', async (req, res) => {
+  try {
+    const { hours = 24, limit = 200, unread_only = 'false', sync = 'true' } = req.query;
+
+    if (String(sync) !== 'false') {
+      await syncSecurityAlerts({
+        hours,
+        limit: Math.max(parseInt(limit, 10) || 200, 500),
+        sendTelegram: true
+      });
+    }
+
+    const result = await listPersistedHighRiskAlerts({
+      hours,
+      limit,
+      unreadOnly: String(unread_only) === 'true'
+    });
+
+    res.json({
+      success: true,
+      summary: result.summary,
+      topIps: result.topIps,
+      topCategories: result.topCategories,
+      alerts: result.alerts
+    });
+  } catch (error) {
+    logger.error('获取高危告警失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '获取高危告警失败'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/security/alerts/backfill-today
+ * 手动补录今天告警（用于初始化展示）
+ */
+router.post('/security/alerts/backfill-today', async (req, res) => {
+  try {
+    const result = await syncSecurityAlerts({
+      hours: 24,
+      limit: 2000,
+      sendTelegram: true
+    });
+
+    await logAction(req.session.adminId, 'SECURITY_ALERTS_BACKFILL', 'security_alert', null, result, req);
+
+    res.json({
+      success: true,
+      message: '今天告警补录完成',
+      result
+    });
+  } catch (error) {
+    logger.error('补录今天告警失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '补录今天告警失败'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/security/alerts/mark-read
+ * 标记告警为已读（单条或批量）
+ */
+router.post('/security/alerts/mark-read', async (req, res) => {
+  try {
+    const { ids = [], all = false, hours = 24 } = req.body || {};
+    let affected = 0;
+
+    if (all) {
+      const safeHours = Math.min(Math.max(parseInt(hours, 10) || 24, 1), 168);
+      const updateResult = await runAsync(
+        `UPDATE security_alerts
+         SET is_read = 1, updated_at = datetime('now', 'localtime')
+         WHERE is_read = 0
+           AND severity = ?
+           AND alert_time >= datetime('now', ?, 'localtime')`,
+        [HIGH_RISK_SEVERITY, `-${safeHours} hours`]
+      );
+      affected = updateResult.changes || 0;
+    } else if (Array.isArray(ids) && ids.length > 0) {
+      const validIds = ids.map((id) => parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0);
+      if (validIds.length === 0) {
+        return res.status(400).json({ success: false, message: 'ids 无效' });
+      }
+
+      const placeholders = validIds.map(() => '?').join(',');
+      const updateResult = await runAsync(
+        `UPDATE security_alerts
+         SET is_read = 1, updated_at = datetime('now', 'localtime')
+         WHERE id IN (${placeholders})`,
+        validIds
+      );
+      affected = updateResult.changes || 0;
+    } else {
+      return res.status(400).json({ success: false, message: '请传入 ids 或 all=true' });
+    }
+
+    res.json({
+      success: true,
+      message: '告警已标记为已读',
+      affected
+    });
+  } catch (error) {
+    logger.error('标记告警已读失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '标记告警已读失败'
+    });
+  }
+});
+
+/**
+ * GET /api/admin/security/alerts/telegram-config
+ * 读取 Telegram 告警配置（敏感信息做掩码）
+ */
+router.get('/security/alerts/telegram-config', async (req, res) => {
+  try {
+    const cfg = await getTelegramConfig();
+    const maskedToken = cfg.botToken ? `${cfg.botToken.slice(0, 8)}***` : '';
+    const maskedChatId = cfg.chatId ? `${cfg.chatId.slice(0, 4)}***` : '';
+    res.json({
+      success: true,
+      config: {
+        enabled: cfg.enabled,
+        botTokenMasked: maskedToken,
+        chatIdMasked: maskedChatId,
+        hasBotToken: Boolean(cfg.botToken),
+        hasChatId: Boolean(cfg.chatId)
+      }
+    });
+  } catch (error) {
+    logger.error('读取 Telegram 告警配置失败', { error: error.message });
+    res.status(500).json({ success: false, message: '读取配置失败' });
+  }
+});
+
+/**
+ * POST /api/admin/security/alerts/telegram-config
+ * 保存 Telegram 告警配置
+ */
+router.post('/security/alerts/telegram-config', async (req, res) => {
+  try {
+    const { enabled, botToken, chatId, test = false } = req.body || {};
+    const normalizedEnabled = String(enabled) === 'true' || enabled === true;
+    const existingCfg = await getTelegramConfig();
+    const finalBotToken = (botToken && String(botToken).trim()) ? String(botToken).trim() : existingCfg.botToken;
+    const finalChatId = (chatId && String(chatId).trim()) ? String(chatId).trim() : existingCfg.chatId;
+
+    await beginTransaction();
+    try {
+      const updates = [
+        ['telegram_alert_enabled', normalizedEnabled ? 'true' : 'false'],
+        ['telegram_bot_token', finalBotToken || ''],
+        ['telegram_chat_id', finalChatId || '']
+      ];
+
+      for (const [key, value] of updates) {
+        await runAsync(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now', 'localtime'))
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now', 'localtime')`,
+          [key, value]
+        );
+      }
+      await commit();
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
+
+    if (test && normalizedEnabled && finalBotToken && finalChatId) {
+      await sendTelegramMessage(finalBotToken, finalChatId, '<b>Telegram 告警测试</b>\n配置保存成功。');
+    }
+
+    await logAction(req.session.adminId, 'UPDATE_TELEGRAM_ALERT_CONFIG', 'settings', null, { enabled: normalizedEnabled }, req);
+
+    res.json({ success: true, message: 'Telegram 配置已保存' });
+  } catch (error) {
+    logger.error('保存 Telegram 配置失败', { error: error.message });
+    res.status(500).json({ success: false, message: `保存配置失败: ${error.message}` });
+  }
+});
 
 /**
  * GET /api/admin/security/blocked-ips
@@ -9412,4 +10306,3 @@ router.post('/exchange-rate/update', requireAuth, async (req, res) => {
 });
 
 module.exports = router;
-
