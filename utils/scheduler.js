@@ -4,10 +4,15 @@ const { allAsync, getAsync } = require('../db/database');
 const { shouldPushNow, pushBackupToRemote } = require('./remote-backup');
 const { fetchExchangeRates } = require('./exchange-rate-fetcher');
 const { updateExchangeRateAPI } = require('./exchange-rate-updater');
+const { fetchWeatherRoadData } = require('./weather-fetcher');
+const { updateWeatherAPI, findWeatherApi } = require('./weather-updater');
+const adminRoutes = require('../routes/admin');
 
 let checkInterval = null;
 let pushCheckInterval = null;
 let exchangeRateCheckInterval = null;
+let weatherCheckInterval = null;
+let securityAlertsCheckInterval = null;
 let apiLogsCleanupInterval = null;
 let backupAndLogCleanupInterval = null;
 
@@ -21,6 +26,12 @@ function startScheduler() {
   
   // 启动汇率更新调度器
   startExchangeRateScheduler();
+
+  // 启动天气路况更新调度器
+  startWeatherScheduler();
+
+  // 启动安全告警同步调度器（无登录状态也可推送 Telegram）
+  startSecurityAlertsScheduler();
   
   // 启动API日志清理调度器
   startApiLogsCleanupScheduler();
@@ -221,6 +232,133 @@ function startExchangeRateScheduler() {
   logger.info('汇率更新调度器已启动（每小时检查一次）');
 }
 
+// 启动天气路况更新调度器
+function startWeatherScheduler() {
+  let checkCount = 0;
+
+  weatherCheckInterval = setInterval(async () => {
+    checkCount++;
+    try {
+      const settings = await allAsync('SELECT key, value FROM settings');
+      const settingsObj = {};
+      settings.forEach((s) => {
+        settingsObj[s.key] = s.value;
+      });
+
+      if (settingsObj.weather_auto_update_enabled !== 'true') {
+        if (checkCount % 24 === 0) {
+          logger.debug('天气路况自动更新未启用，跳过检查');
+        }
+        return;
+      }
+
+      const frequency = settingsObj.weather_update_frequency || 'daily';
+      const lastUpdateSetting = await getAsync(
+        'SELECT value FROM settings WHERE key = ?',
+        ['weather_last_update']
+      );
+
+      const now = new Date();
+      let shouldUpdate = false;
+      let hoursSinceUpdate = 0;
+
+      if (!lastUpdateSetting || !lastUpdateSetting.value) {
+        shouldUpdate = true;
+        logger.info('天气路况更新检查：从未更新，将立即更新');
+      } else {
+        const lastUpdate = new Date(lastUpdateSetting.value);
+        hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
+        if (frequency === 'hourly' && hoursSinceUpdate >= 1) shouldUpdate = true;
+        if (frequency === 'daily' && hoursSinceUpdate >= 24) shouldUpdate = true;
+
+        if (checkCount % 6 === 0) {
+          logger.info('天气路况更新检查', {
+            frequency,
+            hoursSinceUpdate: hoursSinceUpdate.toFixed(2),
+            lastUpdate: lastUpdateSetting.value,
+            shouldUpdate
+          });
+        }
+      }
+
+      if (!shouldUpdate) return;
+
+      const weatherApi = await findWeatherApi();
+      if (!weatherApi) {
+        logger.warn('天气路况自动更新已启用，但未找到 /weather API');
+        return;
+      }
+
+      let existingContent = null;
+      if (weatherApi.response_content) {
+        try {
+          existingContent = JSON.parse(weatherApi.response_content);
+        } catch (error) {
+          existingContent = null;
+        }
+      }
+
+      const weatherData = await fetchWeatherRoadData(settingsObj, existingContent);
+      await updateWeatherAPI(weatherData);
+
+      await runAsync(
+        `INSERT INTO settings (key, value, updated_at)
+         VALUES (?, ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+        ['weather_last_update', now.toISOString(), now.toISOString()]
+      );
+
+      logger.info('天气路况自动更新成功', {
+        attractions: weatherData.attractions?.length || 0,
+        traffic: weatherData.traffic?.length || 0,
+        source: weatherData.data?.source
+      });
+      checkCount = 0;
+    } catch (error) {
+      logger.error('天气路况更新调度器检查失败', {
+        error: error.message,
+        stack: error.stack
+      });
+    }
+  }, 60 * 60 * 1000);
+
+  logger.info('天气路况更新调度器已启动（每小时检查一次）');
+}
+
+// 启动安全告警同步调度器
+function startSecurityAlertsScheduler() {
+  const runSync = async () => {
+    try {
+      if (!adminRoutes || typeof adminRoutes.syncSecurityAlerts !== 'function') {
+        logger.warn('安全告警调度器：syncSecurityAlerts 不可用，跳过');
+        return;
+      }
+
+      const result = await adminRoutes.syncSecurityAlerts({
+        hours: 24,
+        limit: 2000,
+        sendTelegram: true
+      });
+
+      if ((result.inserted || 0) > 0 || (result.telegramSent || 0) > 0) {
+        logger.info('安全告警定时同步完成', {
+          inserted: result.inserted || 0,
+          duplicate: result.duplicate || 0,
+          telegramSent: result.telegramSent || 0
+        });
+      }
+    } catch (error) {
+      logger.error('安全告警定时同步失败', { error: error.message });
+    }
+  };
+
+  // 启动时先执行一次，之后每5分钟执行
+  runSync();
+  securityAlertsCheckInterval = setInterval(runSync, 5 * 60 * 1000);
+
+  logger.info('安全告警调度器已启动（每5分钟同步并推送）');
+}
+
 // 启动API日志清理调度器
 function startApiLogsCleanupScheduler() {
   // 每小时清理一次超过3小时的消息体（request_body 和 response_body）
@@ -341,6 +479,18 @@ function stopScheduler() {
     exchangeRateCheckInterval = null;
     logger.info('汇率更新调度器已停止');
   }
+
+  if (weatherCheckInterval) {
+    clearInterval(weatherCheckInterval);
+    weatherCheckInterval = null;
+    logger.info('天气路况更新调度器已停止');
+  }
+
+  if (securityAlertsCheckInterval) {
+    clearInterval(securityAlertsCheckInterval);
+    securityAlertsCheckInterval = null;
+    logger.info('安全告警调度器已停止');
+  }
   
   if (apiLogsCleanupInterval) {
     clearInterval(apiLogsCleanupInterval);
@@ -359,4 +509,3 @@ module.exports = {
   startScheduler,
   stopScheduler
 };
-

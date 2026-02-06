@@ -310,40 +310,36 @@ async function persistHighRiskAlerts({ hours = 24, limit = 200, sendTelegram = t
 
   for (const alert of scanResult.alerts) {
     const alertHash = createAlertHash(alert);
-    try {
-      const insertResult = await runAsync(
-        `INSERT INTO security_alerts (
-          alert_hash, alert_time, method, path, query, status_code, ip, user_agent,
-          category, rule_key, severity, source_file, raw_log, is_read, telegram_sent, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, datetime('now', 'localtime'))`,
-        [
-          alertHash,
-          alert.timestamp || '',
-          alert.method || '',
-          alert.path || '',
-          JSON.stringify(alert.query || {}),
-          alert.statusCode,
-          alert.ip || '',
-          alert.userAgent || '',
-          alert.category || '',
-          alert.ruleKey || '',
-          HIGH_RISK_SEVERITY,
-          alert.sourceFile || '',
-          alert.rawLog || ''
-        ]
-      );
-      inserted += 1;
+    const insertResult = await runAsync(
+      `INSERT OR IGNORE INTO security_alerts (
+        alert_hash, alert_time, method, path, query, status_code, ip, user_agent,
+        category, rule_key, severity, source_file, raw_log, is_read, telegram_sent, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, datetime('now', 'localtime'))`,
+      [
+        alertHash,
+        alert.timestamp || '',
+        alert.method || '',
+        alert.path || '',
+        JSON.stringify(alert.query || {}),
+        alert.statusCode,
+        alert.ip || '',
+        alert.userAgent || '',
+        alert.category || '',
+        alert.ruleKey || '',
+        HIGH_RISK_SEVERITY,
+        alert.sourceFile || '',
+        alert.rawLog || ''
+      ]
+    );
 
-      if (sendTelegram && insertResult && insertResult.id) {
+    if (insertResult && insertResult.changes > 0) {
+      inserted += 1;
+      if (sendTelegram && insertResult.id) {
         const sent = await pushAlertToTelegramIfEnabled(insertResult.id, alert);
         if (sent) telegramSent += 1;
       }
-    } catch (error) {
-      if (error && error.message && error.message.includes('UNIQUE constraint failed')) {
-        duplicate += 1;
-        continue;
-      }
-      throw error;
+    } else {
+      duplicate += 1;
     }
   }
 
@@ -356,50 +352,47 @@ async function persistHighRiskAlerts({ hours = 24, limit = 200, sendTelegram = t
 }
 
 async function insertSecurityAlertRecord(record, sendTelegram = true) {
-  try {
-    const insertResult = await runAsync(
-      `INSERT INTO security_alerts (
-        alert_hash, alert_time, method, path, query, status_code, ip, user_agent,
-        category, rule_key, severity, source_file, raw_log, is_read, telegram_sent, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, datetime('now', 'localtime'))`,
-      [
-        record.alertHash,
-        record.alertTime || '',
-        record.method || '',
-        record.path || '',
-        JSON.stringify(record.query || {}),
-        record.statusCode ?? null,
-        record.ip || '',
-        record.userAgent || '',
-        record.category || '',
-        record.ruleKey || '',
-        HIGH_RISK_SEVERITY,
-        record.sourceFile || '',
-        record.rawLog || ''
-      ]
-    );
+  const insertResult = await runAsync(
+    `INSERT OR IGNORE INTO security_alerts (
+      alert_hash, alert_time, method, path, query, status_code, ip, user_agent,
+      category, rule_key, severity, source_file, raw_log, is_read, telegram_sent, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, datetime('now', 'localtime'))`,
+    [
+      record.alertHash,
+      record.alertTime || '',
+      record.method || '',
+      record.path || '',
+      JSON.stringify(record.query || {}),
+      record.statusCode ?? null,
+      record.ip || '',
+      record.userAgent || '',
+      record.category || '',
+      record.ruleKey || '',
+      HIGH_RISK_SEVERITY,
+      record.sourceFile || '',
+      record.rawLog || ''
+    ]
+  );
 
-    let telegramSent = 0;
-    if (sendTelegram && insertResult && insertResult.id) {
-      const sent = await pushAlertToTelegramIfEnabled(insertResult.id, {
-        timestamp: record.alertTime || '',
-        method: record.method || '',
-        path: record.path || '',
-        statusCode: record.statusCode ?? null,
-        ip: record.ip || '',
-        category: record.category || '',
-        ruleKey: record.ruleKey || ''
-      });
-      telegramSent = sent ? 1 : 0;
-    }
-
-    return { inserted: 1, duplicate: 0, telegramSent };
-  } catch (error) {
-    if (error && error.message && error.message.includes('UNIQUE constraint failed')) {
-      return { inserted: 0, duplicate: 1, telegramSent: 0 };
-    }
-    throw error;
+  if (!insertResult || insertResult.changes === 0) {
+    return { inserted: 0, duplicate: 1, telegramSent: 0 };
   }
+
+  let telegramSent = 0;
+  if (sendTelegram && insertResult.id) {
+    const sent = await pushAlertToTelegramIfEnabled(insertResult.id, {
+      timestamp: record.alertTime || '',
+      method: record.method || '',
+      path: record.path || '',
+      statusCode: record.statusCode ?? null,
+      ip: record.ip || '',
+      category: record.category || '',
+      ruleKey: record.ruleKey || ''
+    });
+    telegramSent = sent ? 1 : 0;
+  }
+
+  return { inserted: 1, duplicate: 0, telegramSent };
 }
 
 async function persistAuthSecurityAlerts({ hours = 24, sendTelegram = true }) {
@@ -5059,7 +5052,7 @@ router.put('/users/:id/permission', async (req, res) => {
  */
 router.get('/security/alerts/high-risk', async (req, res) => {
   try {
-    const { hours = 24, limit = 200, unread_only = 'false', sync = 'true' } = req.query;
+    const { hours = 24, limit = 200, unread_only = 'false', sync = 'false' } = req.query;
 
     if (String(sync) !== 'false') {
       await syncSecurityAlerts({
@@ -10219,6 +10212,88 @@ router.post('/parse-google-maps-link', requireAuth, [
 });
 
 /**
+ * POST /api/admin/weather/update
+ * 手动触发天气路况更新
+ */
+router.post('/weather/update', requireAuth, async (req, res) => {
+  try {
+    const { allAsync, runAsync } = require('../db/database');
+    const { fetchWeatherRoadData } = require('../utils/weather-fetcher');
+    const { updateWeatherAPI, findWeatherApi } = require('../utils/weather-updater');
+
+    const settings = await allAsync('SELECT key, value FROM settings');
+    const settingsObj = {};
+    settings.forEach((s) => {
+      settingsObj[s.key] = s.value;
+    });
+
+    const weatherApi = await findWeatherApi();
+    if (!weatherApi) {
+      return res.status(404).json({
+        success: false,
+        message: '未找到天气路况API（/weather）'
+      });
+    }
+
+    let existingContent = null;
+    if (weatherApi.response_content) {
+      try {
+        existingContent = JSON.parse(weatherApi.response_content);
+      } catch (error) {
+        existingContent = null;
+      }
+    }
+
+    logger.info('手动触发天气路况更新', {
+      city: settingsObj.weather_city_name || 'Cairo',
+      hasTomTomKey: Boolean(settingsObj.weather_tomtom_api_key)
+    });
+
+    const weatherData = await fetchWeatherRoadData(settingsObj, existingContent);
+    await updateWeatherAPI(weatherData);
+
+    const now = new Date();
+    await runAsync(
+      `INSERT INTO settings (key, value, updated_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+      ['weather_last_update', now.toISOString(), now.toISOString()]
+    );
+
+    await logAction(
+      req.session.adminId,
+      'UPDATE',
+      'weather',
+      'manual',
+      JSON.stringify({
+        city: settingsObj.weather_city_name || 'Cairo',
+        attractions: weatherData.attractions?.length || 0,
+        traffic: weatherData.traffic?.length || 0,
+        source: weatherData.data?.source
+      }),
+      req
+    );
+
+    res.json({
+      success: true,
+      message: '天气路况更新成功',
+      data: {
+        attractions: weatherData.attractions?.length || 0,
+        traffic: weatherData.traffic?.length || 0,
+        updateTime: weatherData.data?.updatedAt || now.toISOString(),
+        source: weatherData.data?.source || {}
+      }
+    });
+  } catch (error) {
+    logger.error('手动更新天气路况失败', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: '天气路况更新失败: ' + error.message
+    });
+  }
+});
+
+/**
  * POST /api/admin/exchange-rate/update
  * 手动触发汇率更新
  */
@@ -10304,5 +10379,7 @@ router.post('/exchange-rate/update', requireAuth, async (req, res) => {
     });
   }
 });
+
+router.syncSecurityAlerts = syncSecurityAlerts;
 
 module.exports = router;

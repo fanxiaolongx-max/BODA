@@ -342,29 +342,29 @@
     <div class="max-w-md w-full space-y-8 fade-in">
       <div class="text-center">
         <h2 class="text-4xl font-bold text-gray-900">🧋 <span data-i18n="app_name" data-store-name>BOBA TEA</span></h2>
-        <p class="mt-2 text-xl text-gray-600">Admin Panel</p>
+        <p class="mt-2 text-xl text-gray-600" data-i18n="admin_panel">Admin Panel</p>
       </div>
       <div class="mt-8 bg-white p-8 rounded-xl shadow-lg">
         <form id="loginForm" class="space-y-6">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="username">Username</label>
             <input type="text" id="username" required
                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                   placeholder="Enter username">
+                   placeholder="Enter username" data-i18n-placeholder="enter_username">
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="password">Password</label>
             <input type="password" id="password" required
                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                   placeholder="Enter password">
+                   placeholder="Enter password" data-i18n-placeholder="enter_password">
           </div>
           <button type="submit"
                   class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-200">
-            Login
+            <span data-i18n="login">Login</span>
           </button>
         </form>
         <div class="mt-4 text-center text-sm text-gray-500">
-          Default: admin / admin123
+          <span data-i18n="default_credentials">Default: admin / admin123</span>
         </div>
       </div>
     </div>
@@ -377,15 +377,18 @@
       <div class="mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
           <div class="flex items-center">
-            <h1 class="text-2xl font-bold text-gray-900">🧋 <span data-i18n="app_name" data-store-name>BOBA TEA</span> Admin Panel</h1>
+            <h1 class="text-2xl font-bold text-gray-900">🧋 <span data-i18n="app_name" data-store-name>BOBA TEA</span> <span data-i18n="admin_panel">Admin Panel</span></h1>
           </div>
           <div class="flex items-center space-x-4">
             <button id="securityAlertsButton" onclick="openSecurityAlertsTab()" class="px-3 py-2 text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition relative">
               <span id="securityAlertsDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500"></span>
-              当前告警 (<span id="securityAlertsCount">0</span>)
+              <span data-i18n="current_alerts">Current Alerts</span> (<span id="securityAlertsCount">0</span>)
             </button>
-            <span class="text-sm text-gray-600">Welcome, <span id="adminName" class="font-semibold"></span></span>
-            <button onclick="logout()" class="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition">
+            <span class="text-sm text-gray-600"><span data-i18n="welcome">Welcome</span>, <span id="adminName" class="font-semibold"></span></span>
+            <button id="adminLanguageButton" class="px-3 py-2 text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition" aria-label="Toggle language">
+              EN
+            </button>
+            <button onclick="logout()" class="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition" data-i18n="logout">
               Logout
             </button>
           </div>
@@ -398,52 +401,52 @@
       <aside class="w-64 bg-white shadow-sm border-r border-gray-200 overflow-y-auto">
         <nav class="p-4 space-y-1">
           <a href="#" onclick="switchTab('dashboard')" class="sidebar-item active block px-4 py-3 rounded-lg text-gray-700 transition">
-            📊 Dashboard
+            📊 <span data-i18n="dashboard">Dashboard</span>
           </a>
           <a href="#" onclick="switchTab('orders')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            📝 Orders
+            📝 <span data-i18n="orders">Orders</span>
           </a>
           <a href="#" onclick="switchTab('products')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            🍹 Products
+            🍹 <span data-i18n="products">Products</span>
           </a>
           <a href="#" onclick="switchTab('categories')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            📂 Categories
+            📂 <span data-i18n="categories">Categories</span>
           </a>
           <a href="#" onclick="switchTab('discounts')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            💰 Discounts
+            💰 <span data-i18n="discount_rules">Discount Rules</span>
           </a>
           <a href="#" onclick="switchTab('delivery-addresses')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            📍 Delivery Addresses
+            📍 <span data-i18n="delivery_addresses">Delivery Addresses</span>
           </a>
           <a href="#" onclick="switchTab('dine-in-qr')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            📱 Dine-In QR Code
+            📱 <span data-i18n="dine_in_qr">Dine-In QR Code</span>
           </a>
           <a href="#" onclick="switchTab('showcase-images')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            🖼️ Showcase Images
+            🖼️ <span data-i18n="showcase_images">Showcase Images</span>
           </a>
           <a href="#" onclick="switchTab('settings')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            ⚙️ Settings
+            ⚙️ <span data-i18n="system_settings">Settings</span>
           </a>
           <a href="#" onclick="switchTab('users')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            👥 Users
+            👥 <span data-i18n="users">Users</span>
           </a>
           <a href="#" onclick="switchTab('balance')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            💳 Balance Management
+            💳 <span data-i18n="balance_management">Balance Management</span>
           </a>
           <a href="#" onclick="switchTab('admins')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            🔐 Admins
+            🔐 <span data-i18n="admins">Admins</span>
           </a>
           <a href="#" onclick="switchTab('logs')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            📋 Logs
+            📋 <span data-i18n="logs">Logs</span>
           </a>
           <a href="#" onclick="switchTab('api-management')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            🔌 API Management
+            🔌 <span data-i18n="api_management">API Management</span>
           </a>
           <a href="#" onclick="switchTab('about')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
-            ℹ️ About
+            ℹ️ <span data-i18n="about">About</span>
           </a>
           <a href="#" onclick="switchTab('developer')" id="developerMenuItem" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition" style="display: none;">
-            🔧 Developer
+            🔧 <span data-i18n="developer">Developer</span>
           </a>
         </nav>
       </aside>
@@ -452,13 +455,13 @@
       <main class="flex-1 overflow-y-auto p-6 bg-gray-50" style="min-height: 0;">
         <!-- 仪表盘 -->
         <div id="dashboardTab" class="tab-content fade-in">
-          <h2 class="text-2xl font-bold text-gray-900 mb-6">Overview</h2>
+          <h2 class="text-2xl font-bold text-gray-900 mb-6" data-i18n="overview">Overview</h2>
           
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div class="bg-white p-6 rounded-xl card">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm text-gray-600">Total Orders</p>
+                  <p class="text-sm text-gray-600" data-i18n="total_orders">Total Orders</p>
                   <p id="totalOrders" class="text-3xl font-bold text-gray-900 mt-2">0</p>
                 </div>
                 <div class="text-4xl">📝</div>
@@ -467,7 +470,7 @@
             <div class="bg-white p-6 rounded-xl card">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm text-gray-600">Total Amount</p>
+                  <p class="text-sm text-gray-600" data-i18n="total_amount">Total Amount</p>
                   <p id="totalAmount" class="text-3xl font-bold text-blue-600 mt-2">0 LE</p>
                 </div>
                 <div class="text-4xl">💵</div>
@@ -476,7 +479,7 @@
             <div class="bg-white p-6 rounded-xl card">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm text-gray-600">Discount Amount</p>
+                  <p class="text-sm text-gray-600" data-i18n="total_discount">Discount Amount</p>
                   <p id="totalDiscount" class="text-3xl font-bold text-green-600 mt-2">0 LE</p>
                 </div>
                 <div class="text-4xl">🎁</div>
@@ -485,7 +488,7 @@
             <div class="bg-white p-6 rounded-xl card">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm text-gray-600">Final Amount</p>
+                  <p class="text-sm text-gray-600" data-i18n="final_amount">Final Amount</p>
                   <p id="finalAmount" class="text-3xl font-bold text-purple-600 mt-2">0 LE</p>
                 </div>
                 <div class="text-4xl">💰</div>
@@ -495,12 +498,12 @@
 
           <!-- Paid Orders Statistics -->
           <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-xl card mb-8 border-2 border-green-200">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">✅ Paid Orders Statistics</h3>
+            <h3 class="text-lg font-semibold text-gray-900 mb-4" data-i18n="paid_orders_statistics">✅ Paid Orders Statistics</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div class="bg-white p-4 rounded-lg">
                 <div class="flex items-center justify-between">
                   <div>
-                    <p class="text-sm text-gray-600">Paid Orders</p>
+                    <p class="text-sm text-gray-600" data-i18n="paid_orders">Paid Orders</p>
                     <p id="paidOrders" class="text-2xl font-bold text-gray-900 mt-1">0</p>
                   </div>
                   <div class="text-3xl">✅</div>
@@ -509,7 +512,7 @@
               <div class="bg-white p-4 rounded-lg">
                 <div class="flex items-center justify-between">
                   <div>
-                    <p class="text-sm text-gray-600">Paid Total Amount</p>
+                    <p class="text-sm text-gray-600" data-i18n="paid_total_amount">Paid Total Amount</p>
                     <p id="paidTotalAmount" class="text-2xl font-bold text-blue-600 mt-1">0 LE</p>
                   </div>
                   <div class="text-3xl">💵</div>
@@ -518,7 +521,7 @@
               <div class="bg-white p-4 rounded-lg">
                 <div class="flex items-center justify-between">
                   <div>
-                    <p class="text-sm text-gray-600">Paid Discount</p>
+                    <p class="text-sm text-gray-600" data-i18n="paid_discount">Paid Discount</p>
                     <p id="paidTotalDiscount" class="text-2xl font-bold text-green-600 mt-1">0 LE</p>
                   </div>
                   <div class="text-3xl">🎁</div>
@@ -527,7 +530,7 @@
               <div class="bg-white p-4 rounded-lg">
                 <div class="flex items-center justify-between">
                   <div>
-                    <p class="text-sm text-gray-600">Paid Final Amount</p>
+                    <p class="text-sm text-gray-600" data-i18n="paid_final_amount">Paid Final Amount</p>
                     <p id="paidFinalAmount" class="text-2xl font-bold text-purple-600 mt-1">0 LE</p>
                   </div>
                   <div class="text-3xl">💰</div>
@@ -537,15 +540,15 @@
           </div>
 
           <div class="bg-white p-6 rounded-xl card">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+            <h3 class="text-lg font-semibold text-gray-900 mb-4" data-i18n="quick_actions">Quick Actions</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <button onclick="toggleOrdering()" id="toggleOrderBtn"
                       class="px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition">
-                Open Ordering
+                <span data-i18n="open_ordering">Open Ordering</span>
               </button>
               <button onclick="switchTab('orders')"
                       class="px-6 py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition">
-                View Orders
+                <span data-i18n="view_orders">View Orders</span>
               </button>
             </div>
           </div>
@@ -554,23 +557,23 @@
         <!-- 订单管理 -->
         <div id="ordersTab" class="tab-content hidden fade-in">
           <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold text-gray-900">Orders</h2>
+            <h2 class="text-2xl font-bold text-gray-900" data-i18n="orders">Orders</h2>
             <div class="flex space-x-2">
               <select id="orderCycleFilter" onchange="resetAndLoadOrders()" class="px-4 py-2 border border-gray-300 rounded-lg">
-                <option value="">All Cycles</option>
+                <option value="" data-i18n="all_cycles">All Cycles</option>
               </select>
               <select id="orderStatusFilter" onchange="resetAndLoadOrders()" class="px-4 py-2 border border-gray-300 rounded-lg">
-                <option value="">All Status</option>
-                <option value="pending">Pending Payment</option>
-                <option value="paid">Paid</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
+                <option value="" data-i18n="all_status">All Status</option>
+                <option value="pending" data-i18n="status_pending">Pending Payment</option>
+                <option value="paid" data-i18n="status_paid">Paid</option>
+                <option value="completed" data-i18n="status_completed">Completed</option>
+                <option value="cancelled" data-i18n="status_cancelled">Cancelled</option>
               </select>
               <button onclick="exportOrders()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
-                Export Orders
+                <span data-i18n="export_orders">Export Orders</span>
               </button>
               <button onclick="loadOrders()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                Refresh
+                <span data-i18n="refresh">Refresh</span>
               </button>
             </div>
           </div>
@@ -579,13 +582,13 @@
               <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                   <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order Number</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer Info</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="min-width: 300px;">Product Details</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="order_number">Order Number</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="customer_info">Customer Info</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="min-width: 300px;" data-i18n="product_details">Product Details</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="amount">Amount</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="status">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="time">Time</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="actions">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="ordersTableBody" class="bg-white divide-y divide-gray-200">
@@ -604,23 +607,23 @@
         <div id="delivery-addressesTab" class="tab-content hidden"></div>
         <div id="showcase-imagesTab" class="tab-content hidden">
           <div class="p-6">
-            <h2 class="text-2xl font-bold text-gray-900 mb-6">Showcase Images Management</h2>
+            <h2 class="text-2xl font-bold text-gray-900 mb-6" data-i18n="showcase_images_management">Showcase Images Management</h2>
             
             <!-- 上传图片区域 -->
             <div class="bg-white rounded-xl shadow-md p-6 mb-6">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">Upload Images</h3>
+              <h3 class="text-lg font-semibold text-gray-900 mb-4" data-i18n="upload_images">Upload Images</h3>
               
               <!-- 建议尺寸说明 -->
               <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <div class="flex items-start">
                   <span class="text-xl mr-3">💡</span>
                   <div class="flex-1">
-                    <p class="text-sm font-semibold text-blue-900 mb-2">Recommended Image Specifications:</p>
+                    <p class="text-sm font-semibold text-blue-900 mb-2" data-i18n="recommended_image_specs">Recommended Image Specifications:</p>
                     <ul class="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                      <li><strong>Aspect Ratio:</strong> 4:5 (Width:Height)</li>
-                      <li><strong>Recommended Sizes:</strong> 512×640px, 1024×1280px, or 1536×1920px</li>
-                      <li><strong>Formats:</strong> JPG, PNG, GIF, WebP</li>
-                      <li><strong>File Size:</strong> Max 10MB per image</li>
+                      <li><strong data-i18n="aspect_ratio_label">Aspect Ratio:</strong> <span data-i18n="aspect_ratio_value">4:5 (Width:Height)</span></li>
+                      <li><strong data-i18n="recommended_sizes_label">Recommended Sizes:</strong> <span data-i18n="recommended_sizes_value">512×640px, 1024×1280px, or 1536×1920px</span></li>
+                      <li><strong data-i18n="formats_label">Formats:</strong> <span data-i18n="formats_value">JPG, PNG, GIF, WebP</span></li>
+                      <li><strong data-i18n="file_size_label">File Size:</strong> <span data-i18n="file_size_value">Max 10MB per image</span></li>
                     </ul>
                   </div>
                 </div>
@@ -629,47 +632,47 @@
               <div class="flex items-center space-x-4 mb-4">
                 <input type="file" id="showcaseImageInput" accept="image/*" multiple class="hidden" onchange="handleShowcaseImageSelect(event)">
                 <button onclick="document.getElementById('showcaseImageInput').click()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                  📤 Select Images
+                  📤 <span data-i18n="select_images">Select Images</span>
                 </button>
                 <button id="uploadShowcaseImageBtn" onclick="uploadShowcaseImages()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition" style="display: none;">
-                  📤 Upload Selected (<span id="selectedImageCount">0</span>)
+                  📤 <span data-i18n="upload_selected">Upload Selected</span> (<span id="selectedImageCount">0</span>)
                 </button>
               </div>
               
               <!-- 选中的图片列表预览 -->
               <div id="selectedImagesPreview" class="hidden mt-4">
-                <p class="text-sm font-semibold text-gray-700 mb-2">Selected Images:</p>
+                <p class="text-sm font-semibold text-gray-700 mb-2" data-i18n="selected_images">Selected Images:</p>
                 <div id="selectedImagesList" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                   <!-- 预览项将动态添加 -->
                 </div>
               </div>
               
-              <p class="text-sm text-gray-500 mt-2">You can select multiple images at once. Supported formats: JPG, PNG, GIF, WebP (Max 10MB per image)</p>
+              <p class="text-sm text-gray-500 mt-2" data-i18n="multi_select_hint">You can select multiple images at once. Supported formats: JPG, PNG, GIF, WebP (Max 10MB per image)</p>
             </div>
             
             <!-- 图片列表 -->
             <div class="bg-white rounded-xl shadow-md p-6">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">Current Images</h3>
+              <h3 class="text-lg font-semibold text-gray-900 mb-4" data-i18n="current_images">Current Images</h3>
               <div id="showcaseImagesList" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                <div class="text-center text-gray-500 py-8">Loading...</div>
+                <div class="text-center text-gray-500 py-8" data-i18n="loading">Loading...</div>
               </div>
             </div>
           </div>
         </div>
         <div id="dine-in-qrTab" class="tab-content hidden">
           <div class="p-6">
-            <h2 class="text-2xl font-bold text-gray-900 mb-6">Dine-In QR Code Management</h2>
+            <h2 class="text-2xl font-bold text-gray-900 mb-6" data-i18n="dine_in_qr_management">Dine-In QR Code Management</h2>
             
             <!-- 生成二维码区域 -->
             <div class="bg-white rounded-xl shadow-md p-6 mb-6">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">Generate Table QR Code</h3>
+              <h3 class="text-lg font-semibold text-gray-900 mb-4" data-i18n="generate_table_qr">Generate Table QR Code</h3>
               <div class="flex items-end space-x-4 mb-4">
                 <div class="flex-1">
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Table Number</label>
+                  <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="table_number">Table Number</label>
                   <input 
                     type="text" 
                     id="tableNumberInput" 
-                    placeholder="Enter table number, e.g., 1, A1, 101"
+                    placeholder="Enter table number, e.g., 1, A1, 101" data-i18n-placeholder="table_number_placeholder"
                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     maxlength="20"
                   />
@@ -677,31 +680,31 @@
                 <button 
                   onclick="generateDineInQRCode()"
                   class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
-                  Generate QR Code
+                  <span data-i18n="generate_qr_code">Generate QR Code</span>
                 </button>
               </div>
             </div>
 
             <!-- 二维码显示区域 -->
             <div id="qrCodeDisplayArea" class="bg-white rounded-xl shadow-md p-6 hidden">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">QR Code</h3>
+              <h3 class="text-lg font-semibold text-gray-900 mb-4" data-i18n="qr_code">QR Code</h3>
               <div class="flex flex-col items-center space-y-4">
                 <div id="qrCodeContainer" class="p-4 bg-white border-2 border-gray-300 rounded-lg">
                   <!-- QR code will be displayed here -->
                 </div>
                 <div class="text-center">
-                  <p class="text-sm text-gray-600 mb-2">Table: <span id="displayTableNumber" class="font-semibold text-gray-900"></span></p>
-                  <p class="text-xs text-gray-500 mb-4">Scan to order directly without login</p>
+                  <p class="text-sm text-gray-600 mb-2"><span data-i18n="table_label">Table</span>: <span id="displayTableNumber" class="font-semibold text-gray-900"></span></p>
+                  <p class="text-xs text-gray-500 mb-4" data-i18n="scan_to_order">Scan to order directly without login</p>
                   <div class="flex items-center justify-center space-x-4">
                     <button 
                       onclick="printQRCode()"
                       class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors">
-                      🖨️ Print QR Code
+                      🖨️ <span data-i18n="print_qr_code">Print QR Code</span>
                     </button>
                     <button 
                       onclick="downloadQRCode()"
                       class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition-colors">
-                      💾 Download QR Code
+                      💾 <span data-i18n="download_qr_code">Download QR Code</span>
                     </button>
                   </div>
                 </div>
@@ -710,7 +713,7 @@
 
             <!-- 历史二维码列表 -->
             <div class="bg-white rounded-xl shadow-md p-6 mb-6">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">QR Code History</h3>
+              <h3 class="text-lg font-semibold text-gray-900 mb-4" data-i18n="qr_code_history">QR Code History</h3>
               <div id="qrCodeHistoryList" class="space-y-3">
                 <!-- QR code list will be loaded here -->
               </div>
@@ -718,14 +721,14 @@
 
             <!-- 使用说明 -->
             <div class="bg-blue-50 border border-blue-200 rounded-xl p-6 mt-6">
-              <h3 class="text-lg font-semibold text-blue-900 mb-3">Instructions</h3>
+              <h3 class="text-lg font-semibold text-blue-900 mb-3" data-i18n="instructions">Instructions</h3>
               <ul class="space-y-2 text-sm text-blue-800">
-                <li>• Enter table number and click "Generate QR Code" button</li>
-                <li>• Generated QR codes can be printed or downloaded directly</li>
-                <li>• Customers will be automatically logged into table account after scanning, no phone number required</li>
-                <li>• Dine-in orders will be automatically marked as "Dine-In", no delivery address selection needed</li>
-                <li>• Table number format can be numbers, letters, or combination (e.g., 1, A1, 101)</li>
-                <li>• Deleting a QR code will also delete the corresponding table user account</li>
+                <li data-i18n="dine_in_instruction_1">• Enter table number and click "Generate QR Code" button</li>
+                <li data-i18n="dine_in_instruction_2">• Generated QR codes can be printed or downloaded directly</li>
+                <li data-i18n="dine_in_instruction_3">• Customers will be automatically logged into table account after scanning, no phone number required</li>
+                <li data-i18n="dine_in_instruction_4">• Dine-in orders will be automatically marked as "Dine-In", no delivery address selection needed</li>
+                <li data-i18n="dine_in_instruction_5">• Table number format can be numbers, letters, or combination (e.g., 1, A1, 101)</li>
+                <li data-i18n="dine_in_instruction_6">• Deleting a QR code will also delete the corresponding table user account</li>
               </ul>
             </div>
           </div>
@@ -733,33 +736,33 @@
         <div id="settingsTab" class="tab-content hidden"></div>
         <div id="usersTab" class="tab-content hidden"></div>
         <div id="balanceTab" class="tab-content hidden">
-          <h2 class="text-2xl font-bold text-gray-900 mb-6">Balance Management</h2>
+          <h2 class="text-2xl font-bold text-gray-900 mb-6" data-i18n="balance_management">Balance Management</h2>
           
           <!-- 批量操作 -->
           <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
             <div class="p-6 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">Batch Operations</h3>
+              <h3 class="text-lg font-semibold text-gray-900 mb-4" data-i18n="batch_operations">Batch Operations</h3>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="border border-gray-200 rounded-lg p-4">
-                  <h4 class="font-medium text-gray-700 mb-2">Batch Recharge Selected Users</h4>
+                  <h4 class="font-medium text-gray-700 mb-2" data-i18n="batch_recharge_selected">Batch Recharge Selected Users</h4>
                   <div class="flex space-x-2">
-                    <input type="number" id="batchRechargeAmount" placeholder="Amount" step="0.01" min="0.01" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                    <input type="text" id="batchRechargeNotes" placeholder="Notes (optional)" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                    <input type="number" id="batchRechargeAmount" placeholder="Amount" step="0.01" min="0.01" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" data-i18n-placeholder="amount">
+                    <input type="text" id="batchRechargeNotes" placeholder="Notes (optional)" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" data-i18n-placeholder="notes_optional">
                     <button onclick="batchRechargeSelected()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm">
-                      Recharge Selected
+                      <span data-i18n="recharge_selected">Recharge Selected</span>
                     </button>
                   </div>
                 </div>
                 <div class="border border-gray-200 rounded-lg p-4">
-                  <h4 class="font-medium text-gray-700 mb-2">Recharge Paid Users by Cycle</h4>
+                  <h4 class="font-medium text-gray-700 mb-2" data-i18n="recharge_paid_by_cycle">Recharge Paid Users by Cycle</h4>
                   <div class="flex flex-wrap gap-2">
                     <select id="cycleRechargeCycle" class="flex-1 min-w-[150px] px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                      <option value="">Select Cycle</option>
+                      <option value="" data-i18n="select_cycle">Select Cycle</option>
                     </select>
-                    <input type="number" id="cycleRechargeAmount" placeholder="Amount" step="0.01" min="0.01" class="flex-1 min-w-[120px] px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                    <input type="text" id="cycleRechargeNotes" placeholder="Notes (optional)" class="flex-1 min-w-[150px] px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                    <input type="number" id="cycleRechargeAmount" placeholder="Amount" step="0.01" min="0.01" class="flex-1 min-w-[120px] px-3 py-2 border border-gray-300 rounded-lg text-sm" data-i18n-placeholder="amount">
+                    <input type="text" id="cycleRechargeNotes" placeholder="Notes (optional)" class="flex-1 min-w-[150px] px-3 py-2 border border-gray-300 rounded-lg text-sm" data-i18n-placeholder="notes_optional">
                     <button onclick="rechargeCyclePaidUsers()" class="flex-shrink-0 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm whitespace-nowrap">
-                      Recharge
+                      <span data-i18n="recharge">Recharge</span>
                     </button>
                   </div>
                 </div>
@@ -771,9 +774,9 @@
           <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
             <div class="p-6 border-b border-gray-200">
               <div class="flex justify-between items-center">
-                <h3 class="text-lg font-semibold text-gray-900">User Balance List</h3>
+                <h3 class="text-lg font-semibold text-gray-900" data-i18n="user_balance_list">User Balance List</h3>
                 <button onclick="loadUserBalanceList()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">
-                  Refresh
+                  <span data-i18n="refresh">Refresh</span>
                 </button>
               </div>
             </div>
@@ -782,16 +785,16 @@
                 <thead class="bg-gray-50">
                   <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Transaction</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="phone_number">Phone</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="customer_name">Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="balance">Balance</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="last_transaction">Last Transaction</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="actions">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="userBalanceTableBody" class="bg-white divide-y divide-gray-200">
                   <tr>
-                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading...</td>
+                    <td colspan="6" class="px-6 py-4 text-center text-gray-500" data-i18n="loading">Loading...</td>
                   </tr>
                 </tbody>
               </table>
@@ -802,19 +805,19 @@
           <div class="bg-white rounded-xl shadow-sm overflow-hidden">
             <div class="p-6 border-b border-gray-200">
               <div class="flex justify-between items-center">
-                <h3 class="text-lg font-semibold text-gray-900">Balance Transaction History</h3>
+                <h3 class="text-lg font-semibold text-gray-900" data-i18n="balance_transactions">Balance Transaction History</h3>
                 <div class="flex space-x-2">
                   <select id="balanceTransactionTypeFilter" onchange="loadBalanceTransactions()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                    <option value="">All Types</option>
-                    <option value="recharge">Recharge</option>
-                    <option value="deduct">Deduct</option>
-                    <option value="use">Use</option>
-                    <option value="refund">Refund</option>
+                    <option value="" data-i18n="all_types">All Types</option>
+                    <option value="recharge" data-i18n="recharge">Recharge</option>
+                    <option value="deduct" data-i18n="deduct">Deduct</option>
+                    <option value="use" data-i18n="use_type">Use</option>
+                    <option value="refund" data-i18n="refund_type">Refund</option>
                   </select>
                   <input type="date" id="balanceStartDate" onchange="loadBalanceTransactions()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
                   <input type="date" id="balanceEndDate" onchange="loadBalanceTransactions()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
                   <button onclick="loadBalanceTransactions()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">
-                    Filter
+                    <span data-i18n="filter">Filter</span>
                   </button>
                 </div>
               </div>
@@ -823,20 +826,20 @@
               <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                   <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Before</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance After</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Admin</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="time">Time</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="user">User</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="type">Type</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="amount">Amount</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="balance_before">Balance Before</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="balance_after">Balance After</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="order">Order</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="admin">Admin</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="transaction_notes">Notes</th>
                   </tr>
                 </thead>
                 <tbody id="balanceTransactionsTableBody" class="bg-white divide-y divide-gray-200">
                   <tr>
-                    <td colspan="9" class="px-6 py-4 text-center text-gray-500">Loading...</td>
+                    <td colspan="9" class="px-6 py-4 text-center text-gray-500" data-i18n="loading">Loading...</td>
                   </tr>
                 </tbody>
               </table>
@@ -850,16 +853,16 @@
         <div id="api-managementTab" class="tab-content hidden">
           <div class="p-6">
             <div class="flex justify-between items-center mb-6">
-              <h2 class="text-2xl font-bold text-gray-900">API Management</h2>
+              <h2 class="text-2xl font-bold text-gray-900" data-i18n="api_management">API Management</h2>
               <div class="flex gap-2">
                 <button onclick="backupCustomApis()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
-                  💾 备份自定义API
+                  💾 <span data-i18n="backup_custom_api">备份自定义API</span>
                 </button>
                 <button onclick="restoreCustomApis()" class="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
-                  📥 恢复自定义API
+                  📥 <span data-i18n="restore_custom_api">恢复自定义API</span>
                 </button>
                 <button onclick="showApiModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                  ➕ Add Custom API
+                  ➕ <span data-i18n="add_custom_api">Add Custom API</span>
                 </button>
               </div>
             </div>
@@ -867,24 +870,24 @@
             <!-- 自定义API列表 -->
             <div class="bg-white rounded-xl shadow-sm overflow-hidden">
               <div class="p-6 border-b border-gray-200">
-                <h3 class="text-lg font-semibold text-gray-900">Custom APIs</h3>
-                <p class="text-sm text-gray-500 mt-1">用户自定义的API接口</p>
+                <h3 class="text-lg font-semibold text-gray-900" data-i18n="custom_apis">Custom APIs</h3>
+                <p class="text-sm text-gray-500 mt-1" data-i18n="custom_apis_desc">用户自定义的API接口</p>
               </div>
               <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                   <thead class="bg-gray-50">
                     <tr>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Path</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token Required</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="name">Name</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="path">Path</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="method">Method</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="token_required">Token Required</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="status">Status</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="actions">Actions</th>
                     </tr>
                   </thead>
                   <tbody id="customApisTableBody" class="bg-white divide-y divide-gray-200">
                     <tr>
-                      <td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading...</td>
+                      <td colspan="6" class="px-6 py-4 text-center text-gray-500" data-i18n="loading">Loading...</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1231,14 +1234,14 @@
     <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-8" onclick="event.stopPropagation()">
       <div class="text-center mb-6">
         <div class="text-6xl mb-4">⚠️</div>
-        <h3 id="dangerConfirmDialogTitle" class="text-3xl font-bold text-red-600 mb-4">Warning</h3>
+        <h3 id="dangerConfirmDialogTitle" class="text-3xl font-bold text-red-600 mb-4" data-i18n="warning">Warning</h3>
         <p id="dangerConfirmDialogMessage" class="text-xl text-gray-800 font-semibold leading-relaxed"></p>
       </div>
       <div class="flex space-x-4">
-        <button id="dangerConfirmDialogCancel" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-4 text-lg rounded-lg transition">
+        <button id="dangerConfirmDialogCancel" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-4 text-lg rounded-lg transition" data-i18n="cancel">
           Cancel
         </button>
-        <button id="dangerConfirmDialogConfirm" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 text-lg rounded-lg transition shadow-lg">
+        <button id="dangerConfirmDialogConfirm" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 text-lg rounded-lg transition shadow-lg" data-i18n="confirm">
           Confirm
         </button>
       </div>
@@ -1249,70 +1252,70 @@
   <div id="remoteBackupConfigModal" class="modal" onclick="closeRemoteBackupConfigModal(event)">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-6" onclick="event.stopPropagation()">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-xl font-bold text-gray-900" id="remoteBackupConfigModalTitle">Add Push Configuration</h3>
+        <h3 class="text-xl font-bold text-gray-900" id="remoteBackupConfigModalTitle" data-i18n="add_push_config">Add Push Configuration</h3>
         <button onclick="closeRemoteBackupConfigModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
       </div>
       <form id="remoteBackupConfigForm" class="space-y-4">
         <input type="hidden" id="remoteBackupConfigId">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="name_required">Name *</label>
           <input type="text" id="remoteBackupConfigName" required
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                 placeholder="e.g., Main Site, Backup Site">
+                 placeholder="e.g., Main Site, Backup Site" data-i18n-placeholder="backup_name_placeholder">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Target URL *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="target_url_required">Target URL *</label>
           <input type="url" id="remoteBackupConfigUrl" required
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                 placeholder="https://backup.example.com">
-          <p class="text-xs text-gray-500 mt-1">Full URL of the target site (including https://)</p>
+                 placeholder="https://backup.example.com" data-i18n-placeholder="target_url_placeholder">
+          <p class="text-xs text-gray-500 mt-1" data-i18n="target_url_hint">Full URL of the target site (including https://)</p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">API Token *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="api_token_required">API Token *</label>
           <input type="text" id="remoteBackupConfigToken" required
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                 placeholder="Enter API token">
-          <p class="text-xs text-gray-500 mt-1">Must match the token configured on the receiving site</p>
+                 placeholder="Enter API token" data-i18n-placeholder="api_token_placeholder">
+          <p class="text-xs text-gray-500 mt-1" data-i18n="api_token_hint">Must match the token configured on the receiving site</p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Schedule Type *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="schedule_type_required">Schedule Type *</label>
           <select id="remoteBackupConfigScheduleType" required
                   class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                   onchange="updateScheduleFields()">
-            <option value="manual">Manual Only</option>
-            <option value="hourly">Hourly</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
+            <option value="manual" data-i18n="schedule_manual">Manual Only</option>
+            <option value="hourly" data-i18n="schedule_hourly">Hourly</option>
+            <option value="daily" data-i18n="schedule_daily">Daily</option>
+            <option value="weekly" data-i18n="schedule_weekly">Weekly</option>
+            <option value="monthly" data-i18n="schedule_monthly">Monthly</option>
           </select>
         </div>
         <div id="scheduleTimeField" class="hidden">
-          <label class="block text-sm font-medium text-gray-700 mb-2">Schedule Time</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="schedule_time">Schedule Time</label>
           <input type="time" id="remoteBackupConfigScheduleTime"
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-          <p class="text-xs text-gray-500 mt-1">Time to push backup (e.g., 02:00)</p>
+          <p class="text-xs text-gray-500 mt-1" data-i18n="schedule_time_hint">Time to push backup (e.g., 02:00)</p>
         </div>
         <div id="scheduleDayField" class="hidden">
-          <label class="block text-sm font-medium text-gray-700 mb-2" id="scheduleDayLabel">Schedule Day</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" id="scheduleDayLabel" data-i18n="schedule_day">Schedule Day</label>
           <input type="number" id="remoteBackupConfigScheduleDay" min="0" max="31"
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-          <p class="text-xs text-gray-500 mt-1" id="scheduleDayHint">For weekly: 0=Sunday, 1=Monday, ..., 6=Saturday. For monthly: 1-31</p>
+          <p class="text-xs text-gray-500 mt-1" id="scheduleDayHint" data-i18n="schedule_day_hint">For weekly: 0=Sunday, 1=Monday, ..., 6=Saturday. For monthly: 1-31</p>
         </div>
         <div>
           <label class="flex items-center space-x-2">
             <input type="checkbox" id="remoteBackupConfigEnabled" 
                    class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" checked>
-            <span class="text-sm font-medium text-gray-700">Enabled</span>
+            <span class="text-sm font-medium text-gray-700" data-i18n="enabled">Enabled</span>
           </label>
         </div>
         <div class="flex space-x-3 pt-4">
           <button type="button" onclick="closeRemoteBackupConfigModal()" 
                   class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-2 rounded-lg transition">
-            Cancel
+            <span data-i18n="cancel">Cancel</span>
           </button>
           <button type="submit" 
                   class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition">
-            Save
+            <span data-i18n="save">Save</span>
           </button>
         </div>
       </form>
@@ -1323,29 +1326,29 @@
   <div id="apiModal" class="modal" onclick="closeApiModal(event)">
     <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 p-6" onclick="event.stopPropagation()" id="apiModalContent">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-xl font-bold text-gray-900" id="apiModalTitle">Add Custom API</h3>
+        <h3 class="text-xl font-bold text-gray-900" id="apiModalTitle" data-i18n="add_custom_api">Add Custom API</h3>
         <button onclick="closeApiModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
       </div>
       <form id="apiForm" class="space-y-4">
         <input type="hidden" id="apiId">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">API Name *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="api_name_required">API Name *</label>
           <input type="text" id="apiName" required
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                 placeholder="e.g., Get User Info">
+                 placeholder="e.g., Get User Info" data-i18n-placeholder="api_name_placeholder">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">API Path *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="api_path_required">API Path *</label>
           <div class="flex items-center">
             <span class="px-3 py-2 bg-gray-100 border border-r-0 border-gray-300 rounded-l-lg text-gray-700">/api/custom</span>
             <input type="text" id="apiPath" required
                    class="flex-1 px-4 py-2 border border-gray-300 rounded-r-lg"
-                   placeholder="/example" pattern="^/.*">
+                   placeholder="/example" pattern="^/.*" data-i18n-placeholder="api_path_placeholder">
           </div>
-          <p class="text-xs text-gray-500 mt-1">路径必须以 / 开头，例如: /example</p>
+          <p class="text-xs text-gray-500 mt-1" data-i18n="api_path_hint">路径必须以 / 开头，例如: /example</p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">HTTP Method *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="http_method_required">HTTP Method *</label>
           <select id="apiMethod" required
                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
             <option value="GET">GET</option>
@@ -1359,26 +1362,26 @@
           <label class="flex items-center space-x-2">
             <input type="checkbox" id="apiRequiresToken" 
                    class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-            <span class="text-sm font-medium text-gray-700">Requires Token (需要身份验证)</span>
+            <span class="text-sm font-medium text-gray-700" data-i18n="requires_token">Requires Token (需要身份验证)</span>
           </label>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Response Content (JSON) *</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="response_content_required">Response Content (JSON) *</label>
           
           <!-- 图片上传工具 -->
           <div class="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <label class="block text-sm font-medium text-gray-700 mb-2">📷 上传图片到 image 字段</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="upload_image_to_field">📷 上传图片到 image 字段</label>
             <div class="flex items-center space-x-2">
               <input type="file" id="apiImageUpload" accept="image/*" 
                      class="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
               <button type="button" id="apiImageUploadBtn"
                       class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
                       onclick="console.log('按钮onclick被触发'); if(typeof window.uploadApiImage === 'function') { window.uploadApiImage(); } else { alert('uploadApiImage函数未定义'); }">
-                上传
+                <span data-i18n="upload">上传</span>
               </button>
             </div>
             <p class="text-xs text-gray-500 mt-2">
-              上传成功后生成图片链接，如果JSON中包含 image 字段，会提示是否自动更新
+              <span data-i18n="upload_image_hint">上传成功后生成图片链接，如果JSON中包含 image 字段，会提示是否自动更新</span>
             </p>
             <div id="apiImageUploadStatus" class="mt-2 text-sm hidden"></div>
           </div>
@@ -1389,32 +1392,32 @@
           <!-- 隐藏的文本区域用于表单提交 -->
           <textarea id="apiResponseContent" required class="hidden"></textarea>
           
-          <p class="text-xs text-gray-500 mt-1">
+          <p class="text-xs text-gray-500 mt-1" data-i18n="response_placeholders">
             支持占位符: {{request.method}}, {{request.path}}, {{request.query}}, {{request.body}}, {{timestamp}}
           </p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="description">Description</label>
           <input type="text" id="apiDescription"
                  class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                 placeholder="API description (optional)">
+                 placeholder="API description (optional)" data-i18n-placeholder="api_description_placeholder">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="status">Status</label>
           <select id="apiStatus"
                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="active" data-i18n="active">Active</option>
+            <option value="inactive" data-i18n="inactive">Inactive</option>
           </select>
         </div>
         <div class="flex space-x-3 pt-4">
           <button type="button" onclick="closeApiModal()" 
                   class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-2 rounded-lg transition">
-            Cancel
+            <span data-i18n="cancel">Cancel</span>
           </button>
           <button type="submit" 
                   class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition">
-            Save
+            <span data-i18n="save">Save</span>
           </button>
         </div>
       </form>
@@ -1425,20 +1428,20 @@
   <div id="apiLogsModal" class="modal" onclick="closeApiLogsModal(event)">
     <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-xl font-bold text-gray-900" id="apiLogsModalTitle">API Logs</h3>
+        <h3 class="text-xl font-bold text-gray-900" id="apiLogsModalTitle" data-i18n="api_logs">API Logs</h3>
         <button onclick="closeApiLogsModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
       </div>
       <div id="apiLogsContent" class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Path</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time (ms)</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="time">Time</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="method">Method</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="path">Path</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="status">Status</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="duration_ms">Time (ms)</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="ip_address">IP</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-i18n="details">Details</th>
             </tr>
           </thead>
           <tbody id="apiLogsTableBody" class="bg-white divide-y divide-gray-200">
@@ -1449,8 +1452,8 @@
       <div class="mt-4 flex justify-between items-center">
         <div class="text-sm text-gray-600" id="apiLogsPaginationInfo"></div>
         <div class="flex space-x-2">
-          <button onclick="loadApiLogsPage('prev')" id="apiLogsPrevBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Previous</button>
-          <button onclick="loadApiLogsPage('next')" id="apiLogsNextBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Next</button>
+          <button onclick="loadApiLogsPage('prev')" id="apiLogsPrevBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg" data-i18n="previous">Previous</button>
+          <button onclick="loadApiLogsPage('next')" id="apiLogsNextBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg" data-i18n="next">Next</button>
         </div>
       </div>
     </div>
@@ -1460,7 +1463,7 @@
   <div id="globalLoading" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div class="bg-white rounded-lg p-6 flex flex-col items-center space-y-4">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      <p id="globalLoadingMessage" class="text-gray-700 font-medium">Loading...</p>
+      <p id="globalLoadingMessage" class="text-gray-700 font-medium" data-i18n="loading">Loading...</p>
     </div>
   </div>
 

@@ -1642,8 +1642,8 @@ router.get('/special-content/:type', requireBlogAuth, async (req, res) => {
     
     logger.debug('找到特殊内容API', { type, apiPath: api.path, apiName: api.name });
     
-    // 解析响应内容
-    let content = {};
+    // 先解析 custom_apis 响应内容
+    let apiContent = {};
     try {
       const parsed = JSON.parse(api.response_content);
       
@@ -1652,17 +1652,17 @@ router.get('/special-content/:type', requireBlogAuth, async (req, res) => {
       if (type === 'weather') {
         if (parsed.globalAlert && parsed.attractions && parsed.traffic) {
           // 已经是正确的对象格式
-          content = parsed;
+          apiContent = parsed;
         } else if (Array.isArray(parsed) && parsed.length > 0) {
           // 数组格式，转换为对象格式（这种情况不应该发生，但兼容处理）
-          content = {
+          apiContent = {
             globalAlert: parsed[0]?.globalAlert || { level: 'medium', message: '' },
             attractions: parsed[0]?.attractions || [],
             traffic: parsed[0]?.traffic || []
           };
         } else {
           // 空数据或格式不正确，返回默认结构
-          content = {
+          apiContent = {
             globalAlert: { level: 'medium', message: '' },
             attractions: [],
             traffic: []
@@ -1670,31 +1670,88 @@ router.get('/special-content/:type', requireBlogAuth, async (req, res) => {
         }
       } else {
         // 其他类型直接使用解析结果
-        content = parsed;
+        apiContent = parsed;
       }
       
       logger.info('解析特殊内容数据', { 
         type, 
-        hasContent: !!content,
-        contentKeys: Object.keys(content),
-        contentType: Array.isArray(content) ? 'array' : typeof content,
-        hasGlobalAlert: !!content.globalAlert,
-        attractionsCount: content.attractions ? content.attractions.length : 0,
-        trafficCount: content.traffic ? content.traffic.length : 0,
+        hasContent: !!apiContent,
+        contentKeys: Object.keys(apiContent),
+        contentType: Array.isArray(apiContent) ? 'array' : typeof apiContent,
+        hasGlobalAlert: !!apiContent.globalAlert,
+        attractionsCount: apiContent.attractions ? apiContent.attractions.length : 0,
+        trafficCount: apiContent.traffic ? apiContent.traffic.length : 0,
         rawResponseContent: api.response_content ? api.response_content.substring(0, 200) : 'null'
       });
     } catch (e) {
       logger.warn('解析特殊内容数据失败', { type, error: e.message, responseContent: api.response_content });
       // 如果解析失败，返回默认结构
       if (type === 'weather') {
-        content = {
+        apiContent = {
           globalAlert: { level: 'medium', message: '' },
           attractions: [],
           traffic: []
         };
       } else {
-        content = {};
+        apiContent = {};
       }
+    }
+
+    // 尝试读取 blog_posts 中的 _specialData，并和 custom_apis 做“最新优先”合并
+    let content = apiContent;
+    let contentSource = 'custom_apis';
+    try {
+      const typeKeywords = {
+        weather: ['天气', 'weather'],
+        'exchange-rate': ['汇率', 'exchange'],
+        translation: ['翻译', 'translation']
+      };
+      const keywords = typeKeywords[type] || [type];
+
+      const specialPosts = await allAsync(
+        `SELECT id, api_name, category, custom_fields, updated_at
+         FROM blog_posts
+         WHERE custom_fields IS NOT NULL
+           AND (
+             api_name LIKE ? OR category LIKE ? OR
+             api_name LIKE ? OR category LIKE ?
+           )
+         ORDER BY updated_at DESC
+         LIMIT 20`,
+        [`%${keywords[0]}%`, `%${keywords[0]}%`, `%${keywords[1] || keywords[0]}%`, `%${keywords[1] || keywords[0]}%`]
+      );
+
+      let blogSpecialData = null;
+      let blogUpdatedAt = null;
+      for (const post of specialPosts) {
+        try {
+          const customFields = post.custom_fields ? JSON.parse(post.custom_fields) : {};
+          if (customFields && customFields._specialType === type && customFields._specialData) {
+            blogSpecialData = customFields._specialData;
+            blogUpdatedAt = post.updated_at;
+            break;
+          }
+        } catch (parseError) {
+          logger.warn('解析 blog_posts custom_fields 失败', {
+            postId: post.id,
+            error: parseError.message
+          });
+        }
+      }
+
+      if (blogSpecialData) {
+        const apiUpdatedTs = api.updated_at ? new Date(api.updated_at).getTime() : 0;
+        const blogUpdatedTs = blogUpdatedAt ? new Date(blogUpdatedAt).getTime() : 0;
+        if (!apiUpdatedTs || (blogUpdatedTs && blogUpdatedTs >= apiUpdatedTs)) {
+          content = blogSpecialData;
+          contentSource = 'blog_posts';
+        }
+      }
+    } catch (mergeError) {
+      logger.warn('合并 blog_posts 特殊内容失败，继续使用 custom_apis 数据', {
+        type,
+        error: mergeError.message
+      });
     }
     
     const responseData = {
@@ -1711,6 +1768,7 @@ router.get('/special-content/:type', requireBlogAuth, async (req, res) => {
     
     logger.info('返回特殊内容数据', {
       type,
+      source: contentSource,
       hasContent: !!content,
       contentStructure: {
         hasGlobalAlert: !!content.globalAlert,

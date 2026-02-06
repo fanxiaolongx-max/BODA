@@ -208,7 +208,7 @@ async function adminApiRequest(url, options = {}) {
       
       // 只有在已经登录的情况下才显示提示（避免首次打开页面时显示）
       if (wasLoggedIn) {
-        showToast('Session expired, please login again', 'error');
+        showToast(t('session_expired'), 'error');
         setTimeout(() => {
           showLoginPage();
         }, 1000);
@@ -511,6 +511,11 @@ function getPriceColor(price) {
 document.addEventListener('DOMContentLoaded', () => {
   // 先加载公开设置（商店名称等），即使未登录也要显示
   loadSettings();
+
+  // 初始化语言显示
+  if (typeof applyTranslations === 'function') {
+    applyTranslations();
+  }
   
   checkAuth();
   
@@ -518,6 +523,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     await login();
+  });
+
+  // 语言切换按钮
+  document.getElementById('adminLanguageButton')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleLanguage();
   });
   
   // 远程备份配置表单提交（使用事件委托，确保始终有效）
@@ -1000,7 +1011,7 @@ async function refreshSecurityAlertsCount() {
     const params = new URLSearchParams({
       hours: String(securityAlertsFilterState.hours),
       limit: '1',
-      sync: 'true'
+      sync: 'false'
     });
     const data = await adminApiRequest(`${API_BASE}/admin/security/alerts/high-risk?${params.toString()}`);
     if (data && data.success && data.summary) {
@@ -1078,36 +1089,36 @@ async function loadDashboard() {
       
       if (cycle) {
         const startTime = new Date(cycle.start_time).toLocaleString('en-US');
-        const endTime = cycle.end_time ? new Date(cycle.end_time).toLocaleString('en-US') : 'In Progress';
-        const statusText = cycle.status === 'active' ? 'In Progress' : cycle.status === 'ended' ? 'Ended' : 'Confirmed';
-        const cycleTitle = cycle.status === 'active' ? 'Current Cycle Info' : 'Previous Cycle Info';
+        const endTime = cycle.end_time ? new Date(cycle.end_time).toLocaleString('en-US') : t('cycle_in_progress');
+        const statusText = cycle.status === 'active' ? t('cycle_in_progress') : cycle.status === 'ended' ? t('cycle_ended') : t('cycle_confirmed');
+        const cycleTitle = cycle.status === 'active' ? t('cycle_current_info') : t('cycle_previous_info');
         
         cycleInfoHtml = `
           <div class="bg-white p-6 rounded-xl card mt-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-4">${cycleTitle}</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <p class="text-sm text-gray-600">Cycle Number</p>
+                <p class="text-sm text-gray-600">${t('cycle_number')}</p>
                 <p class="text-lg font-semibold text-gray-900">${cycle.cycle_number}</p>
               </div>
               <div>
-                <p class="text-sm text-gray-600">Status</p>
+                <p class="text-sm text-gray-600">${t('status')}</p>
                 <p class="text-lg font-semibold ${cycle.status === 'active' ? 'text-green-600' : cycle.status === 'ended' ? 'text-yellow-600' : 'text-blue-600'}">${statusText}</p>
               </div>
               <div>
-                <p class="text-sm text-gray-600">Start Time</p>
+                <p class="text-sm text-gray-600">${t('start_time')}</p>
                 <p class="text-lg font-semibold text-gray-900">${startTime}</p>
               </div>
               <div>
-                <p class="text-sm text-gray-600">End Time</p>
+                <p class="text-sm text-gray-600">${t('end_time')}</p>
                 <p class="text-lg font-semibold text-gray-900">${endTime}</p>
               </div>
               <div>
-                <p class="text-sm text-gray-600">Cycle Total Amount</p>
+                <p class="text-sm text-gray-600">${t('cycle_total_amount')}</p>
                 <p class="text-lg font-semibold text-blue-600">${formatPriceDecimal(stats.total_amount || cycle.total_amount || 0)}</p>
               </div>
               <div>
-                <p class="text-sm text-gray-600">Discount Rate</p>
+                <p class="text-sm text-gray-600">${t('discount_rate')}</p>
                 <p class="text-lg font-semibold text-green-600">${(cycle.discount_rate || 0).toFixed(1)}%</p>
               </div>
             </div>
@@ -1115,7 +1126,7 @@ async function loadDashboard() {
               <div class="mt-4 pt-4 border-t border-gray-200">
                 <button onclick="confirmCycle(${cycle.id})" 
                         class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition">
-                  Confirm All Orders Payment Received
+                  ${t('confirm_all_orders_payment_received')}
                 </button>
               </div>
             ` : ''}
@@ -1124,7 +1135,7 @@ async function loadDashboard() {
       } else {
         cycleInfoHtml = `
           <div class="bg-white p-6 rounded-xl card mt-6">
-            <p class="text-gray-500 text-center">No active cycle</p>
+            <p class="text-gray-500 text-center">${t('no_active_cycle')}</p>
           </div>
         `;
       }
@@ -1149,10 +1160,10 @@ async function loadDashboard() {
 // 确认周期
 async function confirmCycle(cycleId) {
   const confirmed = await showDangerConfirmDialog(
-    '⚠️ Confirm All Orders Payment Received',
-    'Have you confirmed that you have received payment from everyone?\n\nUnpaid orders will be automatically cancelled after confirmation!',
-    'Confirm',
-    'Cancel'
+    `⚠️ ${t('confirm_all_orders_payment_received')}`,
+    t('confirm_cycle_message'),
+    t('confirm'),
+    t('cancel')
   );
   
   if (!confirmed) return;
@@ -1161,16 +1172,25 @@ async function confirmCycle(cycleId) {
     const data = await apiPost(`/admin/cycles/${cycleId}/confirm`);
     
     if (data.success) {
-      const message = `Cycle confirmed successfully! Discount rate: ${data.discountRate.toFixed(1)}%, updated ${data.orderCount} orders${data.cancelledCount > 0 ? `, cancelled ${data.cancelledCount} pending orders` : ''}`;
+      const message = data.cancelledCount > 0
+        ? t('cycle_confirmed_success_with_cancelled', {
+            discountRate: data.discountRate.toFixed(1),
+            orderCount: data.orderCount,
+            cancelledCount: data.cancelledCount
+          })
+        : t('cycle_confirmed_success', {
+            discountRate: data.discountRate.toFixed(1),
+            orderCount: data.orderCount
+          });
       showToast(message, 'success');
       loadDashboard();
       loadOrders();
     } else {
-        showToast(data.message || 'Confirmation failed', 'error');
+        showToast(data.message || t('confirmation_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to confirm cycle:', error);
-      showToast('Confirmation failed', 'error');
+      showToast(t('confirmation_failed'), 'error');
   }
 }
 
@@ -1251,7 +1271,7 @@ function updateStoreName() {
   // 更新页面标题
   const adminPageTitle = document.getElementById('adminPageTitle');
   if (adminPageTitle) {
-    adminPageTitle.textContent = `Admin Panel - ${storeName} Ordering System`;
+    adminPageTitle.textContent = t('admin_panel_title', { storeName });
   }
   
   // 更新所有显示商店名称的元素
@@ -1265,6 +1285,84 @@ function updateStoreName() {
   appNameElements.forEach(el => {
     el.textContent = storeName;
   });
+}
+
+// 应用翻译（管理员页面）
+function applyTranslations() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key && typeof t === 'function') {
+      // app_name 由 updateStoreName 处理
+      if (key === 'app_name') {
+        return;
+      }
+      el.textContent = t(key);
+    }
+  });
+
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (key && typeof t === 'function') {
+      el.placeholder = t(key);
+    }
+  });
+
+  updateLanguageButton();
+  updateStoreName();
+  rerenderActiveAdminTab();
+}
+
+// 更新语言切换按钮显示（管理员页面）
+function updateLanguageButton() {
+  const languageBtn = document.getElementById('adminLanguageButton');
+  if (!languageBtn || typeof getLanguage !== 'function') return;
+  const lang = getLanguage();
+  // 显示可切换的语言
+  languageBtn.textContent = lang === 'zh' ? 'EN' : '中文';
+}
+
+// 切换语言（管理员页面）
+function toggleLanguage() {
+  if (typeof getLanguage === 'function' && typeof setLanguage === 'function') {
+    const currentLang = getLanguage();
+    const newLang = currentLang === 'en' ? 'zh' : 'en';
+    setLanguage(newLang);
+  }
+}
+
+function getActiveAdminTab() {
+  const active = document.querySelector('.sidebar-item.active');
+  if (!active) return null;
+  const match = (active.getAttribute('onclick') || '').match(/switchTab\('([^']+)'\)/);
+  return match ? match[1] : null;
+}
+
+function rerenderActiveAdminTab() {
+  const tab = getActiveAdminTab();
+  if (!tab) return;
+  const loaders = {
+    'dashboard': loadDashboard,
+    'orders': loadOrders,
+    'products': loadProducts,
+    'categories': loadCategories,
+    'discounts': loadDiscounts,
+    'dine-in-qr': loadDineInQRCodeHistory,
+    'showcase-images': loadShowcaseImages,
+    'delivery-addresses': loadDeliveryAddresses,
+    'settings': loadSettingsPage,
+    'users': loadUsers,
+    'balance': loadBalanceManagement,
+    'admins': loadAdmins,
+    'logs': loadLogs,
+    'security-alerts': loadSecurityAlerts,
+    'api-management': loadApiManagement,
+    'about': loadAboutPage,
+    'developer': loadDeveloperPage
+  };
+  const loader = loaders[tab];
+  if (typeof loader === 'function') {
+    loader();
+  }
 }
 
 // 图片拖动相关变量（管理员页面）
@@ -1542,8 +1640,12 @@ async function loadCycles() {
             day: '2-digit', 
             hour: '2-digit', 
             minute: '2-digit' 
-          }) : 'In Progress';
-          const statusText = cycle.status === 'active' ? 'In Progress' : cycle.status === 'ended' ? 'Ended' : 'Confirmed';
+          }) : t('cycle_in_progress');
+          const statusText = cycle.status === 'active'
+            ? t('cycle_in_progress')
+            : cycle.status === 'ended'
+              ? t('cycle_ended')
+              : t('cycle_confirmed');
           
           const option = document.createElement('option');
           option.value = cycle.id;
@@ -1629,7 +1731,7 @@ async function exportOrders() {
     document.body.removeChild(link);
   } catch (error) {
     console.error('Failed to export orders:', error);
-    showToast('Export failed', 'error');
+    showToast(t('export_failed'), 'error');
   }
 }
 
@@ -1639,7 +1741,7 @@ function renderOrders(orders, pagination) {
   if (!tbody) return;
   
   if (orders.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No orders</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">${t('no_orders')}</td></tr>`;
     // 清空分页
     const paginationContainer = document.getElementById('ordersPagination');
     if (paginationContainer) {
@@ -1657,26 +1759,26 @@ function renderOrders(orders, pagination) {
     };
     
     const statusText = {
-      pending: 'Pending Payment',
-      paid: 'Paid',
-      completed: 'Completed',
-      cancelled: 'Cancelled'
+      pending: t('status_pending'),
+      paid: t('status_paid'),
+      completed: t('status_completed'),
+      cancelled: t('status_cancelled')
     };
     
     const sugarLabels = {
-      '0': 'Zero',
-      '30': 'Light',
-      '50': 'Half',
-      '70': 'Less',
-      '100': 'Regular'
+      '0': t('sugar_zero'),
+      '30': t('sugar_light'),
+      '50': t('sugar_half'),
+      '70': t('sugar_less'),
+      '100': t('sugar_regular')
     };
     
     const iceLabels = {
-      'normal': 'Normal Ice',
-      'less': 'Less Ice',
-      'no': 'No Ice',
-      'room': 'Room Temperature',
-      'hot': 'Hot'
+      'normal': t('ice_normal'),
+      'less': t('ice_less'),
+      'no': t('ice_no'),
+      'room': t('ice_room'),
+      'hot': t('ice_hot')
     };
     
     // 构建商品详情HTML
@@ -1708,12 +1810,12 @@ function renderOrders(orders, pagination) {
         <div class="mb-2 p-2 bg-gray-50 rounded text-xs">
           <div class="font-semibold text-gray-900">${item.product_name} × ${item.quantity}</div>
           <div class="mt-1 space-y-0.5 text-gray-600">
-            ${item.size ? `<div>Size: ${item.size}${actualSizePrice > 0 ? ` (${formatPrice(actualSizePrice)})` : ''}</div>` : ''}
-            ${item.sugar_level ? `<div>Sweetness: ${sugarLabels[item.sugar_level] || item.sugar_level}%</div>` : ''}
-            ${item.ice_level ? `<div>Ice Level: ${iceLabels[item.ice_level] || item.ice_level}</div>` : ''}
+            ${item.size ? `<div>${t('size_label')}${item.size}${actualSizePrice > 0 ? ` (${formatPrice(actualSizePrice)})` : ''}</div>` : ''}
+            ${item.sugar_level ? `<div>${t('sweetness_label')}${sugarLabels[item.sugar_level] || item.sugar_level}%</div>` : ''}
+            ${item.ice_level ? `<div>${t('ice_level_label')}${iceLabels[item.ice_level] || item.ice_level}</div>` : ''}
             ${toppings.length > 0 ? `
               <div>
-                <div class="text-gray-700 font-medium">Toppings:</div>
+                <div class="text-gray-700 font-medium">${t('toppings_label')}</div>
                 <ul class="ml-2 space-y-0.5">
                   ${Array.isArray(toppings) ? toppings.map(t => {
                     // 检查是否是对象格式（包含价格）
@@ -1725,9 +1827,9 @@ function renderOrders(orders, pagination) {
               </div>
             ` : ''}
             <div class="text-gray-900 font-medium">
-              Price Breakdown: ${actualSizePrice > 0 ? formatPrice(actualSizePrice) : formatPrice(unitPrice)}${totalToppingPrice > 0 ? ` + ${formatPrice(totalToppingPrice)}` : ''}${actualSizePrice > 0 || totalToppingPrice > 0 ? ` = ${formatPrice(unitPrice)}` : ''}
+              ${t('price_breakdown')}${actualSizePrice > 0 ? formatPrice(actualSizePrice) : formatPrice(unitPrice)}${totalToppingPrice > 0 ? ` + ${formatPrice(totalToppingPrice)}` : ''}${actualSizePrice > 0 || totalToppingPrice > 0 ? ` = ${formatPrice(unitPrice)}` : ''}
             </div>
-            <div class="text-gray-900 font-medium">Unit Price: ${formatPrice(unitPrice)} | Subtotal: ${formatPrice(item.subtotal)}</div>
+            <div class="text-gray-900 font-medium">${t('unit_price')}${formatPrice(unitPrice)} | ${t('subtotal')}: ${formatPrice(item.subtotal)}</div>
           </div>
         </div>
       `;
@@ -1744,12 +1846,12 @@ function renderOrders(orders, pagination) {
     // 格式化周期信息
     let cycleInfo = '';
     if (order.cycle_id) {
-      const startTime = order.cycle_start_time ? new Date(order.cycle_start_time).toLocaleString('en-US') : 'N/A';
-      const endTime = order.cycle_end_time ? new Date(order.cycle_end_time).toLocaleString('en-US') : 'Ongoing';
+      const startTime = order.cycle_start_time ? new Date(order.cycle_start_time).toLocaleString('en-US') : t('not_available');
+      const endTime = order.cycle_end_time ? new Date(order.cycle_end_time).toLocaleString('en-US') : t('ongoing');
       cycleInfo = `
         <div class="text-xs text-gray-500 mt-1">
-          <div>Cycle ID: <span class="font-semibold">${order.cycle_id}</span> | Cycle: <span class="font-semibold">${order.cycle_number || 'N/A'}</span></div>
-          <div>Time: ${startTime} - ${endTime}</div>
+          <div>${t('cycle_id')} <span class="font-semibold">${order.cycle_id}</span> | ${t('cycle_label')} <span class="font-semibold">${order.cycle_number || t('not_available')}</span></div>
+          <div>${t('cycle_time')} ${startTime} - ${endTime}</div>
         </div>
       `;
     }
@@ -1759,48 +1861,48 @@ function renderOrders(orders, pagination) {
         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium ${expiredClass}">
           ${order.order_number}
           ${cycleInfo}
-          ${isExpired ? '<br><span class="text-xs text-red-600 font-semibold">⚠️ Expired</span>' : ''}
+          ${isExpired ? `<br><span class="text-xs text-red-600 font-semibold">⚠️ ${t('expired')}</span>` : ''}
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm ${expiredClass}">
-          ${order.customer_name || 'Anonymous'}<br>
+          ${order.customer_name || t('anonymous')}<br>
           <span class="text-xs">${order.customer_phone}</span>
         </td>
         <td class="px-6 py-4 text-sm ${expiredClass} max-w-md">
           ${itemsHtml}
           ${order.order_type === 'dine_in' ? `
             <div class="mt-2 p-2 bg-blue-50 rounded text-xs border border-blue-200">
-              <div class="text-blue-700 font-semibold mb-1">🍽️ Dine-In:</div>
-              ${order.table_number ? `<div class="text-blue-900 font-medium">Table: ${order.table_number}</div>` : ''}
+              <div class="text-blue-700 font-semibold mb-1">🍽️ ${t('dine_in')}</div>
+              ${order.table_number ? `<div class="text-blue-900 font-medium">${t('table_number')}: ${order.table_number}</div>` : ''}
             </div>
           ` : ''}
           ${order.delivery_address ? `
             <div class="mt-2 p-2 bg-green-50 rounded text-xs border border-green-200">
-              <div class="text-green-700 font-semibold mb-1">📍 Delivery Address:</div>
+              <div class="text-green-700 font-semibold mb-1">📍 ${t('delivery_address')}</div>
               <div class="text-green-900 font-medium">${order.delivery_address.name}</div>
               ${order.delivery_address.description ? `<div class="text-green-700 mt-1">${order.delivery_address.description}</div>` : ''}
             </div>
           ` : ''}
           ${!order.delivery_address && order.order_type !== 'dine_in' ? `
             <div class="mt-2 p-2 bg-green-50 rounded text-xs border border-green-200">
-              <div class="text-green-700 font-semibold mb-1">🚚 Delivery</div>
+              <div class="text-green-700 font-semibold mb-1">🚚 ${t('delivery')}</div>
             </div>
           ` : ''}
           ${order.notes ? `
             <div class="mt-2 p-2 bg-blue-50 rounded text-xs border border-blue-200">
-              <div class="text-blue-700 font-semibold mb-1">Order Notes:</div>
+              <div class="text-blue-700 font-semibold mb-1">${t('order_notes')}</div>
               <div class="text-blue-900">${order.notes}</div>
             </div>
           ` : ''}
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm">
           <div class="space-y-1">
-            <div class="${expiredClass || inactiveClass || 'text-gray-600'}">Original: <span class="${expiredClass || inactiveClass}">${formatPrice(order.total_amount)}</span></div>
+            <div class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('original_amount')} <span class="${expiredClass || inactiveClass}">${formatPrice(order.total_amount)}</span></div>
             ${order.discount_amount > 0 ? `
-              <div class="${expiredClass || inactiveClass || 'text-gray-600'}">Discount: <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'}">-${formatPrice(order.discount_amount)}</span></div>
+              <div class="${expiredClass || inactiveClass || 'text-gray-600'}">${t('discount')}: <span class="${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-green-600'}">-${formatPrice(order.discount_amount)}</span></div>
             ` : ''}
-            <div class="font-bold ${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'}">Final: ${formatPrice(order.final_amount)}</div>
+            <div class="font-bold ${!isActiveCycle || isExpired ? 'text-gray-500' : 'text-red-600'}">${t('final_label')} ${formatPrice(order.final_amount)}</div>
             ${order.balance_used && order.balance_used > 0 ? `
-              <div class="${expiredClass || inactiveClass || 'text-gray-600'} text-xs mt-1">Balance Used: <span class="${expiredClass || inactiveClass || 'text-green-600'} font-semibold">${formatPrice(order.balance_used)}</span></div>
+              <div class="${expiredClass || inactiveClass || 'text-gray-600'} text-xs mt-1">${t('balance_used')}: <span class="${expiredClass || inactiveClass || 'text-green-600'} font-semibold">${formatPrice(order.balance_used)}</span></div>
             ` : ''}
           </div>
         </td>
@@ -1812,7 +1914,7 @@ function renderOrders(orders, pagination) {
             ${order.payment_method === 'stripe' && order.status === 'paid' && !order.payment_image ? `
               <div class="mt-1">
                 <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                  💳 Online Payment
+                  💳 ${t('online_payment')}
                 </span>
               </div>
             ` : ''}
@@ -1824,21 +1926,21 @@ function renderOrders(orders, pagination) {
         <td class="px-6 py-4 whitespace-nowrap text-sm">
           <select onchange="updateOrderStatus('${order.id}', this.value)" 
                   class="px-2 py-1 border border-gray-300 rounded text-xs mb-1">
-            <option value="">Change Status</option>
-            <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Pending Payment</option>
-            <option value="paid" ${order.status === 'paid' ? 'selected' : ''}>Paid</option>
-            <option value="completed" ${order.status === 'completed' ? 'selected' : ''}>Completed</option>
-            <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+            <option value="">${t('change_status')}</option>
+            <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>${t('status_pending')}</option>
+            <option value="paid" ${order.status === 'paid' ? 'selected' : ''}>${t('status_paid')}</option>
+            <option value="completed" ${order.status === 'completed' ? 'selected' : ''}>${t('status_completed')}</option>
+            <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>${t('status_cancelled')}</option>
           </select>
           <br>
           <button onclick="printOrderReceiptById('${order.id}')" 
                   class="mt-1 px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-xs transition-colors">
-            🖨️ Print Receipt
+            🖨️ ${t('print_receipt')}
           </button>
-          ${order.payment_image ? `<br><button onclick="showPaymentImageModal('${order.payment_image}')" class="mt-1 text-blue-600 hover:text-blue-800 text-xs underline">View Payment Screenshot</button>` : ''}
+          ${order.payment_image ? `<br><button onclick="showPaymentImageModal('${order.payment_image}')" class="mt-1 text-blue-600 hover:text-blue-800 text-xs underline">${t('view_payment_screenshot')}</button>` : ''}
           ${order.payment_method === 'stripe' && order.stripe_payment_intent_id && order.status === 'paid' && !order.payment_image ? `
             <div class="mt-2 text-xs">
-              <div class="text-gray-600 font-semibold">Transaction ID:</div>
+              <div class="text-gray-600 font-semibold">${t('transaction_id')}:</div>
               <div class="text-gray-800 font-mono text-xs break-all">${order.stripe_payment_intent_id}</div>
             </div>
           ` : ''}
@@ -1855,9 +1957,11 @@ function renderOrders(orders, pagination) {
         <div class="px-6 py-4 bg-gray-50 border-t border-gray-200">
           <div class="flex items-center justify-between">
             <div class="text-sm text-gray-600">
-              Showing <span class="font-semibold">${(pagination.page - 1) * pagination.limit + 1}</span> to 
-              <span class="font-semibold">${Math.min(pagination.page * pagination.limit, pagination.total)}</span> of 
-              <span class="font-semibold">${pagination.total}</span> orders
+              ${t('pagination_showing_orders', {
+                start: (pagination.page - 1) * pagination.limit + 1,
+                end: Math.min(pagination.page * pagination.limit, pagination.total),
+                total: pagination.total
+              })}
             </div>
             
             <div class="flex items-center gap-2">
@@ -1867,12 +1971,12 @@ function renderOrders(orders, pagination) {
                 ${pagination.page <= 1 ? 'disabled' : ''}
                 class="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium ${pagination.page <= 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
               >
-                Previous
+                ${t('previous')}
               </button>
               
               <!-- 页码显示和输入 -->
               <div class="flex items-center gap-2">
-                <span class="text-sm text-gray-600">Page</span>
+                <span class="text-sm text-gray-600">${t('page')}</span>
                 <input 
                   type="number" 
                   id="orderPageInput"
@@ -1882,7 +1986,7 @@ function renderOrders(orders, pagination) {
                   class="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onkeyup="if(event.key==='Enter') goToOrderPage(parseInt(this.value))"
                 />
-                <span class="text-sm text-gray-600">of ${pagination.totalPages}</span>
+                <span class="text-sm text-gray-600">${t('of')} ${pagination.totalPages}</span>
               </div>
               
               <!-- 下一页按钮 -->
@@ -1891,7 +1995,7 @@ function renderOrders(orders, pagination) {
                 ${pagination.page >= pagination.totalPages ? 'disabled' : ''}
                 class="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium ${pagination.page >= pagination.totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
               >
-                Next
+                ${t('next')}
               </button>
             </div>
           </div>
@@ -1909,7 +2013,7 @@ function printOrderReceiptById(orderId) {
   const order = currentOrdersList.find(o => o.id === orderId);
   if (!order) {
     console.error('Order not found in currentOrdersList. ID:', orderId);
-    showToast('Order not found. Please refresh the page.', 'error');
+    showToast(t('order_not_found_refresh'), 'error');
     return;
   }
   
@@ -1924,7 +2028,7 @@ async function printOrderReceipt(order) {
     console.log('Printing order:', order);
     
     if (!order || !order.id) {
-      showToast('Invalid order data', 'error');
+      showToast(t('invalid_order_data'), 'error');
       console.error('Order data:', order);
       return;
     }
@@ -1945,19 +2049,26 @@ async function printOrderReceipt(order) {
 
     // 商品标签映射
     const sugarLabels = {
-      '0': 'Zero',
-      '30': 'Light',
-      '50': 'Half',
-      '70': 'Less',
-      '100': 'Regular'
+      '0': t('sugar_zero'),
+      '30': t('sugar_light'),
+      '50': t('sugar_half'),
+      '70': t('sugar_less'),
+      '100': t('sugar_regular')
     };
     
     const iceLabels = {
-      'normal': 'Normal Ice',
-      'less': 'Less Ice',
-      'no': 'No Ice',
-      'room': 'Room Temperature',
-      'hot': 'Hot'
+      'normal': t('ice_normal'),
+      'less': t('ice_less'),
+      'no': t('ice_no'),
+      'room': t('ice_room'),
+      'hot': t('ice_hot')
+    };
+    
+    const statusText = {
+      pending: t('status_pending'),
+      paid: t('status_paid'),
+      completed: t('status_completed'),
+      cancelled: t('status_cancelled')
     };
 
     // 调试：检查订单项
@@ -1978,21 +2089,21 @@ async function printOrderReceipt(order) {
         
         // 构建规格信息
         let specs = [];
-        if (item.size) specs.push(`Size: ${item.size}`);
+        if (item.size) specs.push(`${t('size_label')}${item.size}`);
         if (item.sugar_level) {
           const sugarLabel = sugarLabels[item.sugar_level] || `${item.sugar_level}%`;
-          specs.push(`Sweetness: ${sugarLabel}`);
+          specs.push(`${t('sweetness_label')}${sugarLabel}`);
         }
         if (item.ice_level) {
           const iceLabel = iceLabels[item.ice_level] || item.ice_level;
-          specs.push(`Ice: ${iceLabel}`);
+          specs.push(`${t('ice_level_label')}${iceLabel}`);
         }
         if (toppings.length > 0) {
           const toppingNames = toppings.map(t => {
             if (typeof t === 'object' && t !== null && t.name) return t.name;
             return typeof t === 'string' ? t : String(t);
           });
-          specs.push(`Toppings: ${toppingNames.join(', ')}`);
+          specs.push(`${t('toppings_label')}${toppingNames.join(', ')}`);
         }
 
         return `
@@ -2016,34 +2127,34 @@ async function printOrderReceipt(order) {
     // 生成小票HTML
     const receiptHtml = `
       <div class="receipt-header">
-        <div class="receipt-store-name">${storeName || 'BOBA TEA'}</div>
+        <div class="receipt-store-name">${storeName || t('app_name')}</div>
       </div>
       
       <div class="receipt-order-info">
-        <div>Order: ${order.order_number}</div>
-        <div>Date: ${dateStr} ${timeStr}</div>
-        ${order.cycle_number ? `<div>Cycle: ${order.cycle_number}</div>` : ''}
+        <div>${t('order_label')}${order.order_number}</div>
+        <div>${t('date_label')}${dateStr} ${timeStr}</div>
+        ${order.cycle_number ? `<div>${t('cycle_label')}${order.cycle_number}</div>` : ''}
       </div>
       
       <div class="receipt-customer-info">
-        <div>Customer: ${order.customer_name || 'Anonymous'}</div>
-        <div>Phone: ${order.customer_phone || 'N/A'}</div>
+        <div>${t('customer_label')}${order.customer_name || t('anonymous')}</div>
+        <div>${t('phone_label')}${order.customer_phone || t('not_available')}</div>
         ${order.order_type === 'dine_in' && order.table_number ? `
           <div style="margin-top: 4px;">
-            <div><strong>🍽️ Dine-In:</strong></div>
-            <div>Table: ${order.table_number}</div>
+            <div><strong>🍽️ ${t('dine_in')}</strong></div>
+            <div>${t('table_number')}: ${order.table_number}</div>
           </div>
         ` : ''}
         ${order.delivery_address ? `
           <div style="margin-top: 4px;">
-            <div><strong>📍 Delivery Address:</strong></div>
+            <div><strong>📍 ${t('delivery_address')}</strong></div>
             <div>${order.delivery_address.name}</div>
             ${order.delivery_address.description ? `<div style="font-size: 11px; color: #666;">${order.delivery_address.description}</div>` : ''}
           </div>
         ` : ''}
         ${!order.delivery_address && order.order_type !== 'dine_in' ? `
           <div style="margin-top: 4px;">
-            <div><strong>🚚 Delivery</strong></div>
+            <div><strong>🚚 ${t('delivery')}</strong></div>
           </div>
         ` : ''}
       </div>
@@ -2051,48 +2162,48 @@ async function printOrderReceipt(order) {
       <div class="receipt-divider"></div>
       
       <div class="receipt-items">
-        ${itemsHtml || '<div class="receipt-item">No items found</div>'}
+        ${itemsHtml || `<div class="receipt-item">${t('no_items_found')}</div>`}
       </div>
       
       <div class="receipt-divider"></div>
       
       <div class="receipt-totals">
         <div class="receipt-total-line">
-          <span>Subtotal:</span>
+          <span>${t('subtotal')}</span>
           <span>${formatPrice(subtotal)}</span>
         </div>
         ${discount > 0 ? `
           <div class="receipt-total-line">
-            <span>Discount:</span>
+            <span>${t('discount')}</span>
             <span>-${formatPrice(discount)}</span>
           </div>
         ` : ''}
         ${balanceUsed > 0 ? `
           <div class="receipt-total-line">
-            <span>Balance Used:</span>
+            <span>${t('balance_used')}</span>
             <span>-${formatPrice(balanceUsed)}</span>
           </div>
         ` : ''}
         <div class="receipt-total-line receipt-total-final">
-          <span>TOTAL:</span>
+          <span>${t('total')}</span>
           <span>${formatPrice(finalAmount)}</span>
         </div>
       </div>
       
       <div class="receipt-order-info">
-        <div>Status: ${order.status ? order.status.toUpperCase() : 'PENDING'}</div>
-        ${order.payment_method === 'stripe' ? '<div>Payment: Online</div>' : ''}
+        <div>${t('status')}: ${statusText[order.status] || t('status_pending')}</div>
+        ${order.payment_method === 'stripe' ? `<div>${t('payment_label')}${t('online_payment')}</div>` : ''}
       </div>
       
       ${order.notes ? `
         <div class="receipt-notes">
-          <div><strong>Notes:</strong></div>
+          <div><strong>${t('order_notes')}</strong></div>
           <div>${order.notes.replace(/\n/g, '<br>')}</div>
         </div>
       ` : ''}
       
       <div class="receipt-footer">
-        <div>Thank you for your order!</div>
+        <div>${t('receipt_thank_you')}</div>
       </div>
     `;
 
@@ -2106,7 +2217,7 @@ async function printOrderReceipt(order) {
         });
         
         if (printResult.success) {
-          showToast(`Printed via ${printResult.method}`, 'success');
+          showToast(t('printed_via', { method: printResult.method }), 'success');
           return; // 静默打印成功，直接返回
         }
         
@@ -2124,7 +2235,7 @@ async function printOrderReceipt(order) {
     // 标准打印方式（原有的代码）- 作为回退方案
     const printWindow = window.open('', '_blank', 'width=300,height=600');
     if (!printWindow) {
-      showToast('Please allow popups to print receipt', 'error');
+      showToast(t('allow_popups_to_print'), 'error');
       return;
     }
     
@@ -2136,7 +2247,7 @@ async function printOrderReceipt(order) {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Receipt - ${order.order_number || 'Unknown'}</title>
+        <title>${t('receipt')} - ${order.order_number || t('unknown')}</title>
         <meta charset="UTF-8">
         <style>
           * {
@@ -2296,7 +2407,7 @@ async function printOrderReceipt(order) {
     
   } catch (error) {
     console.error('Print receipt error:', error);
-    showToast('Failed to print receipt: ' + error.message, 'error');
+    showToast(t('print_receipt_failed', { error: error.message }), 'error');
   }
 }
 
@@ -2311,15 +2422,15 @@ async function updateOrderStatus(orderId, newStatus) {
       body: JSON.stringify({ status: newStatus })
     });
     if (data.success) {
-      showToast('Status updated successfully', 'success');
+      showToast(t('status_updated_success'), 'success');
       loadOrders();
       loadDashboard();
     } else {
-        showToast(data.message || 'Update failed', 'error');
+        showToast(data.message || t('update_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to update order status:', error);
-      showToast('Update failed', 'error');
+      showToast(t('update_failed'), 'error');
   }
 }
 
@@ -2342,22 +2453,22 @@ function renderProducts(products) {
   
   container.innerHTML = `
     <div class="mb-6 flex justify-between items-center">
-      <h2 class="text-2xl font-bold text-gray-900">Products</h2>
+      <h2 class="text-2xl font-bold text-gray-900">${t('products')}</h2>
       <div class="flex space-x-2">
         <button onclick="backupMenu()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
-          💾 Backup Menu
+          💾 ${t('backup_menu')}
         </button>
         <button onclick="importMenu()" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">
-          📥 Import Menu
+          📥 ${t('import_menu')}
         </button>
         <button id="batchEditBtn" onclick="showBatchEditModal()" class="hidden px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
-          ✏️ Batch Edit (<span id="selectedProductsCount">0</span>)
+          ✏️ ${t('batch_edit')} (<span id="selectedProductsCount">0</span>)
         </button>
         <button onclick="showProductModal(null, 'drink')" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-          + Add Drink
+          + ${t('add_drink')}
         </button>
         <button onclick="showProductModal(null, 'regular')" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
-          + Add Regular Product
+          + ${t('add_regular_product')}
         </button>
       </div>
     </div>
@@ -2369,16 +2480,16 @@ function renderProducts(products) {
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
               <input type="checkbox" id="selectAllProducts" onclick="toggleSelectAllProducts()" class="w-4 h-4">
             </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Image</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('image')}</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('name')}</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('category')}</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('price')}</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('status')}</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('actions')}</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
-          ${products.length === 0 ? '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No products</td></tr>' : ''}
+          ${products.length === 0 ? `<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">${t('no_products')}</td></tr>` : ''}
           ${products.map(product => `
             <tr>
               <td class="px-6 py-4">
@@ -2402,12 +2513,12 @@ function renderProducts(products) {
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <span class="px-2 py-1 text-xs rounded-full ${product.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
-                  ${product.status === 'active' ? 'Active' : 'Inactive'}
+                  ${product.status === 'active' ? t('active') : t('inactive')}
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm">
-                <button onclick='showProductModal(${JSON.stringify(product)})' class="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
-                <button onclick="deleteProduct(${product.id})" class="text-red-600 hover:text-red-800">Delete</button>
+                <button onclick='showProductModal(${JSON.stringify(product)})' class="text-blue-600 hover:text-blue-800 mr-3">${t('edit')}</button>
+                <button onclick="deleteProduct(${product.id})" class="text-red-600 hover:text-red-800">${t('delete')}</button>
               </td>
             </tr>
           `).join('')}
@@ -2418,117 +2529,117 @@ function renderProducts(products) {
     <!-- 菜品编辑模态框 -->
     <div id="productModal" class="modal">
       <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-8">
-        <h3 id="productModalTitle" class="text-2xl font-bold text-gray-900 mb-6">Add Product</h3>
+        <h3 id="productModalTitle" class="text-2xl font-bold text-gray-900 mb-6">${t('add_product')}</h3>
         <form id="productForm" class="space-y-4">
           <input type="hidden" id="productId">
           
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Product Name *</label>
+              <label class="block text-sm font-medium text-gray-700 mb-2">${t('product_name_required')}</label>
               <input type="text" id="productName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Price *</label>
+              <label class="block text-sm font-medium text-gray-700 mb-2">${t('price_required')}</label>
               <input type="number" id="productPrice" required step="0.01" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
             </div>
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('description')}</label>
             <input type="text" id="productDescription" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
           </div>
           
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+              <label class="block text-sm font-medium text-gray-700 mb-2">${t('category')}</label>
               <select id="productCategory" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                <option value="">No Category</option>
+                <option value="">${t('no_category')}</option>
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <label class="block text-sm font-medium text-gray-700 mb-2">${t('status')}</label>
               <select id="productStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
+                <option value="active">${t('active')}</option>
+                <option value="inactive">${t('inactive')}</option>
               </select>
             </div>
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('product_image')}</label>
             <input type="file" id="productImage" accept="image/*" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
             <div id="currentImage" class="mt-2"></div>
           </div>
           
           <div id="sizesSection">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Cup Sizes & Prices</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('cup_sizes_prices')}</label>
             <div id="sizesContainer" class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
-              <div class="text-sm text-gray-600 mb-2">Add different cup sizes and their prices (e.g., Medium, Large)</div>
+              <div class="text-sm text-gray-600 mb-2">${t('cup_sizes_hint')}</div>
               <div id="sizesList" class="space-y-2"></div>
               <button type="button" onclick="addSizeRow()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                + Add Size
+                + ${t('add_size')}
               </button>
             </div>
           </div>
           
           <div id="sugarLevelsSection">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Sweetness Options</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('sweetness_options')}</label>
             <div id="sugarLevelsContainer" class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
-              <div class="text-sm text-gray-600 mb-2">Add sweetness levels (e.g., 0%, 30%, 50%, 70%, 100%)</div>
+              <div class="text-sm text-gray-600 mb-2">${t('sweetness_levels_hint')}</div>
               <div id="sugarLevelsList" class="space-y-2"></div>
               <button type="button" onclick="addSugarLevelRow()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                + Add Sweetness Level
+                + ${t('add_sweetness_level')}
               </button>
             </div>
           </div>
           
           <div id="toppingsSection">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Available Toppings</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('available_toppings')}</label>
             <div id="toppingsContainer" class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
-              <div class="text-sm text-gray-600 mb-2">Add topping names and prices (e.g., Cheese 芝士: 20 LE, Boba 波霸: 20 LE)</div>
+              <div class="text-sm text-gray-600 mb-2">${t('toppings_hint')}</div>
               <div id="toppingsList" class="space-y-2"></div>
               <button type="button" onclick="addToppingRow()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                + Add Topping
+                + ${t('add_topping')}
               </button>
             </div>
           </div>
           
           <div id="iceOptionsSection">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Available Ice Options</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('available_ice_options')}</label>
             <div id="iceOptionsContainer" class="border border-gray-300 rounded-lg p-4 bg-gray-50">
-              <div class="text-sm text-gray-600 mb-2">Select which ice level options are available for this product</div>
+              <div class="text-sm text-gray-600 mb-2">${t('ice_options_hint')}</div>
               <div id="iceOptionsList" class="space-y-2">
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="normal" checked>
-                  <span class="text-sm text-gray-700">Normal Ice</span>
+                  <span class="text-sm text-gray-700">${t('ice_normal')}</span>
                 </label>
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="less" checked>
-                  <span class="text-sm text-gray-700">Less Ice</span>
+                  <span class="text-sm text-gray-700">${t('ice_less')}</span>
                 </label>
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="no" checked>
-                  <span class="text-sm text-gray-700">No Ice</span>
+                  <span class="text-sm text-gray-700">${t('ice_no')}</span>
                 </label>
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="room" checked>
-                  <span class="text-sm text-gray-700">Room Temperature</span>
+                  <span class="text-sm text-gray-700">${t('ice_room')}</span>
                 </label>
                 <label class="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" class="ice-option-checkbox" value="hot" checked>
-                  <span class="text-sm text-gray-700">Hot</span>
+                  <span class="text-sm text-gray-700">${t('ice_hot')}</span>
                 </label>
               </div>
-              <div class="text-xs text-gray-500 mt-2">If no options are selected, customers cannot choose ice level for this product</div>
+              <div class="text-xs text-gray-500 mt-2">${t('ice_options_none_hint')}</div>
             </div>
           </div>
           
           <div class="flex space-x-3 mt-6">
             <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
-              Save
+              ${t('save')}
             </button>
             <button type="button" onclick="closeProductModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
-              Cancel
+              ${t('cancel')}
             </button>
           </div>
         </form>
@@ -2548,7 +2659,7 @@ async function showProductModal(product = null, productType = 'drink') {
     const data = await adminApiRequest(`${API_BASE}/admin/categories`);
     if (data.success) {
       const select = document.getElementById('productCategory');
-      select.innerHTML = '<option value="">No Category</option>' +
+      select.innerHTML = `<option value="">${t('no_category')}</option>` +
         data.categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
     }
   } catch (error) {
@@ -2593,7 +2704,7 @@ async function showProductModal(product = null, productType = 'drink') {
   }
   
   if (product) {
-    title.textContent = 'Edit Product';
+    title.textContent = t('edit_product');
     document.getElementById('productId').value = product.id;
     document.getElementById('productName').value = product.name;
     document.getElementById('productPrice').value = product.price;
@@ -2635,7 +2746,7 @@ async function showProductModal(product = null, productType = 'drink') {
   } else {
     // 新建模式：根据商品类型设置标题和属性配置
     if (isRegularProduct) {
-      title.textContent = 'Add Regular Product';
+      title.textContent = t('add_regular_product');
       // 隐藏所有属性配置区域
       if (sizesSection) sizesSection.style.display = 'none';
       if (sugarLevelsSection) sugarLevelsSection.style.display = 'none';
@@ -2652,7 +2763,7 @@ async function showProductModal(product = null, productType = 'drink') {
       // 加载空甜度选项
       loadSugarLevels('[]');
     } else {
-      title.textContent = 'Add Drink';
+      title.textContent = t('add_drink');
       // 显示所有属性配置区域
       if (sizesSection) sizesSection.style.display = 'block';
       if (sugarLevelsSection) sugarLevelsSection.style.display = 'block';
@@ -2769,7 +2880,7 @@ function loadSugarLevels(sugarLevelsJson) {
   if (sugarLevels.length === 0) {
     sugarLevelsList.innerHTML += `
       <div class="text-sm text-gray-500 italic p-2 bg-gray-50 rounded mb-2">
-        No sugar levels configured. This product will not show sweetness options to customers.
+        ${t('no_sugar_levels_hint')}
       </div>
     `;
   }
@@ -2784,7 +2895,7 @@ function addSugarLevelRow(value = '') {
   row.className = 'sugar-level-row flex gap-2 items-center';
   row.innerHTML = `
     <input type="text" class="sugar-level-value flex-1 px-3 py-2 border border-gray-300 rounded-lg" 
-           placeholder="Sweetness level (e.g., 0, 30, 50, 70, 100)" value="${value}">
+           placeholder="${t('sweetness_level_placeholder')}" value="${value}">
     <button type="button" onclick="this.parentElement.remove()" 
             class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
       ×
@@ -2901,9 +3012,9 @@ function addToppingRow(name = '', price = '') {
   row.className = 'topping-row flex gap-2 items-center';
   row.innerHTML = `
     <input type="text" class="topping-name flex-1 px-3 py-2 border border-gray-300 rounded-lg" 
-           placeholder="Topping name (e.g., Cheese 芝士)" value="${name}">
+           placeholder="${t('topping_name_placeholder')}" value="${name}">
     <input type="number" class="topping-price w-32 px-3 py-2 border border-gray-300 rounded-lg" 
-           placeholder="Price" step="0.01" min="0" value="${price}">
+           placeholder="${t('price')}" step="0.01" min="0" value="${price}">
     <button type="button" onclick="this.parentElement.remove()" 
             class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
       ×
@@ -2952,7 +3063,7 @@ function loadIceOptions(iceOptionsJson) {
   if (finalIceOptions.length === 0) {
     iceOptionsList.innerHTML += `
       <div class="text-sm text-gray-500 italic p-2 bg-gray-50 rounded mb-2">
-        No ice options configured. This product will not show ice options to customers.
+        ${t('no_ice_options_hint')}
       </div>
     `;
   }
@@ -3058,24 +3169,24 @@ async function saveProduct(e) {
     const data = await response.json();
     
     if (data.success) {
-      showToast(isEdit ? 'Product updated successfully' : 'Product added successfully', 'success');
+      showToast(isEdit ? t('product_updated_success') : t('product_added_success'), 'success');
       closeProductModal();
       loadProducts();
     } else {
-        showToast(data.message || 'Operation failed', 'error');
+        showToast(data.message || t('operation_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to save product:', error);
-      showToast('Operation failed', 'error');
+      showToast(t('operation_failed'), 'error');
   }
 }
 
 async function deleteProduct(id) {
   const confirmed = await showConfirmDialog(
-    'Delete Product',
-    'Are you sure you want to delete this product? This action cannot be undone.',
-    'Delete',
-    'Cancel'
+    t('delete_product_title'),
+    t('delete_product_confirm'),
+    t('delete'),
+    t('cancel')
   );
   
   if (!confirmed) return;
@@ -3086,14 +3197,14 @@ async function deleteProduct(id) {
     });
     
     if (data.success) {
-      showToast('Deleted successfully', 'success');
+      showToast(t('deleted_successfully'), 'success');
       loadProducts();
     } else {
-        showToast(data.message || 'Delete failed', 'error');
+        showToast(data.message || t('delete_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to delete product:', error);
-    showToast('Delete failed', 'error');
+    showToast(t('delete_failed'), 'error');
   }
 }
 
@@ -3116,16 +3227,16 @@ function renderCategories(categories) {
   
   container.innerHTML = `
     <div class="mb-6 flex justify-between items-center">
-      <h2 class="text-2xl font-bold text-gray-900">Categories</h2>
+      <h2 class="text-2xl font-bold text-gray-900">${t('categories')}</h2>
       <div class="flex space-x-2">
         <button onclick="backupMenu()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
-          💾 Backup Menu
+          💾 ${t('backup_menu')}
         </button>
         <button onclick="importMenu()" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">
-          📥 Import Menu
+          📥 ${t('import_menu')}
         </button>
       <button onclick="showCategoryModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-        + Add Category
+        + ${t('add_category')}
       </button>
       </div>
     </div>
@@ -3139,15 +3250,15 @@ function renderCategories(categories) {
               ${category.description ? `<p class="text-sm text-gray-500 mt-1">${category.description}</p>` : ''}
             </div>
             <span class="px-2 py-1 text-xs rounded-full ${category.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
-              ${category.status === 'active' ? 'Active' : 'Inactive'}
+              ${category.status === 'active' ? t('active') : t('inactive')}
             </span>
           </div>
           <div class="flex space-x-2">
             <button onclick='showCategoryModal(${JSON.stringify(category)})' class="flex-1 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-              Edit
+              ${t('edit')}
             </button>
             <button onclick="deleteCategory(${category.id})" class="flex-1 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700">
-              Delete
+              ${t('delete')}
             </button>
           </div>
         </div>
@@ -3157,39 +3268,39 @@ function renderCategories(categories) {
     <!-- 分类编辑模态框 -->
     <div id="categoryModal" class="modal">
       <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
-        <h3 id="categoryModalTitle" class="text-2xl font-bold text-gray-900 mb-6">Add Category</h3>
+        <h3 id="categoryModalTitle" class="text-2xl font-bold text-gray-900 mb-6">${t('add_category')}</h3>
         <form id="categoryForm" class="space-y-4">
           <input type="hidden" id="categoryId">
           
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Category Name *</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('category_name_required')}</label>
             <input type="text" id="categoryName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('description')}</label>
             <textarea id="categoryDescription" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Sort Order</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('sort_order')}</label>
             <input type="number" id="categorySortOrder" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">状态</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">${t('status')}</label>
             <select id="categoryStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
+              <option value="active">${t('active')}</option>
+              <option value="inactive">${t('inactive')}</option>
             </select>
           </div>
           
           <div class="flex space-x-3 mt-6">
             <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
-              保存
+              ${t('save')}
             </button>
             <button type="button" onclick="closeCategoryModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
-              取消
+              ${t('cancel')}
             </button>
           </div>
         </form>
@@ -3207,14 +3318,14 @@ function showCategoryModal(category = null) {
   const title = document.getElementById('categoryModalTitle');
   
   if (category) {
-    title.textContent = 'Edit Category';
+    title.textContent = t('edit_category');
     document.getElementById('categoryId').value = category.id;
     document.getElementById('categoryName').value = category.name;
     document.getElementById('categoryDescription').value = category.description || '';
     document.getElementById('categorySortOrder').value = category.sort_order;
     document.getElementById('categoryStatus').value = category.status;
   } else {
-    title.textContent = 'Add Category';
+    title.textContent = t('add_category');
     document.getElementById('categoryForm').reset();
   }
   
@@ -3249,24 +3360,24 @@ async function saveCategory(e) {
     });
     
     if (result.success) {
-      showToast(id ? 'Category updated successfully' : 'Category added successfully', 'success');
+      showToast(id ? t('category_updated_success') : t('category_added_success'), 'success');
       closeCategoryModal();
       loadCategories();
     } else {
-      showToast(result.message || 'Operation failed', 'error');
+      showToast(result.message || t('operation_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to save category:', error);
-      showToast('Operation failed', 'error');
+      showToast(t('operation_failed'), 'error');
   }
 }
 
 async function deleteCategory(id) {
   const confirmed = await showConfirmDialog(
-    'Delete Category',
-    'Are you sure you want to delete this category? This action cannot be undone.',
-    'Delete',
-    'Cancel'
+    t('delete_category_title'),
+    t('delete_category_confirm'),
+    t('delete'),
+    t('cancel')
   );
   
   if (!confirmed) return;
@@ -3277,14 +3388,14 @@ async function deleteCategory(id) {
     });
     
     if (data.success) {
-      showToast('Deleted successfully', 'success');
+      showToast(t('deleted_successfully'), 'success');
       loadCategories();
     } else {
-        showToast(data.message || 'Delete failed', 'error');
+        showToast(data.message || t('delete_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to delete category:', error);
-    showToast('Delete failed', 'error');
+    showToast(t('delete_failed'), 'error');
   }
 }
 
@@ -3301,37 +3412,37 @@ async function loadDiscounts() {
       container.innerHTML = `
         <div class="fade-in">
           <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold text-gray-900">Discounts</h2>
+            <h2 class="text-2xl font-bold text-gray-900">${t('discount_rules')}</h2>
             <button onclick="showDiscountModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-              + Add Discount Rule
+              + ${t('add_discount_rule')}
             </button>
           </div>
           
           <div class="bg-white rounded-xl shadow-sm overflow-hidden">
             <div class="p-6">
-              <p class="text-sm text-gray-600 mb-4">Discount rules are set by order amount range. The system will automatically apply the highest discount that meets the conditions.</p>
+              <p class="text-sm text-gray-600 mb-4">${t('discount_rules_hint')}</p>
               
               <div id="discountRulesList" class="space-y-4">
                 ${rules.length === 0 ? 
-                  '<div class="text-center py-8 text-gray-500">No discount rules</div>' :
+                  `<div class="text-center py-8 text-gray-500">${t('no_discount_rules')}</div>` :
                   rules.map((rule, index) => `
                     <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                       <div class="flex-1">
                         <div class="font-semibold text-gray-900">
-                          ${formatPrice(rule.min_amount)}${rule.max_amount ? ` - ${formatPrice(rule.max_amount)}` : ' and above'}
+                          ${formatPrice(rule.min_amount)}${rule.max_amount ? ` - ${formatPrice(rule.max_amount)}` : ` ${t('and_above')}`}
                         </div>
                         <div class="text-sm text-gray-600 mt-1">
-                          ${rule.description || 'No description'} | Discount Rate: ${rule.discount_rate}%
+                          ${rule.description || t('no_description')} | ${t('discount_rate_label')}: ${rule.discount_rate}%
                         </div>
                       </div>
                       <div class="flex space-x-2">
                         <button onclick='editDiscountRule(${JSON.stringify(rule).replace(/'/g, "&apos;")})' 
                                 class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-                          Edit
+                          ${t('edit')}
                         </button>
                         <button onclick='deleteDiscountRule(${rule.id})' 
                                 class="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700">
-                          Delete
+                          ${t('delete')}
                         </button>
                       </div>
                     </div>
@@ -3345,36 +3456,36 @@ async function loadDiscounts() {
         <!-- 折扣规则编辑模态框 -->
         <div id="discountModal" class="modal">
           <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
-            <h3 id="discountModalTitle" class="text-2xl font-bold text-gray-900 mb-6">Add Discount Rule</h3>
+            <h3 id="discountModalTitle" class="text-2xl font-bold text-gray-900 mb-6">${t('add_discount_rule')}</h3>
             <form id="discountForm" class="space-y-4">
               <input type="hidden" id="discountId">
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Min Amount (${currencySymbol}) *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('min_amount', { currency: currencySymbol })} *</label>
                 <input type="number" id="discountMinAmount" required step="0.01" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Max Amount (${currencySymbol}) <span class="text-gray-500 text-xs">(Leave empty for no limit)</span></label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('max_amount', { currency: currencySymbol })} <span class="text-gray-500 text-xs">(${t('leave_empty_no_limit')})</span></label>
                 <input type="number" id="discountMaxAmount" step="0.01" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Discount Rate (%) *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('discount_rate_percent')} *</label>
                 <input type="number" id="discountRate" required step="0.1" min="0" max="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('description')}</label>
                 <input type="text" id="discountDescription" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="e.g., 100 off 10">
               </div>
               
               <div class="flex space-x-3 mt-6">
                 <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
-                  保存
+                  ${t('save')}
                 </button>
                 <button type="button" onclick="closeDiscountModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
-                  取消
+                  ${t('cancel')}
                 </button>
               </div>
             </form>
@@ -3385,11 +3496,11 @@ async function loadDiscounts() {
       // 设置表单提交事件
       document.getElementById('discountForm')?.addEventListener('submit', saveDiscountRule);
     } else {
-      container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
+      container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
     }
   } catch (error) {
     console.error('加载折扣设置失败:', error);
-    container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
+    container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
   }
 }
 
@@ -3400,14 +3511,14 @@ async function showDiscountModal(rule = null) {
   const title = document.getElementById('discountModalTitle');
   
   if (rule) {
-    title.textContent = 'Edit Discount Rule';
+    title.textContent = t('edit_discount_rule');
     document.getElementById('discountId').value = rule.id;
     document.getElementById('discountMinAmount').value = rule.min_amount;
     document.getElementById('discountMaxAmount').value = rule.max_amount || '';
     document.getElementById('discountRate').value = rule.discount_rate;
     document.getElementById('discountDescription').value = rule.description || '';
   } else {
-    title.textContent = 'Add Discount Rule';
+    title.textContent = t('add_discount_rule');
     document.getElementById('discountForm').reset();
   }
   
@@ -3456,15 +3567,15 @@ async function saveDiscountRule(e) {
     });
     
     if (result.success) {
-      showToast(id ? 'Discount rule updated successfully' : 'Discount rule added successfully', 'success');
+      showToast(id ? t('discount_rule_updated') : t('discount_rule_added'), 'success');
       closeDiscountModal();
       loadDiscounts();
     } else {
-      showToast(result.message || 'Operation failed', 'error');
+      showToast(result.message || t('operation_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to save discount rule:', error);
-      showToast('Operation failed', 'error');
+      showToast(t('operation_failed'), 'error');
   }
 }
 
@@ -3474,10 +3585,10 @@ async function editDiscountRule(rule) {
 
 async function deleteDiscountRule(id) {
   const confirmed = await showConfirmDialog(
-    'Delete Discount Rule',
-    'Are you sure you want to delete this discount rule? This action cannot be undone.',
-    'Delete',
-    'Cancel'
+    t('delete_discount_rule_title'),
+    t('delete_discount_rule_confirm'),
+    t('delete'),
+    t('cancel')
   );
   
   if (!confirmed) return;
@@ -3494,14 +3605,14 @@ async function deleteDiscountRule(id) {
     });
     
     if (result.success) {
-      showToast('Discount rule deleted successfully', 'success');
+      showToast(t('discount_rule_deleted'), 'success');
       loadDiscounts();
     } else {
-      showToast(result.message || 'Delete failed', 'error');
+      showToast(result.message || t('delete_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to delete discount rule:', error);
-    showToast('Delete failed', 'error');
+    showToast(t('delete_failed'), 'error');
   }
 }
 
@@ -3519,41 +3630,41 @@ async function loadDeliveryAddresses() {
       container.innerHTML = `
         <div class="fade-in">
           <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold text-gray-900">Delivery Addresses</h2>
+            <h2 class="text-2xl font-bold text-gray-900">${t('delivery_addresses')}</h2>
             <button onclick="showDeliveryAddressModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-              + Add Delivery Address
+              + ${t('add_delivery_address')}
             </button>
           </div>
           
           <div class="bg-white rounded-xl shadow-sm overflow-hidden">
             <div class="p-6">
-              <p class="text-sm text-gray-600 mb-4">Configure delivery addresses that users can select when placing orders. Only active addresses will be shown to users.</p>
+              <p class="text-sm text-gray-600 mb-4">${t('delivery_addresses_hint')}</p>
               
               <div id="deliveryAddressesList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 ${addresses.length === 0 ? 
-                  '<div class="col-span-full text-center py-8 text-gray-500">No delivery addresses. Click "Add Delivery Address" to create one.</div>' :
+                  `<div class="col-span-full text-center py-8 text-gray-500">${t('no_delivery_addresses')}</div>` :
                   addresses.map(address => `
                     <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
                       <div class="flex justify-between items-start mb-3">
                         <div class="flex-1">
-                          <h3 class="text-lg font-semibold text-gray-900">${escapeHtml(address.name || 'Unnamed')}</h3>
+                          <h3 class="text-lg font-semibold text-gray-900">${escapeHtml(address.name || t('unnamed'))}</h3>
                           ${address.description ? `<p class="text-sm text-gray-600 mt-1">${escapeHtml(address.description)}</p>` : ''}
                         </div>
                         <span class="px-2 py-1 text-xs rounded-full ${address.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
-                          ${address.status === 'active' ? 'Active' : 'Inactive'}
+                          ${address.status === 'active' ? t('active') : t('inactive')}
                         </span>
                       </div>
                       <div class="text-xs text-gray-500 mb-3">
-                        Sort Order: ${address.sort_order || 0}
+                        ${t('sort_order')}: ${address.sort_order || 0}
                       </div>
                       <div class="flex space-x-2">
                         <button onclick='showDeliveryAddressModal(${JSON.stringify(address).replace(/'/g, "&apos;")})' 
                                 class="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-                          Edit
+                          ${t('edit')}
                         </button>
                         <button onclick='deleteDeliveryAddress(${address.id})' 
                                 class="flex-1 px-3 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700">
-                          Delete
+                          ${t('delete')}
                         </button>
                       </div>
                     </div>
@@ -3567,48 +3678,48 @@ async function loadDeliveryAddresses() {
         <!-- 配送地址编辑模态框 -->
         <div id="deliveryAddressModal" class="modal">
           <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
-            <h3 id="deliveryAddressModalTitle" class="text-2xl font-bold text-gray-900 mb-6">Add Delivery Address</h3>
+            <h3 id="deliveryAddressModalTitle" class="text-2xl font-bold text-gray-900 mb-6">${t('add_delivery_address')}</h3>
             <form id="deliveryAddressForm" class="space-y-4">
               <input type="hidden" id="deliveryAddressId">
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Address Name *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('address_name_required')}</label>
                 <input type="text" id="deliveryAddressName" required 
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg" 
-                       placeholder="e.g., Downtown, Campus, etc.">
-                <p class="text-xs text-gray-500 mt-1">A short name to identify this delivery location</p>
+                       placeholder="${t('address_name_placeholder')}">
+                <p class="text-xs text-gray-500 mt-1">${t('address_name_hint')}</p>
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('description')}</label>
                 <textarea id="deliveryAddressDescription" rows="3" 
                           class="w-full px-4 py-2 border border-gray-300 rounded-lg" 
-                          placeholder="e.g., Detailed address, landmarks, etc."></textarea>
-                <p class="text-xs text-gray-500 mt-1">Optional: More details about this delivery location</p>
+                          placeholder="${t('address_description_placeholder')}"></textarea>
+                <p class="text-xs text-gray-500 mt-1">${t('address_description_hint')}</p>
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Sort Order</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('sort_order')}</label>
                 <input type="number" id="deliveryAddressSortOrder" value="0" step="1" min="0"
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                <p class="text-xs text-gray-500 mt-1">Lower numbers appear first in the list</p>
+                <p class="text-xs text-gray-500 mt-1">${t('sort_order_hint')}</p>
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('status')}</label>
                 <select id="deliveryAddressStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
+                  <option value="active">${t('active')}</option>
+                  <option value="inactive">${t('inactive')}</option>
                 </select>
-                <p class="text-xs text-gray-500 mt-1">Only active addresses will be shown to users</p>
+                <p class="text-xs text-gray-500 mt-1">${t('delivery_address_status_hint')}</p>
               </div>
               
               <div class="flex space-x-3 mt-6">
                 <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
-                  Save
+                  ${t('save')}
                 </button>
                 <button type="button" onclick="closeDeliveryAddressModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
-                  Cancel
+                  ${t('cancel')}
                 </button>
               </div>
             </form>
@@ -3619,14 +3730,14 @@ async function loadDeliveryAddresses() {
       // 设置表单提交事件
       document.getElementById('deliveryAddressForm')?.addEventListener('submit', saveDeliveryAddress);
     } else {
-      container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
+      container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
     }
   } catch (error) {
     console.error('加载配送地址失败:', error);
     container.innerHTML = `
       <div class="text-center py-12">
-        <div class="text-red-500 mb-2">加载失败</div>
-        <div class="text-sm text-gray-500">请检查后端API是否已实现</div>
+        <div class="text-red-500 mb-2">${t('load_failed')}</div>
+        <div class="text-sm text-gray-500">${t('check_backend_api')}</div>
       </div>
     `;
   }
@@ -3643,14 +3754,14 @@ function showDeliveryAddressModal(address = null) {
   }
   
   if (address) {
-    title.textContent = 'Edit Delivery Address';
+    title.textContent = t('edit_delivery_address');
     document.getElementById('deliveryAddressId').value = address.id;
     document.getElementById('deliveryAddressName').value = address.name || '';
     document.getElementById('deliveryAddressDescription').value = address.description || '';
     document.getElementById('deliveryAddressSortOrder').value = address.sort_order || 0;
     document.getElementById('deliveryAddressStatus').value = address.status || 'active';
   } else {
-    title.textContent = 'Add Delivery Address';
+    title.textContent = t('add_delivery_address');
     document.getElementById('deliveryAddressForm').reset();
     document.getElementById('deliveryAddressId').value = '';
     document.getElementById('deliveryAddressStatus').value = 'active';
@@ -3682,7 +3793,7 @@ async function saveDeliveryAddress(e) {
   };
   
   if (!addressData.name) {
-    showToast('Address name is required', 'warning');
+    showToast(t('address_name_required_warning'), 'warning');
     return;
   }
   
@@ -3697,25 +3808,25 @@ async function saveDeliveryAddress(e) {
     });
     
     if (result.success) {
-      showToast(id ? 'Delivery address updated successfully' : 'Delivery address added successfully', 'success');
+      showToast(id ? t('delivery_address_updated') : t('delivery_address_added'), 'success');
       closeDeliveryAddressModal();
       loadDeliveryAddresses();
     } else {
-      showToast(result.message || 'Operation failed', 'error');
+      showToast(result.message || t('operation_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to save delivery address:', error);
-    showToast(error.data?.message || 'Operation failed', 'error');
+    showToast(error.data?.message || t('operation_failed'), 'error');
   }
 }
 
 // 删除配送地址
 async function deleteDeliveryAddress(id) {
   const confirmed = await showConfirmDialog(
-    'Delete Delivery Address',
-    'Are you sure you want to delete this delivery address? This action cannot be undone. If any orders use this address, deletion will fail.',
-    'Delete',
-    'Cancel'
+    t('delete_delivery_address_title'),
+    t('delete_delivery_address_confirm'),
+    t('delete'),
+    t('cancel')
   );
   
   if (!confirmed) return;
@@ -3726,14 +3837,14 @@ async function deleteDeliveryAddress(id) {
     });
     
     if (data.success) {
-      showToast('Delivery address deleted successfully', 'success');
+      showToast(t('delivery_address_deleted'), 'success');
       loadDeliveryAddresses();
     } else {
-      showToast(data.message || 'Delete failed', 'error');
+      showToast(data.message || t('delete_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to delete delivery address:', error);
-    showToast(error.data?.message || 'Delete failed', 'error');
+    showToast(error.data?.message || t('delete_failed'), 'error');
   }
 }
 
@@ -3758,7 +3869,7 @@ async function generateDineInQRCode() {
   const displayTableNumber = document.getElementById('displayTableNumber');
   
   if (!tableNumberInput || !qrCodeDisplayArea || !qrCodeContainer) {
-    showToast('Page elements not found', 'error');
+    showToast(t('page_elements_not_found'), 'error');
     return;
   }
   
@@ -3936,7 +4047,7 @@ async function viewQRCodeFromHistory(tableNumber, qrCodeUrl) {
   const displayTableNumber = document.getElementById('displayTableNumber');
   
   if (!qrCodeDisplayArea || !qrCodeContainer || !displayTableNumber) {
-    showToast('Page elements not found', 'error');
+    showToast(t('page_elements_not_found'), 'error');
     return;
   }
   
@@ -4208,13 +4319,13 @@ async function loadSettingsPage() {
       container.innerHTML = `
         <div class="fade-in">
           <div class="flex justify-between items-center mb-6 relative">
-            <h2 class="text-2xl font-bold text-gray-900">System Settings</h2>
+            <h2 class="text-2xl font-bold text-gray-900">${t('system_settings')}</h2>
             <div class="flex space-x-3 fixed top-20 right-4 z-50 bg-white p-2 rounded-lg shadow-lg border border-gray-200">
               <button type="button" onclick="saveSettings(event)" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm transition-colors">
-                Save Settings
+                ${t('save_settings')}
               </button>
               <button type="button" onclick="loadSettingsPage()" class="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold rounded-lg transition-colors">
-                Reset
+                ${t('reset')}
               </button>
             </div>
           </div>
@@ -4222,74 +4333,72 @@ async function loadSettingsPage() {
           <div class="bg-white rounded-xl shadow-sm p-6">
             <form id="settingsForm" class="space-y-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Ordering Status</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('ordering_status')}</label>
                 <select id="orderingOpen" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                  <option value="true" ${settings.ordering_open === 'true' ? 'selected' : ''}>Open</option>
-                  <option value="false" ${settings.ordering_open !== 'true' ? 'selected' : ''}>Closed</option>
+                  <option value="true" ${settings.ordering_open === 'true' ? 'selected' : ''}>${t('open')}</option>
+                  <option value="false" ${settings.ordering_open !== 'true' ? 'selected' : ''}>${t('closed')}</option>
                 </select>
-                <p class="text-xs text-gray-500 mt-1">Control whether users can place orders</p>
+                <p class="text-xs text-gray-500 mt-1">${t('ordering_status_hint')}</p>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">Payment Settings</h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">${t('payment_settings')}</h3>
                 
                 <div class="mb-4">
                   <label class="flex items-center space-x-2">
                     <input type="checkbox" id="instantPaymentEnabled" 
                            class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                            ${settings.instant_payment_enabled === 'true' ? 'checked' : ''}>
-                    <span class="text-sm font-medium text-gray-700">Enable Instant Payment</span>
+                    <span class="text-sm font-medium text-gray-700">${t('enable_instant_payment')}</span>
                   </label>
                   <p class="text-xs text-gray-500 mt-1 ml-6">
-                    When enabled, users can pay or delete orders immediately without waiting for cycle to end. 
-                    Discount feature will be disabled (Discount Amount = 0). Balance can still be used.
+                    ${t('instant_payment_hint')}
                   </p>
                   <div class="mt-2 ml-6 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                     <p class="text-xs text-yellow-800">
-                      <strong>⚠️ Note:</strong> When instant payment is enabled, discount calculations are disabled. 
-                      All orders will have Discount Amount = 0, regardless of cycle discount settings.
+                      <strong>⚠️ ${t('note')}:</strong> ${t('instant_payment_note')}
                     </p>
                   </div>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">用户管理设置</h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">${t('user_management_settings')}</h3>
                 
                 <div class="mb-4">
                   <label class="flex items-center space-x-2">
                     <input type="checkbox" id="userRegistrationDisabled" 
                            class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
                            ${settings.user_registration_disabled === 'true' ? 'checked' : ''}>
-                    <span class="text-sm font-medium text-gray-700">临时禁止用户注册</span>
+                    <span class="text-sm font-medium text-gray-700">${t('disable_user_registration')}</span>
                   </label>
                   <p class="text-xs text-gray-500 mt-1 ml-6">
-                    启用后，新用户将无法注册账号。已注册用户不受影响，可以正常登录。
+                    ${t('disable_user_registration_hint')}
                   </p>
                   <div class="mt-2 ml-6 p-3 bg-red-50 border border-red-200 rounded-lg">
                     <p class="text-xs text-red-800">
-                      <strong>⚠️ 警告：</strong> 启用此选项将阻止所有新用户注册，请谨慎使用。
+                      <strong>⚠️ ${t('warning')}：</strong> ${t('disable_user_registration_warn')}
                     </p>
                   </div>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">博客管理设置</h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">${t('blog_settings')}</h3>
                 
                 <div class="mb-4">
                   <label class="flex items-center space-x-2">
                     <input type="checkbox" id="blogPostingDisabled" 
                            class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
                            ${settings.blog_posting_disabled === 'true' ? 'checked' : ''}>
-                    <span class="text-sm font-medium text-gray-700">临时禁止发布文章</span>
+                    <span class="text-sm font-medium text-gray-700">${t('disable_blog_posting')}</span>
                   </label>
                   <p class="text-xs text-gray-500 mt-1 ml-6">
-                    启用后，所有用户（包括管理员）将无法发布新文章。已发布的文章不受影响。
+                    ${t('disable_blog_posting_hint')}
                   </p>
                   <div class="mt-2 ml-6 p-3 bg-red-50 border border-red-200 rounded-lg">
                     <p class="text-xs text-red-800">
-                      <strong>⚠️ 警告：</strong> 启用此选项将阻止所有用户发布文章，请谨慎使用。
+                      <strong>⚠️ ${t('warning')}：</strong> ${t('disable_blog_posting_warn')}
                     </p>
                   </div>
                 </div>
@@ -4299,183 +4408,183 @@ async function loadSettingsPage() {
                     <input type="checkbox" id="blogCommentingDisabled" 
                            class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
                            ${settings.blog_commenting_disabled === 'true' ? 'checked' : ''}>
-                    <span class="text-sm font-medium text-gray-700">临时禁止评论</span>
+                    <span class="text-sm font-medium text-gray-700">${t('disable_blog_commenting')}</span>
                   </label>
                   <p class="text-xs text-gray-500 mt-1 ml-6">
-                    启用后，所有用户将无法发表评论。已存在的评论不受影响。
+                    ${t('disable_blog_commenting_hint')}
                   </p>
                   <div class="mt-2 ml-6 p-3 bg-red-50 border border-red-200 rounded-lg">
                     <p class="text-xs text-red-800">
-                      <strong>⚠️ 警告：</strong> 启用此选项将阻止所有用户发表评论，请谨慎使用。
+                      <strong>⚠️ ${t('warning')}：</strong> ${t('disable_blog_commenting_warn')}
                     </p>
                   </div>
                 </div>
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Store Name</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('store_name')}</label>
                 <input type="text" id="storeName" 
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                       placeholder="Enter store name"
+                       placeholder="${t('store_name_placeholder')}"
                        value="${settings.store_name || 'BOBA TEA'}"
                        maxlength="50">
-                <p class="text-xs text-gray-500 mt-1">Store name will be displayed throughout the application</p>
+                <p class="text-xs text-gray-500 mt-1">${t('store_name_hint')}</p>
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Currency Symbol</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('currency_symbol')}</label>
                 <input type="text" id="currencySymbol" 
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                       placeholder="Enter currency symbol (e.g., LE, ¥, $)"
+                       placeholder="${t('currency_symbol_placeholder')}"
                        value="${settings.currency_symbol || 'LE'}"
                        maxlength="10">
-                <p class="text-xs text-gray-500 mt-1">Currency symbol will be displayed before all prices (e.g., LE, ¥, $)</p>
+                <p class="text-xs text-gray-500 mt-1">${t('currency_symbol_hint')}</p>
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Max Visible Cycles</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('max_visible_cycles')}</label>
                 <input type="number" id="maxVisibleCycles" 
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                       placeholder="Enter maximum number of visible cycles"
+                       placeholder="${t('max_visible_cycles_placeholder')}"
                        value="${settings.max_visible_cycles || '10'}"
                        min="1"
                        max="100">
-                <p class="text-xs text-gray-500 mt-1">Maximum number of cycles to display in Orders page. Older cycles will be automatically archived to logs/export folder.</p>
+                <p class="text-xs text-gray-500 mt-1">${t('max_visible_cycles_hint')}</p>
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">System Notice</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('system_notice')}</label>
                 <textarea id="systemNotice" rows="4" 
                           class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                          placeholder="Enter system notice content, users can see it on the homepage">${settings.system_notice || ''}</textarea>
+                          placeholder="${t('system_notice_placeholder')}">${settings.system_notice || ''}</textarea>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">Session Timeout Settings</h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">${t('session_timeout_settings')}</h3>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Admin Session Timeout (seconds)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('admin_session_timeout')}</label>
                     <input type="number" id="adminSessionTimeout" 
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                            placeholder="7200"
                            value="${settings.admin_session_timeout || '7200'}"
                            min="60"
                            max="86400">
-                    <p class="text-xs text-gray-500 mt-1">Admin session expiration time in seconds (default: 7200 = 2 hours). Minimum: 60 seconds, Maximum: 86400 seconds (24 hours)</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('admin_session_timeout_hint')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">User Session Timeout (seconds)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('user_session_timeout')}</label>
                     <input type="number" id="userSessionTimeout" 
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                            placeholder="7200"
                            value="${settings.user_session_timeout || '7200'}"
                            min="60"
                            max="86400">
-                    <p class="text-xs text-gray-500 mt-1">User session expiration time in seconds (default: 7200 = 2 hours). Minimum: 60 seconds, Maximum: 86400 seconds (24 hours)</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('user_session_timeout_hint')}</p>
                   </div>
                 </div>
                 <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p class="text-sm text-blue-800">
-                    <strong>Note:</strong> Session time will be automatically refreshed when users interact with the page (clicking buttons, scrolling, etc.). This ensures active users stay logged in.
+                    <strong>${t('note')}:</strong> ${t('session_timeout_note')}
                   </p>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">SMS Verification Settings</h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">${t('sms_settings')}</h3>
                 
                 <div class="mb-4">
                   <label class="flex items-center space-x-2">
                     <input type="checkbox" id="smsEnabled" 
                            class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                            ${settings.sms_enabled === 'true' ? 'checked' : ''}>
-                    <span class="text-sm font-medium text-gray-700">Enable SMS Verification</span>
+                    <span class="text-sm font-medium text-gray-700">${t('enable_sms_verification')}</span>
                   </label>
-                  <p class="text-xs text-gray-500 mt-1 ml-6">Require verification code for user login</p>
+                  <p class="text-xs text-gray-500 mt-1 ml-6">${t('sms_verification_hint')}</p>
                 </div>
                 
                 <div id="smsConfigSection" class="space-y-4 ${settings.sms_enabled === 'true' ? '' : 'hidden'}">
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Twilio Account SID</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('twilio_account_sid')}</label>
                     <input type="text" id="twilioAccountSid" 
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                            placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                            value="${settings.twilio_account_sid || ''}">
-                    <p class="text-xs text-gray-500 mt-1">Your Twilio Account SID</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('twilio_account_sid_hint')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Twilio Auth Token</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('twilio_auth_token')}</label>
                     <input type="password" id="twilioAuthToken" 
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                           placeholder="Your Twilio Auth Token"
+                           placeholder="${t('twilio_auth_token_placeholder')}"
                            value="${settings.twilio_auth_token || ''}">
-                    <p class="text-xs text-gray-500 mt-1">Your Twilio Auth Token (hidden for security)</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('twilio_auth_token_hint')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Twilio Verify Service SID (Recommended)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('twilio_verify_service_sid')}</label>
                     <input type="text" id="twilioVerifyServiceSid" 
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                            placeholder="VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                            value="${settings.twilio_verify_service_sid || ''}">
-                    <p class="text-xs text-gray-500 mt-1">Your Twilio Verify Service SID (starts with VA). If set, this will be used instead of phone number.</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('twilio_verify_service_sid_hint')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Twilio Phone Number (Alternative)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('twilio_phone_number')}</label>
                     <input type="text" id="twilioPhoneNumber" 
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                            placeholder="+1234567890"
                            value="${settings.twilio_phone_number || ''}">
-                    <p class="text-xs text-gray-500 mt-1">Your Twilio phone number (E.164 format, e.g., +1234567890). Only used if Verify Service SID is not set.</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('twilio_phone_number_hint')}</p>
                   </div>
                   
                   <div>
                     <button type="button" onclick="testSMS()" 
                             class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
-                      Test SMS
+                      ${t('test_sms')}
                     </button>
-                    <p class="text-xs text-gray-500 mt-1">Send a test SMS to verify configuration</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('test_sms_hint')}</p>
                   </div>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">Email Settings</h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">${t('email_settings')}</h3>
                 
                 <div class="mb-4">
                   <label class="flex items-center space-x-2">
                     <input type="checkbox" id="emailEnabled" 
                            class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                            ${settings.email_enabled === 'true' ? 'checked' : ''}>
-                    <span class="text-sm font-medium text-gray-700">Enable Email Notifications</span>
+                    <span class="text-sm font-medium text-gray-700">${t('enable_email_notifications')}</span>
                   </label>
-                  <p class="text-xs text-gray-500 mt-1 ml-6">When enabled, system will automatically send order export emails when confirming cycles</p>
+                  <p class="text-xs text-gray-500 mt-1 ml-6">${t('email_notifications_hint')}</p>
                 </div>
                 
                 <div id="emailConfigSection" class="space-y-4 ${settings.email_enabled === 'true' ? '' : 'hidden'}">
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">SMTP Host *</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('smtp_host')}</label>
                       <input type="text" id="emailSmtpHost" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                              placeholder="smtp.gmail.com"
                              value="${settings.email_smtp_host || ''}">
-                      <p class="text-xs text-gray-500 mt-1">SMTP server hostname</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('smtp_host_hint')}</p>
                     </div>
                     
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">SMTP Port *</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('smtp_port')}</label>
                       <input type="number" id="emailSmtpPort" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                              placeholder="587"
                              value="${settings.email_smtp_port || '587'}"
                              min="1"
                              max="65535">
-                      <p class="text-xs text-gray-500 mt-1">SMTP server port (587 for TLS, 465 for SSL)</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('smtp_port_hint')}</p>
                     </div>
                   </div>
                   
@@ -4484,218 +4593,209 @@ async function loadSettingsPage() {
                       <input type="checkbox" id="emailSmtpSecure" 
                              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                              ${settings.email_smtp_secure === 'true' ? 'checked' : ''}>
-                      <span class="text-sm font-medium text-gray-700">Use SSL/TLS</span>
+                      <span class="text-sm font-medium text-gray-700">${t('smtp_secure')}</span>
                     </label>
-                    <p class="text-xs text-gray-500 mt-1 ml-6">Enable for port 465 (SSL), disable for port 587 (TLS)</p>
+                    <p class="text-xs text-gray-500 mt-1 ml-6">${t('smtp_secure_hint')}</p>
                   </div>
                   
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">SMTP Username *</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('smtp_username')}</label>
                       <input type="text" id="emailSmtpUser" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                              placeholder="your-email@gmail.com"
                              value="${settings.email_smtp_user || ''}">
-                      <p class="text-xs text-gray-500 mt-1">SMTP authentication username (usually your email address)</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('smtp_username_hint')}</p>
                     </div>
                     
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">SMTP Password *</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('smtp_password')}</label>
                       <input type="password" id="emailSmtpPassword" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                             placeholder="Your SMTP password or app password"
+                             placeholder="${t('smtp_password_placeholder')}"
                              value="${settings.email_smtp_password || ''}">
-                      <p class="text-xs text-gray-500 mt-1">SMTP authentication password (for Gmail, use App Password)</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('smtp_password_hint')}</p>
                     </div>
                   </div>
                   
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">From Email Address *</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('email_from')}</label>
                       <input type="email" id="emailFrom" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                              placeholder="noreply@example.com"
                              value="${settings.email_from || ''}">
-                      <p class="text-xs text-gray-500 mt-1">Sender email address (usually same as SMTP username)</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('email_from_hint')}</p>
                     </div>
                     
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">To Email Address *</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('email_to')}</label>
                       <input type="text" id="emailTo" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                              placeholder="recipient@example.com; another@example.com"
                              value="${settings.email_to || ''}">
-                      <p class="text-xs text-gray-500 mt-1">Recipient email address(es) for order export notifications. Multiple addresses can be separated by semicolons (;)</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('email_to_hint')}</p>
                     </div>
                   </div>
                   
                   <div>
                     <button type="button" onclick="testEmail()" 
                             class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm">
-                      Test Email
+                      ${t('test_email')}
                     </button>
-                    <p class="text-xs text-gray-500 mt-1">Send a test email to verify configuration</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('test_email_hint')}</p>
                   </div>
                   
                   <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p class="text-xs text-blue-800">
-                      <strong>Note:</strong> For Gmail, you need to use an App Password instead of your regular password. 
-                      Go to Google Account → Security → 2-Step Verification → App passwords to generate one.
+                      <strong>${t('note')}:</strong> ${t('gmail_app_password_note')}
                     </p>
                   </div>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">Stripe Payment Settings</h3>
-                <p class="text-sm text-gray-600 mb-4">Configure Stripe payment gateway for online payments. Users can choose between online payment (Stripe) or uploading payment screenshots.</p>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">${t('stripe_settings')}</h3>
+                <p class="text-sm text-gray-600 mb-4">${t('stripe_settings_hint')}</p>
                 
                 <div class="space-y-4">
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Stripe Publishable Key</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('stripe_publishable_key')}</label>
                     <input type="text" id="stripePublishableKey" 
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                           placeholder="pk_test_..."
+                            placeholder="pk_test_..."
                            value="${settings.stripe_publishable_key || ''}">
-                    <p class="text-xs text-gray-500 mt-1">Your Stripe Publishable Key (starts with pk_test_ or pk_live_). This key is safe to expose to the frontend.</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('stripe_publishable_key_hint')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Stripe Secret Key</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('stripe_secret_key')}</label>
                     <input type="password" id="stripeSecretKey" 
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                           placeholder="sk_test_..."
+                            placeholder="sk_test_..."
                            value="${settings.stripe_secret_key || ''}">
-                    <p class="text-xs text-gray-500 mt-1">Your Stripe Secret Key (starts with sk_test_ or sk_live_). Keep this key secure and never expose it to the frontend.</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('stripe_secret_key_hint')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Stripe Webhook Secret (Optional)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('stripe_webhook_secret')}</label>
                     <input type="password" id="stripeWebhookSecret" 
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                           placeholder="whsec_..."
+                            placeholder="whsec_..."
                            value="${settings.stripe_webhook_secret || ''}">
-                    <p class="text-xs text-gray-500 mt-1">Your Stripe Webhook Secret (starts with whsec_). Used to verify webhook requests from Stripe. Optional but recommended for production.</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('stripe_webhook_secret_hint')}</p>
                   </div>
                   
                   <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p class="text-xs text-blue-800">
-                      <strong>Note:</strong> You can get your Stripe API keys from the <a href="https://dashboard.stripe.com/apikeys" target="_blank" class="underline">Stripe Dashboard</a>. 
-                      Use test keys (pk_test_/sk_test_) for development and live keys (pk_live_/sk_live_) for production.
+                      <strong>${t('note')}:</strong> ${t('stripe_keys_note')}
                     </p>
                   </div>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">🖨️ QZ Tray Certificate Settings</h3>
-                <p class="text-sm text-gray-600 mb-4">Upload QZ Tray certificates for silent printing. Certificates are stored in the database and compatible with cloud platforms like Fly.io.</p>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🖨️ ${t('qz_cert_settings')}</h3>
+                <p class="text-sm text-gray-600 mb-4">${t('qz_cert_settings_hint')}</p>
                 
                 <div class="space-y-4">
                   <div id="qzCertStatus" class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <p class="text-sm text-gray-600">Loading certificate status...</p>
+                    <p class="text-sm text-gray-600">${t('loading_cert_status')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Digital Certificate (digital-certificate.txt)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('digital_certificate')}</label>
                     <textarea id="qzCertificate" 
                               rows="8"
                               class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-xs"
                               placeholder="-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"></textarea>
-                    <p class="text-xs text-gray-500 mt-1">Paste the content of your digital-certificate.txt file here</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('digital_certificate_hint')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Private Key (private-key.pem)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('private_key')}</label>
                     <textarea id="qzPrivateKey" 
                               rows="8"
                               class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-xs"
                               placeholder="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"></textarea>
-                    <p class="text-xs text-gray-500 mt-1">Paste the content of your private-key.pem file here</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('private_key_hint')}</p>
                   </div>
                   
                   <div class="flex items-center space-x-4">
                     <button type="button" onclick="saveQZCertificates()" 
                             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
-                      Upload/Update Certificates
+                      ${t('upload_update_certificates')}
                     </button>
                     <button type="button" onclick="loadQZCertificates()" 
                             class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
-                      Reload Status
+                      ${t('reload_status')}
                     </button>
                   </div>
                   
                   <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p class="text-xs text-blue-800">
-                      <strong>Note:</strong> Certificates are stored in the database, making them compatible with cloud platforms like Fly.io where the filesystem may be read-only. 
-                      After uploading, the new certificates will be used for all future print jobs. 
-                      If certificates are not uploaded, the system will fall back to reading from the filesystem (for backward compatibility).
+                      <strong>${t('note')}:</strong> ${t('qz_cert_note')}
                     </p>
                   </div>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔌 Custom API Token</h3>
-                <p class="text-sm text-gray-600 mb-4">Set an API token for custom API authentication. This token is only used for custom APIs and does not affect other system APIs.</p>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔌 ${t('custom_api_token')}</h3>
+                <p class="text-sm text-gray-600 mb-4">${t('custom_api_token_hint')}</p>
                 
                 <div class="space-y-4">
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('api_token')}</label>
                     <div class="flex items-center space-x-2">
                       <input type="password" id="customApiToken" 
                              class="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-                             placeholder="Enter API token (leave empty to disable)"
+                             placeholder="${t('custom_api_token_placeholder')}"
                              value="">
                       <input type="hidden" id="customApiTokenOriginal" value="${settings.custom_api_token || ''}">
                       <button type="button" onclick="toggleCustomApiTokenVisibility()" 
                               class="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm">
-                        <span id="customApiTokenToggleText">Show</span>
+                        <span id="customApiTokenToggleText">${t('show')}</span>
                       </button>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">
-                      Use this token in custom APIs that require authentication. 
-                      Pass it via <code class="bg-gray-100 px-1 rounded">X-API-Token</code> header, 
-                      <code class="bg-gray-100 px-1 rounded">Authorization: Bearer &lt;token&gt;</code> header, 
-                      or <code class="bg-gray-100 px-1 rounded">?token=&lt;token&gt;</code> query parameter.
+                      ${t('custom_api_token_usage')}
                     </p>
                     <p class="text-xs text-yellow-600 mt-2">
-                      <strong>Note:</strong> This token only applies to custom APIs. Other system APIs are not affected.
+                      <strong>${t('note')}:</strong> ${t('custom_api_token_note')}
                     </p>
                   </div>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">Logging Settings</h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">${t('logging_settings')}</h3>
                 
                 <div class="mb-4">
                   <label class="flex items-center space-x-2">
                     <input type="checkbox" id="debugLoggingEnabled" 
                            class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                            ${settings.debug_logging_enabled === 'true' ? 'checked' : ''}>
-                    <span class="text-sm font-medium text-gray-700">Enable Detailed DEBUG Logging</span>
+                    <span class="text-sm font-medium text-gray-700">${t('enable_debug_logging')}</span>
                   </label>
                   <p class="text-xs text-gray-500 mt-1 ml-6">
-                    When enabled, all requests will be logged including static resources (images, CSS, JS) and cached responses (304). 
-                    When disabled (default), only API requests, errors, and slow requests (>1s) will be logged.
+                    ${t('debug_logging_hint')}
                   </p>
                   <div class="mt-2 ml-6 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                     <p class="text-xs text-yellow-800">
-                      <strong>⚠️ Warning:</strong> Enabling detailed logging will significantly increase log file size. 
-                      Only enable when debugging issues. Default is OFF for production use.
+                      <strong>⚠️ ${t('warning')}:</strong> ${t('debug_logging_warn')}
                     </p>
                   </div>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔊 TTS语音合成设置</h3>
-                <p class="text-sm text-gray-600 mb-4">配置文本转语音（TTS）服务的参数，支持中文和阿拉伯语。</p>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔊 ${t('tts_settings')}</h3>
+                <p class="text-sm text-gray-600 mb-4">${t('tts_settings_hint')}</p>
                 
                 <div class="space-y-4">
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">语速 (Speech Rate)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('tts_rate')}</label>
                     <div class="flex items-center space-x-4">
                       <input type="range" id="ttsRate" 
                              class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
@@ -4704,11 +4804,11 @@ async function loadSettingsPage() {
                              oninput="document.getElementById('ttsRateValue').textContent = this.value + '%'">
                       <span id="ttsRateValue" class="text-sm font-semibold text-gray-700 w-16 text-right">${settings.tts_rate || '50'}%</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">语速范围：30% (很慢) - 200% (很快)，默认：50% (较慢)</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('tts_rate_hint')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">音调 (Pitch)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('tts_pitch')}</label>
                     <div class="flex items-center space-x-4">
                       <input type="range" id="ttsPitch" 
                              class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
@@ -4717,11 +4817,11 @@ async function loadSettingsPage() {
                              oninput="document.getElementById('ttsPitchValue').textContent = (this.value >= 0 ? '+' : '') + this.value + 'Hz'">
                       <span id="ttsPitchValue" class="text-sm font-semibold text-gray-700 w-20 text-right">${(parseInt(settings.tts_pitch) || 0) >= 0 ? '+' : ''}${settings.tts_pitch || '0'}Hz</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">音调范围：-50Hz (低) - +50Hz (高)，默认：0Hz (正常)</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('tts_pitch_hint')}</p>
                   </div>
                   
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">音量 (Volume)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('tts_volume')}</label>
                     <div class="flex items-center space-x-4">
                       <input type="range" id="ttsVolume" 
                              class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
@@ -4730,12 +4830,12 @@ async function loadSettingsPage() {
                              oninput="document.getElementById('ttsVolumeValue').textContent = this.value + '%'">
                       <span id="ttsVolumeValue" class="text-sm font-semibold text-gray-700 w-16 text-right">${settings.tts_volume || '100'}%</span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">音量范围：0% (静音) - 100% (最大)，默认：100%</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('tts_volume_hint')}</p>
                   </div>
                   
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">中文语音 (Chinese Voice)</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('tts_voice_zh')}</label>
                       <select id="ttsVoiceZh" 
                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                         <option value="zh-CN-XiaoxiaoNeural" ${(settings.tts_voice_zh || 'zh-CN-XiaoxiaoNeural') === 'zh-CN-XiaoxiaoNeural' ? 'selected' : ''}>晓晓 (女声)</option>
@@ -4743,11 +4843,11 @@ async function loadSettingsPage() {
                         <option value="zh-CN-YunyangNeural" ${settings.tts_voice_zh === 'zh-CN-YunyangNeural' ? 'selected' : ''}>云扬 (男声)</option>
                         <option value="zh-CN-XiaoyiNeural" ${settings.tts_voice_zh === 'zh-CN-XiaoyiNeural' ? 'selected' : ''}>晓伊 (女声)</option>
                       </select>
-                      <p class="text-xs text-gray-500 mt-1">选择中文语音合成的声音</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('tts_voice_zh_hint')}</p>
                     </div>
                     
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">阿拉伯语语音 (Arabic Voice)</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('tts_voice_ar')}</label>
                       <select id="ttsVoiceAr" 
                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                         <option value="ar-SA-HamedNeural" ${(settings.tts_voice_ar || 'ar-SA-HamedNeural') === 'ar-SA-HamedNeural' ? 'selected' : ''}>哈米德 (男声)</option>
@@ -4755,21 +4855,21 @@ async function loadSettingsPage() {
                         <option value="ar-EG-SalmaNeural" ${settings.tts_voice_ar === 'ar-EG-SalmaNeural' ? 'selected' : ''}>萨尔玛 (女声，埃及)</option>
                         <option value="ar-EG-ShakirNeural" ${settings.tts_voice_ar === 'ar-EG-ShakirNeural' ? 'selected' : ''}>沙基尔 (男声，埃及)</option>
                       </select>
-                      <p class="text-xs text-gray-500 mt-1">选择阿拉伯语语音合成的声音</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('tts_voice_ar_hint')}</p>
                     </div>
                   </div>
                   
                   <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p class="text-xs text-blue-800">
-                      <strong>提示：</strong> 修改设置后，点击"Save Settings"保存。新的设置将在下次TTS请求时生效。
+                      <strong>${t('tip')}:</strong> ${t('tts_tip')}
                     </p>
                   </div>
                 </div>
               </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">💱 汇率自动更新设置</h3>
-                <p class="text-sm text-gray-600 mb-4">配置汇率API密钥，系统将自动定时获取汇率并更新到汇率转换API中。</p>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">💱 ${t('exchange_rate_settings')}</h3>
+                <p class="text-sm text-gray-600 mb-4">${t('exchange_rate_settings_hint')}</p>
                 
                 <div class="space-y-4">
                   <div>
@@ -4778,132 +4878,196 @@ async function loadSettingsPage() {
                              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                              ${settings.exchange_rate_auto_update_enabled === 'true' ? 'checked' : ''}
                              onchange="document.getElementById('exchangeRateConfigSection').classList.toggle('hidden', !this.checked)">
-                      <span class="text-sm font-medium text-gray-700">启用汇率自动更新</span>
+                      <span class="text-sm font-medium text-gray-700">${t('enable_exchange_rate_update')}</span>
                     </label>
-                    <p class="text-xs text-gray-500 ml-6">启用后，系统将根据设置的频率自动获取并更新汇率</p>
+                    <p class="text-xs text-gray-500 ml-6">${t('exchange_rate_update_hint')}</p>
                   </div>
                   
                   <div id="exchangeRateConfigSection" class="space-y-4 ${settings.exchange_rate_auto_update_enabled === 'true' ? '' : 'hidden'}">
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">FreeCurrencyAPI API Key</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('freecurrencyapi_key')}</label>
                       <input type="password" id="freecurrencyapiApiKey" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                             placeholder="Enter FreeCurrencyAPI API key"
+                             placeholder="${t('freecurrencyapi_key_placeholder')}"
                              value="${settings.freecurrencyapi_api_key || ''}">
-                      <p class="text-xs text-gray-500 mt-1">优先使用的汇率API密钥（<a href="https://freecurrencyapi.com/" target="_blank" class="text-blue-600 hover:underline">获取API Key</a>）</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('freecurrencyapi_key_hint')}</p>
                     </div>
                     
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">ExchangeRate-API API Key</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('exchangerate_api_key')}</label>
                       <input type="password" id="exchangerateApiKey" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                             placeholder="Enter ExchangeRate-API key"
+                             placeholder="${t('exchangerate_api_key_placeholder')}"
                              value="${settings.exchangerate_api_key || ''}">
-                      <p class="text-xs text-gray-500 mt-1">备用汇率API密钥（当FreeCurrencyAPI失败时使用，<a href="https://www.exchangerate-api.com/" target="_blank" class="text-blue-600 hover:underline">获取API Key</a>）</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('exchangerate_api_key_hint')}</p>
                     </div>
                     
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">更新频率</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('update_frequency')}</label>
                       <select id="exchangeRateUpdateFrequency" 
                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                        <option value="hourly" ${settings.exchange_rate_update_frequency === 'hourly' ? 'selected' : ''}>每小时更新</option>
-                        <option value="daily" ${settings.exchange_rate_update_frequency === 'daily' || !settings.exchange_rate_update_frequency ? 'selected' : ''}>每天更新（推荐）</option>
+                        <option value="hourly" ${settings.exchange_rate_update_frequency === 'hourly' ? 'selected' : ''}>${t('hourly')}</option>
+                        <option value="daily" ${settings.exchange_rate_update_frequency === 'daily' || !settings.exchange_rate_update_frequency ? 'selected' : ''}>${t('daily_recommended')}</option>
                       </select>
-                      <p class="text-xs text-gray-500 mt-1">汇率更新频率，建议每天更新一次以避免API调用限制</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('exchange_rate_frequency_hint')}</p>
                     </div>
                     
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">基础货币列表</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('base_currencies')}</label>
                       <input type="text" id="exchangeRateBaseCurrencies" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                              placeholder="CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB"
                              value="${settings.exchange_rate_base_currencies || 'CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB'}">
-                      <p class="text-xs text-gray-500 mt-1">需要获取汇率的基础货币代码，用逗号分隔（如：CNY,USD,EUR）</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('base_currencies_hint')}</p>
                     </div>
                     
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">目标货币</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('target_currency')}</label>
                       <input type="text" id="exchangeRateTargetCurrency" 
                              class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                              placeholder="EGP"
                              value="${settings.exchange_rate_target_currency || 'EGP'}"
                              maxlength="3">
-                      <p class="text-xs text-gray-500 mt-1">目标货币代码（默认：EGP埃及镑）</p>
+                      <p class="text-xs text-gray-500 mt-1">${t('target_currency_hint')}</p>
                     </div>
                     
                     <div class="flex items-center space-x-3 pt-2">
                       <button type="button" id="updateExchangeRateBtn" 
                               onclick="updateExchangeRateManually()"
                               class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
-                        🔄 立即更新汇率
+                        🔄 ${t('update_exchange_rate_now')}
                       </button>
                       <span id="exchangeRateUpdateStatus" class="text-sm text-gray-600"></span>
                     </div>
                   </div>
                 </div>
               </div>
+
+              <div class="border-t pt-6 mt-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🌤️ ${t('weather_settings')}</h3>
+                <p class="text-sm text-gray-600 mb-4">${t('weather_settings_hint')}</p>
+
+                <div class="space-y-4">
+                  <div>
+                    <label class="flex items-center space-x-2 mb-2">
+                      <input type="checkbox" id="weatherAutoUpdateEnabled"
+                             class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                             ${settings.weather_auto_update_enabled === 'true' || settings.weather_auto_update_enabled === undefined ? 'checked' : ''}
+                             onchange="document.getElementById('weatherConfigSection').classList.toggle('hidden', !this.checked)">
+                      <span class="text-sm font-medium text-gray-700">${t('enable_weather_update')}</span>
+                    </label>
+                    <p class="text-xs text-gray-500 ml-6">${t('weather_update_hint')}</p>
+                  </div>
+
+                  <div id="weatherConfigSection" class="space-y-4 ${settings.weather_auto_update_enabled === 'false' ? 'hidden' : ''}">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('update_frequency')}</label>
+                      <select id="weatherUpdateFrequency"
+                              class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <option value="hourly" ${settings.weather_update_frequency === 'hourly' ? 'selected' : ''}>${t('hourly')}</option>
+                        <option value="daily" ${settings.weather_update_frequency === 'daily' || !settings.weather_update_frequency ? 'selected' : ''}>${t('daily_recommended')}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('weather_city_name')}</label>
+                      <input type="text" id="weatherCityName"
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="Cairo"
+                             value="${settings.weather_city_name || 'Cairo'}">
+                    </div>
+
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('tomtom_api_key')}</label>
+                      <input type="password" id="weatherTomtomApiKey"
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="${t('tomtom_api_key_placeholder')}"
+                             value="${settings.weather_tomtom_api_key || ''}">
+                      <p class="text-xs text-gray-500 mt-1">${t('tomtom_api_key_hint')}</p>
+                    </div>
+
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">${t('tomtom_bbox')}</label>
+                      <input type="text" id="weatherTomtomBbox"
+                             class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                             placeholder="31.10,29.95,31.40,30.20"
+                             value="${settings.weather_tomtom_bbox || '31.10,29.95,31.40,30.20'}">
+                      <p class="text-xs text-gray-500 mt-1">${t('tomtom_bbox_hint')}</p>
+                    </div>
+
+                    <div class="flex items-center space-x-3 pt-2">
+                      <button type="button" id="updateWeatherBtn"
+                              onclick="updateWeatherManually()"
+                              class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
+                        🔄 ${t('update_weather_now')}
+                      </button>
+                      <span id="weatherUpdateStatus" class="text-sm text-gray-600"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
               
               <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔒 Security Policy Settings</h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">🔒 ${t('security_policy_settings')}</h3>
                 
                 <div class="space-y-6">
                   <!-- Admin Security Policy -->
                   <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h4 class="text-md font-semibold text-blue-900 mb-4">Admin Account Security Policy</h4>
+                    <h4 class="text-md font-semibold text-blue-900 mb-4">${t('admin_security_policy')}</h4>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Time Window (minutes)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('time_window_minutes')}</label>
                         <input type="number" id="adminLockoutTimeWindow" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.admin_lockout_time_window_minutes || '30'}"
                                min="1" max="1440">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts reset after this time window</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('time_window_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Max Lockout (hours)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('max_lockout_hours')}</label>
                         <input type="number" id="adminMaxLockoutHours" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.admin_max_lockout_hours || '4'}"
                                min="1" max="168">
-                        <p class="text-xs text-gray-500 mt-1">Maximum lockout duration</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('max_lockout_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 1 (Lock 15min)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('threshold_1')}</label>
                         <input type="number" id="adminLockoutThreshold1" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.admin_lockout_threshold_1 || '10'}"
                                min="1" max="100">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 15min lockout</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('threshold_1_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 2 (Lock 30min)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('threshold_2')}</label>
                         <input type="number" id="adminLockoutThreshold2" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.admin_lockout_threshold_2 || '20'}"
                                min="1" max="100">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 30min lockout</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('threshold_2_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 3 (Lock 1hr)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('threshold_3')}</label>
                         <input type="number" id="adminLockoutThreshold3" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.admin_lockout_threshold_3 || '30'}"
                                min="1" max="100">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 1hr lockout</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('threshold_3_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 4 (Lock Max)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('threshold_4')}</label>
                         <input type="number" id="adminLockoutThreshold4" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.admin_lockout_threshold_4 || '40'}"
                                min="1" max="100">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger max lockout</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('threshold_4_hint')}</p>
                       </div>
                       
                       <div class="md:col-span-2">
@@ -4911,70 +5075,70 @@ async function loadSettingsPage() {
                           <input type="checkbox" id="adminProgressiveDelayEnabled" 
                                  class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                  ${settings.admin_progressive_delay_enabled === 'true' ? 'checked' : ''}>
-                          <span class="text-sm font-medium text-gray-700">Enable Progressive Delay</span>
+                          <span class="text-sm font-medium text-gray-700">${t('enable_progressive_delay')}</span>
                         </label>
-                        <p class="text-xs text-gray-500 mt-1 ml-6">Enable delays before hard lockout (3→5s, 5→15s, 7→30s)</p>
+                        <p class="text-xs text-gray-500 mt-1 ml-6">${t('progressive_delay_hint')}</p>
                       </div>
                     </div>
                   </div>
                   
                   <!-- User Security Policy -->
                   <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <h4 class="text-md font-semibold text-green-900 mb-4">User Account Security Policy</h4>
+                    <h4 class="text-md font-semibold text-green-900 mb-4">${t('user_security_policy')}</h4>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Time Window (minutes)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('time_window_minutes')}</label>
                         <input type="number" id="userLockoutTimeWindow" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.user_lockout_time_window_minutes || '30'}"
                                min="1" max="1440">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts reset after this time window</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('time_window_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Max Lockout (hours)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('max_lockout_hours')}</label>
                         <input type="number" id="userMaxLockoutHours" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.user_max_lockout_hours || '4'}"
                                min="1" max="168">
-                        <p class="text-xs text-gray-500 mt-1">Maximum lockout duration</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('max_lockout_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 1 (Lock 15min)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('threshold_1')}</label>
                         <input type="number" id="userLockoutThreshold1" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.user_lockout_threshold_1 || '10'}"
                                min="1" max="100">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 15min lockout</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('threshold_1_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 2 (Lock 30min)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('threshold_2')}</label>
                         <input type="number" id="userLockoutThreshold2" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.user_lockout_threshold_2 || '20'}"
                                min="1" max="100">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 30min lockout</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('threshold_2_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 3 (Lock 1hr)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('threshold_3')}</label>
                         <input type="number" id="userLockoutThreshold3" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.user_lockout_threshold_3 || '30'}"
                                min="1" max="100">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger 1hr lockout</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('threshold_3_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Threshold 4 (Lock Max)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('threshold_4')}</label>
                         <input type="number" id="userLockoutThreshold4" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.user_lockout_threshold_4 || '40'}"
                                min="1" max="100">
-                        <p class="text-xs text-gray-500 mt-1">Failed attempts to trigger max lockout</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('threshold_4_hint')}</p>
                       </div>
                       
                       <div class="md:col-span-2">
@@ -4982,34 +5146,34 @@ async function loadSettingsPage() {
                           <input type="checkbox" id="userProgressiveDelayEnabled" 
                                  class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                  ${settings.user_progressive_delay_enabled === 'true' ? 'checked' : ''}>
-                          <span class="text-sm font-medium text-gray-700">Enable Progressive Delay</span>
+                          <span class="text-sm font-medium text-gray-700">${t('enable_progressive_delay')}</span>
                         </label>
-                        <p class="text-xs text-gray-500 mt-1 ml-6">Enable delays before hard lockout (3→5s, 5→15s, 7→30s)</p>
+                        <p class="text-xs text-gray-500 mt-1 ml-6">${t('progressive_delay_hint')}</p>
                       </div>
                     </div>
                   </div>
                   
                   <!-- IP Rate Limiting (Common) -->
                   <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <h4 class="text-md font-semibold text-yellow-900 mb-4">IP Rate Limiting (Common for Admin & User)</h4>
+                    <h4 class="text-md font-semibold text-yellow-900 mb-4">${t('ip_rate_limiting')}</h4>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Rate Limit Attempts</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('rate_limit_attempts')}</label>
                         <input type="number" id="ipRateLimitAttempts" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.ip_rate_limit_attempts || '5'}"
                                min="1" max="50">
-                        <p class="text-xs text-gray-500 mt-1">Max failed attempts per IP in time window</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('rate_limit_attempts_hint')}</p>
                       </div>
                       
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Rate Limit Window (minutes)</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">${t('rate_limit_window')}</label>
                         <input type="number" id="ipRateLimitWindowMinutes" 
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
                                value="${settings.ip_rate_limit_window_minutes || '15'}"
                                min="1" max="1440">
-                        <p class="text-xs text-gray-500 mt-1">Time window for IP rate limiting</p>
+                        <p class="text-xs text-gray-500 mt-1">${t('rate_limit_window_hint')}</p>
                       </div>
                     </div>
                   </div>
@@ -5017,14 +5181,14 @@ async function loadSettingsPage() {
                   <!-- IP Management -->
                   <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
                     <div class="flex items-center justify-between mb-4">
-                      <h4 class="text-md font-semibold text-purple-900">IP Management</h4>
+                      <h4 class="text-md font-semibold text-purple-900">${t('ip_management')}</h4>
                       <button onclick="loadBlockedIps()" class="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm">
-                        🔄 Refresh
+                        🔄 ${t('refresh')}
                       </button>
                     </div>
                     
                     <div id="blockedIpsList" class="space-y-2">
-                      <p class="text-sm text-gray-500">Loading blocked IPs...</p>
+                      <p class="text-sm text-gray-500">${t('loading_blocked_ips')}</p>
                     </div>
                   </div>
                 </div>
@@ -5034,52 +5198,52 @@ async function loadSettingsPage() {
           
           <!-- File Cleanup Section -->
           <div class="bg-white rounded-xl shadow-sm p-6 mt-6">
-            <h3 class="text-xl font-bold text-gray-900 mb-4">🧹 File Cleanup</h3>
-            <p class="text-sm text-gray-600 mb-4">Clean up old files to free up disk space. This will permanently delete files older than the specified number of days.</p>
+            <h3 class="text-xl font-bold text-gray-900 mb-4">🧹 ${t('file_cleanup')}</h3>
+            <p class="text-sm text-gray-600 mb-4">${t('file_cleanup_hint')}</p>
             
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Keep Files For (Days)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('keep_files_days')}</label>
                 <input type="number" id="cleanupDays" 
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                       placeholder="Enter number of days"
+                       placeholder="${t('keep_files_days_placeholder')}"
                        value="30"
                        min="1"
                        max="365">
-                <p class="text-xs text-gray-500 mt-1">Files older than this number of days will be deleted</p>
+                <p class="text-xs text-gray-500 mt-1">${t('keep_files_days_hint')}</p>
               </div>
               
               <div class="space-y-2">
                 <label class="flex items-center space-x-2">
                   <input type="checkbox" id="cleanPaymentScreenshots" 
                          class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                  <span class="text-sm font-medium text-gray-700">Clean Payment Screenshots</span>
+                  <span class="text-sm font-medium text-gray-700">${t('clean_payment_screenshots')}</span>
                 </label>
-                <p class="text-xs text-gray-500 ml-6">Delete payment screenshot files from uploads/payments/</p>
+                <p class="text-xs text-gray-500 ml-6">${t('clean_payment_screenshots_hint')}</p>
               </div>
               
               <div class="space-y-2">
                 <label class="flex items-center space-x-2">
                   <input type="checkbox" id="cleanLogs" 
                          class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                  <span class="text-sm font-medium text-gray-700">Clean Log Files</span>
+                  <span class="text-sm font-medium text-gray-700">${t('clean_log_files')}</span>
                 </label>
-                <p class="text-xs text-gray-500 ml-6">Delete log files from logs/ directory (backup and export folders are excluded)</p>
+                <p class="text-xs text-gray-500 ml-6">${t('clean_log_files_hint')}</p>
               </div>
               
               <div id="cleanupPreview" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p class="text-sm font-semibold text-yellow-800 mb-2">Preview:</p>
+                <p class="text-sm font-semibold text-yellow-800 mb-2">${t('preview')}:</p>
                 <p class="text-sm text-yellow-700" id="cleanupPreviewText"></p>
               </div>
               
               <div class="flex space-x-3">
                 <button type="button" onclick="previewCleanup()" 
                         class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium">
-                  Preview Cleanup
+                  ${t('preview_cleanup')}
                 </button>
                 <button type="button" onclick="executeCleanup()" 
                         class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
-                  Execute Cleanup
+                  ${t('execute_cleanup')}
                 </button>
               </div>
             </div>
@@ -5087,51 +5251,51 @@ async function loadSettingsPage() {
 
           <!-- Remote Backup Configuration -->
           <div class="bg-white rounded-xl shadow-sm p-6 mt-6">
-            <h3 class="text-xl font-bold text-gray-900 mb-4">🌐 Remote Backup (Cross-Site Backup)</h3>
-            <p class="text-sm text-gray-600 mb-4">Configure automatic backup push to remote sites and receive backups from other sites.</p>
+            <h3 class="text-xl font-bold text-gray-900 mb-4">🌐 ${t('remote_backup')}</h3>
+            <p class="text-sm text-gray-600 mb-4">${t('remote_backup_hint')}</p>
             
             <div class="space-y-6">
               <!-- Push Configuration -->
               <div>
                 <div class="flex items-center justify-between mb-4">
-                  <h4 class="text-lg font-semibold text-gray-900">📤 Push Configuration</h4>
+                  <h4 class="text-lg font-semibold text-gray-900">📤 ${t('push_config')}</h4>
                   <button onclick="showRemoteBackupConfigModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
-                    + Add Push Config
+                    + ${t('add_push_config')}
                   </button>
                 </div>
                 <div id="remoteBackupConfigsList" class="space-y-2">
-                  <p class="text-gray-500 text-sm">Loading configurations...</p>
+                  <p class="text-gray-500 text-sm">${t('loading_configurations')}</p>
                 </div>
               </div>
 
               <!-- Receive Configuration -->
               <div class="border-t pt-6">
-                <h4 class="text-lg font-semibold text-gray-900 mb-4">📥 Receive Configuration</h4>
+                <h4 class="text-lg font-semibold text-gray-900 mb-4">📥 ${t('receive_config')}</h4>
                 <div id="receiveConfigSection" class="space-y-4">
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">${t('api_token')}</label>
                     <div class="flex items-center space-x-2">
                       <input type="password" id="receiveApiToken" 
                              class="flex-1 px-4 py-2 border border-gray-300 rounded-lg"
-                             placeholder="Enter API token (must match the token configured on the sending site)">
+                             placeholder="${t('receive_api_token_placeholder')}">
                       <button type="button" onclick="toggleReceiveApiTokenVisibility()" 
                               class="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm">
-                        <span id="receiveApiTokenToggleText">Show</span>
+                        <span id="receiveApiTokenToggleText">${t('show')}</span>
                       </button>
                     </div>
                     <input type="hidden" id="receiveApiTokenOriginal" value="">
-                    <p class="text-xs text-gray-500 mt-1">This token must be the same as the one configured on the sending site</p>
+                    <p class="text-xs text-gray-500 mt-1">${t('receive_api_token_hint')}</p>
                   </div>
                   <div>
                     <label class="flex items-center space-x-2">
                       <input type="checkbox" id="receiveAutoRestore" 
                              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                      <span class="text-sm font-medium text-gray-700">Auto Restore</span>
+                      <span class="text-sm font-medium text-gray-700">${t('auto_restore')}</span>
                     </label>
-                    <p class="text-xs text-gray-500 mt-1 ml-6">Automatically restore received backups (otherwise, save and wait for manual restore)</p>
+                    <p class="text-xs text-gray-500 mt-1 ml-6">${t('auto_restore_hint')}</p>
                   </div>
                   <button onclick="saveReceiveConfig()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-                    Save Receive Config
+                    ${t('save_receive_config')}
                   </button>
                 </div>
               </div>
@@ -5139,26 +5303,26 @@ async function loadSettingsPage() {
               <!-- Push Logs -->
               <div class="border-t pt-6">
                 <div class="flex items-center justify-between mb-4">
-                  <h4 class="text-lg font-semibold text-gray-900">📋 Push Logs</h4>
+                  <h4 class="text-lg font-semibold text-gray-900">📋 ${t('push_logs')}</h4>
                   <button onclick="loadPushLogs()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
-                    Refresh
+                    ${t('refresh')}
                   </button>
                 </div>
                 <div id="pushLogsList" class="space-y-2 max-h-64 overflow-y-auto">
-                  <p class="text-gray-500 text-sm">Loading logs...</p>
+                  <p class="text-gray-500 text-sm">${t('loading_logs')}</p>
                 </div>
               </div>
 
               <!-- Received Backups -->
               <div class="border-t pt-6">
                 <div class="flex items-center justify-between mb-4">
-                  <h4 class="text-lg font-semibold text-gray-900">📦 Received Backups</h4>
+                  <h4 class="text-lg font-semibold text-gray-900">📦 ${t('received_backups')}</h4>
                   <button onclick="loadReceivedBackups()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm">
-                    Refresh
+                    ${t('refresh')}
                   </button>
                 </div>
                 <div id="receivedBackupsList" class="space-y-2 max-h-64 overflow-y-auto">
-                  <p class="text-gray-500 text-sm">Loading received backups...</p>
+                  <p class="text-gray-500 text-sm">${t('loading_received_backups')}</p>
                 </div>
               </div>
             </div>
@@ -5214,11 +5378,11 @@ async function loadSettingsPage() {
         }
       }, 100);
     } else {
-      container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
+      container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
     }
   } catch (error) {
     console.error('加载设置失败:', error);
-    container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
+    container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
   }
 }
 
@@ -5227,7 +5391,7 @@ async function saveSettings(e) {
   
   const maxVisibleCycles = parseInt(document.getElementById('maxVisibleCycles').value) || 10;
   if (maxVisibleCycles < 1 || maxVisibleCycles > 100) {
-    showToast('Max Visible Cycles must be between 1 and 100', 'warning');
+    showToast(t('max_visible_cycles_range'), 'warning');
     return;
   }
   
@@ -5242,12 +5406,12 @@ async function saveSettings(e) {
   
   // 验证session过期时间
   if (adminSessionTimeout && (parseInt(adminSessionTimeout) < 60 || parseInt(adminSessionTimeout) > 86400)) {
-    showToast('Admin session timeout must be between 60 and 86400 seconds', 'error');
+    showToast(t('admin_session_timeout_range'), 'error');
     return;
   }
   
   if (userSessionTimeout && (parseInt(userSessionTimeout) < 60 || parseInt(userSessionTimeout) > 86400)) {
-    showToast('User session timeout must be between 60 and 86400 seconds', 'error');
+    showToast(t('user_session_timeout_range'), 'error');
     return;
   }
   
@@ -5332,6 +5496,12 @@ async function saveSettings(e) {
     exchange_rate_update_frequency: document.getElementById('exchangeRateUpdateFrequency')?.value || 'daily',
     exchange_rate_base_currencies: document.getElementById('exchangeRateBaseCurrencies')?.value.trim() || 'CNY,USD,EUR,GBP,JPY,SAR,AED,RUB,INR,KRW,THB',
     exchange_rate_target_currency: document.getElementById('exchangeRateTargetCurrency')?.value.trim().toUpperCase() || 'EGP',
+    // Weather/Road update settings
+    weather_auto_update_enabled: document.getElementById('weatherAutoUpdateEnabled')?.checked ? 'true' : 'false',
+    weather_update_frequency: document.getElementById('weatherUpdateFrequency')?.value || 'daily',
+    weather_city_name: document.getElementById('weatherCityName')?.value.trim() || 'Cairo',
+    weather_tomtom_api_key: document.getElementById('weatherTomtomApiKey')?.value.trim() || '',
+    weather_tomtom_bbox: document.getElementById('weatherTomtomBbox')?.value.trim() || '31.10,29.95,31.40,30.20',
     // Custom API Token (only for custom APIs)
     custom_api_token: (() => {
       const tokenInput = document.getElementById('customApiToken');
@@ -5365,7 +5535,7 @@ async function saveSettings(e) {
     const result = await response.json();
     
     if (result.success) {
-      showToast('Settings saved successfully', 'success');
+      showToast(t('settings_saved_success'), 'success');
       currentSettings = settings;
       // 更新商店名称
       if (settings.store_name) {
@@ -5386,11 +5556,11 @@ async function saveSettings(e) {
       }
       loadSettingsPage();
     } else {
-      showToast(result.message || 'Save failed', 'error');
+      showToast(result.message || t('save_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to save settings:', error);
-    showToast('Save failed', 'error');
+    showToast(t('save_failed'), 'error');
   }
 }
 
@@ -5566,7 +5736,7 @@ async function loadUsers() {
       
       container.innerHTML = `
         <div class="fade-in">
-          <h2 class="text-2xl font-bold text-gray-900 mb-6">Users</h2>
+          <h2 class="text-2xl font-bold text-gray-900 mb-6">${t('users')}</h2>
           
           <div class="bg-white rounded-xl shadow-sm overflow-hidden">
             <div class="overflow-x-auto">
@@ -5574,26 +5744,26 @@ async function loadUsers() {
                 <thead class="bg-gray-50">
                   <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Orders</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Spent</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Permission</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lock Status</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registered</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Login</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('phone_number')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('name')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('balance')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('orders')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('total_spent')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('permission')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('lock_status')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('registered')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('last_login')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                   ${users.length === 0 ? 
-                    '<tr><td colspan="11" class="px-6 py-4 text-center text-gray-500">No users</td></tr>' :
+                    `<tr><td colspan="11" class="px-6 py-4 text-center text-gray-500">${t('no_users')}</td></tr>` :
                     users.map(user => `
                       <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.id}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.phone}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.name || 'Not set'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.name || t('not_set')}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${(user.balance || 0) > 0 ? 'text-green-600' : 'text-gray-500'}">
                           ${formatPriceDecimal(user.balance || 0)}
                         </td>
@@ -5602,32 +5772,32 @@ async function loadUsers() {
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                           <select onchange="updateUserPermission(${user.id}, this.value)" 
                                   class="text-xs border border-gray-300 rounded px-2 py-1 ${(user.permission || 'readwrite') === 'readonly' ? 'bg-yellow-50 text-yellow-800' : 'bg-blue-50 text-blue-800'}">
-                            <option value="readonly" ${(user.permission || 'readwrite') === 'readonly' ? 'selected' : ''}>只读</option>
-                            <option value="readwrite" ${(user.permission || 'readwrite') === 'readwrite' ? 'selected' : ''}>读写</option>
+                            <option value="readonly" ${(user.permission || 'readwrite') === 'readonly' ? 'selected' : ''}>${t('permission_readonly')}</option>
+                            <option value="readwrite" ${(user.permission || 'readwrite') === 'readwrite' ? 'selected' : ''}>${t('permission_readwrite')}</option>
                           </select>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                           ${user.isLocked ? `
                             <div class="flex flex-col space-y-1">
                               <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                                🔒 Locked
+                                🔒 ${t('locked')}
                               </span>
-                              <span class="text-xs text-gray-500">${user.remainingTime} remaining</span>
-                              <span class="text-xs text-gray-500">Failed: ${user.failedCount} times</span>
-                              ${user.firstAttemptAt ? `<span class="text-xs text-gray-400">First attempt: ${new Date(user.firstAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
+                              <span class="text-xs text-gray-500">${t('remaining_time', { time: user.remainingTime })}</span>
+                              <span class="text-xs text-gray-500">${t('failed_times', { count: user.failedCount })}</span>
+                              ${user.firstAttemptAt ? `<span class="text-xs text-gray-400">${t('first_attempt')}: ${new Date(user.firstAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
                             </div>
                           ` : user.failedCount > 0 ? `
                             <div class="flex flex-col space-y-1">
                               <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                ⚠️ ${user.failedCount} failed attempts
+                                ⚠️ ${t('failed_attempts', { count: user.failedCount })}
                               </span>
-                              <span class="text-xs text-gray-500">Lock expired or not yet locked</span>
-                              ${user.firstAttemptAt ? `<span class="text-xs text-gray-400">First attempt: ${new Date(user.firstAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
-                              ${user.lastAttemptAt ? `<span class="text-xs text-gray-400">Last attempt: ${new Date(user.lastAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
+                              <span class="text-xs text-gray-500">${t('lock_expired_or_not')}</span>
+                              ${user.firstAttemptAt ? `<span class="text-xs text-gray-400">${t('first_attempt')}: ${new Date(user.firstAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
+                              ${user.lastAttemptAt ? `<span class="text-xs text-gray-400">${t('last_attempt')}: ${new Date(user.lastAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
                             </div>
                           ` : `
                             <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                              ✓ Active
+                              ✓ ${t('active')}
                             </span>
                           `}
                         </td>
@@ -5637,16 +5807,16 @@ async function loadUsers() {
                           <div class="flex flex-col space-y-1">
                           <div class="flex space-x-2">
                             <button onclick="showEditUserModal(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}')" 
-                                      class="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
+                                      class="text-blue-600 hover:text-blue-800 text-xs">${t('edit')}</button>
                             <button onclick="resetUserPin(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
-                                      class="text-yellow-600 hover:text-yellow-800 text-xs">Reset PIN</button>
+                                      class="text-yellow-600 hover:text-yellow-800 text-xs">${t('reset_pin')}</button>
                             <button onclick="deleteUser(${user.id}, '${(user.phone || '').replace(/'/g, "\\'")}')" 
-                                      class="text-red-600 hover:text-red-800 text-xs">Delete</button>
+                                      class="text-red-600 hover:text-red-800 text-xs">${t('delete')}</button>
                             </div>
                             ${(user.isLocked || user.failedCount > 0) ? `
                               <button onclick="unlockUser('${(user.phone || '').replace(/'/g, "\\'")}', '${(user.name || '').replace(/'/g, "\\'")}', ${user.isLocked}, ${user.failedCount || 0})" 
                                       class="mt-1 text-xs text-green-600 hover:text-green-800 font-semibold">
-                                ${user.isLocked ? '🔓 Unlock' : '🧹 Clear Failed Attempts'}
+                                ${user.isLocked ? `🔓 ${t('unlock')}` : `🧹 ${t('clear_failed_attempts')}`}
                               </button>
                             ` : ''}
                           </div>
@@ -5661,11 +5831,11 @@ async function loadUsers() {
         </div>
       `;
     } else {
-      container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
+      container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
     }
   } catch (error) {
     console.error('加载用户列表失败:', error);
-    container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
+    container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
   }
 }
 
@@ -5679,17 +5849,17 @@ async function updateUserPermission(userId, permission) {
     });
     
     if (data.success) {
-      showToast(`用户权限已更新为：${permission === 'readonly' ? '只读' : '读写'}`, 'success');
+      showToast(t('permission_updated', { permission: permission === 'readonly' ? t('permission_readonly') : t('permission_readwrite') }), 'success');
       // 重新加载用户列表以更新显示
       await loadUsers();
     } else {
-      showToast(data.message || '更新权限失败', 'error');
+      showToast(data.message || t('permission_update_failed'), 'error');
       // 重新加载用户列表以恢复原值
       await loadUsers();
     }
   } catch (error) {
     console.error('更新用户权限失败:', error);
-    showToast('更新权限失败', 'error');
+    showToast(t('permission_update_failed'), 'error');
     // 重新加载用户列表以恢复原值
     await loadUsers();
   }
@@ -5697,10 +5867,10 @@ async function updateUserPermission(userId, permission) {
 
 // 显示编辑用户模态框
 function showEditUserModal(userId, phone, name) {
-  const newPhone = prompt(`Edit phone number for user ${phone}:`, phone);
+  const newPhone = prompt(t('edit_user_phone_prompt', { phone }), phone);
   if (newPhone === null) return; // 用户取消
   
-  const newName = prompt(`Edit name for user ${phone}:`, name || '');
+  const newName = prompt(t('edit_user_name_prompt', { phone }), name || '');
   if (newName === null) return; // 用户取消
   
   (async () => {
@@ -5715,19 +5885,19 @@ function showEditUserModal(userId, phone, name) {
       });
       
       if (response && response.success) {
-        showToast('User updated successfully', 'success');
+        showToast(t('user_updated_success'), 'success');
         await loadUsers();
       }
     } catch (error) {
       console.error('更新用户失败:', error);
-      showToast('Failed to update user', 'error');
+      showToast(t('user_update_failed'), 'error');
     }
   })();
 }
 
 // 重置用户 PIN
 async function resetUserPin(userId, phone) {
-  if (!confirm(`Are you sure you want to reset PIN for user ${phone}? The user will need to set a new PIN on next login.`)) {
+  if (!confirm(t('reset_pin_confirm', { phone }))) {
     return;
   }
   
@@ -5738,27 +5908,26 @@ async function resetUserPin(userId, phone) {
     });
     
     if (response && response.success) {
-      showToast('User PIN reset successfully', 'success');
+      showToast(t('reset_pin_success'), 'success');
       await loadUsers();
     }
   } catch (error) {
     console.error('重置用户PIN失败:', error);
-    showToast('Failed to reset user PIN', 'error');
+    showToast(t('reset_pin_failed'), 'error');
   }
 }
 
 // 解锁用户或清除失败记录
 async function unlockUser(phone, name, isLocked, failedCount) {
-  const actionText = isLocked ? 'unlock' : 'clear login failure records';
   const message = isLocked 
-    ? `Are you sure you want to unlock the account for ${name || phone}? This will clear all login failure records (${failedCount} failed attempts) and allow the user to login immediately.`
-    : `Are you sure you want to clear login failure records for ${name || phone}? This will reset the failed attempt count (${failedCount} failed attempts) and allow the user to start fresh.`;
+    ? t('unlock_user_confirm', { name: name || phone, count: failedCount })
+    : t('clear_failed_confirm', { name: name || phone, count: failedCount });
   
   const confirmed = await showConfirmDialog(
-    isLocked ? 'Unlock User Account' : 'Clear Login Failure Records',
+    isLocked ? t('unlock_user_title') : t('clear_failed_title'),
     message,
-    isLocked ? 'Unlock' : 'Clear',
-    'Cancel'
+    isLocked ? t('unlock') : t('clear'),
+    t('cancel')
   );
   
   if (!confirmed) {
@@ -5773,27 +5942,27 @@ async function unlockUser(phone, name, isLocked, failedCount) {
     
     if (response && response.success) {
       if (response.wasLocked) {
-        showToast('User unlocked successfully', 'success');
+        showToast(t('user_unlocked_success'), 'success');
       } else if (response.hadRecords) {
-        showToast('Login failure records cleared successfully', 'success');
+        showToast(t('failed_records_cleared'), 'success');
       } else {
-        showToast('No records to clear', 'info');
+        showToast(t('no_records_to_clear'), 'info');
       }
       await loadUsers();
     }
   } catch (error) {
     console.error('解锁/清除用户失败记录失败:', error);
-    showToast('Failed to unlock/clear user records', 'error');
+    showToast(t('unlock_or_clear_failed'), 'error');
   }
 }
 
 // 删除用户
 async function deleteUser(userId, phone) {
   const confirmed = await showConfirmDialog(
-    'Delete User',
-    `Are you sure you want to delete user ${phone}? This will permanently delete:\n\n- All orders and order items\n- All balance transaction records\n- User account and balance\n\nThis action cannot be undone!`,
-    'Delete',
-    'Cancel'
+    t('delete_user_title'),
+    t('delete_user_confirm', { phone }),
+    t('delete'),
+    t('cancel')
   );
   
   if (!confirmed) {
@@ -5807,15 +5976,15 @@ async function deleteUser(userId, phone) {
     
     if (response && response.success) {
       const message = response.deletedOrdersCount > 0 || response.deletedTransactionsCount > 0
-        ? `User deleted successfully. Deleted ${response.deletedOrdersCount || 0} orders and ${response.deletedTransactionsCount || 0} balance transactions.`
-        : 'User deleted successfully';
+        ? t('user_deleted_with_counts', { orders: response.deletedOrdersCount || 0, transactions: response.deletedTransactionsCount || 0 })
+        : t('user_deleted_success');
       showToast(message, 'success');
       await loadUsers();
     }
   } catch (error) {
     console.error('删除用户失败:', error);
     // 尝试从响应中获取错误信息
-    let errorMessage = 'Failed to delete user';
+    let errorMessage = t('user_delete_failed');
     if (error.response) {
       try {
         const errorData = await error.response.json();
@@ -5855,7 +6024,7 @@ async function loadUserBalanceList() {
       
       if (tbody) {
         tbody.innerHTML = users.length === 0
-          ? '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No users</td></tr>'
+          ? `<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">${t('no_users')}</td></tr>`
           : users.map(user => `
             <tr class="hover:bg-gray-50">
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -5863,7 +6032,7 @@ async function loadUserBalanceList() {
                 ${user.id}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.phone || '-'}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.name || 'Not set'}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.name || t('not_set')}</td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${(user.balance || 0) > 0 ? 'text-green-600' : 'text-gray-500'}">
                 ${formatPriceDecimal(user.balance || 0)}
               </td>
@@ -5872,11 +6041,11 @@ async function loadUserBalanceList() {
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm">
                 <button onclick="showRechargeModal(${user.id}, '${user.phone || ''}', '${(user.name || '').replace(/'/g, "\\'")}')" 
-                        class="text-blue-600 hover:text-blue-800 mr-2">Recharge</button>
+                        class="text-blue-600 hover:text-blue-800 mr-2">${t('recharge')}</button>
                 <button onclick="showDeductModal(${user.id}, '${user.phone || ''}', '${(user.name || '').replace(/'/g, "\\'")}')" 
-                        class="text-red-600 hover:text-red-800 mr-2">Deduct</button>
+                        class="text-red-600 hover:text-red-800 mr-2">${t('deduct')}</button>
                 <button onclick="showBalanceTransactions(${user.id})" 
-                        class="text-gray-600 hover:text-gray-800">History</button>
+                        class="text-gray-600 hover:text-gray-800">${t('history')}</button>
               </td>
             </tr>
           `).join('');
@@ -5886,7 +6055,7 @@ async function loadUserBalanceList() {
     console.error('加载用户余额列表失败:', error);
     const tbody = document.getElementById('userBalanceTableBody');
     if (tbody) {
-      tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">Load failed</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">${t('load_failed')}</td></tr>`;
     }
   }
 }
@@ -5918,7 +6087,7 @@ async function loadBalanceTransactions() {
       const tbody = document.getElementById('balanceTransactionsTableBody');
       if (tbody) {
         tbody.innerHTML = transactions.length === 0
-          ? '<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">No transactions</td></tr>'
+          ? `<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">${t('no_transactions')}</td></tr>`
           : transactions.map(t => `
             <tr class="hover:bg-gray-50">
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -5957,18 +6126,18 @@ async function loadBalanceTransactions() {
         pagination.innerHTML = `
           <div class="flex items-center justify-between">
             <div class="text-sm text-gray-700">
-              Page ${balanceTransactionsPage} of ${totalPages} (Total: ${total})
+              ${t('page')} ${balanceTransactionsPage} ${t('of')} ${totalPages} (${t('total')}: ${total})
             </div>
             <div class="flex space-x-2">
               <button onclick="balanceTransactionsPage = Math.max(1, balanceTransactionsPage - 1); loadBalanceTransactions();" 
                       ${balanceTransactionsPage <= 1 ? 'disabled' : ''} 
                       class="px-3 py-1 border border-gray-300 rounded-lg text-sm ${balanceTransactionsPage <= 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}">
-                Previous
+                ${t('previous')}
               </button>
               <button onclick="balanceTransactionsPage = Math.min(${totalPages}, balanceTransactionsPage + 1); loadBalanceTransactions();" 
                       ${balanceTransactionsPage >= totalPages ? 'disabled' : ''} 
                       class="px-3 py-1 border border-gray-300 rounded-lg text-sm ${balanceTransactionsPage >= totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}">
-                Next
+                ${t('next')}
               </button>
             </div>
           </div>
@@ -5979,7 +6148,7 @@ async function loadBalanceTransactions() {
     console.error('加载余额变动历史失败:', error);
     const tbody = document.getElementById('balanceTransactionsTableBody');
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-4 text-center text-red-500">Load failed: ${error.message || 'Unknown error'}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-4 text-center text-red-500">${t('load_failed')}: ${error.message || t('unknown_error')}</td></tr>`;
     }
     const pagination = document.getElementById('balanceTransactionsPagination');
     if (pagination) {
@@ -5998,7 +6167,7 @@ async function loadCyclesForRecharge() {
       const select = document.getElementById('cycleRechargeCycle');
       
       if (select) {
-        select.innerHTML = '<option value="">Select Cycle</option>' + cycles.map(cycle => `
+        select.innerHTML = `<option value="">${t('select_cycle')}</option>` + cycles.map(cycle => `
           <option value="${cycle.id}">${cycle.cycle_number} (${cycle.status})</option>
         `).join('');
       }
@@ -6012,17 +6181,17 @@ async function loadCyclesForRecharge() {
 async function batchRechargeSelected() {
   const checkboxes = document.querySelectorAll('.user-balance-checkbox:checked');
   if (checkboxes.length === 0) {
-    showToast('Please select at least one user', 'warning');
+    showToast(t('select_at_least_one_user'), 'warning');
     return;
   }
   
   const amount = parseFloat(document.getElementById('batchRechargeAmount')?.value);
   if (!amount || amount <= 0) {
-    showToast('Please enter a valid amount', 'warning');
+    showToast(t('enter_valid_amount'), 'warning');
     return;
   }
   
-  const notes = document.getElementById('batchRechargeNotes')?.value || '批量充值';
+  const notes = document.getElementById('batchRechargeNotes')?.value || t('batch_recharge_default_note');
   
   const users = Array.from(checkboxes).map(cb => ({
     userId: parseInt(cb.dataset.userId),
@@ -6030,7 +6199,7 @@ async function batchRechargeSelected() {
     notes: notes
   }));
   
-  if (!confirm(`Are you sure you want to recharge ${amount} to ${users.length} user(s)?`)) {
+  if (!confirm(t('confirm_recharge_users', { amount, count: users.length }))) {
     return;
   }
   
@@ -6058,19 +6227,19 @@ async function batchRechargeSelected() {
 async function rechargeCyclePaidUsers() {
   const cycleId = document.getElementById('cycleRechargeCycle')?.value;
   if (!cycleId) {
-    showToast('Please select a cycle', 'warning');
+    showToast(t('please_select_cycle'), 'warning');
     return;
   }
   
   const amount = parseFloat(document.getElementById('cycleRechargeAmount')?.value);
   if (!amount || amount <= 0) {
-    showToast('Please enter a valid amount', 'warning');
+    showToast(t('enter_valid_amount'), 'warning');
     return;
   }
   
   const notes = document.getElementById('cycleRechargeNotes')?.value || '';
   
-  if (!confirm(`Are you sure you want to recharge ${amount} to all paid users in this cycle?`)) {
+  if (!confirm(t('confirm_recharge_cycle_users', { amount }))) {
     return;
   }
   
@@ -6100,10 +6269,10 @@ function updateSelectedUsers() {
 
 // 显示充值模态框
 function showRechargeModal(userId, phone, name) {
-  const amount = prompt(`Recharge amount for user ${phone} (${name}):`);
+  const amount = prompt(t('recharge_amount_prompt', { phone, name: name || '-' }));
   if (!amount || parseFloat(amount) <= 0) return;
   
-  const notes = prompt('Notes (optional):') || '';
+  const notes = prompt(t('notes_optional_prompt')) || '';
   
   (async () => {
     try {
@@ -6114,7 +6283,7 @@ function showRechargeModal(userId, phone, name) {
       });
       
       if (response.success) {
-        showToast('Recharge successful', 'success');
+        showToast(t('recharge_success'), 'success');
         await loadUserBalanceList();
       }
     } catch (error) {
@@ -6125,10 +6294,10 @@ function showRechargeModal(userId, phone, name) {
 
 // 显示扣减模态框
 function showDeductModal(userId, phone, name) {
-  const amount = prompt(`Deduct amount for user ${phone} (${name}):`);
+  const amount = prompt(t('deduct_amount_prompt', { phone, name: name || '-' }));
   if (!amount || parseFloat(amount) <= 0) return;
   
-  const notes = prompt('Notes (optional):') || '';
+  const notes = prompt(t('notes_optional_prompt')) || '';
   
   (async () => {
     try {
@@ -6139,7 +6308,7 @@ function showDeductModal(userId, phone, name) {
       });
       
       if (response.success) {
-        showToast('Deduct successful', 'success');
+        showToast(t('deduct_success'), 'success');
         await loadUserBalanceList();
       }
     } catch (error) {
@@ -6173,9 +6342,9 @@ async function loadAdmins() {
       container.innerHTML = `
         <div class="fade-in">
           <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold text-gray-900">Admins</h2>
+            <h2 class="text-2xl font-bold text-gray-900">${t('admins')}</h2>
             <button onclick="showAdminModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-              + Add Admin
+              + ${t('add_admin')}
             </button>
           </div>
           
@@ -6185,19 +6354,19 @@ async function loadAdmins() {
                 <thead class="bg-gray-50">
                   <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Security</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('username')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('name')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('email')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('role')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('status')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('security')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('created_at')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200" id="adminsTableBody">
                   ${admins.length === 0 ? 
-                    '<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">No admins</td></tr>' :
+                    `<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">${t('no_admins')}</td></tr>` :
                     admins.map((admin, index) => `
                       <tr class="hover:bg-gray-50" data-admin-index="${index}">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${admin.id}</td>
@@ -6207,22 +6376,22 @@ async function loadAdmins() {
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${admin.role || 'admin'}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
                           <span class="px-2 py-1 text-xs rounded-full ${admin.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                            ${admin.status === 'active' ? 'Active' : 'Inactive'}
+                            ${admin.status === 'active' ? t('active') : t('inactive')}
                           </span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                           ${admin.isLocked ? `
                             <div class="flex flex-col space-y-1">
-                              <span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">🔒 Locked</span>
-                              <span class="text-xs text-gray-600">${admin.remainingTime || 'Unknown'}</span>
+                              <span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">🔒 ${t('locked')}</span>
+                              <span class="text-xs text-gray-600">${admin.remainingTime || t('unknown')}</span>
                             </div>
                           ` : admin.failedCount > 0 ? `
                             <div class="flex flex-col space-y-1">
-                              <span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">⚠️ ${admin.failedCount} failed</span>
-                              ${admin.lastAttemptAt ? `<span class="text-xs text-gray-600">Last: ${new Date(admin.lastAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
+                              <span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">⚠️ ${t('failed_attempts_short', { count: admin.failedCount })}</span>
+                              ${admin.lastAttemptAt ? `<span class="text-xs text-gray-600">${t('last_attempt')}: ${new Date(admin.lastAttemptAt.replace(' ', 'T')).toLocaleString()}</span>` : ''}
                             </div>
                           ` : `
-                            <span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">✓ OK</span>
+                            <span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">✓ ${t('ok')}</span>
                           `}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${admin.created_at ? new Date(admin.created_at).toLocaleString('en-US') : '-'}</td>
@@ -6230,16 +6399,16 @@ async function loadAdmins() {
                           ${isSuper ? `
                           <div class="flex items-center space-x-2">
                           <button data-action="edit" data-admin-id="${admin.id}" 
-                                    class="text-blue-600 hover:text-blue-800">Edit</button>
+                                    class="text-blue-600 hover:text-blue-800">${t('edit')}</button>
                             ${(admin.isLocked || admin.failedCount > 0) ? `
                             <button data-action="unlock" data-admin-username="${admin.username.replace(/'/g, "\\'")}" 
-                                    class="text-green-600 hover:text-green-800">Unlock</button>
+                                    class="text-green-600 hover:text-green-800">${t('unlock')}</button>
                             ` : ''}
                           <button data-action="delete" data-admin-id="${admin.id}" 
-                                  class="text-red-600 hover:text-red-800">Delete</button>
+                                  class="text-red-600 hover:text-red-800">${t('delete')}</button>
                           </div>
                           ` : `
-                          <span class="text-gray-400 text-xs">No permission</span>
+                          <span class="text-gray-400 text-xs">${t('no_permission')}</span>
                           `}
                         </td>
                       </tr>
@@ -6254,55 +6423,55 @@ async function loadAdmins() {
         <!-- 管理员编辑模态框 -->
         <div id="adminModal" class="modal">
           <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
-            <h3 id="adminModalTitle" class="text-2xl font-bold text-gray-900 mb-6">Add Admin</h3>
+            <h3 id="adminModalTitle" class="text-2xl font-bold text-gray-900 mb-6">${t('add_admin')}</h3>
             <form id="adminForm" class="space-y-4">
               <input type="hidden" id="adminId">
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Username *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('username')} *</label>
                 <input type="text" id="adminUsername" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Password <span id="passwordLabel">*</span></label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('password')} <span id="passwordLabel">*</span></label>
                 <input type="password" id="adminPassword" required 
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('name')}</label>
                 <input type="text" id="adminModalName" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('email')}</label>
                 <input type="email" id="adminEmail" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
               </div>
               
               ${isSuper ? `
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('role')}</label>
                 <select id="adminRole" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                  <option value="admin">Admin</option>
-                  <option value="super_admin">Super Admin</option>
+                  <option value="admin">${t('role_admin')}</option>
+                  <option value="super_admin">${t('role_super_admin')}</option>
                 </select>
               </div>
               ` : ''}
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('status')}</label>
                 <select id="adminStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
+                  <option value="active">${t('active')}</option>
+                  <option value="inactive">${t('inactive')}</option>
                 </select>
               </div>
               
               <div class="flex space-x-3 mt-6">
                 <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
-                  保存
+                  ${t('save')}
                 </button>
                 <button type="button" onclick="closeAdminModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
-                  取消
+                  ${t('cancel')}
                 </button>
               </div>
             </form>
@@ -6352,25 +6521,25 @@ async function loadAdmins() {
         });
       }
     } else {
-      container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
+      container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
     }
   } catch (error) {
     console.error('加载管理员列表失败:', error);
-    container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
+    container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
   }
 }
 
 function showAdminModal(admin = null) {
   // 只有super_admin可以管理其他admin
   if (!isSuperAdmin()) {
-    showToast('Access denied. Only super admin can manage other admins.', 'error');
+    showToast(t('access_denied_super_admin'), 'error');
     return;
   }
   
   const modal = document.getElementById('adminModal');
   if (!modal) {
     console.error('adminModal element not found');
-    showToast('Modal element not found', 'error');
+    showToast(t('modal_not_found'), 'error');
     return;
   }
   
@@ -6382,7 +6551,7 @@ function showAdminModal(admin = null) {
   
   if (admin) {
     console.log('Showing edit modal for admin:', admin);
-    title.textContent = 'Edit Admin';
+    title.textContent = t('edit_admin');
     
     // 先显示模态框，确保DOM元素存在
     modal.classList.add('active');
@@ -6402,7 +6571,7 @@ function showAdminModal(admin = null) {
           adminPasswordEl.required = false;
           adminPasswordEl.value = '';
         }
-        if (passwordLabelEl) passwordLabelEl.textContent = '(Leave empty to keep unchanged)';
+        if (passwordLabelEl) passwordLabelEl.textContent = t('password_keep_unchanged');
         
         // 设置name字段 - 这是关键
         const nameInput = document.getElementById('adminModalName');
@@ -6475,7 +6644,7 @@ function showAdminModal(admin = null) {
       });
     });
   } else {
-    title.textContent = 'Add Admin';
+    title.textContent = t('add_admin');
     document.getElementById('adminForm').reset();
     const adminPasswordEl = document.getElementById('adminPassword');
     if (adminPasswordEl) adminPasswordEl.required = true;
@@ -6500,7 +6669,7 @@ async function saveAdmin(e) {
   
   // 只有super_admin可以管理其他admin
   if (!isSuperAdmin()) {
-    showToast('Access denied. Only super admin can manage other admins.', 'error');
+    showToast(t('access_denied_super_admin'), 'error');
     return;
   }
   
@@ -6514,7 +6683,7 @@ async function saveAdmin(e) {
   
   if (!usernameInput || !nameInput || !emailInput || !statusInput) {
     console.error('Form elements not found:', { usernameInput, nameInput, emailInput, statusInput });
-    showToast('Form elements not found', 'error');
+    showToast(t('form_elements_not_found'), 'error');
     return;
   }
   
@@ -6557,15 +6726,15 @@ async function saveAdmin(e) {
       : await apiPost('/admin/admins', data);
     
     if (result.success) {
-      showToast(id ? 'Admin updated successfully' : 'Admin added successfully', 'success');
+      showToast(id ? t('admin_updated_success') : t('admin_added_success'), 'success');
       closeAdminModal();
       loadAdmins();
     } else {
-      showToast(result.message || 'Operation failed', 'error');
+      showToast(result.message || t('operation_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to save admin:', error);
-      showToast('Operation failed', 'error');
+      showToast(t('operation_failed'), 'error');
   }
 }
 
@@ -6577,7 +6746,7 @@ function editAdmin(admin) {
 async function unlockAdmin(username) {
   const admin = adminsList.find(a => a.username === username);
   if (!admin) {
-    showToast('Admin not found', 'error');
+    showToast(t('admin_not_found'), 'error');
     return;
   }
   
@@ -6586,11 +6755,11 @@ async function unlockAdmin(username) {
   
   let confirmMessage = '';
   if (isLocked) {
-    confirmMessage = `Unlock admin "${admin.username}" (${admin.name || 'N/A'})?\n\nThis will:\n- Clear all login failure records\n- Remove account lockout\n- Reactivate the account if it was deactivated`;
+    confirmMessage = t('unlock_admin_confirm', { username: admin.username, name: admin.name || t('not_available') });
   } else if (failedCount > 0) {
-    confirmMessage = `Clear login failure records for admin "${admin.username}" (${admin.name || 'N/A'})?\n\nFailed attempts: ${failedCount}`;
+    confirmMessage = t('clear_admin_failed_confirm', { username: admin.username, name: admin.name || t('not_available'), count: failedCount });
   } else {
-    showToast('No login failure records to clear', 'info');
+    showToast(t('no_records_to_clear'), 'info');
     return;
   }
   
@@ -6604,28 +6773,28 @@ async function unlockAdmin(username) {
     });
     
     if (response && response.success) {
-      showToast(response.message || 'Admin unlocked successfully', 'success');
+      showToast(response.message || t('admin_unlocked_success'), 'success');
       await loadAdmins();
     }
   } catch (error) {
     console.error('解锁管理员失败:', error);
-    showToast('Failed to unlock admin', 'error');
+    showToast(t('admin_unlock_failed'), 'error');
   }
 }
 
 async function deleteAdmin(adminId) {
   // 只有super_admin可以管理其他admin
   if (!isSuperAdmin()) {
-    showToast('Access denied. Only super admin can manage other admins.', 'error');
+    showToast(t('access_denied_super_admin'), 'error');
     return;
   }
   
   // 确认删除
   const confirmed = await showConfirmDialog(
-    'Delete Admin',
-    'Are you sure you want to delete this admin? This action cannot be undone.',
-    'Delete',
-    'Cancel'
+    t('delete_admin_title'),
+    t('delete_admin_confirm'),
+    t('delete'),
+    t('cancel')
   );
   
   if (!confirmed) {
@@ -6636,14 +6805,14 @@ async function deleteAdmin(adminId) {
     const result = await apiDelete(`/admin/admins/${adminId}`);
     
     if (result.success) {
-      showToast('Admin deleted successfully', 'success');
+      showToast(t('admin_deleted_success'), 'success');
       loadAdmins();
     } else {
-      showToast(result.message || 'Delete failed', 'error');
+      showToast(result.message || t('delete_failed'), 'error');
     }
   } catch (error) {
     console.error('Failed to delete admin:', error);
-    showToast('Delete failed', 'error');
+    showToast(t('delete_failed'), 'error');
   }
 }
 
@@ -6659,20 +6828,20 @@ async function loadSecurityAlerts() {
   const container = document.getElementById('security-alertsTab');
   if (!container) return;
 
-  container.innerHTML = '<div class="text-center py-12 text-gray-500">Loading alerts...</div>';
+  container.innerHTML = `<div class="text-center py-12 text-gray-500">${t('loading_alerts')}</div>`;
 
   try {
     const params = new URLSearchParams({
       hours: String(securityAlertsFilterState.hours),
       limit: String(securityAlertsFilterState.limit),
       unread_only: securityAlertsFilterState.unreadOnly ? 'true' : 'false',
-      sync: 'true'
+      sync: 'false'
     });
     const data = await adminApiRequest(`${API_BASE}/admin/security/alerts/high-risk?${params.toString()}`);
     const telegramConfigResp = await adminApiRequest(`${API_BASE}/admin/security/alerts/telegram-config`);
 
     if (!data || !data.success) {
-      container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
+      container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
       return;
     }
 
@@ -6684,73 +6853,73 @@ async function loadSecurityAlerts() {
     container.innerHTML = `
       <div class="fade-in">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h2 class="text-2xl font-bold text-gray-900">高危告警</h2>
+          <h2 class="text-2xl font-bold text-gray-900">${t('high_risk_alerts')}</h2>
           <div class="flex items-center gap-2">
             <select
               id="securityAlertHours"
               class="px-3 py-2 border border-gray-300 rounded-lg text-sm"
               onchange="changeSecurityAlertWindow(this.value)"
             >
-              <option value="1" ${securityAlertsFilterState.hours === 1 ? 'selected' : ''}>最近1小时</option>
-              <option value="6" ${securityAlertsFilterState.hours === 6 ? 'selected' : ''}>最近6小时</option>
-              <option value="24" ${securityAlertsFilterState.hours === 24 ? 'selected' : ''}>最近24小时</option>
-              <option value="72" ${securityAlertsFilterState.hours === 72 ? 'selected' : ''}>最近72小时</option>
+              <option value="1" ${securityAlertsFilterState.hours === 1 ? 'selected' : ''}>${t('last_hours', { hours: 1 })}</option>
+              <option value="6" ${securityAlertsFilterState.hours === 6 ? 'selected' : ''}>${t('last_hours', { hours: 6 })}</option>
+              <option value="24" ${securityAlertsFilterState.hours === 24 ? 'selected' : ''}>${t('last_hours', { hours: 24 })}</option>
+              <option value="72" ${securityAlertsFilterState.hours === 72 ? 'selected' : ''}>${t('last_hours', { hours: 72 })}</option>
             </select>
             <button onclick="toggleSecurityAlertsUnreadOnly()" class="px-3 py-2 ${securityAlertsFilterState.unreadOnly ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-600 hover:bg-gray-700'} text-white rounded-lg text-sm transition">
-              ${securityAlertsFilterState.unreadOnly ? '仅看未读' : '全部'}
+              ${securityAlertsFilterState.unreadOnly ? t('unread_only') : t('all_alerts')}
             </button>
             <button onclick="markAllSecurityAlertsRead()" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition">
-              全部标记已读
+              ${t('mark_all_read')}
             </button>
             <button onclick="loadSecurityAlerts()" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition">
-              刷新
+              ${t('refresh')}
             </button>
           </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div class="bg-white rounded-xl shadow-sm p-4">
-            <p class="text-sm text-gray-600">告警总数（窗口内）</p>
+            <p class="text-sm text-gray-600">${t('total_alerts')}</p>
             <p class="text-2xl font-bold text-red-600 mt-2">${escapeHtml(String(summary.total || 0))}</p>
           </div>
           <div class="bg-white rounded-xl shadow-sm p-4">
-            <p class="text-sm text-gray-600">未读告警</p>
+            <p class="text-sm text-gray-600">${t('unread_alerts')}</p>
             <p class="text-2xl font-bold text-orange-600 mt-2">${escapeHtml(String(summary.unread || 0))}</p>
           </div>
           <div class="bg-white rounded-xl shadow-sm p-4">
-            <p class="text-sm text-gray-600">唯一来源IP</p>
+            <p class="text-sm text-gray-600">${t('unique_ips')}</p>
             <p class="text-2xl font-bold text-gray-900 mt-2">${escapeHtml(String(summary.uniqueIps || 0))}</p>
           </div>
           <div class="bg-white rounded-xl shadow-sm p-4 md:col-span-3">
-            <p class="text-sm text-gray-600">当前窗口</p>
+            <p class="text-sm text-gray-600">${t('current_window')}</p>
             <p class="text-2xl font-bold text-gray-900 mt-2">${escapeHtml(String(summary.hours || securityAlertsFilterState.hours))}h</p>
           </div>
         </div>
 
         <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
-          <h3 class="text-lg font-semibold text-gray-900 mb-3">Telegram 推送</h3>
+          <h3 class="text-lg font-semibold text-gray-900 mb-3">${t('telegram_push')}</h3>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
             <label class="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" id="telegramAlertEnabled" ${tg.enabled ? 'checked' : ''}>
-              启用 Telegram 推送
+              ${t('enable_telegram_push')}
             </label>
-            <input type="text" id="telegramBotToken" placeholder="Bot Token" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
-            <input type="text" id="telegramChatId" placeholder="Chat ID" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
+            <input type="text" id="telegramBotToken" placeholder="${t('bot_token')}" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
+            <input type="text" id="telegramChatId" placeholder="${t('chat_id')}" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
           </div>
           <div class="text-xs text-gray-500 mb-3">
-            已保存：Token ${tg.botTokenMasked || '未设置'}，Chat ID ${tg.chatIdMasked || '未设置'}
-            （留空则保持当前已保存值）
+            ${t('saved_token')}: ${tg.botTokenMasked || t('not_set')}，${t('saved_chat_id')}: ${tg.chatIdMasked || t('not_set')}
+            ${t('leave_empty_keep')}
           </div>
           <div class="flex gap-2">
-            <button onclick="saveTelegramAlertConfig(false)" class="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition">保存配置</button>
-            <button onclick="saveTelegramAlertConfig(true)" class="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm hover:bg-indigo-200 transition">保存并发送测试</button>
+            <button onclick="saveTelegramAlertConfig(false)" class="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition">${t('save_config')}</button>
+            <button onclick="saveTelegramAlertConfig(true)" class="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm hover:bg-indigo-200 transition">${t('save_and_test')}</button>
           </div>
         </div>
 
         <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
-          <h3 class="text-lg font-semibold text-gray-900 mb-3">Top Source IPs</h3>
+          <h3 class="text-lg font-semibold text-gray-900 mb-3">${t('top_source_ips')}</h3>
           <div class="flex flex-wrap gap-2">
-            ${topIps.length === 0 ? '<span class="text-sm text-gray-500">No data</span>' : topIps.map(item => `
+            ${topIps.length === 0 ? `<span class="text-sm text-gray-500">${t('no_data')}</span>` : topIps.map(item => `
               <span class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded border border-red-100">
                 ${escapeHtml(item.ip)} (${escapeHtml(String(item.count))})
               </span>
@@ -6763,24 +6932,24 @@ async function loadSecurityAlerts() {
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Read</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Path</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('time')}</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('read_status')}</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('category')}</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('method')}</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('path')}</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('status')}</th>
                   <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('actions')}</th>
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200">
                 ${alerts.length === 0 ? `
-                  <tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">当前窗口暂无高危告警</td></tr>
+                  <tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">${t('no_high_risk_alerts')}</td></tr>
                 ` : alerts.map(alert => `
                   <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">${escapeHtml(formatServerTime(alert.timestamp))}</td>
                     <td class="px-4 py-3 text-sm">
-                      ${alert.isRead ? '<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">已读</span>' : '<span class="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">未读</span>'}
+                      ${alert.isRead ? `<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">${t('read')}</span>` : `<span class="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">${t('unread')}</span>`}
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">${escapeHtml(alert.category || '-')}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">${escapeHtml(alert.method || '-')}</td>
@@ -6788,7 +6957,7 @@ async function loadSecurityAlerts() {
                     <td class="px-4 py-3 text-sm">${renderAlertStatus(alert.statusCode)}</td>
                     <td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">${escapeHtml(alert.ip || '-')}</td>
                     <td class="px-4 py-3 text-sm">
-                      ${alert.isRead ? '-' : `<button onclick="markSecurityAlertRead(${alert.id})" class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200">标记已读</button>`}
+                      ${alert.isRead ? '-' : `<button onclick="markSecurityAlertRead(${alert.id})" class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200">${t('mark_read')}</button>`}
                     </td>
                   </tr>
                 `).join('')}
@@ -6807,7 +6976,7 @@ async function loadSecurityAlerts() {
     updateSecurityAlertButtonStyle(unread, buttonEl, dotEl);
   } catch (error) {
     console.error('加载高危告警失败:', error);
-    container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
+    container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
   }
 }
 
@@ -6846,7 +7015,7 @@ async function markSecurityAlertRead(id) {
     refreshSecurityAlertsCount();
   } catch (error) {
     console.error('标记告警已读失败:', error);
-    showToast('标记已读失败', 'error');
+    showToast(t('mark_read_failed'), 'error');
   }
 }
 
@@ -6857,12 +7026,12 @@ async function markAllSecurityAlertsRead() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ all: true, hours: securityAlertsFilterState.hours })
     });
-    showToast('已全部标记为已读', 'success');
+    showToast(t('mark_all_read_success'), 'success');
     loadSecurityAlerts();
     refreshSecurityAlertsCount();
   } catch (error) {
     console.error('全部标记已读失败:', error);
-    showToast('操作失败', 'error');
+    showToast(t('operation_failed'), 'error');
   }
 }
 
@@ -6882,11 +7051,11 @@ async function saveTelegramAlertConfig(testSend) {
         test: Boolean(testSend)
       })
     });
-    showToast(testSend ? '配置已保存并发送测试消息' : 'Telegram 配置已保存', 'success');
+    showToast(testSend ? t('telegram_saved_and_tested') : t('telegram_saved'), 'success');
     loadSecurityAlerts();
   } catch (error) {
     console.error('保存 Telegram 配置失败:', error);
-    showToast(error.data?.message || '保存配置失败', 'error');
+    showToast(error.data?.message || t('save_config_failed'), 'error');
   }
 }
 
@@ -6951,21 +7120,21 @@ async function loadLogs() {
       // 计算日期范围显示文本
       let dateRangeText = '';
       if (logsFilterState.start_date && logsFilterState.end_date) {
-        dateRangeText = `${logsFilterState.start_date} to ${logsFilterState.end_date}`;
+        dateRangeText = t('date_range_between', { start: logsFilterState.start_date, end: logsFilterState.end_date });
       } else if (logsFilterState.start_date) {
-        dateRangeText = `From ${logsFilterState.start_date}`;
+        dateRangeText = t('date_range_from', { start: logsFilterState.start_date });
       } else if (logsFilterState.end_date) {
-        dateRangeText = `Until ${logsFilterState.end_date}`;
+        dateRangeText = t('date_range_until', { end: logsFilterState.end_date });
       } else {
-        dateRangeText = `Last ${logsFilterState.days} day${logsFilterState.days !== 1 ? 's' : ''}`;
+        dateRangeText = t('date_range_last_days', { days: logsFilterState.days });
       }
       
       container.innerHTML = `
         <div class="fade-in">
           <div class="flex items-center justify-between mb-6">
-            <h2 class="text-2xl font-bold text-gray-900">Logs</h2>
+            <h2 class="text-2xl font-bold text-gray-900">${t('logs')}</h2>
             <div class="text-sm text-gray-600">
-              ${escapeHtml(dateRangeText)} | Total: <span class="font-semibold">${escapeHtml(String(pagination.total))}</span> logs
+              ${escapeHtml(dateRangeText)} | ${t('total')}: <span class="font-semibold">${escapeHtml(String(pagination.total))}</span> ${t('logs')}
             </div>
           </div>
           
@@ -6974,7 +7143,7 @@ async function loadLogs() {
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <!-- 日期范围选择 -->
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('start_date')}</label>
                 <input 
                   type="date" 
                   id="logStartDate"
@@ -6984,7 +7153,7 @@ async function loadLogs() {
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('end_date')}</label>
                 <input 
                   type="date" 
                   id="logEndDate"
@@ -6998,19 +7167,19 @@ async function loadLogs() {
                   onclick="clearLogDateRange()"
                   class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
                 >
-                  Clear Date Range
+                  ${t('clear_date_range')}
                 </button>
               </div>
               
               <!-- Action Type 下拉菜单 -->
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Action Type</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('action_type')}</label>
                 <select 
                   id="logActionFilter"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onchange="filterLogsByAction(this.value)"
                 >
-                  <option value="">All Actions</option>
+                  <option value="">${t('all_actions')}</option>
                   ${filterOptions.actions.map(action => `
                     <option value="${escapeHtml(action)}" ${logsFilterState.action === action ? 'selected' : ''}>${escapeHtml(action)}</option>
                   `).join('')}
@@ -7019,13 +7188,13 @@ async function loadLogs() {
               
               <!-- Resource Type 下拉菜单 -->
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Resource Type</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('resource_type')}</label>
                 <select 
                   id="logResourceTypeFilter"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onchange="filterLogsByResourceType(this.value)"
                 >
-                  <option value="">All Types</option>
+                  <option value="">${t('all_types')}</option>
                   ${filterOptions.resourceTypes.map(type => `
                     <option value="${escapeHtml(type)}" ${logsFilterState.target_type === type ? 'selected' : ''}>${escapeHtml(type)}</option>
                   `).join('')}
@@ -7034,13 +7203,13 @@ async function loadLogs() {
               
               <!-- Operator 下拉菜单 -->
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Operator</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('operator')}</label>
                 <select 
                   id="logOperatorFilter"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onchange="filterLogsByOperator(this.value)"
                 >
-                  <option value="">All Operators</option>
+                  <option value="">${t('all_operators')}</option>
                   ${filterOptions.operators.map(op => `
                     <option value="${escapeHtml(op)}" ${logsFilterState.operator === op ? 'selected' : ''}>${escapeHtml(op)}</option>
                   `).join('')}
@@ -7049,11 +7218,11 @@ async function loadLogs() {
               
               <!-- Details 模糊匹配输入框 -->
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Details (Fuzzy Match)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('details_fuzzy')}</label>
                 <input 
                   type="text" 
                   id="logDetailsFilter"
-                  placeholder="Search in details..."
+                  placeholder="${t('search_details_placeholder')}"
                   value="${escapeHtml(logsFilterState.details)}"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onkeyup="debounceFilterLogsByDetails(this.value)"
@@ -7062,11 +7231,11 @@ async function loadLogs() {
               
               <!-- IP Address 模糊匹配输入框 -->
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">IP Address (Fuzzy Match)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('ip_fuzzy')}</label>
                 <input 
                   type="text" 
                   id="logIPFilter"
-                  placeholder="Search IP address..."
+                  placeholder="${t('search_ip_placeholder')}"
                   value="${escapeHtml(logsFilterState.ip_address)}"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   onkeyup="debounceFilterLogsByIP(this.value)"
@@ -7079,7 +7248,7 @@ async function loadLogs() {
                   onclick="clearAllLogFilters()"
                   class="w-full px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors"
                 >
-                  Clear All Filters
+                  ${t('clear_all_filters')}
                 </button>
               </div>
             </div>
@@ -7091,17 +7260,17 @@ async function loadLogs() {
               <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                   <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Operator</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action Type</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Resource Type</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP Address</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('time')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('operator')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('action_type')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('resource_type')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('details')}</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('ip_address')}</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200" id="logsTableBody">
                   ${logs.length === 0 ? 
-                    '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No logs found</td></tr>' :
+                    `<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">${t('no_logs_found')}</td></tr>` :
                     logs.map(log => renderLogRow(log)).join('')
                   }
                 </tbody>
@@ -7112,9 +7281,9 @@ async function loadLogs() {
             <div class="px-6 py-4 bg-gray-50 border-t border-gray-200">
               <div class="flex items-center justify-between">
                 <div class="text-sm text-gray-600">
-                  Showing <span class="font-semibold">${(pagination.page - 1) * pagination.limit + 1}</span> to 
-                  <span class="font-semibold">${Math.min(pagination.page * pagination.limit, pagination.total)}</span> of 
-                  <span class="font-semibold">${pagination.total}</span> logs
+                  ${t('showing')} <span class="font-semibold">${(pagination.page - 1) * pagination.limit + 1}</span> ${t('to')} 
+                  <span class="font-semibold">${Math.min(pagination.page * pagination.limit, pagination.total)}</span> ${t('of')} 
+                  <span class="font-semibold">${pagination.total}</span> ${t('logs')}
                 </div>
                 
                 <div class="flex items-center gap-2">
@@ -7124,12 +7293,12 @@ async function loadLogs() {
                     ${pagination.page <= 1 ? 'disabled' : ''}
                     class="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium ${pagination.page <= 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
                   >
-                    Previous
+                    ${t('previous')}
                   </button>
                   
                   <!-- 页码显示和输入 -->
                   <div class="flex items-center gap-2">
-                    <span class="text-sm text-gray-600">Page</span>
+                    <span class="text-sm text-gray-600">${t('page')}</span>
                     <input 
                       type="number" 
                       id="logPageInput"
@@ -7139,7 +7308,7 @@ async function loadLogs() {
                       class="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       onkeyup="if(event.key==='Enter') goToLogPage(parseInt(this.value))"
                     />
-                    <span class="text-sm text-gray-600">of ${pagination.totalPages}</span>
+                    <span class="text-sm text-gray-600">${t('of')} ${pagination.totalPages}</span>
                   </div>
                   
                   <!-- 下一页按钮 -->
@@ -7148,7 +7317,7 @@ async function loadLogs() {
                     ${pagination.page >= pagination.totalPages ? 'disabled' : ''}
                     class="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium ${pagination.page >= pagination.totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
                   >
-                    Next
+                    ${t('next')}
                   </button>
                 </div>
               </div>
@@ -7157,11 +7326,11 @@ async function loadLogs() {
         </div>
       `;
     } else {
-      container.innerHTML = '<div class="text-center py-12 text-red-500">Load failed</div>';
+      container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
     }
   } catch (error) {
     console.error('加载日志失败:', error);
-    container.innerHTML = '<div class="text-center py-12 text-red-500">加载失败</div>';
+    container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
   }
 }
 
@@ -7210,17 +7379,17 @@ function renderLogRow(log) {
         detailsText = Object.entries(detailsObj)
           .map(([key, value]) => {
             const keyMap = {
-              'action': 'Action',
-              'name': 'Name',
-              'price': 'Price',
-              'count': 'Count',
-              'username': 'Username',
-              'phone': 'Phone',
-              'role': 'Role',
-              'isNewUser': 'Is New User',
-              'discountRate': 'Discount Rate',
-              'orderCount': 'Order Count',
-              'status': 'Status'
+              'action': t('action'),
+              'name': t('name'),
+              'price': t('price'),
+              'count': t('count'),
+              'username': t('username'),
+              'phone': t('phone_number'),
+              'role': t('role'),
+              'isNewUser': t('is_new_user'),
+              'discountRate': t('discount_rate'),
+              'orderCount': t('order_count'),
+              'status': t('status')
             };
             const displayKey = keyMap[key] || key;
             // 转义value以防止HTML注入（在构建时就转义）
@@ -7245,16 +7414,16 @@ function renderLogRow(log) {
   
   // 操作类型显示 - 不同颜色符合网站整体色调
   const actionMap = {
-    'CREATE': { text: 'Create', class: 'bg-green-100 text-green-800' },      // 绿色 - 成功/新增操作
-    'UPDATE': { text: 'Update', class: 'bg-blue-100 text-blue-800' },        // 蓝色 - 信息/修改操作
-    'DELETE': { text: 'Delete', class: 'bg-red-100 text-red-800' },          // 红色 - 危险/删除操作
-    'LOGIN': { text: 'Login', class: 'bg-purple-100 text-purple-800' },      // 紫色 - 主色调，登录操作
-    'USER_LOGIN': { text: 'User Login', class: 'bg-purple-100 text-purple-800' }  // 紫色 - 主色调，用户登录
+    'CREATE': { text: t('action_create'), class: 'bg-green-100 text-green-800' },      // 绿色 - 成功/新增操作
+    'UPDATE': { text: t('action_update'), class: 'bg-blue-100 text-blue-800' },        // 蓝色 - 信息/修改操作
+    'DELETE': { text: t('action_delete'), class: 'bg-red-100 text-red-800' },          // 红色 - 危险/删除操作
+    'LOGIN': { text: t('action_login'), class: 'bg-purple-100 text-purple-800' },      // 紫色 - 主色调，登录操作
+    'USER_LOGIN': { text: t('action_user_login'), class: 'bg-purple-100 text-purple-800' }  // 紫色 - 主色调，用户登录
   };
   const actionInfo = actionMap[log.action] || { text: log.action, class: 'bg-gray-100 text-gray-800' };
   
   // 操作者显示
-  const operatorName = log.admin_username || (log.action === 'USER_LOGIN' ? 'System' : '-');
+  const operatorName = log.admin_username || (log.action === 'USER_LOGIN' ? t('system') : '-');
   
   // 为data属性准备转义后的值（detailsText已经转义，需要再次转义用于HTML属性）
   // 注意：detailsText已经是转义后的HTML实体，但用于HTML属性时还需要确保引号被转义
@@ -7308,9 +7477,9 @@ function renderLogRow(log) {
             <button 
               onclick="showOperationLogDetails('${logId}')" 
               class="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 hover:bg-blue-50 rounded whitespace-nowrap flex-shrink-0"
-              title="查看完整内容"
+              title="${t('view_full_content')}"
             >
-              查看全部
+              ${t('view_all')}
             </button>
           ` : ''}
         </div>
@@ -7323,7 +7492,7 @@ function renderLogRow(log) {
 // 显示操作日志的完整Details
 function showOperationLogDetails(logId) {
   if (!window.operationLogsData || !window.operationLogsData[logId]) {
-    showToast('日志数据未找到', 'error');
+    showToast(t('log_data_not_found'), 'error');
     return;
   }
   
@@ -7341,39 +7510,39 @@ function showOperationLogDetails(logId) {
   const detailsHtml = `
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-xl font-bold text-gray-900">日志详情</h3>
+        <h3 class="text-xl font-bold text-gray-900">${t('log_details')}</h3>
         <button onclick="this.closest('.modal').remove()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
       </div>
       <div class="space-y-4">
         <div>
-          <h4 class="text-sm font-semibold text-gray-700 mb-2">时间</h4>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">${t('time')}</h4>
           <p class="text-sm text-gray-600">${escapeHtml(formatServerTime(logData.created_at))}</p>
         </div>
         <div>
-          <h4 class="text-sm font-semibold text-gray-700 mb-2">操作者</h4>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">${t('operator')}</h4>
           <p class="text-sm text-gray-600">${escapeHtml(logData.operator)}</p>
         </div>
         <div>
-          <h4 class="text-sm font-semibold text-gray-700 mb-2">操作类型</h4>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">${t('action_type')}</h4>
           <p class="text-sm text-gray-600">${escapeHtml(logData.action)}</p>
         </div>
         <div>
-          <h4 class="text-sm font-semibold text-gray-700 mb-2">资源类型</h4>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">${t('resource_type')}</h4>
           <p class="text-sm text-gray-600">${escapeHtml(logData.target_type)}</p>
         </div>
         <div>
-          <h4 class="text-sm font-semibold text-gray-700 mb-2">IP地址</h4>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">${t('ip_address')}</h4>
           <p class="text-sm text-gray-600">${escapeHtml(logData.ip_address)}</p>
         </div>
         <div>
-          <h4 class="text-sm font-semibold text-gray-700 mb-2">详细信息</h4>
+          <h4 class="text-sm font-semibold text-gray-700 mb-2">${t('details')}</h4>
           <div class="p-3 bg-gray-50 rounded text-sm text-gray-700 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
             ${logData.details}
           </div>
         </div>
       </div>
       <div class="mt-6 flex justify-end">
-        <button onclick="this.closest('.modal').remove()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium">关闭</button>
+        <button onclick="this.closest('.modal').remove()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium">${t('close')}</button>
       </div>
     </div>
   `;
@@ -7950,7 +8119,11 @@ async function loadApiLogs() {
       
       // 更新分页信息
       document.getElementById('apiLogsPaginationInfo').textContent = 
-        `Page ${currentApiLogsPage} of ${currentApiLogsTotalPages} (Total: ${data.data.total})`;
+        t('pagination_page_of_total', {
+          page: currentApiLogsPage,
+          totalPages: currentApiLogsTotalPages,
+          total: data.data.total
+        });
       
       // 更新分页按钮
       document.getElementById('apiLogsPrevBtn').disabled = currentApiLogsPage <= 1;
@@ -7959,7 +8132,7 @@ async function loadApiLogs() {
       // 渲染日志列表
       const logsTableBody = document.getElementById('apiLogsTableBody');
       if (logs.length === 0) {
-        logsTableBody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No logs found</td></tr>';
+        logsTableBody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">${t('no_logs_found')}</td></tr>`;
       } else {
         // 存储日志数据到全局变量，使用索引访问
         if (!window.apiLogsData) {
@@ -8171,56 +8344,65 @@ document.addEventListener('DOMContentLoaded', () => {
 function loadAboutPage() {
   const container = document.getElementById('aboutTab');
   const version = '2.2.0';
+  const repoUrl = 'https://github.com/fanxiaolongx-max/BODA';
   const currentStoreName = storeName || 'BOBA TEA'; // 使用当前商店名称，如果没有则使用默认值
   
   container.innerHTML = `
     <div class="space-y-6">
       <!-- 系统信息 -->
       <div class="bg-white rounded-xl shadow-sm p-6">
-        <h2 class="text-2xl font-bold text-gray-900 mb-4">🧋 ${currentStoreName} Ordering System</h2>
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">🧋 ${currentStoreName} ${t('ordering_system')}</h2>
         <div class="space-y-4">
           <div>
-            <p class="text-sm text-gray-600 mb-2">Version</p>
+            <p class="text-sm text-gray-600 mb-2">${t('version')}</p>
             <p class="text-lg font-semibold text-gray-900">v${version}</p>
           </div>
           <div>
-            <p class="text-sm text-gray-600 mb-2">Description</p>
-            <p class="text-gray-700">A comprehensive online ordering system for ${currentStoreName.toLowerCase()} shops with cycle-based order management, discount rules, online payment (Stripe), feedback system, and advanced security features.</p>
+            <p class="text-sm text-gray-600 mb-2">${t('source_code')}</p>
+            <p class="text-gray-700">
+              <a href="${repoUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline">
+                ${t('github_repo_link_text')}
+              </a>
+            </p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-600 mb-2">${t('description')}</p>
+            <p class="text-gray-700">${t('about_description', { storeName: currentStoreName })}</p>
           </div>
         </div>
       </div>
 
       <!-- 主要功能 -->
       <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">✨ Main Features</h3>
+        <h3 class="text-xl font-bold text-gray-900 mb-4">✨ ${t('main_features')}</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <h4 class="font-semibold text-gray-900 mb-3">👥 User Features</h4>
+            <h4 class="font-semibold text-gray-900 mb-3">👥 ${t('user_features')}</h4>
             <ul class="list-disc list-inside space-y-1.5 text-sm text-gray-700 ml-2">
-              <li>Phone number quick login (no password required)</li>
-              <li>Browse menu with category filtering</li>
-              <li>Product customization (cup size, sugar, ice, toppings)</li>
-              <li>Shopping cart management</li>
-              <li>Order creation and tracking</li>
-              <li>Payment screenshot upload</li>
-              <li>Online payment (Stripe - Apple Pay, cards)</li>
-              <li>Real-time discount viewing</li>
-              <li>Feedback & complaint system</li>
+              <li>${t('about_user_feature_1')}</li>
+              <li>${t('about_user_feature_2')}</li>
+              <li>${t('about_user_feature_3')}</li>
+              <li>${t('about_user_feature_4')}</li>
+              <li>${t('about_user_feature_5')}</li>
+              <li>${t('about_user_feature_6')}</li>
+              <li>${t('about_user_feature_7')}</li>
+              <li>${t('about_user_feature_8')}</li>
+              <li>${t('about_user_feature_9')}</li>
             </ul>
           </div>
           <div>
-            <h4 class="font-semibold text-gray-900 mb-3">🔐 Admin Features</h4>
+            <h4 class="font-semibold text-gray-900 mb-3">🔐 ${t('admin_features')}</h4>
             <ul class="list-disc list-inside space-y-1.5 text-sm text-gray-700 ml-2">
-              <li>Dashboard with statistics</li>
-              <li>Menu and category management</li>
-              <li>Order management and status updates</li>
-              <li>Discount rules configuration</li>
-              <li>User and admin management</li>
-              <li>Operation logs</li>
-              <li>System settings</li>
-              <li>Email configuration (SMTP)</li>
-              <li>Security policy management</li>
-              <li>IP lockout management</li>
+              <li>${t('about_admin_feature_1')}</li>
+              <li>${t('about_admin_feature_2')}</li>
+              <li>${t('about_admin_feature_3')}</li>
+              <li>${t('about_admin_feature_4')}</li>
+              <li>${t('about_admin_feature_5')}</li>
+              <li>${t('about_admin_feature_6')}</li>
+              <li>${t('about_admin_feature_7')}</li>
+              <li>${t('about_admin_feature_8')}</li>
+              <li>${t('about_admin_feature_9')}</li>
+              <li>${t('about_admin_feature_10')}</li>
             </ul>
           </div>
           </div>
@@ -8228,10 +8410,10 @@ function loadAboutPage() {
 
       <!-- 技术栈 -->
       <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">🛠️ Technology Stack</h3>
+        <h3 class="text-xl font-bold text-gray-900 mb-4">🛠️ ${t('technology_stack')}</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
           <div>
-            <h4 class="font-semibold text-gray-900 mb-2">Backend</h4>
+            <h4 class="font-semibold text-gray-900 mb-2">${t('backend')}</h4>
             <ul class="list-disc list-inside space-y-1 ml-4">
               <li>Node.js + Express</li>
               <li>SQLite3 (WAL mode)</li>
@@ -8241,7 +8423,7 @@ function loadAboutPage() {
             </ul>
           </div>
           <div>
-            <h4 class="font-semibold text-gray-900 mb-2">Frontend</h4>
+            <h4 class="font-semibold text-gray-900 mb-2">${t('frontend')}</h4>
             <ul class="list-disc list-inside space-y-1 ml-4">
               <li>Vanilla JavaScript</li>
               <li>Tailwind CSS</li>
@@ -8253,27 +8435,27 @@ function loadAboutPage() {
 
       <!-- 安全特性 -->
       <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">🔒 Security Features</h3>
+        <h3 class="text-xl font-bold text-gray-900 mb-4">🔒 ${t('security_features')}</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
           <div>
             <ul class="list-disc list-inside space-y-1 ml-4">
-              <li>Password encryption (bcrypt)</li>
-              <li>Session-based authentication</li>
-              <li>Rate limiting (API protection)</li>
-              <li>SQL injection prevention</li>
-              <li>XSS protection (Helmet)</li>
+              <li>${t('security_feature_1')}</li>
+              <li>${t('security_feature_2')}</li>
+              <li>${t('security_feature_3')}</li>
+              <li>${t('security_feature_4')}</li>
+              <li>${t('security_feature_5')}</li>
             </ul>
           </div>
           <div>
             <ul class="list-disc list-inside space-y-1 ml-4">
-              <li>Input validation</li>
-              <li>File upload security</li>
-              <li>Role-based access control</li>
-              <li>HSTS enabled</li>
-              <li>Comprehensive logging</li>
-              <li>Progressive account lockout</li>
-              <li>IP-based rate limiting</li>
-              <li>Login audit logging</li>
+              <li>${t('security_feature_6')}</li>
+              <li>${t('security_feature_7')}</li>
+              <li>${t('security_feature_8')}</li>
+              <li>${t('security_feature_9')}</li>
+              <li>${t('security_feature_10')}</li>
+              <li>${t('security_feature_11')}</li>
+              <li>${t('security_feature_12')}</li>
+              <li>${t('security_feature_13')}</li>
             </ul>
           </div>
         </div>
@@ -8281,33 +8463,33 @@ function loadAboutPage() {
 
       <!-- 数据库备份和恢复 -->
       <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">💾 Database Backup & Restore</h3>
+        <h3 class="text-xl font-bold text-gray-900 mb-4">💾 ${t('db_backup_restore')}</h3>
         <div class="space-y-4">
           <div class="flex flex-wrap gap-3">
             <button onclick="createBackup('db')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-              Create DB Backup
+              ${t('create_db_backup')}
             </button>
             <button onclick="createBackup('full')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">
-              Create Full Backup
+              ${t('create_full_backup')}
             </button>
             <button onclick="loadBackupList()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-              Refresh List
+              ${t('refresh_list')}
             </button>
             <label class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg cursor-pointer">
               <input type="file" id="backupFileInput" accept=".db,.zip" class="hidden" onchange="uploadBackupFile()">
-              Upload Backup
+              ${t('upload_backup')}
             </label>
         </div>
           <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-            <p class="font-semibold mb-1">📝 Backup Types:</p>
+            <p class="font-semibold mb-1">📝 ${t('backup_types')}</p>
             <ul class="list-disc list-inside space-y-1">
-              <li><strong>DB Backup:</strong> Database only (smaller, faster)</li>
-              <li><strong>Full Backup:</strong> Database + all files (products images, payment screenshots, showcase images)</li>
+              <li><strong>${t('db_backup')}:</strong> ${t('db_backup_desc')}</li>
+              <li><strong>${t('full_backup')}:</strong> ${t('full_backup_desc')}</li>
             </ul>
           </div>
           <div id="backupUploadStatus" class="hidden"></div>
           <div id="backupList" class="space-y-2">
-            <p class="text-gray-500 text-sm">Loading backup list...</p>
+            <p class="text-gray-500 text-sm">${t('loading_backup_list')}</p>
           </div>
         </div>
       </div>
@@ -11390,14 +11572,14 @@ function updateSelectedCount() {
 // 批量删除选中的文件
 async function fileManagerDeleteSelected() {
   if (selectedFiles.size === 0) {
-    showToast('No files selected', 'error');
+    showToast(t('no_files_selected'), 'error');
     return;
   }
   
   const filesToDelete = Array.from(selectedFiles);
   const fileCount = filesToDelete.length;
   
-  if (!confirm(`Are you sure you want to delete ${fileCount} item(s)?`)) {
+  if (!confirm(t('confirm_delete_items', { count: fileCount }))) {
     return;
   }
   
@@ -11437,9 +11619,9 @@ async function fileManagerDeleteSelected() {
     
     // 显示结果
     if (failCount === 0) {
-      showToast(`Successfully deleted ${successCount} item(s)`, 'success');
+      showToast(t('deleted_items_success', { count: successCount }), 'success');
     } else {
-      showToast(`Deleted ${successCount} item(s), failed ${failCount} item(s)`, 'error');
+      showToast(t('deleted_items_partial', { successCount, failCount }), 'error');
       console.error('Delete errors:', errors);
     }
     
@@ -11448,7 +11630,7 @@ async function fileManagerDeleteSelected() {
   } catch (error) {
     hideGlobalLoading();
     console.error('Batch delete failed:', error);
-    showToast('Failed to delete files', 'error');
+    showToast(t('delete_files_failed'), 'error');
   }
 }
 
@@ -11475,14 +11657,21 @@ async function backupMenu() {
       link.click();
       document.body.removeChild(link);
       
-      showToast(`Backup created successfully! ${data.categories} categories, ${data.products} products, ${data.images} images`, 'success');
+      showToast(
+        t('backup_menu_success', {
+          categories: data.categories,
+          products: data.products,
+          images: data.images
+        }),
+        'success'
+      );
     } else {
-      showToast(data.message || 'Backup failed', 'error');
+      showToast(data.message || t('backup_failed'), 'error');
     }
   } catch (error) {
     hideGlobalLoading();
     console.error('Backup menu failed:', error);
-    showToast('Backup failed', 'error');
+    showToast(t('backup_failed'), 'error');
   }
 }
 
@@ -11498,7 +11687,7 @@ function importMenu() {
     }
     
     if (!file.name.endsWith('.zip')) {
-      showToast('Please select a valid backup file (.zip)', 'error');
+      showToast(t('select_valid_backup_zip'), 'error');
       return;
     }
     
@@ -11550,7 +11739,7 @@ function toggleSelectAllProducts() {
 // 显示批量编辑模态框
 function showBatchEditModal() {
   if (selectedProductIds.size === 0) {
-    showToast('Please select at least one product', 'error');
+    showToast(t('select_at_least_one_product'), 'error');
     return;
   }
   
@@ -11559,101 +11748,101 @@ function showBatchEditModal() {
   modal.id = 'batchEditModal';
   modal.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 p-8 max-h-[90vh] overflow-y-auto">
-      <h3 class="text-2xl font-bold text-gray-900 mb-4">Batch Edit Products</h3>
-      <p class="text-gray-600 mb-6">Editing <span class="font-semibold">${selectedProductIds.size}</span> product(s)</p>
+      <h3 class="text-2xl font-bold text-gray-900 mb-4">${t('batch_edit_products')}</h3>
+      <p class="text-gray-600 mb-6">${t('editing_products_count', { count: selectedProductIds.size })}</p>
       
       <form id="batchEditForm" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">${t('category')}</label>
           <select id="batchCategory" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            <option value="">-- No Change --</option>
+            <option value="">${t('no_change_option')}</option>
           </select>
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">${t('status')}</label>
           <select id="batchStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            <option value="">-- No Change --</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="">${t('no_change_option')}</option>
+            <option value="active">${t('active')}</option>
+            <option value="inactive">${t('inactive')}</option>
           </select>
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Price Adjustment</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">${t('price_adjustment')}</label>
           <div class="flex gap-2">
             <select id="batchPriceAction" class="px-4 py-2 border border-gray-300 rounded-lg">
-              <option value="">-- No Change --</option>
-              <option value="set">Set to</option>
-              <option value="add">Add</option>
-              <option value="multiply">Multiply by</option>
+              <option value="">${t('no_change_option')}</option>
+              <option value="set">${t('set_to')}</option>
+              <option value="add">${t('add')}</option>
+              <option value="multiply">${t('multiply_by')}</option>
             </select>
-            <input type="number" id="batchPriceValue" step="0.01" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="Value">
+            <input type="number" id="batchPriceValue" step="0.01" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="${t('value')}">
           </div>
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Sort Order</label>
-          <input type="number" id="batchSortOrder" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="-- No Change --">
+          <label class="block text-sm font-medium text-gray-700 mb-2">${t('sort_order')}</label>
+          <input type="number" id="batchSortOrder" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="${t('no_change_option')}">
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Cup Sizes & Prices</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">${t('cup_sizes_prices')}</label>
           <div class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50 max-h-48 overflow-y-auto">
-            <div class="text-sm text-gray-600 mb-2">Leave empty to keep current values. Format: SizeName:Price (e.g., Medium:120, Large:150)</div>
+            <div class="text-sm text-gray-600 mb-2">${t('batch_sizes_hint')}</div>
             <textarea id="batchSizes" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm" 
-                      rows="3" placeholder="Medium:120, Large:150"></textarea>
+                      rows="3" placeholder="${t('batch_sizes_placeholder')}"></textarea>
           </div>
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Sweetness Options (甜度选项)</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">${t('sweetness_options')}</label>
           <div class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
-            <div class="text-sm text-gray-600 mb-2">Leave empty to keep current values. Separate with commas (e.g., 0, 30, 50, 70, 100)</div>
+            <div class="text-sm text-gray-600 mb-2">${t('batch_sweetness_hint')}</div>
             <input type="text" id="batchSugarLevels" class="w-full px-4 py-2 border border-gray-300 rounded-lg" 
-                   placeholder="0, 30, 50, 70, 100">
+                   placeholder="${t('batch_sweetness_placeholder')}">
           </div>
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Available Toppings (可选加料)</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">${t('available_toppings')}</label>
           <div class="space-y-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
-            <div class="text-sm text-gray-600 mb-2">Leave empty to keep current values. Format: Name:Price (e.g., Cheese 芝士:20, Boba 波霸:20) or Name only</div>
+            <div class="text-sm text-gray-600 mb-2">${t('batch_toppings_hint')}</div>
             <input type="text" id="batchAvailableToppings" class="w-full px-4 py-2 border border-gray-300 rounded-lg" 
-                   placeholder="Cheese 芝士:20, Boba 波霸:20, Cream 奶盖:20">
+                   placeholder="${t('batch_toppings_placeholder')}">
           </div>
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Available Ice Options</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">${t('available_ice_options')}</label>
           <div class="border border-gray-300 rounded-lg p-4 bg-gray-50">
-            <div class="text-sm text-gray-600 mb-2">Select options (leave unchecked to keep current values)</div>
+            <div class="text-sm text-gray-600 mb-2">${t('batch_ice_options_hint')}</div>
             <div class="space-y-2">
               <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" class="batch-ice-option" value="normal">
-                <span class="text-sm text-gray-700">Normal Ice 正常冰</span>
+                <span class="text-sm text-gray-700">${t('ice_normal')}</span>
               </label>
               <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" class="batch-ice-option" value="less">
-                <span class="text-sm text-gray-700">Less Ice 少冰</span>
+                <span class="text-sm text-gray-700">${t('ice_less')}</span>
               </label>
               <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" class="batch-ice-option" value="no">
-                <span class="text-sm text-gray-700">No Ice 去冰</span>
+                <span class="text-sm text-gray-700">${t('ice_no')}</span>
               </label>
               <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" class="batch-ice-option" value="room">
-                <span class="text-sm text-gray-700">Room Temperature 常温</span>
+                <span class="text-sm text-gray-700">${t('ice_room')}</span>
               </label>
               <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" class="batch-ice-option" value="hot">
-                <span class="text-sm text-gray-700">Hot 热</span>
+                <span class="text-sm text-gray-700">${t('ice_hot')}</span>
               </label>
             </div>
             <div class="mt-2">
               <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" id="batchIceOptionsSet">
-                <span class="text-xs text-gray-600">Set these options (otherwise keep current values)</span>
+                <span class="text-xs text-gray-600">${t('batch_ice_options_set_hint')}</span>
               </label>
             </div>
           </div>
@@ -11661,10 +11850,10 @@ function showBatchEditModal() {
         
         <div class="flex space-x-3 mt-6">
           <button type="button" onclick="closeBatchEditModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
-            Cancel
+            ${t('cancel')}
           </button>
           <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
-            Apply Changes
+            ${t('apply_changes')}
           </button>
         </div>
       </form>
@@ -11695,7 +11884,7 @@ async function loadCategoriesForBatchEdit() {
     const data = await response.json();
     if (data.success) {
       const select = document.getElementById('batchCategory');
-      select.innerHTML = '<option value="">-- No Change --</option>' +
+      select.innerHTML = `<option value="">${t('no_change_option')}</option>` +
         data.categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
     }
   } catch (error) {
@@ -11736,7 +11925,7 @@ async function saveBatchEdit(e) {
         }
       });
     } catch (e) {
-      showToast('Invalid sizes format. Use: SizeName:Price (e.g., Medium:120, Large:150)', 'error');
+      showToast(t('invalid_sizes_format'), 'error');
       return;
     }
   }
@@ -11766,7 +11955,7 @@ async function saveBatchEdit(e) {
         }
       }).filter(t => t.name);
     } catch (e) {
-      showToast('Invalid toppings format. Use: Name:Price (e.g., Cheese 芝士:20, Boba 波霸:20)', 'error');
+      showToast(t('invalid_toppings_format'), 'error');
       return;
     }
   }
@@ -11798,7 +11987,7 @@ async function saveBatchEdit(e) {
   if (iceOptions !== null) updates.ice_options = iceOptions;
   
   if (Object.keys(updates).length === 0) {
-    showToast('Please select at least one field to update', 'error');
+    showToast(t('select_field_to_update'), 'error');
     return;
   }
   
@@ -11819,18 +12008,18 @@ async function saveBatchEdit(e) {
     hideGlobalLoading();
     
     if (data.success) {
-      showToast(`Successfully updated ${data.updated} product(s)`, 'success');
+      showToast(t('batch_update_success', { count: data.updated }), 'success');
       closeBatchEditModal();
       selectedProductIds.clear();
       updateSelectedProductsCount();
       loadProducts();
     } else {
-      showToast(data.message || 'Batch update failed', 'error');
+      showToast(data.message || t('batch_update_failed'), 'error');
     }
   } catch (error) {
     hideGlobalLoading();
     console.error('Batch update failed:', error);
-    showToast('Batch update failed', 'error');
+    showToast(t('batch_update_failed'), 'error');
   }
 }
 
@@ -11841,24 +12030,24 @@ function showImportMenuDialog(file) {
   modal.className = 'modal active';
   modal.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
-      <h3 class="text-2xl font-bold text-gray-900 mb-4">Import Menu</h3>
-      <p class="text-gray-600 mb-6">File: <span class="font-semibold">${file.name}</span></p>
+      <h3 class="text-2xl font-bold text-gray-900 mb-4">${t('import_menu')}</h3>
+      <p class="text-gray-600 mb-6">${t('file_label')} <span class="font-semibold">${file.name}</span></p>
       
       <div class="mb-6">
-        <label class="block text-sm font-medium text-gray-700 mb-3">Import Mode:</label>
+        <label class="block text-sm font-medium text-gray-700 mb-3">${t('import_mode')}:</label>
         <div class="space-y-3">
           <label class="flex items-start p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
             <input type="radio" name="importMode" value="merge" class="mt-1 mr-3" checked>
             <div>
-              <div class="font-semibold text-gray-900">Merge (Keep Existing)</div>
-              <div class="text-sm text-gray-500">Keep current data. Duplicate items (by name) will be replaced.</div>
+              <div class="font-semibold text-gray-900">${t('import_mode_merge')}</div>
+              <div class="text-sm text-gray-500">${t('import_mode_merge_desc')}</div>
             </div>
           </label>
           <label class="flex items-start p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
             <input type="radio" name="importMode" value="replace" class="mt-1 mr-3">
             <div>
-              <div class="font-semibold text-gray-900">Replace (Clear All)</div>
-              <div class="text-sm text-gray-500">Clear all existing categories and products, then import from backup.</div>
+              <div class="font-semibold text-gray-900">${t('import_mode_replace')}</div>
+              <div class="text-sm text-gray-500">${t('import_mode_replace_desc')}</div>
             </div>
           </label>
         </div>
@@ -11866,10 +12055,10 @@ function showImportMenuDialog(file) {
       
       <div class="flex space-x-3">
         <button onclick="closeImportMenuDialog()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-3 rounded-lg">
-          Cancel
+          ${t('cancel')}
         </button>
         <button onclick="confirmImportMenu(event)" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">
-          Import
+          ${t('import')}
         </button>
       </div>
     </div>
@@ -11912,7 +12101,7 @@ async function confirmImportMenu(event) {
   
   const file = window._pendingImportFile;
   if (!file) {
-    showToast('File not found', 'error');
+    showToast(t('file_not_found'), 'error');
     closeImportMenuDialog();
     return;
   }
@@ -11936,8 +12125,15 @@ async function confirmImportMenu(event) {
     hideGlobalLoading();
     
     if (data.success) {
-      const modeText = clearExisting ? 'replaced' : 'merged';
-      showToast(`Menu imported successfully (${modeText})! ${data.categories} categories, ${data.products} products`, 'success');
+      const modeText = clearExisting ? t('import_mode_replaced') : t('import_mode_merged');
+      showToast(
+        t('import_menu_success', {
+          mode: modeText,
+          categories: data.categories,
+          products: data.products
+        }),
+        'success'
+      );
       // 刷新页面数据
       if (currentTab === 'products') {
         loadProducts();
@@ -11945,12 +12141,12 @@ async function confirmImportMenu(event) {
         loadCategories();
       }
     } else {
-      showToast(data.message || 'Import failed', 'error');
+      showToast(data.message || t('import_failed'), 'error');
     }
   } catch (error) {
     hideGlobalLoading();
     console.error('Import menu failed:', error);
-    showToast('Import failed', 'error');
+    showToast(t('import_failed'), 'error');
   } finally {
     window._pendingImportFile = null;
   }
@@ -12941,13 +13137,13 @@ async function showOrderNotification(order) {
     await playDingSound();
     
     // 2. Toast 通知（音频文件已包含语音，这里只显示视觉通知）
-    const customerName = order.customer_name || 'Anonymous';
+    const customerName = order.customer_name || t('anonymous');
     const amount = formatPrice(order.final_amount);
     
     showToast(
-      `🛒 New Order: ${order.order_number}<br>` +
-      `Customer: ${customerName}<br>` +
-      `Amount: ${amount}`,
+      `🛒 ${t('new_order')}: ${order.order_number}<br>` +
+      `${t('customer_label')}${customerName}<br>` +
+      `${t('amount_label')}${amount}`,
       'info'
     );
     
@@ -13484,5 +13680,53 @@ async function updateExchangeRateManually() {
     // 恢复按钮状态
     btn.disabled = false;
     btn.textContent = '🔄 立即更新汇率';
+  }
+}
+
+// 手动更新天气路况
+async function updateWeatherManually() {
+  const btn = document.getElementById('updateWeatherBtn');
+  const statusSpan = document.getElementById('weatherUpdateStatus');
+
+  if (!btn || !statusSpan) {
+    showToast('无法找到天气更新按钮或状态显示元素', 'error');
+    return;
+  }
+
+  try {
+    btn.disabled = true;
+    btn.textContent = '更新中...';
+    statusSpan.textContent = '';
+
+    const response = await fetch(`${API_BASE}/admin/weather/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      statusSpan.textContent = `✓ 更新成功（景点 ${result.data?.attractions || 0}，路况 ${result.data?.traffic || 0}）`;
+      statusSpan.className = 'text-sm text-green-600';
+      showToast('天气路况更新成功', 'success');
+
+      setTimeout(() => {
+        statusSpan.textContent = '';
+        statusSpan.className = 'text-sm text-gray-600';
+      }, 4000);
+    } else {
+      statusSpan.textContent = '✗ 更新失败: ' + (result.message || '未知错误');
+      statusSpan.className = 'text-sm text-red-600';
+      showToast('天气路况更新失败: ' + (result.message || '未知错误'), 'error');
+    }
+  } catch (error) {
+    console.error('手动更新天气路况失败:', error);
+    statusSpan.textContent = '✗ 更新失败: ' + error.message;
+    statusSpan.className = 'text-sm text-red-600';
+    showToast('天气路况更新失败: ' + error.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 立即更新天气路况';
   }
 }

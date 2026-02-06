@@ -56,6 +56,14 @@ async function migrateSettings() {
       { key: 'qz_private_key', value: '', description: 'QZ Tray 私钥（用于静默打印，可通过管理界面上传）' },
       // 自定义API Token（仅用于自定义API验证，不影响其他业务）
       { key: 'custom_api_token', value: '', description: '自定义API Token（仅用于自定义API身份验证，可通过X-API-Token头或Authorization: Bearer传递）' }
+      ,
+      // 天气路况自动更新
+      { key: 'weather_auto_update_enabled', value: 'true', description: '是否启用天气路况自动更新' },
+      { key: 'weather_update_frequency', value: 'daily', description: '天气路况更新频率（hourly/daily）' },
+      { key: 'weather_last_update', value: '', description: '天气路况最后更新时间（ISO）' },
+      { key: 'weather_city_name', value: 'Cairo', description: '天气路况主城市名称（用于显示）' },
+      { key: 'weather_tomtom_api_key', value: '', description: 'TomTom Traffic API Key（可选，未配置则保留旧路况）' },
+      { key: 'weather_tomtom_bbox', value: '31.10,29.95,31.40,30.20', description: 'TomTom 路况查询范围 bbox（minLon,minLat,maxLon,maxLat）' }
     ];
 
     let addedCount = 0;
@@ -105,4 +113,3 @@ if (require.main === module) {
 }
 
 module.exports = { migrateSettings };
-

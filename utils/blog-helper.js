@@ -1512,14 +1512,15 @@ async function createBlogPost(postData) {
     // 处理特殊类别数据（天气、汇率、翻译等）
     const isSpecialCategory = (apiName) => {
       if (!apiName) return null;
-      const lowerName = apiName.toLowerCase();
-      if (lowerName === 'weather' || lowerName.includes('weather')) return 'weather';
-      if (lowerName === 'exchange-rate' || lowerName === 'exchangerate' || lowerName.includes('exchange')) return 'exchange-rate';
-      if (lowerName === 'translation' || lowerName.includes('translation')) return 'translation';
+      const rawName = String(apiName);
+      const lowerName = rawName.toLowerCase();
+      if (lowerName === 'weather' || lowerName.includes('weather') || rawName.includes('天气')) return 'weather';
+      if (lowerName === 'exchange-rate' || lowerName === 'exchangerate' || lowerName.includes('exchange') || rawName.includes('汇率')) return 'exchange-rate';
+      if (lowerName === 'translation' || lowerName.includes('translation') || rawName.includes('翻译')) return 'translation';
       return null;
     };
-    
-    const specialType = isSpecialCategory(postData.apiName);
+
+    const specialType = postData._specialType || isSpecialCategory(postData.apiName);
     if (specialType && postData._specialData) {
       // 将特殊数据存储到 custom_fields
       customFields._specialType = specialType;
@@ -1842,14 +1843,15 @@ async function updateBlogPost(postId, postData) {
     if (postData._specialData) {
       const isSpecialCategory = (apiName) => {
         if (!apiName) return null;
-        const lowerName = apiName.toLowerCase();
-        if (lowerName === 'weather' || lowerName.includes('weather')) return 'weather';
-        if (lowerName === 'exchange-rate' || lowerName === 'exchangerate' || lowerName.includes('exchange')) return 'exchange-rate';
-        if (lowerName === 'translation' || lowerName.includes('translation')) return 'translation';
+        const rawName = String(apiName);
+        const lowerName = rawName.toLowerCase();
+        if (lowerName === 'weather' || lowerName.includes('weather') || rawName.includes('天气')) return 'weather';
+        if (lowerName === 'exchange-rate' || lowerName === 'exchangerate' || lowerName.includes('exchange') || rawName.includes('汇率')) return 'exchange-rate';
+        if (lowerName === 'translation' || lowerName.includes('translation') || rawName.includes('翻译')) return 'translation';
         return null;
       };
-      
-      const specialType = isSpecialCategory(newApiName);
+
+      const specialType = postData._specialType || isSpecialCategory(newApiName);
       if (specialType) {
         customFields._specialType = specialType;
         customFields._specialData = postData._specialData;
