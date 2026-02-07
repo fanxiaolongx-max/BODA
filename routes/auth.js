@@ -7,8 +7,16 @@ const { logAction, logger } = require('../utils/logger');
 const { body } = require('express-validator');
 const { createVerificationCode, verifyCode } = require('../utils/verification');
 const { getAdminSessionTimeoutMs, getUserSessionTimeoutMs } = require('../utils/session-config');
+const { sendTelegramIfEnabled, escapeTelegramHtml } = require('../utils/telegram');
 
 const router = express.Router();
+
+function maskPhone(phone) {
+  const value = String(phone || '');
+  if (!value) return '-';
+  if (value.length <= 4) return '****';
+  return `${value.slice(0, 2)}****${value.slice(-4)}`;
+}
 
 /**
  * 生成用户Token
@@ -1259,6 +1267,14 @@ router.post('/user/login', [
       );
       user = await getAsync('SELECT * FROM users WHERE id = ?', [result.id]);
       logger.info('新用户注册（PIN）', { phone, userId: user.id });
+      const message = [
+        '<b>New User Registered</b>',
+        `Method: PIN`,
+        `Phone: ${escapeTelegramHtml(maskPhone(phone))}`,
+        `Name: ${escapeTelegramHtml(name || '-')}`,
+        `User ID: ${escapeTelegramHtml(user.id)}`
+      ].join('\n');
+      void sendTelegramIfEnabled(message);
     } else {
       // 现有用户需要验证PIN
       if (!pin) {
@@ -1652,6 +1668,14 @@ router.post('/user/login-with-code', [
       );
       user = await getAsync('SELECT * FROM users WHERE id = ?', [result.id]);
       logger.info('新用户注册（验证码+PIN）', { phone, userId: user.id });
+      const message = [
+        '<b>New User Registered</b>',
+        `Method: SMS + PIN`,
+        `Phone: ${escapeTelegramHtml(maskPhone(phone))}`,
+        `Name: ${escapeTelegramHtml(name || '-')}`,
+        `User ID: ${escapeTelegramHtml(user.id)}`
+      ].join('\n');
+      void sendTelegramIfEnabled(message);
     } else {
       // 检查用户是否已设置PIN
       if (!user.pin) {
@@ -2318,4 +2342,3 @@ router.post('/session/refresh', async (req, res) => {
 });
 
 module.exports = router;
-

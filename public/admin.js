@@ -441,8 +441,9 @@ let currencySymbol = 'LE'; // 货币符号，从设置中加载
 let securityAlertPollInterval = null;
 
 const securityAlertsFilterState = {
+  page: 1,
   hours: 24,
-  limit: 200,
+  limit: 50,
   unreadOnly: false
 };
 
@@ -983,6 +984,9 @@ function switchTab(tabName, triggerElement = null) {
     case 'api-management':
       loadApiManagement();
       break;
+    case 'bot-menu':
+      loadBotMenuPage();
+      break;
     case 'about':
       loadAboutPage();
       break;
@@ -1356,6 +1360,7 @@ function rerenderActiveAdminTab() {
     'logs': loadLogs,
     'security-alerts': loadSecurityAlerts,
     'api-management': loadApiManagement,
+    'bot-menu': loadBotMenuPage,
     'about': loadAboutPage,
     'developer': loadDeveloperPage
   };
@@ -6834,11 +6839,20 @@ async function loadSecurityAlerts() {
     const params = new URLSearchParams({
       hours: String(securityAlertsFilterState.hours),
       limit: String(securityAlertsFilterState.limit),
+      page: String(securityAlertsFilterState.page),
       unread_only: securityAlertsFilterState.unreadOnly ? 'true' : 'false',
       sync: 'false'
     });
     const data = await adminApiRequest(`${API_BASE}/admin/security/alerts/high-risk?${params.toString()}`);
-    const telegramConfigResp = await adminApiRequest(`${API_BASE}/admin/security/alerts/telegram-config`);
+    let blockedIpSet = new Set();
+    try {
+      const blockedResp = await adminApiRequest(`${API_BASE}/admin/security/blocked-ips`);
+      if (blockedResp && blockedResp.success) {
+        blockedIpSet = new Set((blockedResp.blockedIps || []).map(item => item.ipAddress));
+      }
+    } catch (error) {
+      console.warn('加载黑名单IP失败，继续渲染告警列表', error);
+    }
 
     if (!data || !data.success) {
       container.innerHTML = `<div class="text-center py-12 text-red-500">${t('load_failed')}</div>`;
@@ -6848,7 +6862,6 @@ async function loadSecurityAlerts() {
     const summary = data.summary || { total: 0, unread: 0, uniqueIps: 0, returned: 0 };
     const alerts = data.alerts || [];
     const topIps = data.topIps || [];
-    const tg = telegramConfigResp?.config || {};
 
     container.innerHTML = `
       <div class="fade-in">
@@ -6868,6 +6881,15 @@ async function loadSecurityAlerts() {
             <button onclick="toggleSecurityAlertsUnreadOnly()" class="px-3 py-2 ${securityAlertsFilterState.unreadOnly ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-600 hover:bg-gray-700'} text-white rounded-lg text-sm transition">
               ${securityAlertsFilterState.unreadOnly ? t('unread_only') : t('all_alerts')}
             </button>
+            <select
+              id="securityAlertLimit"
+              class="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              onchange="changeSecurityAlertLimit(this.value)"
+            >
+              ${[20, 50, 100, 200].map(size => `
+                <option value="${size}" ${securityAlertsFilterState.limit === size ? 'selected' : ''}>${t('per_page', { count: size })}</option>
+              `).join('')}
+            </select>
             <button onclick="markAllSecurityAlertsRead()" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition">
               ${t('mark_all_read')}
             </button>
@@ -6897,33 +6919,20 @@ async function loadSecurityAlerts() {
         </div>
 
         <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
-          <h3 class="text-lg font-semibold text-gray-900 mb-3">${t('telegram_push')}</h3>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-            <label class="flex items-center gap-2 text-sm text-gray-700">
-              <input type="checkbox" id="telegramAlertEnabled" ${tg.enabled ? 'checked' : ''}>
-              ${t('enable_telegram_push')}
-            </label>
-            <input type="text" id="telegramBotToken" placeholder="${t('bot_token')}" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
-            <input type="text" id="telegramChatId" placeholder="${t('chat_id')}" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
-          </div>
-          <div class="text-xs text-gray-500 mb-3">
-            ${t('saved_token')}: ${tg.botTokenMasked || t('not_set')}，${t('saved_chat_id')}: ${tg.chatIdMasked || t('not_set')}
-            ${t('leave_empty_keep')}
-          </div>
-          <div class="flex gap-2">
-            <button onclick="saveTelegramAlertConfig(false)" class="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition">${t('save_config')}</button>
-            <button onclick="saveTelegramAlertConfig(true)" class="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm hover:bg-indigo-200 transition">${t('save_and_test')}</button>
-          </div>
-        </div>
-
-        <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
           <h3 class="text-lg font-semibold text-gray-900 mb-3">${t('top_source_ips')}</h3>
           <div class="flex flex-wrap gap-2">
-            ${topIps.length === 0 ? `<span class="text-sm text-gray-500">${t('no_data')}</span>` : topIps.map(item => `
-              <span class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded border border-red-100">
-                ${escapeHtml(item.ip)} (${escapeHtml(String(item.count))})
-              </span>
-            `).join('')}
+            ${topIps.length === 0 ? `<span class="text-sm text-gray-500">${t('no_data')}</span>` : topIps.map(item => {
+              const isBlocked = blockedIpSet.has(item.ip);
+              const safeIp = String(item.ip || '').replace(/'/g, "\\'");
+              return `
+                <span class="inline-flex items-center gap-2 px-2 py-1 text-xs bg-red-50 text-red-700 rounded border border-red-100">
+                  <span class="font-mono">${escapeHtml(item.ip)} (${escapeHtml(String(item.count))})</span>
+                  <button onclick="toggleIpBlock('${safeIp}', ${isBlocked})" class="px-2 py-0.5 rounded ${isBlocked ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-red-600 text-white hover:bg-red-700'} transition">
+                    ${isBlocked ? t('unblock_ip') : t('block_ip')}
+                  </button>
+                </span>
+              `;
+            }).join('')}
           </div>
         </div>
 
@@ -6955,7 +6964,20 @@ async function loadSecurityAlerts() {
                     <td class="px-4 py-3 text-sm text-gray-900">${escapeHtml(alert.method || '-')}</td>
                     <td class="px-4 py-3 text-sm text-gray-900 max-w-xl truncate" title="${escapeHtml(alert.path || '-')}">${escapeHtml(alert.path || '-')}</td>
                     <td class="px-4 py-3 text-sm">${renderAlertStatus(alert.statusCode)}</td>
-                    <td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">${escapeHtml(alert.ip || '-')}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono">${escapeHtml(alert.ip || '-')}</span>
+                        ${alert.ip ? (() => {
+                          const isBlocked = blockedIpSet.has(alert.ip);
+                          const safeIp = String(alert.ip || '').replace(/'/g, "\\'");
+                          return `
+                            <button onclick="toggleIpBlock('${safeIp}', ${isBlocked})" class="px-2 py-0.5 text-xs rounded ${isBlocked ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-red-600 text-white hover:bg-red-700'} transition">
+                              ${isBlocked ? t('unblock_ip') : t('block_ip')}
+                            </button>
+                          `;
+                        })() : ''}
+                      </div>
+                    </td>
                     <td class="px-4 py-3 text-sm">
                       ${alert.isRead ? '-' : `<button onclick="markSecurityAlertRead(${alert.id})" class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200">${t('mark_read')}</button>`}
                     </td>
@@ -6963,6 +6985,20 @@ async function loadSecurityAlerts() {
                 `).join('')}
               </tbody>
             </table>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 bg-gray-50 text-sm">
+            <div class="text-gray-600">
+              ${t('showing')} ${escapeHtml(String(summary.returned || 0))} / ${escapeHtml(String(summary.total || 0))}
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="changeSecurityAlertPage(${Math.max(securityAlertsFilterState.page - 1, 1)})" class="px-3 py-1 rounded border border-gray-300 text-gray-700 hover:bg-white ${securityAlertsFilterState.page <= 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${securityAlertsFilterState.page <= 1 ? 'disabled' : ''}>
+                ${t('prev_page')}
+              </button>
+              <span class="text-gray-700">${t('page')} ${securityAlertsFilterState.page}</span>
+              <button onclick="changeSecurityAlertPage(${(summary.total || 0) > securityAlertsFilterState.page * securityAlertsFilterState.limit ? securityAlertsFilterState.page + 1 : securityAlertsFilterState.page})" class="px-3 py-1 rounded border border-gray-300 text-gray-700 hover:bg-white ${(summary.total || 0) <= securityAlertsFilterState.page * securityAlertsFilterState.limit ? 'opacity-50 cursor-not-allowed' : ''}" ${(summary.total || 0) <= securityAlertsFilterState.page * securityAlertsFilterState.limit ? 'disabled' : ''}>
+                ${t('next_page')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -6995,13 +7031,104 @@ function changeSecurityAlertWindow(hours) {
   const parsed = parseInt(hours, 10);
   if (Number.isNaN(parsed) || parsed <= 0) return;
   securityAlertsFilterState.hours = parsed;
+  securityAlertsFilterState.page = 1;
   loadSecurityAlerts();
   refreshSecurityAlertsCount();
 }
 
 function toggleSecurityAlertsUnreadOnly() {
   securityAlertsFilterState.unreadOnly = !securityAlertsFilterState.unreadOnly;
+  securityAlertsFilterState.page = 1;
   loadSecurityAlerts();
+}
+
+function changeSecurityAlertLimit(limit) {
+  const parsed = parseInt(limit, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) return;
+  securityAlertsFilterState.limit = parsed;
+  securityAlertsFilterState.page = 1;
+  loadSecurityAlerts();
+}
+
+function changeSecurityAlertPage(page) {
+  const parsed = parseInt(page, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) return;
+  if (parsed === securityAlertsFilterState.page) return;
+  securityAlertsFilterState.page = parsed;
+  loadSecurityAlerts();
+}
+
+async function toggleIpBlock(ipAddress, isBlocked) {
+  if (!ipAddress) return;
+  if (isBlocked) {
+    await unblockIpAddress(ipAddress);
+  } else {
+    await blockIpAddress(ipAddress);
+  }
+}
+
+async function blockIpAddress(ipAddress) {
+  const confirmed = await showConfirmDialog(
+    t('block_ip_confirm_title'),
+    t('block_ip_confirm_message', { ip: ipAddress }),
+    t('block_ip'),
+    t('cancel')
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/security/blocked-ips/${encodeURIComponent(ipAddress)}/block`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (response && response.success) {
+      showToast(t('ip_blocked_success'), 'success');
+      await loadSecurityAlerts();
+      refreshSecurityAlertsCount();
+      if (document.getElementById('blockedIpsList')) {
+        await loadBlockedIps();
+      }
+    }
+  } catch (error) {
+    console.error('拉黑IP失败:', error);
+    showToast(t('block_ip_failed'), 'error');
+  }
+}
+
+async function unblockIpAddress(ipAddress) {
+  const confirmed = await showConfirmDialog(
+    t('unblock_ip_confirm_title'),
+    t('unblock_ip_confirm_message', { ip: ipAddress }),
+    t('unblock_ip'),
+    t('cancel')
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/security/blocked-ips/${encodeURIComponent(ipAddress)}/unlock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (response && response.success) {
+      showToast(t('ip_unblocked_success'), 'success');
+      await loadSecurityAlerts();
+      refreshSecurityAlertsCount();
+      if (document.getElementById('blockedIpsList')) {
+        await loadBlockedIps();
+      }
+    }
+  } catch (error) {
+    console.error('解锁IP失败:', error);
+    showToast(t('unblock_ip_failed'), 'error');
+  }
 }
 
 async function markSecurityAlertRead(id) {
@@ -7056,6 +7183,756 @@ async function saveTelegramAlertConfig(testSend) {
   } catch (error) {
     console.error('保存 Telegram 配置失败:', error);
     showToast(error.data?.message || t('save_config_failed'), 'error');
+  }
+}
+
+function parseLineList(value) {
+  return String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function buildDefaultBotMenuStructure() {
+  return [
+    {
+      id: 'root',
+      label: { zh: '主菜单', en: 'Main Menu' },
+      order: 1,
+      children: [
+        {
+          id: 'ops',
+          label: { zh: '运营管理', en: 'Operations' },
+          type: 'submenu',
+          order: 1,
+          children: [
+            { title: { zh: '概览', en: 'Dashboard' }, type: 'page', mapping: 'admin/dashboard', order: 1 },
+            { title: { zh: '系统状态', en: 'System Status' }, type: 'page', mapping: 'admin/system-status', order: 2 },
+            { title: { zh: '最近订单', en: 'Recent Orders' }, type: 'page', mapping: 'admin/recent-orders', order: 3 },
+            { title: { zh: '最近用户', en: 'Recent Users' }, type: 'page', mapping: 'admin/recent-users', order: 4 },
+            { title: { zh: '订单', en: 'Orders' }, type: 'page', mapping: 'admin/orders', order: 5 },
+            { title: { zh: '优惠规则', en: 'Discount Rules' }, type: 'page', mapping: 'admin/discounts', order: 6 },
+            { title: { zh: '周期与历史', en: 'Cycles / History' }, type: 'page', mapping: 'admin/orders#cycles', order: 7 }
+          ]
+        },
+        {
+          id: 'catalog',
+          label: { zh: '商品与菜单', en: 'Catalog' },
+          type: 'submenu',
+          order: 2,
+          children: [
+            { title: { zh: '商品', en: 'Products' }, type: 'page', mapping: 'admin/products', order: 1 },
+            { title: { zh: '分类', en: 'Categories' }, type: 'page', mapping: 'admin/categories', order: 2 },
+            { title: { zh: '展示图', en: 'Showcase Images' }, type: 'page', mapping: 'admin/showcase-images', order: 3 },
+            { title: { zh: '堂食二维码', en: 'Dine-In QR' }, type: 'page', mapping: 'admin/dine-in-qr', order: 4 }
+          ]
+        },
+        {
+          id: 'users',
+          label: { zh: '用户与余额', en: 'Users' },
+          type: 'submenu',
+          order: 3,
+          children: [
+            { title: { zh: '用户', en: 'Users' }, type: 'page', mapping: 'admin/users', order: 1 },
+            { title: { zh: '余额', en: 'Balance' }, type: 'page', mapping: 'admin/balance', order: 2 },
+            { title: { zh: '配送地址', en: 'Delivery Addresses' }, type: 'page', mapping: 'admin/delivery-addresses', order: 3 }
+          ]
+        },
+        {
+          id: 'security',
+          label: { zh: '安全与告警', en: 'Security & Alerts' },
+          type: 'submenu',
+          order: 4,
+          children: [
+            {
+              id: 'alerts',
+              label: { zh: '告警中心', en: 'Alerts' },
+              type: 'submenu',
+              order: 1,
+              children: [
+                { title: { zh: '高危告警', en: 'High-Risk Alerts' }, type: 'page', mapping: 'admin/security-alerts', order: 1 },
+                { title: { zh: 'IP 黑名单', en: 'IP Blocklist' }, type: 'page', mapping: 'admin/security-alerts#blocked-ips', order: 2 }
+              ]
+            },
+            { title: { zh: '日志', en: 'Logs' }, type: 'page', mapping: 'admin/logs', order: 2 }
+          ]
+        },
+        {
+          id: 'system',
+          label: { zh: '系统设置', en: 'System' },
+          type: 'submenu',
+          order: 5,
+          children: [
+            { title: { zh: '系统设置', en: 'Settings' }, type: 'page', mapping: 'admin/settings', order: 1 },
+            { title: { zh: 'API 管理', en: 'API Management' }, type: 'page', mapping: 'admin/api-management', order: 2 },
+            { title: { zh: 'Bot 菜单', en: 'Bot Menu' }, type: 'page', mapping: 'admin/bot-menu', order: 3 },
+            { title: { zh: '关于', en: 'About' }, type: 'page', mapping: 'admin/about', order: 4 }
+          ]
+        },
+        {
+          id: 'admin',
+          label: { zh: '管理员', en: 'Administration' },
+          type: 'submenu',
+          order: 6,
+          children: [
+            { title: { zh: '管理员', en: 'Admins' }, type: 'page', mapping: 'admin/admins', order: 1 },
+            { title: { zh: '开发者', en: 'Developer' }, type: 'page', mapping: 'admin/developer', order: 2 }
+          ]
+        }
+      ]
+    }
+  ];
+}
+
+function applyDefaultBotMenuConfig() {
+  const jsonTextarea = document.getElementById('botMenuJson');
+  const currentContent = botMenuJsonEditorInstance?.get?.();
+  let config = {};
+  if (currentContent?.json) {
+    config = currentContent.json;
+  } else if (currentContent?.text) {
+    try {
+      config = JSON.parse(currentContent.text);
+    } catch (e) {
+      config = {};
+    }
+  } else if (jsonTextarea?.value) {
+    try {
+      config = JSON.parse(jsonTextarea.value);
+    } catch (e) {
+      config = {};
+    }
+  }
+
+  config.menu_structure = buildDefaultBotMenuStructure();
+  if (botMenuJsonEditorInstance && typeof botMenuJsonEditorInstance.set === 'function') {
+    botMenuJsonEditorInstance.set({ json: config });
+  }
+  if (jsonTextarea) {
+    jsonTextarea.value = JSON.stringify(config, null, 2);
+  }
+  botMenuTreeData = JSON.parse(JSON.stringify(config.menu_structure || []));
+  renderBotMenuTreeEditor();
+  showToast(t('defaults_loaded'), 'success');
+}
+
+function collectBotMenuStructure() {
+  return Array.isArray(botMenuTreeData) ? JSON.parse(JSON.stringify(botMenuTreeData)) : buildDefaultBotMenuStructure();
+}
+
+function renderBotMenuTreeEditor() {
+  const container = document.getElementById('botMenuTreeEditor');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!Array.isArray(botMenuTreeData) || botMenuTreeData.length === 0) {
+    botMenuTreeData = buildDefaultBotMenuStructure();
+  }
+  renderBotMenuTreeBranch(botMenuTreeData, null, container);
+  syncBotMenuJsonFromTree();
+}
+
+function renderBotMenuTreeBranch(nodes, parentId, container) {
+  if (!Array.isArray(nodes)) return;
+  nodes.forEach((node, index) => {
+    container.appendChild(createBotMenuDropZone(parentId, index));
+    container.appendChild(renderBotMenuTreeNode(node, parentId, index));
+  });
+  container.appendChild(createBotMenuDropZone(parentId, nodes.length));
+}
+
+function createBotMenuDropZone(parentId, index) {
+  const zone = document.createElement('div');
+  zone.className = 'bot-tree-dropzone';
+  zone.dataset.parentId = parentId || '';
+  zone.dataset.index = String(index);
+  zone.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    zone.classList.add('drop-target');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drop-target'));
+  zone.addEventListener('drop', (event) => {
+    event.preventDefault();
+    zone.classList.remove('drop-target');
+    const payload = event.dataTransfer.getData('text/plain');
+    try {
+      const data = JSON.parse(payload);
+      moveBotMenuNode(data, { parentId: zone.dataset.parentId, index: Number(zone.dataset.index) });
+    } catch (e) {
+      console.warn('拖拽数据解析失败', e);
+    }
+  });
+  return zone;
+}
+
+function toggleBotMenuCollapse(nodeId) {
+  const node = findBotMenuNodeById(botMenuTreeData, nodeId);
+  if (!node) return;
+  node._collapsed = !node._collapsed;
+  renderBotMenuTreeEditor();
+}
+
+function expandAllBotMenus() {
+  const apply = (nodes) => {
+    nodes.forEach((node) => {
+      node._collapsed = false;
+      if (Array.isArray(node.children)) {
+        apply(node.children);
+      }
+    });
+  };
+  apply(botMenuTreeData);
+  renderBotMenuTreeEditor();
+}
+
+function collapseAllBotMenus() {
+  const apply = (nodes) => {
+    nodes.forEach((node) => {
+      node._collapsed = true;
+      if (Array.isArray(node.children)) {
+        apply(node.children);
+      }
+    });
+  };
+  apply(botMenuTreeData);
+  renderBotMenuTreeEditor();
+}
+
+function renderBotMenuTreeNode(node, parentId = null, index = 0) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'bot-tree-node';
+  wrapper.dataset.nodeId = node.id || '';
+  wrapper.dataset.parentId = parentId || '';
+  wrapper.dataset.index = String(index);
+
+  const startDrag = (event) => {
+    wrapper.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', JSON.stringify({ nodeId: wrapper.dataset.nodeId, parentId: wrapper.dataset.parentId, index: wrapper.dataset.index }));
+  };
+  const endDrag = () => wrapper.classList.remove('dragging');
+
+  const header = document.createElement('div');
+  header.className = 'flex flex-wrap items-center gap-2 mb-2';
+  header.innerHTML = `
+    <span class="bot-tree-handle">⋮⋮</span>
+    <button type="button" class="px-2 py-1 text-xs bg-white border border-gray-200 rounded" onclick="toggleBotMenuCollapse('${node.id}')">
+      ${node._collapsed ? t('expand') : t('collapse')}
+    </button>
+    <input type="text" class="bot-tree-label-zh px-2 py-1 border border-gray-300 rounded text-sm" placeholder="${t('menu_name_placeholder')}" value="${escapeHtml(node.label?.zh || node.title?.zh || '')}">
+    <input type="text" class="bot-tree-label-en px-2 py-1 border border-gray-300 rounded text-sm" placeholder="${t('menu_name_placeholder_en')}" value="${escapeHtml(node.label?.en || node.title?.en || '')}">
+    <select class="bot-tree-type px-2 py-1 border border-gray-300 rounded text-sm">
+      <option value="submenu" ${node.type === 'submenu' || node.children ? 'selected' : ''}>${t('menu_type_submenu')}</option>
+      <option value="page" ${node.type === 'page' ? 'selected' : ''}>${t('menu_type_page')}</option>
+      <option value="action" ${node.type === 'action' ? 'selected' : ''}>${t('menu_type_action')}</option>
+    </select>
+    <input type="text" class="bot-tree-mapping px-2 py-1 border border-gray-300 rounded text-sm" placeholder="${t('menu_mapping_placeholder')}" value="${escapeHtml(node.mapping || '')}">
+    <button type="button" class="px-2 py-1 text-xs bg-blue-600 text-white rounded" onclick="addBotMenuChild('${node.id}')">${t('add_child')}</button>
+    <button type="button" class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded" onclick="removeBotMenuNode('${node.id}')">${t('delete')}</button>
+  `;
+  wrapper.appendChild(header);
+
+  const promptRow = document.createElement('div');
+  promptRow.className = 'mt-2';
+  promptRow.innerHTML = `
+    <textarea class="bot-tree-ai-prompt w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="${t('ai_prompt_per_menu')}">${escapeHtml(node.ai_prompt || '')}</textarea>
+  `;
+  wrapper.appendChild(promptRow);
+
+  const handle = header.querySelector('.bot-tree-handle');
+  if (handle) {
+    handle.setAttribute('draggable', 'true');
+    handle.addEventListener('dragstart', startDrag);
+    handle.addEventListener('dragend', endDrag);
+  }
+
+  const childrenContainer = document.createElement('div');
+  childrenContainer.className = 'ml-4 space-y-2';
+  if (node._collapsed) {
+    childrenContainer.style.display = 'none';
+  }
+  const children = Array.isArray(node.children) ? node.children : [];
+  renderBotMenuTreeBranch(children, node.id, childrenContainer);
+  wrapper.appendChild(childrenContainer);
+
+  wrapper.querySelectorAll('input, select, textarea').forEach((input) => {
+    input.setAttribute('draggable', 'false');
+    input.addEventListener('input', () => {
+      const labelZh = wrapper.querySelector('.bot-tree-label-zh')?.value?.trim() || '';
+      const labelEn = wrapper.querySelector('.bot-tree-label-en')?.value?.trim() || '';
+      const type = wrapper.querySelector('.bot-tree-type')?.value || 'submenu';
+      const mapping = wrapper.querySelector('.bot-tree-mapping')?.value?.trim() || '';
+      const aiPrompt = wrapper.querySelector('.bot-tree-ai-prompt')?.value?.trim() || '';
+      node.label = { zh: labelZh, en: labelEn };
+      node.type = type;
+      node.mapping = mapping || undefined;
+      node.ai_prompt = aiPrompt || undefined;
+      if (type !== 'submenu' && (!node.children || node.children.length === 0)) {
+        delete node.children;
+      }
+      syncBotMenuJsonFromTree();
+    });
+  });
+
+  return wrapper;
+}
+
+function syncBotMenuJsonFromTree() {
+  const jsonTextarea = document.getElementById('botMenuJson');
+  if (!jsonTextarea) return;
+  let currentConfig = {};
+  try {
+    currentConfig = jsonTextarea.value ? JSON.parse(jsonTextarea.value) : {};
+  } catch (e) {
+    currentConfig = {};
+  }
+  currentConfig.menu_structure = collectBotMenuStructure();
+  jsonTextarea.value = JSON.stringify(currentConfig, null, 2);
+  if (botMenuJsonEditorInstance && typeof botMenuJsonEditorInstance.set === 'function') {
+    botMenuJsonEditorInstance.set({ json: currentConfig });
+  }
+}
+
+function addBotMenuRoot() {
+  const newNode = createBotMenuNode();
+  botMenuTreeData.push(newNode);
+  renderBotMenuTreeEditor();
+}
+
+function addBotMenuChild(parentId) {
+  const parent = findBotMenuNodeById(botMenuTreeData, parentId);
+  if (!parent) return;
+  if (!Array.isArray(parent.children)) parent.children = [];
+  parent.children.push(createBotMenuNode());
+  renderBotMenuTreeEditor();
+}
+
+function removeBotMenuNode(nodeId) {
+  botMenuTreeData = removeBotMenuNodeById(botMenuTreeData, nodeId);
+  renderBotMenuTreeEditor();
+}
+
+function moveBotMenuNode(source, target) {
+  if (!source || !target) return;
+  const sourceNode = detachBotMenuNode(botMenuTreeData, source.nodeId);
+  if (!sourceNode) return;
+  const targetList = target.parentId ? (findBotMenuNodeById(botMenuTreeData, target.parentId)?.children || []) : botMenuTreeData;
+  const insertIndex = Math.min(target.index, targetList.length);
+  targetList.splice(insertIndex, 0, sourceNode);
+  renderBotMenuTreeEditor();
+}
+
+function createBotMenuNode() {
+  return {
+    id: `node_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+    label: { zh: '', en: '' },
+    type: 'submenu',
+    children: []
+  };
+}
+
+function findBotMenuNodeById(nodes, id) {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    if (Array.isArray(node.children)) {
+      const found = findBotMenuNodeById(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function removeBotMenuNodeById(nodes, id) {
+  const filtered = [];
+  nodes.forEach((node) => {
+    if (node.id === id) return;
+    const clone = { ...node };
+    if (Array.isArray(node.children)) {
+      clone.children = removeBotMenuNodeById(node.children, id);
+    }
+    filtered.push(clone);
+  });
+  return filtered;
+}
+
+function detachBotMenuNode(nodes, id) {
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].id === id) {
+      return nodes.splice(i, 1)[0];
+    }
+    if (Array.isArray(nodes[i].children)) {
+      const child = detachBotMenuNode(nodes[i].children, id);
+      if (child) return child;
+    }
+  }
+  return null;
+}
+
+function sanitizeBotMenuTree(nodes) {
+  if (!Array.isArray(nodes)) return [];
+  const seen = new Set();
+  const sanitizeNode = (node) => {
+    if (!node || typeof node !== 'object') return null;
+    if (!node.id) {
+      node.id = createBotMenuNode().id;
+    }
+    if (seen.has(node.id)) {
+      node.id = createBotMenuNode().id;
+    }
+    seen.add(node.id);
+    if (node._collapsed !== undefined) {
+      delete node._collapsed;
+    }
+    const labelZh = node.label?.zh || node.title?.zh || '';
+    const labelEn = node.label?.en || node.title?.en || '';
+    node.label = { zh: labelZh, en: labelEn };
+    if (Array.isArray(node.children)) {
+      node.children = node.children.map(sanitizeNode).filter(Boolean);
+    }
+    if ((!labelZh && !labelEn) && (!node.children || node.children.length === 0)) {
+      return null;
+    }
+    return node;
+  };
+  return nodes.map(sanitizeNode).filter(Boolean);
+}
+
+
+function addBotCommandRow() {
+  const tbody = document.getElementById('botCommandsTableBody');
+  if (!tbody) return;
+  const row = document.createElement('tr');
+  row.className = 'hover:bg-gray-50';
+  row.innerHTML = `
+    <td class="px-4 py-3 text-sm">
+      <input type="text" class="bot-command-input w-full px-2 py-1 border border-gray-300 rounded text-sm font-mono" placeholder="/command">
+    </td>
+    <td class="px-4 py-3 text-sm">
+      <input type="text" class="bot-command-desc-input w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="${t('command_desc_placeholder')}">
+    </td>
+    <td class="px-4 py-3 text-sm">
+      <div class="flex items-center gap-2">
+        <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">${t('ready')}</span>
+        <button onclick="removeBotCommandRow(this)" class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100">${t('delete')}</button>
+      </div>
+    </td>
+  `;
+  tbody.appendChild(row);
+}
+
+function removeBotCommandRow(btn) {
+  const row = btn?.closest('tr');
+  if (row) row.remove();
+}
+
+function collectBotCommands() {
+  const rows = document.querySelectorAll('#botCommandsTableBody tr');
+  const commands = [];
+  rows.forEach((row) => {
+    const command = row.querySelector('.bot-command-input')?.value?.trim() || '';
+    const description = row.querySelector('.bot-command-desc-input')?.value?.trim() || '';
+    if (!command) return;
+    commands.push({ command, description });
+  });
+  return commands;
+}
+
+function validateAiConfig({ provider, baseUrl, model }) {
+  const warnings = [];
+  const url = String(baseUrl || '').trim().toLowerCase();
+  const modelName = String(model || '').trim().toLowerCase();
+  const guessed = guessAiProviderFromUrl(url);
+  if (guessed) {
+    const label = t(`ai_provider_${guessed}`);
+    warnings.push(t('ai_hint_detected_provider', { provider: label }));
+  }
+  if (!provider) return warnings;
+  if (provider === 'gemini') {
+    if (url.includes('/v1') || url.includes('openai') || url.includes('anthropic') || url.includes('api.openai')) {
+      warnings.push(t('ai_hint_gemini_url'));
+    }
+    if (modelName && !modelName.includes('gemini')) {
+      warnings.push(t('ai_hint_gemini_model'));
+    }
+  }
+  if (provider === 'openai' || provider === 'proxy') {
+    if (url.includes('generativelanguage.googleapis.com')) {
+      warnings.push(t('ai_hint_openai_url'));
+    }
+    if (modelName && modelName.includes('gemini')) {
+      warnings.push(t('ai_hint_openai_model'));
+    }
+  }
+  if (provider === 'anthropic') {
+    if (url.includes('/v1') && !url.includes('anthropic')) {
+      warnings.push(t('ai_hint_anthropic_url'));
+    }
+    if (modelName && !modelName.includes('claude')) {
+      warnings.push(t('ai_hint_anthropic_model'));
+    }
+  }
+  return warnings;
+}
+
+function guessAiProviderFromUrl(url = '') {
+  const value = String(url || '').toLowerCase();
+  if (!value) return '';
+  if (value.includes('generativelanguage.googleapis.com') || value.includes('gemini')) return 'gemini';
+  if (value.includes('anthropic')) return 'anthropic';
+  if (value.includes('openai') || value.includes('/v1')) return 'openai';
+  return '';
+}
+
+function initAiConfigHints() {
+  const providerEl = document.getElementById('botAiProvider');
+  const baseUrlEl = document.getElementById('botAiBaseUrl');
+  const modelEl = document.getElementById('botAiModel');
+  const hintEl = document.getElementById('botAiConfigHint');
+  if (!providerEl || !baseUrlEl || !modelEl || !hintEl) return;
+  const update = () => {
+    const warnings = validateAiConfig({
+      provider: providerEl.value,
+      baseUrl: baseUrlEl.value,
+      model: modelEl.value
+    });
+    hintEl.textContent = warnings.length ? warnings[0] : '';
+  };
+  providerEl.addEventListener('change', update);
+  baseUrlEl.addEventListener('input', update);
+  modelEl.addEventListener('input', update);
+  update();
+}
+
+function scheduleBotMenuAutoSave() {
+  if (!botMenuAutoSaveEnabled) return;
+  if (botMenuAutoSaveTimer) {
+    clearTimeout(botMenuAutoSaveTimer);
+  }
+  botMenuAutoSaveTimer = setTimeout(async () => {
+    if (botMenuAutoSaveInFlight) return;
+    botMenuAutoSaveInFlight = true;
+    try {
+      await saveBotMenuConfig({ skipReload: true, silent: true });
+      showToast(t('auto_saved'), 'info', 1200);
+    } catch (error) {
+      console.warn('Bot 菜单自动保存失败', error);
+    } finally {
+      botMenuAutoSaveInFlight = false;
+    }
+  }, 800);
+}
+
+function initBotMenuAutoSave() {
+  const container = document.getElementById('bot-menuTab');
+  if (!container) return;
+  container.addEventListener('input', () => scheduleBotMenuAutoSave());
+  container.addEventListener('change', () => scheduleBotMenuAutoSave());
+}
+
+async function testBotAiConfig() {
+  const aiProvider = document.getElementById('botAiProvider')?.value || 'openai';
+  const aiBaseUrl = document.getElementById('botAiBaseUrl')?.value?.trim() || '';
+  const aiModel = document.getElementById('botAiModel')?.value?.trim() || '';
+  const aiApiKey = document.getElementById('botAiApiKey')?.value?.trim() || '';
+  const aiTimeoutMs = parseInt(document.getElementById('botAiTimeoutMs')?.value, 10);
+  const aiMaxTokens = parseInt(document.getElementById('botAiMaxTokens')?.value, 10);
+  const aiRetryCount = parseInt(document.getElementById('botAiRetryCount')?.value, 10);
+  const aiRetryDelayMs = parseInt(document.getElementById('botAiRetryDelayMs')?.value, 10);
+  const aiSystemPrompt = document.getElementById('botAiSystemPrompt')?.value?.trim() || '';
+  const aiExtraHeadersRaw = document.getElementById('botAiExtraHeaders')?.value?.trim() || '';
+  const aiSqlMode = document.getElementById('botAiSqlMode')?.checked || false;
+  const aiSqlLimit = parseInt(document.getElementById('botAiSqlLimit')?.value, 10);
+  const aiSqlBlocked = parseLineList(document.getElementById('botAiSqlBlockedTables')?.value);
+  const aiSqlForbidden = parseLineList(document.getElementById('botAiSqlForbiddenKeywords')?.value);
+  let aiExtraHeaders = undefined;
+  if (aiExtraHeadersRaw) {
+    try {
+      aiExtraHeaders = JSON.parse(aiExtraHeadersRaw);
+    } catch (error) {
+      showToast(t('invalid_json'), 'error');
+      return;
+    }
+  }
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/telegram/bot-ai-test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ai: {
+          provider: aiProvider,
+          base_url: aiBaseUrl || undefined,
+          api_key: aiApiKey || undefined,
+          model: aiModel || undefined,
+          timeout_ms: Number.isFinite(aiTimeoutMs) ? aiTimeoutMs : undefined,
+          max_tokens: Number.isFinite(aiMaxTokens) ? aiMaxTokens : undefined,
+          retry_count: Number.isFinite(aiRetryCount) ? aiRetryCount : undefined,
+          retry_delay_ms: Number.isFinite(aiRetryDelayMs) ? aiRetryDelayMs : undefined,
+          system_prompt: aiSystemPrompt || undefined,
+          extra_headers: aiExtraHeaders
+        }
+      })
+    });
+    if (response?.success) {
+      showToast(t('ai_test_success'), 'success');
+    } else {
+      showToast(response?.message || t('ai_test_failed'), 'error');
+    }
+  } catch (error) {
+    showToast(error?.data?.message || error?.message || t('ai_test_failed'), 'error');
+  }
+}
+
+async function saveBotMenuConfig(options = {}) {
+  const jsonTextarea = document.getElementById('botMenuJson');
+  let config = {};
+  try {
+    if (botMenuJsonEditorInstance && typeof botMenuJsonEditorInstance.get === 'function') {
+      const content = botMenuJsonEditorInstance.get();
+      if (content?.json) {
+        config = content.json;
+      } else if (content?.text) {
+        config = JSON.parse(content.text);
+      }
+    } else {
+      config = jsonTextarea && jsonTextarea.value ? JSON.parse(jsonTextarea.value) : {};
+    }
+  } catch (error) {
+    showToast(t('invalid_json'), 'error');
+    return;
+  }
+
+  const groupWide = document.getElementById('botAuthGroupWide')?.checked !== false;
+  const authorizedGroups = parseLineList(document.getElementById('botAuthorizedGroups')?.value);
+  const authorizedUsers = parseLineList(document.getElementById('botAuthorizedUsers')?.value);
+  const unauthorizedReplyZh = document.getElementById('botUnauthorizedReplyZh')?.value?.trim() || '';
+  const unauthorizedReplyEn = document.getElementById('botUnauthorizedReplyEn')?.value?.trim() || '';
+  const welcomeTitleZh = document.getElementById('botWelcomeTitleZh')?.value?.trim() || '';
+  const welcomeTitleEn = document.getElementById('botWelcomeTitleEn')?.value?.trim() || '';
+  const welcomeMessageZh = document.getElementById('botWelcomeMessageZh')?.value?.trim() || '';
+  const welcomeMessageEn = document.getElementById('botWelcomeMessageEn')?.value?.trim() || '';
+  const welcomeIntroZh = document.getElementById('botWelcomeIntroZh')?.value?.trim() || '';
+  const welcomeIntroEn = document.getElementById('botWelcomeIntroEn')?.value?.trim() || '';
+  const aiProvider = document.getElementById('botAiProvider')?.value || 'openai';
+  const aiBaseUrl = document.getElementById('botAiBaseUrl')?.value?.trim() || '';
+  const aiModel = document.getElementById('botAiModel')?.value?.trim() || '';
+  const aiApiKey = document.getElementById('botAiApiKey')?.value?.trim() || '';
+  const aiTimeoutMs = parseInt(document.getElementById('botAiTimeoutMs')?.value, 10);
+  const aiMaxTokens = parseInt(document.getElementById('botAiMaxTokens')?.value, 10);
+  const aiRetryCount = parseInt(document.getElementById('botAiRetryCount')?.value, 10);
+  const aiRetryDelayMs = parseInt(document.getElementById('botAiRetryDelayMs')?.value, 10);
+  const aiSystemPrompt = document.getElementById('botAiSystemPrompt')?.value?.trim() || '';
+  const aiExtraHeadersRaw = document.getElementById('botAiExtraHeaders')?.value?.trim() || '';
+  const aiSqlMode = document.getElementById('botAiSqlMode')?.checked || false;
+  const aiSqlLimit = parseInt(document.getElementById('botAiSqlLimit')?.value, 10);
+  const aiSqlBlocked = parseLineList(document.getElementById('botAiSqlBlockedTables')?.value);
+  const aiSqlForbidden = parseLineList(document.getElementById('botAiSqlForbiddenKeywords')?.value);
+  let aiExtraHeaders = undefined;
+  if (aiExtraHeadersRaw) {
+    try {
+      aiExtraHeaders = JSON.parse(aiExtraHeadersRaw);
+    } catch (error) {
+      showToast(t('invalid_json'), 'error');
+      return;
+    }
+  }
+  const aiWarnings = validateAiConfig({
+    provider: aiProvider,
+    baseUrl: aiBaseUrl,
+    model: aiModel
+  });
+  if (aiWarnings.length && !options.silent) {
+    showToast(aiWarnings[0], 'warning');
+  }
+
+  config.authorization = {
+    group_wide: groupWide,
+    authorized_group_ids: authorizedGroups,
+    authorized_user_ids: authorizedUsers,
+    unauthorized_reply: {
+      zh: unauthorizedReplyZh,
+      en: unauthorizedReplyEn
+    }
+  };
+
+  config.welcome = {
+    title: { zh: welcomeTitleZh, en: welcomeTitleEn },
+    message: { zh: welcomeMessageZh, en: welcomeMessageEn },
+    intro: { zh: welcomeIntroZh, en: welcomeIntroEn }
+  };
+  config.ai = {
+    provider: aiProvider,
+    base_url: aiBaseUrl || undefined,
+    api_key: aiApiKey || undefined,
+    model: aiModel || undefined,
+    timeout_ms: Number.isFinite(aiTimeoutMs) ? aiTimeoutMs : undefined,
+    max_tokens: Number.isFinite(aiMaxTokens) ? aiMaxTokens : undefined,
+    retry_count: Number.isFinite(aiRetryCount) ? aiRetryCount : undefined,
+    retry_delay_ms: Number.isFinite(aiRetryDelayMs) ? aiRetryDelayMs : undefined,
+    system_prompt: aiSystemPrompt || undefined,
+    extra_headers: aiExtraHeaders,
+    sql_mode_enabled: aiSqlMode,
+    sql_default_limit: Number.isFinite(aiSqlLimit) ? aiSqlLimit : undefined,
+    sql_blocked_tables: aiSqlBlocked,
+    sql_forbidden_keywords: aiSqlForbidden
+  };
+
+  config.menu_structure = collectBotMenuStructure();
+
+  config.commands = collectBotCommands();
+
+  try {
+    config.menu_structure = sanitizeBotMenuTree(config.menu_structure);
+    const response = await adminApiRequest(`${API_BASE}/admin/telegram/bot-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config })
+    });
+    if (response && response.success) {
+      if (!options.silent) {
+        showToast(t('save_config_success'), 'success');
+      }
+      if (jsonTextarea) {
+        jsonTextarea.value = JSON.stringify(config, null, 2);
+      }
+      if (botMenuJsonEditorInstance && typeof botMenuJsonEditorInstance.set === 'function') {
+        botMenuJsonEditorInstance.set({ json: config });
+      }
+      if (!options.skipReload) {
+        loadBotMenuPage();
+      }
+    }
+  } catch (error) {
+    console.error('保存 Bot 菜单配置失败:', error);
+    if (!options.silent) {
+      showToast(t('save_config_failed'), 'error');
+    }
+  }
+}
+
+async function persistBotMenuConfig(config) {
+  try {
+    await adminApiRequest(`${API_BASE}/admin/telegram/bot-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config })
+    });
+  } catch (error) {
+    console.warn('自动保存默认 Bot 菜单失败:', error);
+  }
+}
+
+async function syncTelegramBotCommands() {
+  try {
+    const response = await adminApiRequest(`${API_BASE}/admin/telegram/bot-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (response && response.success) {
+      showToast(t('bot_sync_success'), 'success');
+    }
+  } catch (error) {
+    console.error('同步 Bot 失败:', error);
+    showToast(t('bot_sync_failed'), 'error');
   }
 }
 
@@ -7881,6 +8758,11 @@ window.restoreCustomApis = async function restoreCustomApis() {
 
 // JSONEditor 实例
 let jsonEditorInstance = null;
+let botMenuJsonEditorInstance = null;
+let botMenuTreeData = [];
+let botMenuAutoSaveTimer = null;
+let botMenuAutoSaveEnabled = false;
+let botMenuAutoSaveInFlight = false;
 
 // 初始化 JSONEditor
 async function initJSONEditor(containerId, initialContent = null) {
@@ -7940,6 +8822,62 @@ async function initJSONEditor(containerId, initialContent = null) {
     });
   } catch (error) {
     console.error('Failed to initialize JSONEditor:', error);
+    showToast('Failed to load JSON editor. Please refresh the page.', 'error');
+  }
+}
+
+async function initBotMenuJsonEditor(containerId, initialContent = null) {
+  if (botMenuJsonEditorInstance) {
+    try {
+      botMenuJsonEditorInstance.destroy();
+    } catch (e) {
+      console.warn('Failed to destroy existing bot menu editor:', e);
+    }
+    botMenuJsonEditorInstance = null;
+  }
+
+  const container = document.getElementById(containerId);
+  if (!container) {
+    console.error('Bot menu JSONEditor container not found:', containerId);
+    return;
+  }
+
+  try {
+    const { createJSONEditor } = await import('/js/vanilla-jsoneditor.js');
+    let content = { text: '{}' };
+    if (initialContent) {
+      try {
+        const parsed = typeof initialContent === 'string' ? JSON.parse(initialContent) : initialContent;
+        content = { json: parsed };
+      } catch (e) {
+        content = { text: initialContent };
+      }
+    }
+
+    botMenuJsonEditorInstance = createJSONEditor({
+      target: container,
+      props: {
+        content,
+        mode: 'tree',
+        onChange: (updatedContent) => {
+          const textarea = document.getElementById('botMenuJson');
+          if (textarea) {
+            try {
+              if (updatedContent.json) {
+                textarea.value = JSON.stringify(updatedContent.json, null, 2);
+              } else if (updatedContent.text) {
+                textarea.value = updatedContent.text;
+              }
+            } catch (e) {
+              console.warn('Failed to update bot menu textarea:', e);
+            }
+          }
+          scheduleBotMenuAutoSave();
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Failed to initialize bot menu JSON editor:', error);
     showToast('Failed to load JSON editor. Please refresh the page.', 'error');
   }
 }
@@ -8340,6 +9278,349 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+async function loadBotMenuPage() {
+  const container = document.getElementById('bot-menuTab');
+  if (!container) return;
+
+  let tg = {};
+  let botConfig = {};
+  let shouldPersistDefaults = false;
+  try {
+    const telegramConfigResp = await adminApiRequest(`${API_BASE}/admin/security/alerts/telegram-config`);
+    tg = telegramConfigResp?.config || {};
+  } catch (error) {
+    console.warn('加载 Telegram 配置失败', error);
+  }
+
+  try {
+    const botConfigResp = await adminApiRequest(`${API_BASE}/admin/telegram/bot-config`);
+    botConfig = botConfigResp?.config || {};
+  } catch (error) {
+    console.warn('加载 Bot 菜单配置失败', error);
+  }
+
+  if (!botConfig || typeof botConfig !== 'object') {
+    botConfig = {};
+  }
+
+  const defaultCommands = [
+    { command: '/start', description: { en: 'Welcome and show quick menu', zh: '欢迎并展示快捷菜单' } },
+    { command: '/menu', description: { en: 'Show menu buttons', zh: '展示菜单按钮' } },
+    { command: '/alerts', description: { en: 'Show latest alerts summary', zh: '查看最新告警摘要' } },
+    { command: '/status', description: { en: 'Show system status', zh: '查看系统状态' } },
+    { command: '/recent_orders', description: { en: 'Show recent orders', zh: '查看最近订单' } },
+    { command: '/recent_users', description: { en: 'Show recent users', zh: '查看最近用户' } },
+    { command: '/help', description: { en: 'Show help and contact info', zh: '查看帮助与联系方式' } }
+  ];
+  const commands = Array.isArray(botConfig.commands) && botConfig.commands.length > 0 ? botConfig.commands : defaultCommands;
+  const authConfig = botConfig.authorization || {};
+  const groupWide = authConfig.group_wide !== false;
+  const authorizedGroups = Array.isArray(authConfig.authorized_group_ids) ? authConfig.authorized_group_ids : [];
+  const authorizedUsers = Array.isArray(authConfig.authorized_user_ids) ? authConfig.authorized_user_ids : [];
+  const unauthorizedReply = authConfig.unauthorized_reply || {};
+  const welcomeConfig = botConfig.welcome || {};
+  const aiConfig = botConfig.ai || {};
+
+  if (!botConfig.menu_structure || !Array.isArray(botConfig.menu_structure) || botConfig.menu_structure.length === 0) {
+    botConfig.menu_structure = buildDefaultBotMenuStructure();
+    shouldPersistDefaults = true;
+  }
+  botMenuTreeData = Array.isArray(botConfig.menu_structure)
+    ? JSON.parse(JSON.stringify(botConfig.menu_structure))
+    : buildDefaultBotMenuStructure();
+
+  botMenuAutoSaveEnabled = false;
+  container.innerHTML = `
+    <div class="fade-in space-y-6">
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-bold text-gray-900">${t('bot_menu')}</h2>
+            <p class="text-sm text-gray-600 mt-1">${t('bot_menu_desc')}</p>
+          </div>
+          <span class="px-3 py-1 text-xs rounded-full bg-green-100 text-green-700">${t('config_live')}</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">${t('bot_welcome')}</h3>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="space-y-3">
+            <label class="text-sm font-medium text-gray-700">${t('welcome_title')}</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input type="text" id="botWelcomeTitleZh" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="${t('welcome_title_placeholder')}" value="${escapeHtml(welcomeConfig.title?.zh || '')}">
+              <input type="text" id="botWelcomeTitleEn" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="${t('welcome_title_placeholder_en')}" value="${escapeHtml(welcomeConfig.title?.en || '')}">
+            </div>
+            <label class="text-sm font-medium text-gray-700">${t('welcome_message')}</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <textarea id="botWelcomeMessageZh" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-24" placeholder="${t('welcome_message_placeholder')}">${escapeHtml(welcomeConfig.message?.zh || '')}</textarea>
+              <textarea id="botWelcomeMessageEn" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-24" placeholder="${t('welcome_message_placeholder_en')}">${escapeHtml(welcomeConfig.message?.en || '')}</textarea>
+            </div>
+            <label class="text-sm font-medium text-gray-700">${t('welcome_intro')}</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <textarea id="botWelcomeIntroZh" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-20" placeholder="${t('welcome_intro_placeholder')}">${escapeHtml(welcomeConfig.intro?.zh || '')}</textarea>
+              <textarea id="botWelcomeIntroEn" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-20" placeholder="${t('welcome_intro_placeholder_en')}">${escapeHtml(welcomeConfig.intro?.en || '')}</textarea>
+            </div>
+          </div>
+          <div class="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50">
+            <p class="text-xs text-gray-500 mb-3">${t('bot_preview')}</p>
+            <div class="space-y-3">
+              <div class="bg-white rounded-lg p-3 shadow-sm">
+                <p class="text-sm text-gray-800">${t('welcome_preview_text')}</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span class="px-3 py-1 text-xs bg-white border border-gray-200 rounded-full text-gray-700">${t('quick_reply_sample_1')}</span>
+                <span class="px-3 py-1 text-xs bg-white border border-gray-200 rounded-full text-gray-700">${t('quick_reply_sample_2')}</span>
+                <span class="px-3 py-1 text-xs bg-white border border-gray-200 rounded-full text-gray-700">${t('quick_reply_sample_3')}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">${t('ai_settings')}</h3>
+          <button type="button" onclick="testBotAiConfig()" class="px-3 py-2 text-sm bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-200 transition">
+            ${t('ai_test')}
+          </button>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="space-y-3">
+            <label class="text-sm font-medium text-gray-700">${t('ai_provider')}</label>
+            <select id="botAiProvider" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <option value="openai" ${aiConfig.provider === 'openai' ? 'selected' : ''}>${t('ai_provider_openai')}</option>
+              <option value="anthropic" ${aiConfig.provider === 'anthropic' ? 'selected' : ''}>${t('ai_provider_anthropic')}</option>
+              <option value="gemini" ${aiConfig.provider === 'gemini' ? 'selected' : ''}>${t('ai_provider_gemini')}</option>
+              <option value="proxy" ${aiConfig.provider === 'proxy' ? 'selected' : ''}>${t('ai_provider_proxy')}</option>
+            </select>
+
+            <label class="text-sm font-medium text-gray-700">${t('ai_base_url')}</label>
+            <input type="text" id="botAiBaseUrl" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="https://api.your-proxy.com" value="${escapeHtml(aiConfig.base_url || '')}">
+
+            <label class="text-sm font-medium text-gray-700">${t('ai_model')}</label>
+            <input type="text" id="botAiModel" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="gpt-4o-mini / claude-3-5 / gemini-1.5" value="${escapeHtml(aiConfig.model || '')}">
+
+            <label class="text-sm font-medium text-gray-700">${t('ai_api_key')}</label>
+            <input type="password" id="botAiApiKey" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="sk-..." value="${escapeHtml(aiConfig.api_key || '')}">
+          </div>
+
+          <div class="space-y-3">
+            <label class="text-sm font-medium text-gray-700">${t('ai_timeout_ms')}</label>
+            <input type="number" id="botAiTimeoutMs" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="15000" value="${escapeHtml(String(aiConfig.timeout_ms || ''))}">
+
+            <label class="text-sm font-medium text-gray-700">${t('ai_max_tokens')}</label>
+            <input type="number" id="botAiMaxTokens" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="800" value="${escapeHtml(String(aiConfig.max_tokens || ''))}">
+
+            <label class="text-sm font-medium text-gray-700">${t('ai_retry_count')}</label>
+            <input type="number" id="botAiRetryCount" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="2" value="${escapeHtml(String(aiConfig.retry_count || ''))}">
+
+            <label class="text-sm font-medium text-gray-700">${t('ai_retry_delay_ms')}</label>
+            <input type="number" id="botAiRetryDelayMs" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="1200" value="${escapeHtml(String(aiConfig.retry_delay_ms || ''))}">
+
+            <label class="text-sm font-medium text-gray-700">${t('ai_system_prompt')}</label>
+            <textarea id="botAiSystemPrompt" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-24" placeholder="${t('ai_system_prompt')}">${escapeHtml(aiConfig.system_prompt || '')}</textarea>
+
+            <label class="text-sm font-medium text-gray-700">${t('ai_extra_headers')}</label>
+            <textarea id="botAiExtraHeaders" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-24" placeholder='{"x-foo":"bar"}'>${escapeHtml(aiConfig.extra_headers ? JSON.stringify(aiConfig.extra_headers, null, 2) : '')}</textarea>
+            <p class="text-xs text-gray-500">${t('ai_extra_headers_hint')}</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+          <div class="space-y-3">
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" id="botAiSqlMode" ${aiConfig.sql_mode_enabled ? 'checked' : ''}>
+              ${t('ai_sql_mode')}
+            </label>
+            <p class="text-xs text-gray-500">${t('ai_sql_mode_hint')}</p>
+          </div>
+          <div class="space-y-3">
+            <label class="text-sm font-medium text-gray-700">${t('ai_sql_default_limit')}</label>
+            <input type="number" id="botAiSqlLimit" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="20" value="${escapeHtml(String(aiConfig.sql_default_limit || ''))}">
+
+            <label class="text-sm font-medium text-gray-700">${t('ai_sql_blocked_tables')}</label>
+            <textarea id="botAiSqlBlockedTables" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-24" placeholder="${t('ai_sql_blocked_tables_placeholder')}">${escapeHtml(Array.isArray(aiConfig.sql_blocked_tables) ? aiConfig.sql_blocked_tables.join('\\n') : '')}</textarea>
+            <label class="text-sm font-medium text-gray-700">${t('ai_sql_forbidden_keywords')}</label>
+            <textarea id="botAiSqlForbiddenKeywords" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-24" placeholder="${t('ai_sql_forbidden_keywords_placeholder')}">${escapeHtml(Array.isArray(aiConfig.sql_forbidden_keywords) ? aiConfig.sql_forbidden_keywords.join('\\n') : '')}</textarea>
+          </div>
+        </div>
+        <div id="botAiConfigHint" class="text-xs text-amber-600 mt-3"></div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">${t('telegram_push')}</h3>
+          <span class="text-xs text-gray-400">${t('config_shared')}</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <label class="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" id="telegramAlertEnabled" ${tg.enabled ? 'checked' : ''}>
+            ${t('enable_telegram_push')}
+          </label>
+          <input type="text" id="telegramBotToken" placeholder="${t('bot_token')}" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
+          <input type="text" id="telegramChatId" placeholder="${t('chat_id')}" class="px-3 py-2 border border-gray-300 rounded-lg text-sm" value="">
+        </div>
+        <div class="text-xs text-gray-500 mb-3">
+          ${t('saved_token')}: ${tg.botTokenMasked || t('not_set')}，${t('saved_chat_id')}: ${tg.chatIdMasked || t('not_set')}
+          ${t('leave_empty_keep')}
+        </div>
+        <div class="flex gap-2">
+          <button onclick="saveTelegramAlertConfig(false)" class="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition">${t('save_config')}</button>
+          <button onclick="saveTelegramAlertConfig(true)" class="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm hover:bg-indigo-200 transition">${t('save_and_test')}</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">${t('bot_auth')}</h3>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="space-y-3">
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" id="botAuthGroupWide" ${groupWide ? 'checked' : ''}>
+              ${t('auth_group_wide')}
+            </label>
+            <p class="text-xs text-gray-500">${t('auth_group_wide_hint')}</p>
+            <label class="text-sm font-medium text-gray-700">${t('authorized_groups')}</label>
+            <textarea id="botAuthorizedGroups" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-24" placeholder="${t('authorized_groups_placeholder')}">${escapeHtml(authorizedGroups.join('\\n'))}</textarea>
+            <label class="text-sm font-medium text-gray-700">${t('authorized_users_optional')}</label>
+            <textarea id="botAuthorizedUsers" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-24" placeholder="${t('authorized_users_placeholder')}">${escapeHtml(authorizedUsers.join('\\n'))}</textarea>
+          </div>
+          <div class="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 space-y-3">
+            <p class="text-xs text-gray-500">${t('auth_behavior_title')}</p>
+            <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+              <li>${t('auth_behavior_1')}</li>
+              <li>${t('auth_behavior_2')}</li>
+              <li>${t('auth_behavior_3')}</li>
+            </ul>
+            <div class="mt-2">
+              <label class="text-sm font-medium text-gray-700">${t('unauthorized_reply')}</label>
+              <textarea id="botUnauthorizedReplyZh" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-20 mb-2" placeholder="${t('unauthorized_reply_placeholder')}">${escapeHtml(unauthorizedReply.zh || '')}</textarea>
+              <textarea id="botUnauthorizedReplyEn" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-20" placeholder="${t('unauthorized_reply_placeholder_en')}">${escapeHtml(unauthorizedReply.en || '')}</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">${t('bot_commands')}</h3>
+          <div class="flex gap-2">
+            <button onclick="addBotCommandRow()" class="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
+              ${t('add')}
+            </button>
+            <button onclick="syncTelegramBotCommands()" class="px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+              ${t('sync_commands')}
+            </button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('command')}</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('description')}</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${t('status')}</th>
+              </tr>
+            </thead>
+            <tbody id="botCommandsTableBody" class="divide-y divide-gray-200">
+              ${commands.map(item => {
+                const descText = typeof item.description === 'string' ? item.description : (item.description?.zh || item.description?.en || '');
+                return `
+                  <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 text-sm">
+                      <input type="text" class="bot-command-input w-full px-2 py-1 border border-gray-300 rounded text-sm font-mono" value="${escapeHtml(item.command)}">
+                    </td>
+                    <td class="px-4 py-3 text-sm">
+                      <input type="text" class="bot-command-desc-input w-full px-2 py-1 border border-gray-300 rounded text-sm" value="${escapeHtml(descText)}">
+                    </td>
+                    <td class="px-4 py-3 text-sm">
+                      <div class="flex items-center gap-2">
+                        <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">${t('ready')}</span>
+                        <button onclick="removeBotCommandRow(this)" class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100">${t('delete')}</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-500 mt-3">${t('bot_commands_hint')}</p>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">${t('menu_structure_editor')}</h3>
+          <div class="flex gap-2">
+            <button onclick="addBotMenuRoot()" class="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+              ${t('add_root_menu')}
+            </button>
+            <button onclick="expandAllBotMenus()" class="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
+              ${t('expand_all')}
+            </button>
+            <button onclick="collapseAllBotMenus()" class="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
+              ${t('collapse_all')}
+            </button>
+          </div>
+        </div>
+        <div id="botMenuTreeEditor" class="space-y-3"></div>
+        <p class="text-xs text-gray-500 mt-2">${t('menu_structure_editor_hint')}</p>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">${t('menu_config_json')}</h3>
+          <div class="flex gap-2">
+            <button onclick="applyDefaultBotMenuConfig()" class="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
+              ${t('load_defaults')}
+            </button>
+            <button onclick="loadBotMenuPage()" class="px-3 py-2 text-sm bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+              ${t('refresh')}
+            </button>
+          </div>
+        </div>
+        <div id="botMenuJsonEditor" class="border border-gray-200 rounded-lg" style="height: 420px;"></div>
+        <textarea id="botMenuJson" class="hidden">${escapeHtml(JSON.stringify({ ...botConfig, commands }, null, 2))}</textarea>
+        <p class="text-xs text-gray-500 mt-2">${t('menu_config_json_hint')}</p>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">${t('menu_mapping_rules')}</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+          <div class="p-4 border border-gray-200 rounded-lg bg-gray-50">
+            <p class="font-medium text-gray-900 mb-2">${t('menu_mapping_examples')}</p>
+            <ul class="list-disc list-inside space-y-1 text-gray-600">
+              <li>${t('menu_mapping_example_1')}</li>
+              <li>${t('menu_mapping_example_2')}</li>
+              <li>${t('menu_mapping_example_3')}</li>
+            </ul>
+          </div>
+          <div class="p-4 border border-gray-200 rounded-lg bg-gray-50">
+            <p class="font-medium text-gray-900 mb-2">${t('menu_mapping_future')}</p>
+            <ul class="list-disc list-inside space-y-1 text-gray-600">
+              <li>${t('menu_mapping_future_1')}</li>
+              <li>${t('menu_mapping_future_2')}</li>
+              <li>${t('menu_mapping_future_3')}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  await initBotMenuJsonEditor('botMenuJsonEditor', { ...botConfig, commands });
+  renderBotMenuTreeEditor();
+  initAiConfigHints();
+  initBotMenuAutoSave();
+  botMenuAutoSaveEnabled = true;
+  if (shouldPersistDefaults) {
+    await persistBotMenuConfig({ ...botConfig, commands });
+  }
+}
 
 function loadAboutPage() {
   const container = document.getElementById('aboutTab');
@@ -12958,10 +14239,10 @@ async function loadBlockedIps() {
 // 解锁IP地址
 async function unlockIp(ipAddress) {
   const confirmed = await showConfirmDialog(
-    'Unlock IP Address',
-    `Are you sure you want to unlock IP address ${ipAddress}? This will clear all login failure records for this IP and allow login attempts immediately.`,
-    'Unlock',
-    'Cancel'
+    t('unblock_ip_confirm_title'),
+    t('unblock_ip_confirm_message', { ip: ipAddress }),
+    t('unblock_ip'),
+    t('cancel')
   );
   
   if (!confirmed) {
@@ -12975,12 +14256,12 @@ async function unlockIp(ipAddress) {
     });
     
     if (response && response.success) {
-      showToast('IP address unlocked successfully', 'success');
+      showToast(t('ip_unblocked_success'), 'success');
       await loadBlockedIps();
     }
   } catch (error) {
     console.error('解锁IP失败:', error);
-    showToast('Failed to unlock IP address', 'error');
+    showToast(t('unblock_ip_failed'), 'error');
   }
 }
 

@@ -30,6 +30,8 @@ const AdmZip = require('adm-zip');
 const ExcelJS = require('exceljs');
 const { cleanupOldFiles, getCleanupInfo } = require('../utils/cleanup');
 const { sendCycleExportEmail, testEmailConfig } = require('../utils/email');
+const { getBotMenuConfig, saveBotMenuConfig, setTelegramWebhook, setTelegramCommands } = require('../utils/telegram');
+const { testAiConfig } = require('../utils/ai');
 const { 
   pushBackupToRemote, 
   shouldPushNow, 
@@ -654,9 +656,11 @@ async function syncSecurityAlerts({ hours = 24, limit = 200, sendTelegram = true
   };
 }
 
-async function listPersistedHighRiskAlerts({ hours = 24, limit = 200, unreadOnly = false }) {
+async function listPersistedHighRiskAlerts({ hours = 24, limit = 200, page = 1, unreadOnly = false }) {
   const safeHours = Math.min(Math.max(parseInt(hours, 10) || 24, 1), 168);
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 2000);
+  const safePage = Math.max(parseInt(page, 10) || 1, 1);
+  const offset = (safePage - 1) * safeLimit;
 
   let whereClause = `severity = ? AND alert_time >= datetime('now', ?, 'localtime')`;
   const whereParams = [HIGH_RISK_SEVERITY, `-${safeHours} hours`];
@@ -670,8 +674,8 @@ async function listPersistedHighRiskAlerts({ hours = 24, limit = 200, unreadOnly
      FROM security_alerts
      WHERE ${whereClause}
      ORDER BY alert_time DESC
-     LIMIT ?`,
-    [...whereParams, safeLimit]
+     LIMIT ? OFFSET ?`,
+    [...whereParams, safeLimit, offset]
   );
 
   const summaryRow = await getAsync(
@@ -736,7 +740,9 @@ async function listPersistedHighRiskAlerts({ hours = 24, limit = 200, unreadOnly
       total: summaryRow?.total || 0,
       unread: summaryRow?.unread || 0,
       returned: normalizedAlerts.length,
-      uniqueIps: summaryRow?.unique_ips || 0
+      uniqueIps: summaryRow?.unique_ips || 0,
+      page: safePage,
+      limit: safeLimit
     },
     topIps,
     topCategories,
@@ -5052,7 +5058,7 @@ router.put('/users/:id/permission', async (req, res) => {
  */
 router.get('/security/alerts/high-risk', async (req, res) => {
   try {
-    const { hours = 24, limit = 200, unread_only = 'false', sync = 'false' } = req.query;
+    const { hours = 24, limit = 200, page = 1, unread_only = 'false', sync = 'false' } = req.query;
 
     if (String(sync) !== 'false') {
       await syncSecurityAlerts({
@@ -5065,6 +5071,7 @@ router.get('/security/alerts/high-risk', async (req, res) => {
     const result = await listPersistedHighRiskAlerts({
       hours,
       limit,
+      page,
       unreadOnly: String(unread_only) === 'true'
     });
 
@@ -5236,6 +5243,99 @@ router.post('/security/alerts/telegram-config', async (req, res) => {
 });
 
 /**
+ * GET /api/admin/telegram/bot-config
+ * 获取 Bot 菜单配置
+ */
+router.get('/telegram/bot-config', async (req, res) => {
+  try {
+    const config = await getBotMenuConfig();
+    res.json({ success: true, config });
+  } catch (error) {
+    logger.error('获取 Bot 菜单配置失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取配置失败' });
+  }
+});
+
+/**
+ * POST /api/admin/telegram/bot-config
+ * 保存 Bot 菜单配置
+ */
+router.post('/telegram/bot-config', async (req, res) => {
+  try {
+    const { config } = req.body || {};
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({ success: false, message: 'config 无效' });
+    }
+    await saveBotMenuConfig(config);
+    await logAction(req.session.adminId, 'UPDATE_TELEGRAM_BOT_CONFIG', 'settings', null, { keys: Object.keys(config) }, req);
+    res.json({ success: true, message: 'Bot 菜单配置已保存' });
+  } catch (error) {
+    logger.error('保存 Bot 菜单配置失败', { error: error.message });
+    res.status(500).json({ success: false, message: '保存配置失败' });
+  }
+});
+
+/**
+ * POST /api/admin/telegram/bot-sync
+ * 同步 Bot 命令 + Webhook
+ */
+router.post('/telegram/bot-sync', async (req, res) => {
+  try {
+    const { webhookUrl } = req.body || {};
+    const telegramConfig = await getTelegramConfig();
+    if (!telegramConfig.enabled || !telegramConfig.botToken) {
+      return res.status(400).json({ success: false, message: 'Telegram Bot 未启用或未配置 Token' });
+    }
+
+    const config = await getBotMenuConfig();
+    const commands = Array.isArray(config.commands) ? config.commands : [];
+    const normalizedCommands = commands
+      .filter((item) => item && item.command && item.description)
+      .map((item) => ({
+        command: String(item.command).replace('/', '').trim(),
+        description: typeof item.description === 'string' ? item.description : (item.description?.en || item.description?.zh || '')
+      }))
+      .filter((item) => item.command && item.description);
+
+    const finalWebhookUrl = webhookUrl || `${req.protocol}://${req.get('host')}/api/telegram/webhook/${telegramConfig.botToken}`;
+
+    await setTelegramWebhook(telegramConfig.botToken, finalWebhookUrl);
+    if (normalizedCommands.length > 0) {
+      await setTelegramCommands(telegramConfig.botToken, normalizedCommands);
+    }
+
+    await logAction(req.session.adminId, 'SYNC_TELEGRAM_BOT', 'settings', null, { webhookUrl: finalWebhookUrl }, req);
+
+    res.json({ success: true, message: 'Bot 同步完成', webhookUrl: finalWebhookUrl });
+  } catch (error) {
+    logger.error('同步 Bot 失败', { error: error.message });
+    res.status(500).json({ success: false, message: `同步失败: ${error.message}` });
+  }
+});
+
+/**
+ * POST /api/admin/telegram/bot-ai-test
+ * 测试 AI 接入配置
+ */
+router.post('/telegram/bot-ai-test', async (req, res) => {
+  try {
+    const ai = req.body?.ai || req.body?.config?.ai;
+    if (!ai || typeof ai !== 'object') {
+      return res.status(400).json({ success: false, message: 'AI 配置无效' });
+    }
+    const prompt = '请回复一句简短的中文测试语句，表明连接成功。';
+    const text = await testAiConfig(ai, prompt);
+    if (!text) {
+      return res.status(500).json({ success: false, message: 'AI 返回为空，请检查模型与接口。' });
+    }
+    res.json({ success: true, text });
+  } catch (error) {
+    logger.error('AI 测试失败', { error: error.message });
+    res.status(500).json({ success: false, message: `AI 测试失败: ${error.message}` });
+  }
+});
+
+/**
  * GET /api/admin/security/blocked-ips
  * Get list of blocked IP addresses
  * @returns {Object} List of blocked IPs with details
@@ -5305,6 +5405,62 @@ router.get('/security/blocked-ips', async (req, res) => {
   } catch (error) {
     logger.error('获取被锁定IP列表失败', { error: error.message });
     res.status(500).json({ success: false, message: '获取被锁定IP列表失败' });
+  }
+});
+
+/**
+ * POST /api/admin/security/blocked-ips/:ip/block
+ * Block an IP address (blacklist)
+ * @param {string} ip - IP address
+ * @returns {Object} Success message
+ */
+router.post('/security/blocked-ips/:ip/block', async (req, res) => {
+  const { ip } = req.params;
+  if (!ip) {
+    return res.status(400).json({ success: false, message: 'IP address is required' });
+  }
+
+  try {
+    const now = new Date();
+    const blockedUntilDate = new Date(now);
+    blockedUntilDate.setFullYear(blockedUntilDate.getFullYear() + 10);
+    const blockedUntilStr = `${blockedUntilDate.getFullYear()}-${String(blockedUntilDate.getMonth() + 1).padStart(2, '0')}-${String(blockedUntilDate.getDate()).padStart(2, '0')} ${String(blockedUntilDate.getHours()).padStart(2, '0')}:${String(blockedUntilDate.getMinutes()).padStart(2, '0')}:${String(blockedUntilDate.getSeconds()).padStart(2, '0')}`;
+
+    const attempt = await getAsync(
+      'SELECT * FROM ip_login_attempts WHERE ip_address = ?',
+      [ip]
+    );
+
+    await beginTransaction();
+
+    if (attempt) {
+      await runAsync(
+        `UPDATE ip_login_attempts 
+         SET blocked_until = ?, last_attempt_at = datetime('now', 'localtime'), updated_at = datetime('now', 'localtime')
+         WHERE ip_address = ?`,
+        [blockedUntilStr, ip]
+      );
+    } else {
+      await runAsync(
+        `INSERT INTO ip_login_attempts (ip_address, failed_count, blocked_until, first_attempt_at, last_attempt_at, created_at, updated_at)
+         VALUES (?, 0, ?, datetime('now', 'localtime'), datetime('now', 'localtime'), datetime('now', 'localtime'), datetime('now', 'localtime'))`,
+        [ip, blockedUntilStr]
+      );
+    }
+
+    await logAction(req.session.adminId, 'BLOCK_IP', 'system', null, {
+      ipAddress: ip,
+      blockedUntil: blockedUntilStr
+    }, req);
+
+    await commit();
+
+    logger.info('IP地址已加入黑名单', { ip, blockedUntil: blockedUntilStr });
+    res.json({ success: true, message: 'IP address blocked successfully', blockedUntil: blockedUntilStr });
+  } catch (error) {
+    await rollback();
+    logger.error('拉黑IP失败', { error: error.message, ip });
+    res.status(500).json({ success: false, message: error.message || 'Failed to block IP address' });
   }
 });
 

@@ -1742,6 +1742,55 @@ async function updateBlogPost(postId, postData) {
     // 记录需要清理的旧文件
     const filesToCleanup = [];
     
+    const protectedUrls = new Set();
+    const currentImageUrl = postData.image !== undefined ? postData.image : post.image;
+    if (currentImageUrl) {
+      protectedUrls.add(currentImageUrl);
+    }
+    
+    const normalizeCarouselImages = (value) => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value.filter(Boolean);
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return [];
+        try {
+          const parsed = JSON.parse(trimmed);
+          return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+        } catch (e) {
+          return trimmed.split(',').map((item) => item.trim()).filter(Boolean);
+        }
+      }
+      return [];
+    };
+    
+    const addProtectedCarouselUrls = (value) => {
+      const urls = normalizeCarouselImages(value);
+      for (const url of urls) {
+        protectedUrls.add(url);
+      }
+    };
+    
+    const resolveCarouselValue = (key) => {
+      if (Object.prototype.hasOwnProperty.call(postData, key)) {
+        return postData[key];
+      }
+      if (customFields && Object.prototype.hasOwnProperty.call(customFields, key)) {
+        return customFields[key];
+      }
+      return undefined;
+    };
+    
+    const carouselFieldKeys = ['carouselImages', 'imageList', 'images'];
+    for (const key of carouselFieldKeys) {
+      const value = resolveCarouselValue(key);
+      if (value !== undefined) {
+        addProtectedCarouselUrls(value);
+      }
+    }
+
+    let newHtmlMediaUrls = null;
+
     if (postData.htmlContent !== undefined) {
       // 如果HTML内容改变，需要清理旧内容中的文件
       const oldHtmlContent = post.html_content || '';
@@ -1751,11 +1800,14 @@ async function updateBlogPost(postId, postData) {
         // 提取旧HTML内容中的所有媒体URL
         const oldMediaUrls = extractMediaUrls(oldHtmlContent);
         // 提取新HTML内容中的所有媒体URL
-        const newMediaUrls = extractMediaUrls(newHtmlContent);
+        newHtmlMediaUrls = extractMediaUrls(newHtmlContent);
         
         // 找出不再使用的文件
         for (const oldUrl of oldMediaUrls) {
-          if (!newMediaUrls.includes(oldUrl)) {
+          if (protectedUrls.has(oldUrl)) {
+            continue;
+          }
+          if (!newHtmlMediaUrls.includes(oldUrl)) {
             const oldPath = urlToLocalPath(oldUrl);
             if (oldPath) {
               filesToCleanup.push(oldPath);
@@ -1771,9 +1823,14 @@ async function updateBlogPost(postId, postData) {
     if (postData.image !== undefined) {
       // 如果图片改变，需要清理旧图片
       if (post.image && post.image !== postData.image) {
-        const oldImagePath = urlToLocalPath(post.image);
-        if (oldImagePath) {
-          filesToCleanup.push(oldImagePath);
+        const oldImageUrl = post.image;
+        if (newHtmlMediaUrls && newHtmlMediaUrls.includes(oldImageUrl)) {
+          // 旧封面仍在内容中引用，跳过清理
+        } else {
+          const oldImagePath = urlToLocalPath(oldImageUrl);
+          if (oldImagePath) {
+            filesToCleanup.push(oldImagePath);
+          }
         }
       }
       

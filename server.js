@@ -9,8 +9,10 @@ const https = require('https');
 
 const { initData } = require('./db/init');
 const { logger } = require('./utils/logger');
-const { closeDatabase } = require('./db/database');
+const { sendTelegramIfEnabled, escapeTelegramHtml, sendBotWelcomeToAuthorizedGroups } = require('./utils/telegram');
+const { closeDatabase, getAsync, runAsync } = require('./db/database');
 const monitoringMiddleware = require('./middleware/monitoring');
+const telegramRoutes = require('./routes/telegram');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -175,6 +177,47 @@ if (process.env.SESSION_STORE === 'sqlite') {
 }
 
 app.use(session(sessionConfig));
+
+// IP 黑名单拦截（全局）
+const ipBlockCache = new Map();
+const IP_BLOCK_CACHE_TTL_MS = 60 * 1000;
+
+async function isIpBlocked(ipAddress) {
+  if (!ipAddress) return false;
+  const now = Date.now();
+  const cached = ipBlockCache.get(ipAddress);
+  if (cached && cached.expiresAt > now) {
+    return cached.blocked;
+  }
+
+  const row = await getAsync(
+    `SELECT blocked_until FROM ip_login_attempts 
+     WHERE ip_address = ? 
+       AND blocked_until IS NOT NULL 
+       AND blocked_until > datetime('now', 'localtime')`,
+    [ipAddress]
+  );
+  const blocked = Boolean(row);
+  ipBlockCache.set(ipAddress, { blocked, expiresAt: now + IP_BLOCK_CACHE_TTL_MS });
+  return blocked;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    const ipAddress = req.ip;
+    const blocked = await isIpBlocked(ipAddress);
+    if (blocked) {
+      logger.warn('Blocked request from blacklisted IP', { ip: ipAddress, path: req.path });
+      if (req.path.startsWith('/api')) {
+        return res.status(403).json({ success: false, message: 'IP blocked' });
+      }
+      return res.status(403).send('Your IP has been blocked.');
+    }
+  } catch (error) {
+    logger.error('IP block check failed', { error: error.message });
+  }
+  return next();
+});
 
 // 性能监控中间件（放在session之后，路由之前）
 app.use(monitoringMiddleware);
@@ -426,6 +469,7 @@ const blogAdminRoutes = require('./routes/blog-admin');
 const ttsRoutes = require('./routes/tts');
 
 // 注册路由
+app.use('/api/telegram', apiLimiter, telegramRoutes);
 app.use('/api/auth', loginLimiter, authRoutes);
 app.use('/api/admin', adminApiLimiter, adminRoutes); // 使用更宽松的管理员API限流器
 app.use('/api/user', apiLimiter, userRoutes);
@@ -583,13 +627,46 @@ process.on('unhandledRejection', (reason, promise) => {
 // 初始化数据库并启动服务器
 let server;
 
+function notifyServerStart(protocol, host, port) {
+  const startedAt = new Date().toLocaleString('en-US');
+  const env = process.env.NODE_ENV || 'development';
+  const portSuffix = port === 443 ? '' : `:${port}`;
+  const adminUrl = `${protocol}://${host}${portSuffix}/admin.html`;
+  const userUrl = `${protocol}://${host}${portSuffix}/index.html`;
+  const message = [
+    '<b>System Restarted</b>',
+    `Time: ${escapeTelegramHtml(startedAt)}`,
+    `Env: ${escapeTelegramHtml(env)}`,
+    `Host: ${escapeTelegramHtml(host)}`,
+    `Protocol: ${escapeTelegramHtml(protocol)}`,
+    `Admin: ${escapeTelegramHtml(adminUrl)}`,
+    `User: ${escapeTelegramHtml(userUrl)}`
+  ].join('\n');
+  void sendTelegramIfEnabled(message);
+}
+
 async function startServer() {
   try {
     await initData();
+
+    // 记录最近一次重启时间
+    try {
+      await runAsync(
+        `INSERT INTO settings (key, value, updated_at)
+         VALUES ('last_restart_at', ?, datetime('now', 'localtime'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now', 'localtime')`,
+        [new Date().toISOString()]
+      );
+    } catch (error) {
+      logger.warn('记录重启时间失败', { error: error.message });
+    }
     
     // 启动定时任务调度器
     const { startScheduler } = require('./utils/scheduler');
     startScheduler();
+
+    // 启动时给授权群组发送 Bot 欢迎菜单
+    void sendBotWelcomeToAuthorizedGroups();
     
     // 检查是否使用本地 HTTPS（仅本地开发环境）
     // 在 Fly.io 或其他生产环境上，FLY_APP_NAME 会被设置，跳过本地 HTTPS 检查
@@ -675,6 +752,7 @@ async function startServer() {
             console.log(`🛒 用户端: https://${HOST}${portSuffix}/index.html`);
             console.log(`📝 默认管理员: admin / admin123`);
             console.log(`=================================\n`);
+            notifyServerStart('https', HOST, port);
           });
           
           return httpsServer;
@@ -697,6 +775,7 @@ async function startServer() {
           console.log(`🛒 用户端: http://${HOST}:${PORT}/index.html`);
           console.log(`📝 默认管理员: admin / admin123`);
           console.log(`=================================\n`);
+          notifyServerStart('http', HOST, PORT);
         });
       }
     } else {
@@ -711,6 +790,7 @@ async function startServer() {
         console.log(`🛒 用户端: ${protocol}://${HOST}:${PORT}/index.html`);
         console.log(`📝 默认管理员: admin / admin123`);
         console.log(`=================================\n`);
+        notifyServerStart(protocol.startsWith('https') ? 'https' : 'http', HOST, PORT);
       });
     }
   } catch (error) {

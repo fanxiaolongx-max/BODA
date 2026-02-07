@@ -1,6 +1,6 @@
 // 定时任务调度器（已禁用自动开放时间功能，只保留手动控制）
 const { logger } = require('./logger');
-const { allAsync, getAsync } = require('../db/database');
+const { allAsync, getAsync, runAsync } = require('../db/database');
 const { shouldPushNow, pushBackupToRemote } = require('./remote-backup');
 const { fetchExchangeRates } = require('./exchange-rate-fetcher');
 const { updateExchangeRateAPI } = require('./exchange-rate-updater');

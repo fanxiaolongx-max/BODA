@@ -334,6 +334,30 @@
     #logsTab tbody tr:hover {
       background-color: #f9fafb !important; /* gray-50 */
     }
+    .bot-tree-node {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.75rem;
+      padding: 0.75rem;
+    }
+    .bot-tree-node.dragging {
+      opacity: 0.5;
+    }
+    .bot-tree-dropzone {
+      height: 10px;
+      border-radius: 6px;
+      background: transparent;
+    }
+    .bot-tree-dropzone.drop-target {
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px dashed rgba(59, 130, 246, 0.6);
+    }
+    .bot-tree-handle {
+      cursor: grab;
+      color: #9ca3af;
+      font-size: 0.875rem;
+      user-select: none;
+    }
   </style>
 </head>
 <body class="bg-gray-50">
@@ -441,6 +465,9 @@
           </a>
           <a href="#" onclick="switchTab('api-management')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
             🔌 <span data-i18n="api_management">API Management</span>
+          </a>
+          <a href="#" onclick="switchTab('bot-menu')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
+            🤖 <span data-i18n="bot_menu">Bot Menu</span>
           </a>
           <a href="#" onclick="switchTab('about')" class="sidebar-item block px-4 py-3 rounded-lg text-gray-700 transition">
             ℹ️ <span data-i18n="about">About</span>
@@ -895,6 +922,7 @@
             </div>
           </div>
         </div>
+        <div id="bot-menuTab" class="tab-content hidden"></div>
         <div id="aboutTab" class="tab-content hidden"></div>
         <div id="developerTab" class="tab-content hidden" style="font-size: 12px;">
           <!-- 标签切换 -->

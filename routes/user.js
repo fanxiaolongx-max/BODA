@@ -8,10 +8,18 @@ const { runAsync, getAsync, allAsync, beginTransaction, commit, rollback } = req
 const { requireUserAuth } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
 const { logger } = require('../utils/logger');
+const { sendTelegramIfEnabled, escapeTelegramHtml } = require('../utils/telegram');
 const { findOrderCycle, findOrderCyclesBatch, isActiveCycle, isOrderExpired } = require('../utils/cycle-helper');
 const { calculateItemPrice, batchGetToppingProducts, batchGetOrderItems, roundAmount } = require('../utils/order-helper');
 
 const router = express.Router();
+
+function maskPhone(phone) {
+  const value = String(phone || '');
+  if (!value) return '-';
+  if (value.length <= 4) return '****';
+  return `${value.slice(0, 2)}****${value.slice(-4)}`;
+}
 
 // ==================== Stripe 配置管理 ====================
 /**
@@ -133,6 +141,13 @@ router.post('/stripe-webhook', express.raw({ type: 'application/json' }), async 
                 orderId: orderId, 
                 paymentIntentId: paymentIntent.id 
               });
+              const message = [
+                '<b>Payment Succeeded (Stripe)</b>',
+                `Order: ${escapeTelegramHtml(order.order_number || orderId)}`,
+                `Amount: ${escapeTelegramHtml(order.final_amount ?? order.total_amount ?? '-')}`,
+                `Customer: ${escapeTelegramHtml(maskPhone(order.customer_phone))}`
+              ].join('\n');
+              void sendTelegramIfEnabled(message);
             } else {
               logger.warn('Stripe Webhook: 支付金额不匹配', { 
                 orderId: orderId,
@@ -679,6 +694,21 @@ router.post('/orders', async (req, res) => {
         balanceUsed,
         orderStatus
       });
+      
+      const customerName = customer_name || req.session.userName || '-';
+      const orderTypeLabel = finalOrderType === 'dine_in' ? 'dine-in' : 'delivery';
+      const orderMessage = [
+        '<b>New Order</b>',
+        `Order: ${escapeTelegramHtml(orderNumber)}`,
+        `Amount: ${escapeTelegramHtml(finalAmount)}`,
+        `Status: ${escapeTelegramHtml(orderStatus)}`,
+        `Type: ${escapeTelegramHtml(orderTypeLabel)}`,
+        `Customer: ${escapeTelegramHtml(customerName)} (${escapeTelegramHtml(maskPhone(req.session.userPhone))})`,
+        finalOrderType === 'dine_in' && table_number ? `Table: ${escapeTelegramHtml(table_number)}` : null,
+        finalOrderType === 'delivery' && delivery_address_id ? `Delivery Address ID: ${escapeTelegramHtml(delivery_address_id)}` : null,
+        `Items: ${escapeTelegramHtml(orderItems.length)}`
+      ].filter(Boolean).join('\n');
+      void sendTelegramIfEnabled(orderMessage);
 
       res.json({ 
         success: true, 
@@ -1350,6 +1380,13 @@ router.post('/orders/:id/payment', upload.single('payment_image'), async (req, r
     );
 
     logger.info('付款截图上传成功', { orderId: id, userId: req.session.userId });
+    const paymentMessage = [
+      '<b>Payment Screenshot Uploaded</b>',
+      `Order: ${escapeTelegramHtml(order.order_number || id)}`,
+      `Amount: ${escapeTelegramHtml(order.final_amount ?? order.total_amount ?? '-')}`,
+      `Customer: ${escapeTelegramHtml(maskPhone(order.customer_phone))}`
+    ].join('\n');
+    void sendTelegramIfEnabled(paymentMessage);
 
     res.json({ 
       success: true, 
@@ -1585,6 +1622,14 @@ router.post('/orders/:id/confirm-stripe-payment', async (req, res) => {
       orderId: id, 
       paymentIntentId: paymentIntentId 
     });
+    const message = [
+      '<b>Payment Succeeded (Stripe)</b>',
+      `Order: ${escapeTelegramHtml(order.order_number || id)}`,
+      `Amount: ${escapeTelegramHtml(order.final_amount ?? order.total_amount ?? '-')}`,
+      `Customer: ${escapeTelegramHtml(maskPhone(order.customer_phone))}`,
+      `Payment Intent: ${escapeTelegramHtml(paymentIntentId)}`
+    ].join('\n');
+    void sendTelegramIfEnabled(message);
     
     res.json({ 
       success: true, 
@@ -1792,4 +1837,3 @@ User ID / 用户ID: ${user.id}
 });
 
 module.exports = router;
-

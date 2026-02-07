@@ -4315,6 +4315,24 @@
                 </div>
               </div>
               
+              <!-- 轮播图卡片 -->
+              <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <label class="admin-form-label" style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem; display: block;">轮播图</label>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                  <div style="display: flex; gap: 0.5rem;">
+                    <input type="text" id="carouselImageUrlInput" class="admin-form-input" placeholder="粘贴图片URL后点击添加" style="padding: 0.5rem; font-size: 0.875rem; flex: 1;">
+                    <button type="button" class="blog-btn blog-btn-secondary" onclick="addCarouselImageFromUrl()" style="white-space: nowrap; padding: 0.5rem 0.75rem;">添加</button>
+                  </div>
+                  <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button type="button" class="blog-btn blog-btn-secondary" onclick="document.getElementById('carouselImageUploadInput').click()" style="white-space: nowrap; padding: 0.5rem 0.75rem;">上传图片</button>
+                    <input type="file" id="carouselImageUploadInput" accept="image/*" style="display: none;" onchange="handleCarouselImageUpload(event)">
+                    <span id="carouselUploadStatus" style="font-size: 0.75rem; color: #6b7280;"></span>
+                  </div>
+                  <div id="carouselImagesList" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem;"></div>
+                  <p style="font-size: 0.75rem; color: #6b7280; margin: 0;">支持添加多张图片，保存后用于轮播展示。</p>
+                </div>
+              </div>
+
               <!-- 基本信息卡片 -->
               <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                 <h4 style="font-size: 0.875rem; font-weight: 600; color: #374151; margin: 0 0 1rem 0; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;">基本信息</h4>
@@ -4559,6 +4577,8 @@
   <script>
     const BLOG_ADMIN_API = '/api/blog-admin';
     let wangEditor = null;
+    let carouselImages = [];
+    let carouselFieldKey = 'images';
     let availableApis = [];
     let allPostsData = []; // 存储所有文章数据
     let expandedCategories = new Set(); // 存储已展开的分类
@@ -6171,6 +6191,11 @@
         const imageUrl = post.image || '';
         document.getElementById('postImage').value = imageUrl;
         updateImagePreview(imageUrl);
+        carouselFieldKey = detectCarouselFieldKey(post);
+        const carouselValue = post[carouselFieldKey] !== undefined
+          ? post[carouselFieldKey]
+          : post._originalData?.[carouselFieldKey];
+        setCarouselImages(carouselValue);
         const apiName = post._sourceApiName || post.category || '';
         
         // 提取中文名称用于匹配（API下拉框中的名称格式可能是"中文 英文"）
@@ -6438,6 +6463,8 @@
           wangEditor.setHtml('');
         }
         document.getElementById('fieldMappingInfo').style.display = 'none';
+        carouselFieldKey = 'images';
+        setCarouselImages([]);
       }
       
       form.style.display = 'block';
@@ -8177,6 +8204,8 @@
           category: category, // 分类（用于博客展示）
           published
         };
+
+        requestBody[carouselFieldKey] = Array.isArray(carouselImages) ? carouselImages : [];
         
         // 如果是普通用户且是新建文章，自动填充用户信息（参考小程序API逻辑）
         if (!hasId && !currentAdmin && currentUser) {
@@ -11176,6 +11205,103 @@
         } else {
           previewDiv.style.display = 'none';
         }
+      }
+    }
+
+    function normalizeCarouselImages(value) {
+      if (!value) return [];
+      if (Array.isArray(value)) {
+        return value.filter(Boolean);
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return [];
+        try {
+          const parsed = JSON.parse(trimmed);
+          return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+        } catch (e) {
+          return trimmed.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      }
+      return [];
+    }
+
+    function detectCarouselFieldKey(post) {
+      if (!post) return 'images';
+      if (post.carouselImages !== undefined || post._originalData?.carouselImages !== undefined) return 'carouselImages';
+      if (post.imageList !== undefined || post._originalData?.imageList !== undefined) return 'imageList';
+      if (post.images !== undefined || post._originalData?.images !== undefined) return 'images';
+      return 'images';
+    }
+
+    function setCarouselImages(images) {
+      carouselImages = normalizeCarouselImages(images);
+      renderCarouselImages();
+    }
+
+    function renderCarouselImages() {
+      const list = document.getElementById('carouselImagesList');
+      if (!list) return;
+      if (!carouselImages.length) {
+        list.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 0.75rem; border: 1px dashed #e5e7eb; border-radius: 0.5rem; text-align: center; color: #9ca3af; font-size: 0.75rem;">
+            暂无轮播图
+          </div>
+        `;
+        return;
+      }
+      list.innerHTML = carouselImages.map((url, index) => `
+        <div style="position: relative; border-radius: 0.5rem; overflow: hidden; border: 1px solid #e5e7eb; background: #f9fafb;">
+          <img src="${url}" alt="carousel-${index}" style="width: 100%; height: 120px; object-fit: cover; display: block;">
+          <button type="button" onclick="removeCarouselImage(${index})" style="position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 999px; width: 24px; height: 24px; cursor: pointer; font-size: 14px; line-height: 24px;">×</button>
+        </div>
+      `).join('');
+    }
+
+    function addCarouselImage(url) {
+      const trimmed = (url || '').trim();
+      if (!trimmed) return;
+      if (!carouselImages.includes(trimmed)) {
+        carouselImages.push(trimmed);
+        renderCarouselImages();
+      }
+    }
+
+    function addCarouselImageFromUrl() {
+      const input = document.getElementById('carouselImageUrlInput');
+      if (!input) return;
+      const url = input.value.trim();
+      if (!url) {
+        showToast('请输入图片URL', 'error');
+        return;
+      }
+      addCarouselImage(url);
+      input.value = '';
+    }
+
+    function removeCarouselImage(index) {
+      if (index < 0 || index >= carouselImages.length) return;
+      carouselImages.splice(index, 1);
+      renderCarouselImages();
+    }
+
+    async function handleCarouselImageUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const status = document.getElementById('carouselUploadStatus');
+      if (status) status.textContent = '上传中...';
+      try {
+        const imageUrl = await uploadImageToServer(file);
+        addCarouselImage(imageUrl);
+        if (status) status.textContent = '上传成功';
+      } catch (error) {
+        if (status) status.textContent = '上传失败';
+        showToast('图片上传失败: ' + error.message, 'error');
+      } finally {
+        event.target.value = '';
+        setTimeout(() => {
+          if (status) status.textContent = '';
+        }, 2000);
       }
     }
     

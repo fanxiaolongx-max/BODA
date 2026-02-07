@@ -1,0 +1,383 @@
+{
+  "version": 2,
+  "note": "UI draft only. Not wired to bot yet.",
+  "authorization": {
+    "group_wide": true,
+    "authorized_group_ids": [
+      "-1001234567890"
+    ],
+    "authorized_user_ids": [],
+    "unauthorized_reply": {
+      "en": "This group is not authorized. Please contact admin.",
+      "zh": "当前群组未授权，请联系管理员。"
+    }
+  },
+  "welcome": {
+    "title": {
+      "en": "Welcome to BOBA TEA Admin Bot",
+      "zh": "欢迎使用 BOBA TEA 管理 Bot"
+    },
+    "message": {
+      "en": "Choose a section below to explore admin menus.",
+      "zh": "请选择下方分类进入管理菜单。"
+    },
+    "intro": {
+      "en": "All-in-one admin console for orders, catalog, users, alerts, and system settings.",
+      "zh": "一站式管理控制台，覆盖点单、商品、用户、告警与系统配置。"
+    }
+  },
+  "commands": [
+    {
+      "command": "/start",
+      "description": {
+        "en": "Welcome and show main menu",
+        "zh": "欢迎并展示主菜单"
+      }
+    },
+    {
+      "command": "/menu",
+      "description": {
+        "en": "Show menu buttons",
+        "zh": "展示菜单按钮"
+      }
+    },
+    {
+      "command": "/alerts",
+      "description": {
+        "en": "Show latest alerts summary",
+        "zh": "查看最新告警摘要"
+      }
+    },
+    {
+      "command": "/status",
+      "description": {
+        "en": "Show system status",
+        "zh": "查看系统状态"
+      }
+    },
+    {
+      "command": "/recent_orders",
+      "description": {
+        "en": "Show recent orders",
+        "zh": "查看最近订单"
+      }
+    },
+    {
+      "command": "/recent_users",
+      "description": {
+        "en": "Show recent users",
+        "zh": "查看最近用户"
+      }
+    },
+    {
+      "command": "/help",
+      "description": {
+        "en": "Show help and contact info",
+        "zh": "查看帮助与联系方式"
+      }
+    }
+  ],
+  "display_order": {
+    "primary": "manual_order",
+    "secondary": "menu_level",
+    "tertiary": "localized_label",
+    "fallback": "created_at"
+  },
+  "menu_structure": [
+    {
+      "id": "root",
+      "label": {
+        "en": "Main Menu",
+        "zh": "主菜单"
+      },
+      "order": 1,
+      "children": [
+        {
+          "id": "ops",
+          "label": {
+            "en": "Operations",
+            "zh": "运营管理"
+          },
+          "type": "submenu",
+          "order": 1,
+          "children": [
+            {
+              "title": {
+                "en": "Dashboard",
+                "zh": "概览"
+              },
+              "type": "page",
+              "mapping": "admin/dashboard",
+              "order": 1
+            },
+            {
+              "title": {
+                "en": "System Status",
+                "zh": "系统状态"
+              },
+              "type": "page",
+              "mapping": "admin/system-status",
+              "order": 2
+            },
+            {
+              "title": {
+                "en": "Recent Orders",
+                "zh": "最近订单"
+              },
+              "type": "page",
+              "mapping": "admin/recent-orders",
+              "order": 3
+            },
+            {
+              "title": {
+                "en": "Recent Users",
+                "zh": "最近用户"
+              },
+              "type": "page",
+              "mapping": "admin/recent-users",
+              "order": 4
+            },
+            {
+              "title": {
+                "en": "Orders",
+                "zh": "订单"
+              },
+              "type": "page",
+              "mapping": "admin/orders",
+              "order": 5
+            },
+            {
+              "title": {
+                "en": "Discount Rules",
+                "zh": "优惠规则"
+              },
+              "type": "page",
+              "mapping": "admin/discounts",
+              "order": 6
+            },
+            {
+              "title": {
+                "en": "Cycles / History",
+                "zh": "周期与历史"
+              },
+              "type": "page",
+              "mapping": "admin/orders#cycles",
+              "order": 7
+            }
+          ]
+        },
+        {
+          "id": "catalog",
+          "label": {
+            "en": "Catalog",
+            "zh": "商品与菜单"
+          },
+          "type": "submenu",
+          "order": 2,
+          "children": [
+            {
+              "title": {
+                "en": "Products",
+                "zh": "商品"
+              },
+              "type": "page",
+              "mapping": "admin/products",
+              "order": 1
+            },
+            {
+              "title": {
+                "en": "Categories",
+                "zh": "分类"
+              },
+              "type": "page",
+              "mapping": "admin/categories",
+              "order": 2
+            },
+            {
+              "title": {
+                "en": "Showcase Images",
+                "zh": "展示图"
+              },
+              "type": "page",
+              "mapping": "admin/showcase-images",
+              "order": 3
+            },
+            {
+              "title": {
+                "en": "Dine-In QR",
+                "zh": "堂食二维码"
+              },
+              "type": "page",
+              "mapping": "admin/dine-in-qr",
+              "order": 4
+            }
+          ]
+        },
+        {
+          "id": "users",
+          "label": {
+            "en": "Users",
+            "zh": "用户与余额"
+          },
+          "type": "submenu",
+          "order": 3,
+          "children": [
+            {
+              "title": {
+                "en": "Users",
+                "zh": "用户"
+              },
+              "type": "page",
+              "mapping": "admin/users",
+              "order": 1
+            },
+            {
+              "title": {
+                "en": "Balance",
+                "zh": "余额"
+              },
+              "type": "page",
+              "mapping": "admin/balance",
+              "order": 2
+            },
+            {
+              "title": {
+                "en": "Delivery Addresses",
+                "zh": "配送地址"
+              },
+              "type": "page",
+              "mapping": "admin/delivery-addresses",
+              "order": 3
+            }
+          ]
+        },
+        {
+          "id": "security",
+          "label": {
+            "en": "Security & Alerts",
+            "zh": "安全与告警"
+          },
+          "type": "submenu",
+          "order": 4,
+          "children": [
+            {
+              "id": "alerts",
+              "label": {
+                "en": "Alerts",
+                "zh": "告警中心"
+              },
+              "type": "submenu",
+              "order": 1,
+              "children": [
+                {
+                  "title": {
+                    "en": "High-Risk Alerts",
+                    "zh": "高危告警"
+                  },
+                  "type": "page",
+                  "mapping": "admin/security-alerts",
+                  "order": 1
+                },
+                {
+                  "title": {
+                    "en": "IP Blocklist",
+                    "zh": "IP 黑名单"
+                  },
+                  "type": "page",
+                  "mapping": "admin/security-alerts#blocked-ips",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "title": {
+                "en": "Logs",
+                "zh": "日志"
+              },
+              "type": "page",
+              "mapping": "admin/logs",
+              "order": 2
+            }
+          ]
+        },
+        {
+          "id": "system",
+          "label": {
+            "en": "System",
+            "zh": "系统设置"
+          },
+          "type": "submenu",
+          "order": 5,
+          "children": [
+            {
+              "title": {
+                "en": "Settings",
+                "zh": "系统设置"
+              },
+              "type": "page",
+              "mapping": "admin/settings",
+              "order": 1
+            },
+            {
+              "title": {
+                "en": "API Management",
+                "zh": "API 管理"
+              },
+              "type": "page",
+              "mapping": "admin/api-management",
+              "order": 2
+            },
+            {
+              "title": {
+                "en": "Bot Menu",
+                "zh": "Bot 菜单"
+              },
+              "type": "page",
+              "mapping": "admin/bot-menu",
+              "order": 3
+            },
+            {
+              "title": {
+                "en": "About",
+                "zh": "关于"
+              },
+              "type": "page",
+              "mapping": "admin/about",
+              "order": 4
+            }
+          ]
+        },
+        {
+          "id": "admin",
+          "label": {
+            "en": "Administration",
+            "zh": "管理员"
+          },
+          "type": "submenu",
+          "order": 6,
+          "children": [
+            {
+              "title": {
+                "en": "Admins",
+                "zh": "管理员"
+              },
+              "type": "page",
+              "mapping": "admin/admins",
+              "order": 1
+            },
+            {
+              "title": {
+                "en": "Developer",
+                "zh": "开发者"
+              },
+              "type": "page",
+              "mapping": "admin/developer",
+              "order": 2
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "menu_items": []
+}
