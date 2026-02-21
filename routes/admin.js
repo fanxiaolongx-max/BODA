@@ -7,7 +7,12 @@ const https = require('https');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
-const ffmpeg = require('fluent-ffmpeg');
+let ffmpeg;
+try {
+  ffmpeg = require('fluent-ffmpeg');
+} catch (e) {
+  ffmpeg = null; // 未安装时仅影响视频相关功能
+}
 
 // 支持 fly.io 持久化卷
 const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
@@ -9508,6 +9513,9 @@ router.post('/custom-apis/upload-image', requireAuth, customApiImageUpload.singl
  */
 function convertVideoToMp4(inputPath, outputPath, onProgress) {
   return new Promise((resolve, reject) => {
+    if (!ffmpeg) {
+      return reject(new Error('未安装 fluent-ffmpeg，请执行 npm install fluent-ffmpeg'));
+    }
     // 检查ffmpeg是否可用
     ffmpeg.ffprobe(inputPath, (err, metadata) => {
       if (err) {
@@ -9590,6 +9598,9 @@ function convertVideoToMp4(inputPath, outputPath, onProgress) {
  */
 function extractVideoFirstFrame(videoPath, outputPath) {
   return new Promise((resolve, reject) => {
+    if (!ffmpeg) {
+      return reject(new Error('未安装 fluent-ffmpeg，请执行 npm install fluent-ffmpeg'));
+    }
     // 确保输出目录存在
     const outputDir = path.dirname(outputPath);
     if (!fs.existsSync(outputDir)) {
@@ -9765,6 +9776,11 @@ router.post('/custom-apis/upload-video', requireAuth, customApiVideoUpload.singl
         } else {
           // 已经是MP4，检查是否需要重新编码以确保兼容性
           try {
+            if (!ffmpeg) {
+              // 未安装 ffmpeg，直接使用原文件
+              finalFilename = outputFilename;
+              finalPath = outputPath;
+            } else {
             task.progress = {
               stage: 'checking',
               percent: 20,
@@ -9816,6 +9832,7 @@ router.post('/custom-apis/upload-video', requireAuth, customApiVideoUpload.singl
                 }
               });
             });
+            }
           } catch (conversionError) {
             logger.warn('MP4视频编码检查/转换失败，使用原始文件', { 
               error: conversionError.message 
