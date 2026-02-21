@@ -59,7 +59,7 @@
       z-index: 0;
       pointer-events: none;
       overflow: hidden;
-      background: linear-gradient(180deg, #fef9f3 0%, #fff 50%, #f9fafb 100%);
+      background: linear-gradient(180deg, #f9fafb 0%, #ffffff 55%, #f5f7fa 100%);
     }
     
     /* 金字塔装饰 */
@@ -151,7 +151,7 @@
   <div class="particles-background" id="particles"></div>
 
   <!-- 导航栏 -->
-  <nav class="blog-nav" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid #e5e7eb;">
+  <nav class="blog-nav blog-nav-glass">
     <div class="blog-nav-content" style="max-width: 1600px; margin: 0 auto; padding: 0 1rem;">
       <a href="/blog.html" class="blog-logo" style="font-size: 1.25rem; font-weight: 700;">
         <div class="blog-logo-icon">
@@ -164,7 +164,7 @@
         <span>PRO<span style="background: linear-gradient(to right, #d97706, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">EG</span></span>
       </a>
       <div class="blog-nav-actions" style="display: flex; align-items: center; gap: 0.75rem;">
-        <div class="blog-search" style="max-width: 300px;">
+        <div class="blog-search blog-search-glass" style="max-width: 300px;">
           <input 
             type="text" 
             class="blog-search-input" 
@@ -203,8 +203,8 @@
   </nav>
 
   <!-- 登录模态框 -->
-  <div id="blogLoginModal" class="blog-modal" style="display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;" onclick="closeBlogLoginModal(event)">
-    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); max-width: 28rem; width: 100%; margin: 1rem; padding: 2rem; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+  <div id="blogLoginModal" class="blog-modal blog-modal-glass" style="display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; align-items: center; justify-content: center;" onclick="closeBlogLoginModal(event)">
+    <div class="blog-modal-card" style="max-width: 28rem; width: 100%; margin: 1rem; padding: 2rem; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
       <div style="text-align: center; margin-bottom: 1.5rem;">
         <h2 style="font-size: 1.5rem; font-weight: 700; color: #111827; margin-bottom: 0.5rem;">登录</h2>
         <p style="color: #6b7280;">请输入您的手机号、姓名和PIN码</p>

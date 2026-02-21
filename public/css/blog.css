@@ -17,6 +17,24 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
+/* 玻璃拟态基础变量 */
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-strong: rgba(255, 255, 255, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  --glass-blur: 16px;
+}
+
+/* 通用毛玻璃卡片 */
+.blog-glass-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
 /* 导航栏 */
 .blog-nav {
   position: sticky;
@@ -26,6 +44,14 @@
   border-bottom: 1px solid rgba(229, 231, 235, 0.6);
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(12px);
+}
+
+.blog-nav-glass {
+  background: rgba(255, 255, 255, 0.78);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 .blog-nav-content {
@@ -77,6 +103,14 @@
   border-radius: 0.5rem;
   font-size: 0.875rem;
   width: 200px;
+}
+
+.blog-search-glass .blog-search-input {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .blog-search-input:focus {
@@ -351,14 +385,17 @@
   gap: 1rem;
   padding: 1rem;
   border-radius: 1.5rem;
-  background: white;
-  border: 1px solid #f5f5f5;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   transition: all 0.3s;
   animation: fadeIn 0.3s ease-in;
 }
 
 .blog-post-card:hover {
+  background: var(--glass-bg-strong);
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
@@ -581,8 +618,13 @@
 
 /* 分类卡片 */
 .blog-taxonomy-card {
-  background: transparent;
-  padding: 0;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  padding: 1rem;
+  border-radius: 1rem;
 }
 
 .blog-taxonomy-title {
@@ -707,7 +749,7 @@
 /* 文章详情页 */
 .blog-detail-page {
   min-height: 100vh;
-  background: white;
+  background: linear-gradient(180deg, #f9fafb 0%, #ffffff 55%, #f5f7fa 100%);
   padding-bottom: 5rem;
 }
 
@@ -722,6 +764,22 @@
   display: flex;
   align-items: center;
   z-index: 40;
+}
+
+/* 登录弹窗玻璃拟态 */
+.blog-modal {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.blog-modal-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .blog-detail-back {
@@ -742,8 +800,14 @@
 .blog-detail-article {
   max-width: 48rem;
   margin: 0 auto;
-  padding: 3rem 1rem;
+  padding: 2.5rem 2rem;
   position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 1.25rem;
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .blog-detail-header {
@@ -945,9 +1009,13 @@
 }
 
 .blog-comment-form {
-  background: #f9fafb;
+  background: var(--glass-bg);
   padding: 1.5rem;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   margin-bottom: 2rem;
 }
 
@@ -984,9 +1052,12 @@
 
 .blog-comment {
   padding: 1rem;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.05));
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .blog-comment-author {

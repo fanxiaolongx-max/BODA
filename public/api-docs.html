@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Documentation - BODA</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --panel: rgba(255, 255, 255, 0.86);
+      --border: rgba(148, 163, 184, 0.3);
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #9333ea;
+      --accent-soft: rgba(147, 51, 234, 0.12);
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 800px at 10% -10%, #e2e8f0 0%, transparent 60%),
+                  radial-gradient(900px 600px at 90% 0%, #ede9fe 0%, transparent 55%),
+                  var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+    }
+
+    html, body {
+      width: 100%;
+      max-width: 100vw;
+      overflow-x: hidden;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(16px);
+      background: rgba(255, 255, 255, 0.75);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      justify-content: space-between;
+    }
+
+    header .title {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+
+    header .links a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      margin-left: 1rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+      display: grid;
+      gap: 2rem;
+      width: 100%;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      padding: 1.5rem;
+      min-width: 0;
+    }
+
+    .panel h2 {
+      margin: 0 0 1rem 0;
+      font-size: 1.2rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .form-grid .full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.9);
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+
+    textarea { min-height: 120px; font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    button {
+      background: linear-gradient(135deg, #9333ea 0%, #a855f7 100%);
+      color: white;
+      border: none;
+      padding: 0.6rem 1rem;
+      border-radius: 999px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 10px 20px rgba(147, 51, 234, 0.25);
+    }
+
+    button.secondary {
+      background: white;
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    .response {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 1rem;
+      border-radius: 12px;
+      font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9rem;
+      max-height: 400px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .muted { color: var(--muted); font-size: 0.9rem; }
+
+    .markdown {
+      line-height: 1.7;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+
+    .markdown h1, .markdown h2, .markdown h3 {
+      margin-top: 1.8rem;
+    }
+
+    .markdown pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 1rem;
+      border-radius: 12px;
+      overflow: auto;
+      max-width: 100%;
+    }
+
+    .markdown code {
+      background: rgba(148, 163, 184, 0.2);
+      padding: 0.15rem 0.35rem;
+      border-radius: 6px;
+      font-size: 0.92em;
+      word-break: break-word;
+    }
+
+    .markdown pre code {
+      background: transparent;
+      padding: 0;
+    }
+
+    @media (max-width: 900px) {
+      .form-grid { grid-template-columns: 1fr; }
+      header { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="title">BODA API Documentation</div>
+    <div class="links">
+      <a href="/admin.html" target="_blank" rel="noopener noreferrer">管理后台</a>
+      <a href="/blog-admin.html" target="_blank" rel="noopener noreferrer">博客管理</a>
+      <a href="/blog.html" target="_blank" rel="noopener noreferrer">博客前台</a>
+    </div>
+  </header>
+
+  <div class="container">
+    <section class="panel">
+      <h2>API 调试台</h2>
+      <p class="muted">支持自定义请求头、Cookie Session、Token 调试。</p>
+      <div class="form-grid">
+        <div>
+          <label for="method">Method</label>
+          <select id="method">
+            <option>GET</option>
+            <option>POST</option>
+            <option>PUT</option>
+            <option>PATCH</option>
+            <option>DELETE</option>
+          </select>
+        </div>
+        <div>
+          <label for="url">URL</label>
+          <input id="url" placeholder="/api/blog/posts" />
+        </div>
+        <div>
+          <label for="apiToken">X-API-Token (可选)</label>
+          <input id="apiToken" placeholder="API Token" />
+        </div>
+        <div>
+          <label for="userToken">X-User-Token (可选)</label>
+          <input id="userToken" placeholder="User Token" />
+        </div>
+        <div class="full">
+          <label for="authHeader">Authorization (可选)</label>
+          <input id="authHeader" placeholder="Bearer xxx" />
+        </div>
+        <div class="full">
+          <label for="headers">额外请求头 (JSON)</label>
+          <textarea id="headers" placeholder='{"X-Debug":"1"}'></textarea>
+        </div>
+        <div class="full">
+          <label for="body">请求体 (JSON)</label>
+          <textarea id="body" placeholder='{"key":"value"}'></textarea>
+        </div>
+        <div class="full actions">
+          <button id="sendBtn">发送请求</button>
+          <label class="muted"><input type="checkbox" id="withCredentials" checked /> 携带 Cookie (Session)</label>
+        </div>
+      </div>
+      <div style="margin-top: 1rem;">
+        <div class="muted" id="status">尚未发送请求</div>
+        <div class="response" id="response"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>API 文档</h2>
+      <div class="markdown" id="markdown">加载中...</div>
+    </section>
+  </div>
+
+  <script>
+    const responseEl = document.getElementById('response');
+    const statusEl = document.getElementById('status');
+
+    function formatResponse(text) {
+      try {
+        const json = JSON.parse(text);
+        return JSON.stringify(json, null, 2);
+      } catch (e) {
+        return text;
+      }
+    }
+
+    document.getElementById('sendBtn').addEventListener('click', async () => {
+      const method = document.getElementById('method').value;
+      const urlInput = document.getElementById('url').value.trim();
+      const apiToken = document.getElementById('apiToken').value.trim();
+      const userToken = document.getElementById('userToken').value.trim();
+      const authHeader = document.getElementById('authHeader').value.trim();
+      const headersText = document.getElementById('headers').value.trim();
+      const bodyText = document.getElementById('body').value.trim();
+      const withCredentials = document.getElementById('withCredentials').checked;
+
+      if (!urlInput) {
+        statusEl.textContent = '请填写 URL';
+        return;
+      }
+
+      const url = urlInput.startsWith('http') ? urlInput : `${location.origin}${urlInput}`;
+
+      let headers = {};
+      if (apiToken) headers['X-API-Token'] = apiToken;
+      if (userToken) headers['X-User-Token'] = userToken;
+      if (authHeader) headers['Authorization'] = authHeader;
+
+      if (headersText) {
+        try {
+          const extra = JSON.parse(headersText);
+          headers = { ...headers, ...extra };
+        } catch (e) {
+          statusEl.textContent = '额外请求头必须是有效 JSON';
+          return;
+        }
+      }
+
+      const options = {
+        method,
+        headers,
+        credentials: withCredentials ? 'include' : 'omit'
+      };
+
+      if (bodyText && method !== 'GET') {
+        options.body = bodyText;
+        if (!headers['Content-Type']) {
+          headers['Content-Type'] = 'application/json';
+        }
+      }
+
+      statusEl.textContent = '请求中...';
+      responseEl.textContent = '';
+
+      const start = performance.now();
+      try {
+        const res = await fetch(url, options);
+        const text = await res.text();
+        const duration = Math.round(performance.now() - start);
+        statusEl.textContent = `状态: ${res.status} ${res.statusText} | 耗时: ${duration}ms`;
+        responseEl.textContent = formatResponse(text);
+      } catch (err) {
+        statusEl.textContent = '请求失败';
+        responseEl.textContent = err.message || String(err);
+      }
+    });
+
+    function slugifyHeading(text) {
+      const cleaned = text
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\u4e00-\u9fa5\s-]/g, '')
+        .replace(/\s+/g, '-');
+      return cleaned;
+    }
+
+    function applyHeadingAnchors(container) {
+      const slugCounts = new Map();
+      const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      headings.forEach((heading) => {
+        const text = heading.textContent.trim();
+        if (!text) return;
+        let slug = slugifyHeading(text);
+        const currentCount = slugCounts.get(slug) || 0;
+        slugCounts.set(slug, currentCount + 1);
+        if (currentCount > 0) {
+          slug = `${slug}-${currentCount}`;
+        }
+        heading.id = slug;
+      });
+    }
+
+    fetch('/api-docs.md')
+      .then(res => res.text())
+      .then(md => {
+        const markdownEl = document.getElementById('markdown');
+        markdownEl.innerHTML = marked.parse(md, { headerIds: false, mangle: false });
+        applyHeadingAnchors(markdownEl);
+      })
+      .catch(err => {
+        document.getElementById('markdown').textContent = '加载文档失败: ' + (err.message || err);
+      });
+  </script>
+</body>
+</html>

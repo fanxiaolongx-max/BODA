@@ -977,6 +977,88 @@
       max-width: 100%;
       box-sizing: border-box;
     }
+
+    /* ==================== 高级统一色调 + 玻璃化风格 ==================== */
+    .admin-container {
+      background: linear-gradient(180deg, #f9fafb 0%, #ffffff 45%, #f5f7fa 100%) !important;
+    }
+
+    .admin-header,
+    .admin-tabs {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--glass-shadow);
+      backdrop-filter: blur(var(--glass-blur)) saturate(135%);
+      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(135%);
+      border-radius: 0.75rem;
+      padding: 0.75rem 1rem;
+    }
+
+    .admin-tabs {
+      gap: 0.25rem;
+    }
+
+    .admin-tab {
+      color: #6b7280;
+      border-bottom-color: transparent;
+      border-radius: 0.5rem;
+    }
+
+    .admin-tab:hover {
+      color: var(--color-primary);
+    }
+
+    .admin-tab.active {
+      color: var(--color-primary);
+      background: var(--color-primary-alpha);
+      border-bottom-color: transparent;
+      box-shadow: 0 6px 16px var(--color-primary-alpha-20);
+    }
+
+    .admin-card,
+    .admin-form {
+      background: var(--glass-bg) !important;
+      border: 1px solid var(--glass-border) !important;
+      box-shadow: var(--glass-shadow) !important;
+      backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    }
+
+    .admin-table {
+      background: var(--glass-bg) !important;
+      border: 1px solid var(--glass-border) !important;
+      box-shadow: var(--glass-shadow) !important;
+      backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+      border-radius: 0.75rem;
+      overflow: hidden;
+    }
+
+    .admin-table th,
+    .admin-table td {
+      background: var(--glass-bg-strong) !important;
+      border-color: rgba(229, 231, 235, 0.6) !important;
+    }
+
+    .admin-table tbody tr:hover {
+      background: rgba(255, 255, 255, 0.85) !important;
+    }
+
+    .admin-form-input,
+    .admin-form-textarea,
+    .admin-form-select {
+      background: var(--glass-bg-strong);
+      border: 1px solid rgba(209, 213, 219, 0.7);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .admin-form-input:focus,
+    .admin-form-select:focus,
+    .admin-form-textarea:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px var(--color-primary-alpha);
+    }
     
     /* 天气和汇率表单宽屏横向布局 */
     .weather-form-layout {

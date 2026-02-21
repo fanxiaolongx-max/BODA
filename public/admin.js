@@ -9647,6 +9647,14 @@ function loadAboutPage() {
             </p>
           </div>
           <div>
+            <p class="text-sm text-gray-600 mb-2">API Documentation</p>
+            <p class="text-gray-700">
+              <a href="/api-docs.html" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline">
+                打开 API 文档与调试台
+              </a>
+            </p>
+          </div>
+          <div>
             <p class="text-sm text-gray-600 mb-2">${t('description')}</p>
             <p class="text-gray-700">${t('about_description', { storeName: currentStoreName })}</p>
           </div>
