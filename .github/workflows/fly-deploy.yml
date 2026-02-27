@@ -18,20 +18,20 @@ jobs:
       - name: Deploy Production
         run: |
           echo "Deploying PROD → boda-t0amgq"
-          flyctl deploy -c fly.boda-t0amgq.toml --remote-only
+          flyctl deploy -c fly.boda-t0amgq.toml --remote-only --depot=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Deploy Staging
         run: |
           echo "Deploying STAGE → boda-0mqtrq"
-          flyctl deploy -c fly.boda-0mqtrq.toml --remote-only
+          flyctl deploy -c fly.boda-0mqtrq.toml --remote-only --depot=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Deploy Testing
         run: |
           echo "Deploying TEST → boda-3xyulq"
-          flyctl deploy -c fly.boda-3xyulq.toml --remote-only
+          flyctl deploy -c fly.boda-3xyulq.toml --remote-only --depot=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
