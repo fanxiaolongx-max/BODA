@@ -928,7 +928,7 @@ const upload = multer({
   }
 });
 
-// 图片压缩函数（针对产品图片，用户端显示较小）
+// 图片压缩函数（针对产品图片，用户端显示较小且保持清晰）
 async function compressProductImage(imagePath) {
   try {
     const stats = await fs.promises.stat(imagePath);
@@ -937,22 +937,22 @@ async function compressProductImage(imagePath) {
     // 读取图片信息
     const metadata = await sharp(imagePath).metadata();
     
-    // 计算目标尺寸（用户端显示为 80x80，但保留一些余量，设置为 200x200）
-    const maxWidth = 200;
-    const maxHeight = 200;
+    // 计算目标尺寸（用户端大图预览，设置为 400x400，保证清晰度）
+    const maxWidth = 400;
+    const maxHeight = 400;
     
-    // 如果图片已经很小，不需要压缩
+    // 如果图片已经比目标尺寸小且文件本身不大，不需要压缩
     if (metadata.width <= maxWidth && metadata.height <= maxHeight && originalSize < 50 * 1024) {
       return { compressed: false, originalSize, finalSize: originalSize };
     }
     
-    // 压缩图片：调整大小、转换为 JPEG 格式、降低质量
+    // 压缩图片：调整大小、转换为 JPEG 格式、适当降低质量
     const compressedBuffer = await sharp(imagePath)
       .resize(maxWidth, maxHeight, {
         fit: 'inside',
         withoutEnlargement: true
       })
-      .jpeg({ quality: 80, mozjpeg: true }) // 转换为 JPEG，质量 80%
+      .jpeg({ quality: 85, mozjpeg: true }) // 转换为 JPEG，质量 85%
       .toBuffer();
     
     // 覆盖原文件

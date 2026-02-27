@@ -21,9 +21,9 @@ let stripeElements = null;
 let stripePaymentElement = null; // 使用 Payment Element（支持 Apple Pay 和银行卡）
 let currentPaymentMethod = 'screenshot'; // 默认选择上传截图
 
-// 格式化价格显示（使用当前货币符号）
+// 格式化价格显示（使用当前货币符号，统一两位小数）
 function formatPrice(price) {
-  return `${parseFloat(price).toFixed(0)} ${currencySymbol}`;
+  return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
 }
 
 // 根据价格生成颜色（相同价格相同颜色）
@@ -77,7 +77,7 @@ function getPriceColor(price) {
   return priceColorCache.get(priceKey);
 }
 
-// 格式化价格显示（带小数）
+// 格式化价格显示（带小数，统一两位小数）
 function formatPriceDecimal(price) {
   return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
 }
@@ -2754,6 +2754,23 @@ async function showProductDetail(product) {
   // 设置商品名称和描述
   document.getElementById('detailProductName').textContent = getLocalizedText(product.name);
   document.getElementById('detailProductDesc').textContent = getLocalizedText(product.description || '');
+
+  // 设置商品大图（普通商品有 image_url 时显示）
+  const imageWrapper = document.getElementById('detailProductImageWrapper');
+  const imageEl = document.getElementById('detailProductImage');
+  if (imageWrapper && imageEl) {
+    if (product.image_url) {
+      imageEl.src = product.image_url;
+      imageEl.alt = getLocalizedText(product.name) || '';
+      imageWrapper.classList.remove('hidden');
+      imageWrapper.style.display = 'block';
+    } else {
+      imageWrapper.classList.add('hidden');
+      imageWrapper.style.display = 'none';
+      imageEl.src = '';
+      imageEl.alt = '';
+    }
+  }
   
   // 渲染杯型选择
   renderSizeOptions(product);

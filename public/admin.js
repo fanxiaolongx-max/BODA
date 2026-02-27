@@ -447,12 +447,12 @@ const securityAlertsFilterState = {
   unreadOnly: false
 };
 
-// 格式化价格显示（使用当前货币符号）
+// 格式化价格显示（使用当前货币符号，统一两位小数）
 function formatPrice(price) {
-  return `${parseFloat(price).toFixed(0)} ${currencySymbol}`;
+  return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
 }
 
-// 格式化价格显示（带小数）
+// 格式化价格显示（带小数，统一两位小数）
 function formatPriceDecimal(price) {
   return `${parseFloat(price).toFixed(2)} ${currencySymbol}`;
 }
@@ -4447,6 +4447,16 @@ async function loadSettingsPage() {
               </div>
               
               <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">${t('currency_code')}</label>
+                <input type="text" id="currencyCode" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                       placeholder="${t('currency_code_placeholder')}"
+                       value="${settings.currency || 'EGP'}"
+                       maxlength="10">
+                <p class="text-xs text-gray-500 mt-1">${t('currency_code_hint')}</p>
+              </div>
+              
+              <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">${t('max_visible_cycles')}</label>
                 <input type="number" id="maxVisibleCycles" 
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg"
@@ -5445,6 +5455,7 @@ async function saveSettings(e) {
     system_notice: document.getElementById('systemNotice').value,
     store_name: document.getElementById('storeName').value.trim() || 'BOBA TEA',
     currency_symbol: document.getElementById('currencySymbol').value.trim() || 'LE',
+    currency: document.getElementById('currencyCode').value.trim() || 'EGP',
     max_visible_cycles: maxVisibleCycles.toString(),
     admin_session_timeout: adminSessionTimeout || '7200',
     user_session_timeout: userSessionTimeout || '7200',
@@ -7224,7 +7235,7 @@ function buildDefaultBotMenuStructure() {
             { title: { zh: '商品', en: 'Products' }, type: 'page', mapping: 'admin/products', order: 1 },
             { title: { zh: '分类', en: 'Categories' }, type: 'page', mapping: 'admin/categories', order: 2 },
             { title: { zh: '展示图', en: 'Showcase Images' }, type: 'page', mapping: 'admin/showcase-images', order: 3 },
-            { title: { zh: '堂食二维码', en: 'Dine-In QR' }, type: 'page', mapping: 'admin/dine-in-qr', order: 4 }
+            { title: { zh: '二维码', en: 'Dine-In QR' }, type: 'page', mapping: 'admin/dine-in-qr', order: 4 }
           ]
         },
         {

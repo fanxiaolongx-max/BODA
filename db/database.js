@@ -437,7 +437,7 @@ async function initDatabase() {
       )
     `);
 
-    // 堂食二维码表
+    // 二维码表
     await runAsync(`
       CREATE TABLE IF NOT EXISTS dine_in_qr_codes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

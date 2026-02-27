@@ -138,8 +138,21 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // 请求解析
-app.use(express.json({ limit: '500mb' }));
-app.use(express.urlencoded({ extended: true, limit: '500mb' }));
+// 特别注意：Stripe Webhook 需要使用原始请求体进行签名验证
+// 因此前置的 body parser 需要跳过 /api/user/stripe-webhook 路径
+app.use((req, res, next) => {
+  if (req.path === '/api/user/stripe-webhook') {
+    return next();
+  }
+  return express.json({ limit: '500mb' })(req, res, next);
+});
+
+app.use((req, res, next) => {
+  if (req.path === '/api/user/stripe-webhook') {
+    return next();
+  }
+  return express.urlencoded({ extended: true, limit: '500mb' })(req, res, next);
+});
 
 // Session配置
 // 自动检测 HTTPS：如果设置了 trust proxy，会根据 X-Forwarded-Proto 自动判断

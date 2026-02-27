@@ -205,7 +205,7 @@
             {
               "title": {
                 "en": "Dine-In QR",
-                "zh": "堂食二维码"
+                "zh": "二维码"
               },
               "type": "page",
               "mapping": "admin/dine-in-qr",

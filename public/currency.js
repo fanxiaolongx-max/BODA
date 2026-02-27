@@ -4,14 +4,14 @@ let currencyConfig = {
   symbol: '¥'
 };
 
-// 格式化价格显示
+// 格式化价格显示（统一两位小数）
 function formatPrice(price) {
-  return `${currencyConfig.symbol}${price.toFixed(0)} ${currencyConfig.currency}`;
+  return `${currencyConfig.symbol}${price.toFixed(2)} ${currencyConfig.currency}`;
 }
 
-// 格式化价格显示（简化版，只显示符号和数字）
+// 格式化价格显示（简化版，只显示符号和数字，统一两位小数）
 function formatPriceSimple(price) {
-  return `${currencyConfig.symbol}${price.toFixed(0)}`;
+  return `${currencyConfig.symbol}${price.toFixed(2)}`;
 }
 
 // 加载货币配置

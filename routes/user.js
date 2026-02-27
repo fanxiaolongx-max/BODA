@@ -80,6 +80,22 @@ async function getStripeWebhookSecret() {
 }
 
 /**
+ * 从系统设置读取默认货币（用于 Stripe 支付）
+ * @returns {Promise<string>} 货币代码（小写，默认为 egp）
+ */
+async function getSystemCurrency() {
+  try {
+    const setting = await getAsync("SELECT value FROM settings WHERE key = 'currency'");
+    const raw = (setting?.value || 'EGP').toString().trim();
+    // Stripe 要求使用小写 ISO 货币代码，如 egp、usd
+    return raw ? raw.toLowerCase() : 'egp';
+  } catch (error) {
+    logger.error('读取货币配置失败', { error: error.message });
+    return 'egp';
+  }
+}
+
+/**
  * POST /api/user/stripe-webhook
  * Stripe Webhook 处理（用于处理支付成功回调）
  * 注意：这个接口需要配置在 Stripe Dashboard 的 Webhooks 中
@@ -1488,15 +1504,16 @@ router.post('/orders/:id/create-payment-intent', async (req, res) => {
     }
     
     // 创建 Payment Intent
-    // 注意：金额需要转换为最小单位（EGP: 1 EGP = 100 piastres）
+    // 注意：金额需要转换为最小单位（根据币种，如 1 EGP = 100 piastres）
     const amountInCents = Math.round(order.final_amount * 100);
+    const currency = await getSystemCurrency();
     
     // 使用 Payment Element 时，不需要手动指定 payment_method_types
     // Payment Element 会自动检测设备支持的支付方式（包括 Apple Pay、Google Pay、银行卡等）
     // 参考：https://docs.stripe.com/payments/payment-element
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
-      currency: 'egp', // 埃及镑
+      currency: currency,
       // 不指定 payment_method_types，让 Payment Element 自动处理
       // Payment Element 会自动显示设备支持的所有支付方式
       automatic_payment_methods: {
